@@ -1,0 +1,2 @@
+$ node --import tsx/esm apps/cli/src/bin.ts "web" "--no-open"
+dsh web: http://127.0.0.1:3080

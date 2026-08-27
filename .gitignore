@@ -5,6 +5,7 @@ lib/
 *.tsbuildinfo
 pnpm-debug.log
 .pnpm-store/
+.pnpm-tools/
 .cache/
 examples/*/*.jsonl
 .storages/
@@ -39,3 +40,4 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
+_mytools/start-dsh.bat

@@ -189,13 +189,27 @@ window.__ModuleLoader__.load({
       if (supported.length === 0) return null
       const parts = supported.map((a) => {
         const o = a.officialTodaySpend
-        const spend = o !== null && o !== undefined ? '-' + fmtMoney(a.symbol, o) : '—'
+        const loc = a.today
+        let spend
+        if (o !== null && o !== undefined && o > 0) {
+          spend = '-' + fmtMoney(a.symbol, o) + '(官方)'
+        } else if (loc !== null && loc.cost > 0) {
+          spend = '-' + fmtMoney(a.symbol, loc.cost) + '(本地)'
+        } else {
+          spend = '0'
+        }
         return a.label + ' 余额 ' + fmtMoney(a.symbol, a.balanceTotal) + ' · 今日 ' + spend
       })
       return h('div', {
         style: {
+          boxSizing: 'border-box',
+          width: 'calc(var(--dsh-composer-card-max-width, 768px) - var(--dsh-composer-dock-inset, 8px) - var(--dsh-composer-dock-inset, 8px))',
+          minWidth: 'min(100%, 280px)',
+          maxWidth: '100%',
+          margin: '0 auto',
+          padding: '2px var(--dsh-composer-dock-inset, 8px) 0',
           fontSize: '11px', color: 'var(--dsw-alias-label-secondary)',
-          padding: '3px 2px 0', display: 'flex', gap: '16px', flexWrap: 'wrap', lineHeight: '16px',
+          display: 'flex', gap: '16px', flexWrap: 'wrap', lineHeight: '16px',
         },
       }, ...parts.map((text, i) => h('span', { key: i }, text)))
     }

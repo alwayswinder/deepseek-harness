@@ -3,7 +3,7 @@
     - id: deepseek-usage
       name: '@local/dsh-deepseek-usage'
       config:
-        refreshSeconds: 300
+        refreshSeconds: 30
         accounts:
           opencode:
             id: opencode

@@ -135,7 +135,7 @@ export const Config = z.object({
       output: z.number(),
     }),
   })).default({}),
-  refreshSeconds: z.number().default(300),
+  refreshSeconds: z.number().default(30),
 })
 
 /**

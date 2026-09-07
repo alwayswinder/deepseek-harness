@@ -112,6 +112,8 @@ async function resolveKey(ctx, account) {
   return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : undefined
 }
 
+let lastYamlDedupe = ''
+
 export const name = 'deepseek-usage'
 
 export const Config = z.object({
@@ -206,6 +208,84 @@ function loadMeter(path) {
     // absent or corrupt: start empty
   }
   return { accounts: {} }
+}
+
+
+/**
+ * Direct settings-document writer. The settings service's file persistence can
+ * wedge in this composition, leaving the browser mirror reading a stale
+ * document; writing our own section keeps the served value current. Only a
+ * changed snapshot (compared without `updatedAt`) touches the disk.
+ */
+
+function settingsDocPath() {
+  let home = process.env.DSH_HOME ?? ''
+  if (home === '') {
+    const base = process.env.USERPROFILE ?? process.env.HOME ?? ''
+    home = base === '' ? '.' : `${base.replace(/\\/g, '/')}/.dsh`
+  }
+  return `${home.replace(/\/+$/, '')}/settings.yaml`
+}
+
+function yamlScalar(value) {
+  if (value === null || value === undefined) return 'null'
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  return JSON.stringify(String(value))
+}
+
+function yamlBlockLines(value, indent) {
+  const lines = []
+  for (const [key, child] of Object.entries(value)) {
+    const pad = ' '.repeat(indent)
+    if (child !== null && typeof child === 'object') {
+      lines.push(`${pad}${key}:`)
+      lines.push(...yamlBlockLines(child, indent + 2))
+    } else {
+      lines.push(`${pad}${key}: ${yamlScalar(child)}`)
+    }
+  }
+  return lines
+}
+
+/** Replace one top-level section (its own indented block) in a yaml text. */
+function replaceTopSection(text, key, blockLines) {
+  const lines = text.split(/\r?\n/)
+  let start = -1
+  let end = lines.length
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^\S/.test(lines[i])) continue
+    if (start >= 0) { end = i; break }
+    if (lines[i].startsWith(`${key}:`)) start = i
+  }
+  const body = start >= 0
+    ? [...lines.slice(0, start), ...blockLines, ...lines.slice(end)]
+    : [...lines, '', ...blockLines]
+  return body.join('\n')
+}
+
+function writeSnapshotYaml(snapshot, dedupeKey) {
+  const block = ['deepseek-usage:']
+  for (const [key, value] of Object.entries({ updatedAt: Date.now(), timezone: snapshot.timezone, accounts: snapshot.accounts })) {
+    if (value !== null && typeof value === 'object') {
+      block.push(`  ${key}:`)
+      block.push(...yamlBlockLines(value, 4))
+    } else {
+      block.push(`  ${key}: ${yamlScalar(value)}`)
+    }
+  }
+  const json = JSON.stringify(dedupeKey)
+  try {
+    const path = settingsDocPath()
+    const text = readFileSync(path, 'utf8')
+    if (json === lastYamlDedupe && text.includes('deepseek-usage:')) return
+    const next = replaceTopSection(text, 'deepseek-usage', block)
+    writeFileSync(path, next)
+    lastYamlDedupe = json
+  } catch (error) {
+    // Non-fatal: the settings-scope publish is the primary channel.
+    console.warn('deepseek-usage: settings doc write failed', error?.message ?? String(error))
+  }
 }
 
 function persistMeter(path, meter) {
@@ -358,7 +438,7 @@ export function apply(ctx, config) {
     if (serialized === lastPublished) return
     publishing = true
     try {
-      await scope.update(snapshot)
+      writeSnapshotYaml(snapshot, serialized)
       lastPublished = serialized
     } catch (error) {
       ctx.logger?.warn?.('deepseek-usage: publish failed (%s)', error?.message ?? String(error))

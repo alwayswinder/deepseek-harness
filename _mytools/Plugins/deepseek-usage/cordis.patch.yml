@@ -1,0 +1,29 @@
+# deepseek-usage bundle patch: one host row mounting the plugin package.
+- insert:
+    - id: deepseek-usage
+      name: '@local/dsh-deepseek-usage'
+      config:
+        refreshSeconds: 300
+        accounts:
+          opencode:
+            id: opencode
+            label: OpenCode 网关
+            provider: opencode
+            balanceBaseUrl: ''
+            credential: OPENCODE_API_KEY
+            currency: CNY
+            defaultRate:
+              input: 1.58
+              cacheHit: 0.05
+              output: 4.75
+          deepseek-official:
+            id: deepseek-official
+            label: DeepSeek 官方
+            provider: ''
+            balanceBaseUrl: 'https://api.deepseek.com'
+            credential: DEEPSEEK_OFFICIAL_API_KEY
+            currency: CNY
+            defaultRate:
+              input: 1.58
+              cacheHit: 0.05
+              output: 4.75

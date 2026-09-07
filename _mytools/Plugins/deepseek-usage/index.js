@@ -50,6 +50,68 @@ function toFinite(value) {
   return 0
 }
 
+
+/**
+ * Fallback credential lookup for when the credentials service is not visible
+ * on the context this plugin runs in (composition-dependent): read the managed
+ * document's `refs:` section directly.
+ * @param name - the credential reference name.
+ * @returns the stored value, or `undefined` when absent.
+ */
+function readFileRef(name) {
+  let home = process.env.DSH_HOME ?? ''
+  if (home === '') {
+    const base = process.env.USERPROFILE ?? process.env.HOME ?? ''
+    home = base === '' ? '.' : `${base.replace(/\\/g, '/')}/.dsh`
+  }
+  const file = `${home.replace(/\/+$/, '')}/.credentials.yaml`
+  try {
+    let inRefs = false
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const trimmed = line.trimEnd()
+      if (/^refs:\s*$/.test(trimmed)) { inRefs = true; continue }
+      if (inRefs) {
+        if (trimmed === '') continue
+        if (!/^\s/.test(trimmed)) { inRefs = false; continue }
+        const match = /^ {2,}([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(trimmed)
+        if (match !== null && match[1] === name) {
+          let value = match[2].trim()
+          const quoted = value.length >= 2
+            && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+          if (quoted) value = value.slice(1, -1)
+          return value.length > 0 ? value : undefined
+        }
+      }
+    }
+  } catch {
+    // absent or unreadable document: fall through to the environment
+  }
+  return undefined
+}
+
+/**
+ * Resolve one account's key: the credentials service when this composition
+ * provides it, then the managed document, then the process environment.
+ * @param ctx - the plugin context.
+ * @param account - the account configuration.
+ * @returns the resolved key value, or `undefined` when nothing holds it.
+ */
+async function resolveKey(ctx, account) {
+  try {
+    const credentials = ctx.get('credentials')
+    if (credentials !== undefined) {
+      const hit = await credentials.resolve(account.credential)
+      if (hit !== undefined && hit.value !== undefined && hit.value.length > 0) return hit.value
+    }
+  } catch {
+    // service present but failing: fall through to the local fallbacks
+  }
+  const fromFile = readFileRef(account.credential)
+  if (fromFile !== undefined) return fromFile
+  const fromEnv = process.env[account.credential]
+  return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : undefined
+}
+
 export const name = 'deepseek-usage'
 
 export const Config = z.object({
@@ -81,6 +143,23 @@ export const Config = z.object({
  * `request/header` snapshots, so each assistant/message bill resolves to the
  * request that produced it.
  */
+
+/**
+ * Pull the provider-reported usage out of one `assistant/message` event: the
+ * direct `data.usage` when the settlement carried it, else the last `usage`
+ * chunk inside `data.stream` (surface shape per the harness session log).
+ * @param stream - the event's `data.stream`, when present.
+ * @returns the usage object, or `undefined` when the event reports none.
+ */
+function usageFromStream(stream) {
+  if (!Array.isArray(stream)) return undefined
+  for (const member of stream) {
+    const chunk = member?.chunk
+    if (chunk?.type === 'usage') return chunk.usage
+  }
+  return undefined
+}
+
 class RequestSelector {
   provider = ''
   model = ''
@@ -163,11 +242,12 @@ export function apply(ctx, config) {
       selector.observe(event)
       return
     }
-    if (event.type !== 'assistant/message' || event.usage === undefined) return
+    if (event.type !== 'assistant/message') return
+    const usage = event.data?.usage ?? usageFromStream(event.data?.stream)
+    if (usage === undefined) return
     const route = selectors.get(session.id)?.route() ?? { provider: '', model: '' }
     const account = accountFor(accounts, route.provider)
     if (account === undefined) return
-    const usage = event.usage
     const input = toFinite(usage.inputTokens)
     const cacheHit = toFinite(usage.cacheReadTokens)
     const cacheWrite = toFinite(usage.cacheWriteTokens)
@@ -217,11 +297,15 @@ export function apply(ctx, config) {
       let monthCost = 0
       let monthTokens = 0
       for (const l of Object.values(ledger.accounts[account.id] ?? {})) {
-        if (monthKey(l.date) === monthKey(today)) {
+        if (typeof l.date === 'string' && monthKey(l.date) === monthKey(today)) {
           monthCost += l.cost
           monthTokens += l.inputTokens + l.outputTokens + l.cacheHitTokens
         }
       }
+      const dayOpen = ledger.accounts[account.id]?.dayOpen?.total ?? null
+      const officialToday = (dayOpen !== null && bal?.total !== null && dayOpen > bal?.total)
+        ? dayOpen - bal.total
+        : null
       byAccount[account.id] = {
         id: account.id,
         label: account.label,
@@ -231,6 +315,8 @@ export function apply(ctx, config) {
         balanceTotal: bal?.total ?? null,
         balanceGranted: bal?.granted ?? null,
         balanceToppedUp: bal?.toppedUp ?? null,
+        balanceDayOpen: dayOpen,
+        officialTodaySpend: officialToday,
         balanceError: bal?.error ?? null,
         balanceSupported: account.balanceBaseUrl !== '',
         today: day === undefined ? null : {
@@ -293,29 +379,16 @@ export function apply(ctx, config) {
       balances.set(account.id, base)
       return
     }
-    const credentials = ctx.get('credentials')
-    if (credentials === undefined) {
-      base.error = 'credentials service unavailable'
-      balances.set(account.id, base)
-      return
-    }
-    let hit
-    try {
-      hit = await credentials.resolve(account.credential)
-    } catch (error) {
-      base.error = error?.message ?? String(error)
-      balances.set(account.id, base)
-      return
-    }
-    if (hit === undefined || hit.value === undefined || hit.value.length === 0) {
-      base.error = `no credential "${account.credential}"`
+    const key = await resolveKey(ctx, account)
+    if (key === undefined) {
+      base.error = `no credential "${account.credential}" (store it on the Models page or in ~/.dsh/.credentials.yaml)`
       balances.set(account.id, base)
       return
     }
     try {
       const url = `${account.balanceBaseUrl.replace(/\/+$/, '')}/user/balance`
       const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${hit.value}`, Accept: 'application/json' },
+        headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(20_000),
       })
       if (!response.ok) {
@@ -336,6 +409,14 @@ export function apply(ctx, config) {
       }
     } catch (error) {
       base.error = error?.message ?? String(error)
+    }
+    if (base.error === null && base.total !== null) {
+      const dayEntry = (ledger.accounts[account.id] ??= {})
+      const today = localDate()
+      if (dayEntry.dayOpen === undefined || dayEntry.dayOpen.date !== today) {
+        dayEntry.dayOpen = { date: today, total: base.total }
+        persistMeter(path, ledger)
+      }
     }
     balances.set(account.id, base)
   }

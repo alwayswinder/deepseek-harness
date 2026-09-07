@@ -117,13 +117,18 @@ window.__ModuleLoader__.load({
       const today = account.today
       const rows = []
       rows.push(h('div', { key: 'title', style: { fontSize: '13px', fontWeight: 600, marginBottom: '8px' } }, account.label))
-      rows.push(h(Row, { key: 'spend', label: '今日消费' },
-        today === null
+      const official = account.officialTodaySpend
+      const spendView = (official !== null && official !== undefined && account.balanceTotal !== null)
+        ? h('span', null,
+            h('span', { style: { color: 'var(--dsw-alias-state-error-primary)' } }, '-' + fmtMoney(account.symbol, official)),
+            h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '6px' } }, '余额差'))
+        : today === null
           ? '0'
           : h('span', null,
               fmtMoney(account.symbol, today.cost),
               h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
-                `${fmtTokens(today.inputTokens + today.cacheHitTokens + today.cacheWriteTokens)} in · ${fmtTokens(today.outputTokens)} out`))))
+                `${fmtTokens(today.inputTokens + today.cacheHitTokens + today.cacheWriteTokens)} in · ${fmtTokens(today.outputTokens)} out`))
+      rows.push(h(Row, { key: 'spend', label: '今日消费' }, spendView))
 
       if (account.balanceSupported) {
         if (account.balanceError !== null) {
@@ -173,6 +178,28 @@ window.__ModuleLoader__.load({
       )
     }
 
+
+    // ---- conversation strip: balance + official-delta spend under the chat ----
+
+    function UsageStrip(props) {
+      const state = props.useUsageCard((s) => s)
+      if (state.status === 'unavailable' || state.value === undefined) return null
+      const accounts = Object.values(state.value.accounts ?? {})
+      const supported = accounts.filter((a) => a.balanceSupported && a.balanceError === null && a.balanceTotal !== null)
+      if (supported.length === 0) return null
+      const parts = supported.map((a) => {
+        const o = a.officialTodaySpend
+        const spend = o !== null && o !== undefined ? '-' + fmtMoney(a.symbol, o) : '—'
+        return a.label + ' 余额 ' + fmtMoney(a.symbol, a.balanceTotal) + ' · 今日 ' + spend
+      })
+      return h('div', {
+        style: {
+          fontSize: '11px', color: 'var(--dsw-alias-label-secondary)',
+          padding: '3px 2px 0', display: 'flex', gap: '16px', flexWrap: 'wrap', lineHeight: '16px',
+        },
+      }, ...parts.map((text, i) => h('span', { key: i }, text)))
+    }
+
     // ---- plugin -----------------------------------------------------------
 
     const plugin = {
@@ -185,6 +212,12 @@ window.__ModuleLoader__.load({
           key: NS,
           inject: () => controller.inject(),
         }, UsageCard))
+        ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+          name: 'conversation.input.dock',
+          id: 'usage',
+          order: 100,
+          inject: () => controller.inject(),
+        }, UsageStrip))
         ctx.effect(() => () => { controller.dispose() }, 'deepseek-usage: card disposal')
       },
     }

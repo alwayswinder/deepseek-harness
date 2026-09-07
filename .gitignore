@@ -43,3 +43,4 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 _mytools/start-dsh.bat
+_mytools/dsh-web.log

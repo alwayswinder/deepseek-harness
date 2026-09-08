@@ -192,8 +192,7 @@ window.__ModuleLoader__.load({
         : state.value.sessions?.[props.sessionId]
       if (session !== undefined && session.requests > 0) {
         const symbol = accounts[0]?.symbol ?? '¥'
-        const tokens = session.inputTokens + session.cacheHitTokens + session.cacheWriteTokens + session.outputTokens
-        parts.push('本次对话 ' + fmtMoney(symbol, session.cost) + ' · ' + fmtTokens(tokens) + ' tokens')
+        parts.push('本次对话 ' + fmtMoney(symbol, session.cost))
       }
       for (const a of accounts) {
         const o = a.officialTodaySpend

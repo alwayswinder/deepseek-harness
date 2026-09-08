@@ -1,0 +1,5 @@
+# cmd.exe parses .bat files by CRLF-terminated lines, and the repository
+# default (`* text=auto eol=lf`) would otherwise check these out with LF-only
+# endings on every machine. Keep the in-repo form normalized as text while
+# every checkout writes CRLF, mirroring the root `*.cmd` override.
+*.bat text eol=crlf

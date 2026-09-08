@@ -89,7 +89,7 @@ if exist "%APPDATA%\npm\dsh.cmd" (
     echo.
     call :ensureUsagePlugin global
     echo.
-    echo [dsh] Starting the service in the background (no browser)...
+    echo [dsh] Starting the service in the background ^(no browser^)...
     wscript "%~dp0start-dsh-service.vbs" "%APPDATA%\npm\dsh.cmd" "web --no-open" "%DSH_LOG%" "%DSH_REPO%"
     echo.
     echo [dsh] Launch requested. This window can now be closed.
@@ -128,6 +128,7 @@ if "%1"=="local" goto :usageLocal
 if "%1"=="global" goto :usageGlobal
 echo [dsh] WARNING: cannot auto-register the plugin while launching through npx. Run this once in a terminal:
 echo [dsh]   dsh plugin --profile web add %DSH_USAGE_URL%
+call :usageSync
 goto :eof
 
 :usageLocal
@@ -145,10 +146,30 @@ set "USAGE_EXIT=%errorlevel%"
 goto :usageDone
 
 :usageDone
+call :usageSync
 if "%USAGE_EXIT%"=="0" goto :usageEnabled
 echo [dsh] WARNING: deepseek-usage plugin registration failed (exit %USAGE_EXIT%); web will start without it.
 goto :eof
 
 :usageEnabled
 echo [dsh] deepseek-usage plugin: enabled.
+goto :eof
+
+rem ============================================================
+rem Refresh the profile's installed copy of the plugin from this source
+rem directory. `pnpm add` records a file: directory dependency with no content
+rem hash, so a later edit here is never copied into the profile and the running
+rem host keeps serving the old host half and client bundle. Copy the packaged
+rem files (package.json `files`) whenever that copy already exists; a fresh
+rem profile is installed by `dsh plugin add` above and needs no sync.
+rem ============================================================
+:usageSync
+set "USAGE_HOME=%DSH_HOME%"
+if not defined USAGE_HOME set "USAGE_HOME=%USERPROFILE%\.dsh"
+set "USAGE_DEST=%USAGE_HOME%\profiles\web\node_modules\@local\dsh-deepseek-usage"
+if not exist "%USAGE_DEST%\package.json" goto :eof
+for %%F in (index.js client.js cordis.patch.yml package.json README.md) do (
+    if exist "%DSH_USAGE_DIR%\%%F" copy /y "%DSH_USAGE_DIR%\%%F" "%USAGE_DEST%\%%F" >nul
+)
+echo [dsh] deepseek-usage plugin: installed copy refreshed from source.
 goto :eof

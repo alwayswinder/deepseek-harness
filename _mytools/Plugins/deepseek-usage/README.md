@@ -1,5 +1,7 @@
 # deepseek-usage
 
+English | [中文](README.zh.md)
+
 Out-of-tree DeepSeek Harness plugin: a **usage & balance card** on the settings
 page (Plugins → 插件配置). Shows, per configured account:
 

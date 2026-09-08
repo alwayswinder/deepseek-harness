@@ -376,7 +376,10 @@ export function apply(ctx, config) {
       const day = ledger.accounts[account.id]?.[today]
       let monthCost = 0
       let monthTokens = 0
-      for (const l of Object.values(ledger.accounts[account.id] ?? {})) {
+      for (const [key, l] of Object.entries(ledger.accounts[account.id] ?? {})) {
+        // `dayOpen` shares this map with the date-keyed day entries; summing it
+        // as a day record would add `undefined` and poison the month totals.
+        if (key === 'dayOpen') continue
         if (typeof l.date === 'string' && monthKey(l.date) === monthKey(today)) {
           monthCost += l.cost
           monthTokens += l.inputTokens + l.outputTokens + l.cacheHitTokens

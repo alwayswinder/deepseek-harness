@@ -185,21 +185,33 @@ window.__ModuleLoader__.load({
       const state = props.useUsageCard((s) => s)
       if (state.status === 'unavailable' || state.value === undefined) return null
       const accounts = Object.values(state.value.accounts ?? {})
-      const supported = accounts.filter((a) => a.balanceSupported && a.balanceError === null && a.balanceTotal !== null)
-      if (supported.length === 0) return null
-      const parts = supported.map((a) => {
+      // An account with neither a fetched balance nor local spend has nothing to
+      // say; every other account stays visible so a missing credential or an
+      // unreachable balance endpoint shows up instead of hiding the strip.
+      const parts = []
+      for (const a of accounts) {
         const o = a.officialTodaySpend
         const loc = a.today
+        const hasBalance = a.balanceSupported && a.balanceError === null && a.balanceTotal !== null
+        const hasSpend = (o !== null && o !== undefined && o > 0)
+          || (loc !== null && loc !== undefined && loc.cost > 0)
+        if (!hasBalance && !hasSpend) continue
         let spend
         if (o !== null && o !== undefined && o > 0) {
           spend = '-' + fmtMoney(a.symbol, o) + '(官方)'
-        } else if (loc !== null && loc.cost > 0) {
+        } else if (loc !== null && loc !== undefined && loc.cost > 0) {
           spend = '-' + fmtMoney(a.symbol, loc.cost) + '(本地)'
         } else {
           spend = '0'
         }
-        return a.label + ' 余额 ' + fmtMoney(a.symbol, a.balanceTotal) + ' · 今日 ' + spend
-      })
+        let text = a.label + ' '
+        if (hasBalance) text += '余额 ' + fmtMoney(a.symbol, a.balanceTotal) + ' · '
+        text += '今日 ' + spend
+        if (!a.balanceSupported) text += ' · 无余额接口'
+        else if (!hasBalance) text += a.balanceError !== null ? ' · 余额不可用' : ' · 未配置 Key'
+        parts.push(text)
+      }
+      if (parts.length === 0) return null
       return h('div', {
         style: {
           boxSizing: 'border-box',

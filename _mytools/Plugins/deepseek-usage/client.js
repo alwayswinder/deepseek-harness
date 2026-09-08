@@ -150,8 +150,6 @@ window.__ModuleLoader__.load({
         rows.push(h(Row, { key: 'balance', label: '总余额' },
           h(Badge, { tone: 'warn', text: '该平台无余额接口' })))
       }
-      rows.push(h('div', { key: 'foot', style: { fontSize: '11px', color: 'var(--dsw-alias-label-secondary)', marginTop: '8px' } },
-        `本月约 ${fmtMoney(account.symbol, account.monthCost)}`))
       return h('div', { style: { border: '1px solid var(--dsw-alias-border-l1)', borderRadius: '10px', padding: '12px 14px' } }, ...rows)
     }
 
@@ -189,6 +187,14 @@ window.__ModuleLoader__.load({
       // say; every other account stays visible so a missing credential or an
       // unreachable balance endpoint shows up instead of hiding the strip.
       const parts = []
+      const session = props.sessionId === undefined
+        ? undefined
+        : state.value.sessions?.[props.sessionId]
+      if (session !== undefined && session.requests > 0) {
+        const symbol = accounts[0]?.symbol ?? '¥'
+        const tokens = session.inputTokens + session.cacheHitTokens + session.cacheWriteTokens + session.outputTokens
+        parts.push('本次对话 ' + fmtMoney(symbol, session.cost) + ' · ' + fmtTokens(tokens) + ' tokens')
+      }
       for (const a of accounts) {
         const o = a.officialTodaySpend
         const loc = a.today

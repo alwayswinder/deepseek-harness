@@ -28,10 +28,6 @@ function localDate() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
-function monthKey(date) {
-  return date.slice(0, 7)
-}
-
 function currencyOf(currency) {
   return currency === undefined || currency === '' ? 'CNY' : currency
 }
@@ -266,7 +262,7 @@ function replaceTopSection(text, key, blockLines) {
 
 function writeSnapshotYaml(snapshot, dedupeKey) {
   const block = ['deepseek-usage:']
-  for (const [key, value] of Object.entries({ updatedAt: Date.now(), timezone: snapshot.timezone, accounts: snapshot.accounts })) {
+  for (const [key, value] of Object.entries({ updatedAt: Date.now(), timezone: snapshot.timezone, accounts: snapshot.accounts, sessions: snapshot.sessions })) {
     if (value !== null && typeof value === 'object') {
       block.push(`  ${key}:`)
       block.push(...yamlBlockLines(value, 4))
@@ -302,6 +298,7 @@ const metricsSchema = z.object({
   updatedAt: z.number(),
   timezone: z.string(),
   accounts: z.dict(z.object({})),
+  sessions: z.dict(z.object({})),
 })
 
 export function apply(ctx, config) {
@@ -368,23 +365,63 @@ export function apply(ctx, config) {
     selectors.delete(session.id)
   })
 
+  /**
+   * Per-conversation totals, folded from each live session's own log so a
+   * resumed conversation keeps its number across process restarts and a fork
+   * does not inherit its parent's spend.
+   * @returns session id to { cost, inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests }.
+   */
+  function sessionTotals() {
+    const sessions = ctx.get('sessions')
+    if (sessions === undefined) return {}
+    const totals = {}
+    for (const session of sessions.list()) {
+      const selector = new RequestSelector()
+      let cost = 0
+      let inputTokens = 0
+      let outputTokens = 0
+      let cacheHitTokens = 0
+      let cacheWriteTokens = 0
+      let requests = 0
+      for (const event of session.ownEvents()) {
+        if (event.type === 'request/header') {
+          selector.observe(event)
+          continue
+        }
+        if (event.type !== 'assistant/message') continue
+        const usage = event.data?.usage ?? usageFromStream(event.data?.stream)
+        if (usage === undefined) continue
+        const route = selector.route()
+        const account = accountFor(accounts, route.provider)
+        if (account === undefined) continue
+        const input = toFinite(usage.inputTokens)
+        const cacheHit = toFinite(usage.cacheReadTokens)
+        const cacheWrite = toFinite(usage.cacheWriteTokens)
+        const output = toFinite(usage.outputTokens)
+        if (input === 0 && cacheHit === 0 && cacheWrite === 0 && output === 0) continue
+        const rate = rateFor(account, route.model)
+        cost += ((input + cacheWrite) / 1_000_000) * rate.input
+          + (cacheHit / 1_000_000) * rate.cacheHit
+          + (output / 1_000_000) * rate.output
+        inputTokens += input
+        outputTokens += output
+        cacheHitTokens += cacheHit
+        cacheWriteTokens += cacheWrite
+        requests += 1
+      }
+      if (requests > 0) {
+        totals[session.id] = { cost, inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests }
+      }
+    }
+    return totals
+  }
+
   function snapshotFor() {
     const byAccount = {}
     const today = localDate()
     for (const account of Object.values(accounts)) {
       const bal = balances.get(account.id)
       const day = ledger.accounts[account.id]?.[today]
-      let monthCost = 0
-      let monthTokens = 0
-      for (const [key, l] of Object.entries(ledger.accounts[account.id] ?? {})) {
-        // `dayOpen` shares this map with the date-keyed day entries; summing it
-        // as a day record would add `undefined` and poison the month totals.
-        if (key === 'dayOpen') continue
-        if (typeof l.date === 'string' && monthKey(l.date) === monthKey(today)) {
-          monthCost += l.cost
-          monthTokens += l.inputTokens + l.outputTokens + l.cacheHitTokens
-        }
-      }
       const dayOpen = ledger.accounts[account.id]?.dayOpen?.total ?? null
       const officialToday = (dayOpen !== null && bal?.total !== null && dayOpen > bal?.total)
         ? dayOpen - bal.total
@@ -409,14 +446,13 @@ export function apply(ctx, config) {
           cacheHitTokens: day.cacheHitTokens,
           cacheWriteTokens: day.cacheWriteTokens,
         },
-        monthCost,
-        monthTokens,
       }
     }
     return {
       updatedAt: Date.now(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       accounts: byAccount,
+      sessions: sessionTotals(),
     }
   }
 

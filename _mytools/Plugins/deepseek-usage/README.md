@@ -11,7 +11,7 @@ page (Plugins → 插件配置). Shows, per configured account:
 - **总余额** — total balance from the account's official endpoint
   (`GET {baseURL}/user/balance`) when the account supports one, refreshed every
   `refreshSeconds` (default 300s).
-- 月度估算（本月累计本地记账值）、更新时间与时区提示。
+- 本次对话消耗金额（显示在对话输入框下方）、更新时间与时区提示。
 
 ## How it works
 

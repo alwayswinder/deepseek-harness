@@ -19,10 +19,10 @@ DeepSeek Harness 的树外插件：在设置页（插件 → 插件配置）提�
 
 ```sh
 # from anywhere; resolves the package as a file dependency into the web profile
-dsh plugin --profile web add file:C:/AI/DSH/_mytools/Plugins/deepseek-usage
+dsh plugin --profile web add file:<repo>/_mytools/Plugins/deepseek-usage
 ```
 
-然后重启 `dsh web`（bundle 行在启动时激活，浏览器必须加载新的客户端 bundle），并打开 设置 → 插件 → 插件配置。
+然后重启 `dsh web`（bundle 行在启动时激活，浏览器必须加载新的客户端 bundle），并打开 设置 → 插件 → 插件配置。`_mytools/start-dsh.bat` 会自己完成这次注册，并把 profile 里已安装的副本同步到最新，因此用该脚本启动无需手动执行上面的命令，之后对插件目录的改动也会被带进去。
 
 ## 配置
 

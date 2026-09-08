@@ -16,7 +16,8 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 
 const NS = 'deepseek-usage'
@@ -48,6 +49,27 @@ function toFinite(value) {
 
 
 /**
+ * Resolve the harness home with the same rules the harness uses
+ * (`resolveDshHome`): `$DSH_HOME` when set and not blank, else `~/.dsh`, with
+ * a leading `~` expanded and the result made absolute. Keeping these rules
+ * identical is what makes the plugin's meter and settings writes land beside
+ * the harness's own files on every machine.
+ * @returns the absolute harness home path.
+ */
+function dshHome() {
+  const fromEnv = process.env.DSH_HOME
+  const selected = fromEnv !== undefined && fromEnv.trim().length > 0
+    ? fromEnv
+    : join(homedir(), '.dsh')
+  const expanded = selected === '~'
+    ? homedir()
+    : selected.startsWith('~/') || selected.startsWith('~\\')
+      ? join(homedir(), selected.slice(2))
+      : selected
+  return resolve(expanded)
+}
+
+/**
  * Fallback credential lookup for when the credentials service is not visible
  * on the context this plugin runs in (composition-dependent): read the managed
  * document's `refs:` section directly.
@@ -55,12 +77,7 @@ function toFinite(value) {
  * @returns the stored value, or `undefined` when absent.
  */
 function readFileRef(name) {
-  let home = process.env.DSH_HOME ?? ''
-  if (home === '') {
-    const base = process.env.USERPROFILE ?? process.env.HOME ?? ''
-    home = base === '' ? '.' : `${base.replace(/\\/g, '/')}/.dsh`
-  }
-  const file = `${home.replace(/\/+$/, '')}/.credentials.yaml`
+  const file = join(dshHome(), '.credentials.yaml')
   try {
     let inRefs = false
     for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
@@ -188,12 +205,7 @@ function rateFor(account, model) {
 }
 
 function meterPath() {
-  let home = process.env.DSH_HOME ?? ''
-  if (home === '') {
-    const base = process.env.USERPROFILE ?? process.env.HOME ?? ''
-    home = base === '' ? '.' : `${base.replace(/\\/g, '/')}/.dsh`
-  }
-  return `${home.replace(/\/+$/, '')}/storages/deepseek-usage-meter.json`
+  return join(dshHome(), 'storages', 'deepseek-usage-meter.json')
 }
 
 function loadMeter(path) {
@@ -215,12 +227,7 @@ function loadMeter(path) {
  */
 
 function settingsDocPath() {
-  let home = process.env.DSH_HOME ?? ''
-  if (home === '') {
-    const base = process.env.USERPROFILE ?? process.env.HOME ?? ''
-    home = base === '' ? '.' : `${base.replace(/\\/g, '/')}/.dsh`
-  }
-  return `${home.replace(/\/+$/, '')}/settings.yaml`
+  return join(dshHome(), 'settings.yaml')
 }
 
 function yamlScalar(value) {

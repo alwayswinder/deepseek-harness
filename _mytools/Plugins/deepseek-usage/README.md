@@ -33,11 +33,14 @@ upstream updates and builds are unaffected. To remove it:
 
 ```sh
 # from anywhere; resolves the package as a file dependency into the web profile
-dsh plugin --profile web add file:C:/AI/DSH/_mytools/Plugins/deepseek-usage
+dsh plugin --profile web add file:<repo>/_mytools/Plugins/deepseek-usage
 ```
 
 Then restart `dsh web` (the bundle row activates at boot; the browser must load
 the new client bundle) and open Settings → Plugins → 插件配置.
+`_mytools/start-dsh.bat` runs this registration itself and also refreshes the
+profile's installed copy, so a launch through that script needs no manual step
+and picks up later edits to this directory.
 
 ## Configuration
 

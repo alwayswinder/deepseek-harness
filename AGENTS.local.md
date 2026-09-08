@@ -19,8 +19,9 @@
 - 首选替代：用户配置写 `$DSH_HOME`（`settings.yaml`、`profiles/`），插件和脚本放 `_mytools/`。
 - 得到明确同意后再改，并在回复中说明这次改动会在下次合并上游时带来冲突。
 
-## 提交说明
+## 提交与推送
 
+- **不要未经我同意就提交或推送。** 只有我主动要求时才执行（例如「提交」「推送」「commit」「push」）；改完先汇报改动与验证结果，等我说了再做。
 - git 提交信息用中文书写：主题与正文都用中文。
 - 保留 Conventional Commits 的类型与范围前缀（如 `fix(_mytools/deepseek-usage): `），前缀之后用中文描述，例如 `fix(_mytools/deepseek-usage): 去掉对话条里重复的 token 数`。
 - 之前已推送的英文提交不追溯修改。

@@ -45,3 +45,4 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 _mytools/dsh-web.log
+native/system/test/bin/

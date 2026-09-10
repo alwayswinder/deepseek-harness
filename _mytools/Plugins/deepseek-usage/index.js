@@ -149,6 +149,29 @@ export const Config = z.object({
       cacheHit: z.number(),
       output: z.number(),
     }),
+    // Provider peak-hours rule. Windows are local clock ranges in `timezone`
+    // (providers publish them in their own timezone, e.g. Asia/Shanghai) and
+    // multiply every rate; omit the block for a flat price.
+    peak: z.object({
+      timezone: z.string(),
+      multiplier: z.number().default(2),
+      windows: z.array(z.string()).default([]),
+      weekdaysOnly: z.boolean().default(true),
+    }),
+    // Self-calibration against the account's own balance delta. The rates above
+    // stay the list prices; an observed ratio moves a factor that every
+    // displayed amount is multiplied by, so a price change reaches the figures
+    // without editing this file. `enabled: false` pins the configured rates.
+    calibration: z.object({
+      enabled: z.boolean().default(true),
+      /** Share of each observed ratio folded into the factor. */
+      alpha: z.number().default(0.3),
+      /** Smallest settled spend and smallest metered cost an observation may use, in the account currency. */
+      minObserved: z.number().default(0.25),
+      /** Accepted ratio band; observations outside it are ignored rather than trusted. */
+      minFactor: z.number().default(0.2),
+      maxFactor: z.number().default(5),
+    }),
   })).default({}),
   refreshSeconds: z.number().default(30),
 })
@@ -180,15 +203,35 @@ class RequestSelector {
   model = ''
 
   observe(event) {
-    if (event.type === 'request/header') {
-      this.provider = event.data.header.provider
-      this.model = event.data.header.model
-    }
+    if (event.type !== 'request/header') return
+    // `EpochHeader` carries the route inside `config`; the header itself has no
+    // top-level provider/model, so reading them there always yielded undefined.
+    const config = event.data?.header?.config
+    if (config === undefined) return
+    if (typeof config.provider === 'string') this.provider = config.provider
+    if (typeof config.model === 'string') this.model = config.model
   }
 
   route() {
     return { provider: this.provider, model: this.model }
   }
+}
+
+/**
+ * Resolve the route that produced one settlement. Every `assistant/message`
+ * embeds its own `message.source` (provider plus model), which is exact for the
+ * request that produced it and survives a session whose log starts after a
+ * fork-inherited prefix; the folded `request/header` is the fallback.
+ * @param event - the settlement event.
+ * @param fallback - the route folded from preceding `request/header` snapshots.
+ * @returns the provider and model in force for this settlement.
+ */
+function routeOf(event, fallback) {
+  const source = event.data?.message?.source
+  if (source !== undefined && typeof source.provider === 'string' && typeof source.model === 'string') {
+    return { provider: source.provider, model: source.model }
+  }
+  return fallback
 }
 
 function accountFor(accounts, provider) {
@@ -197,11 +240,152 @@ function accountFor(accounts, provider) {
   return Object.values(accounts).find((a) => a.provider === '')
 }
 
-function rateFor(account, model) {
-  const byModel = account.rates?.[model]
-  if (byModel !== undefined) return byModel
-  if (account.defaultRate !== undefined) return account.defaultRate
-  return { input: 0, cacheHit: 0, output: 0 }
+/**
+ * Resolve every live conversation that owns one session's spend. The harness
+ * marks a subagent child with `origin: 'subagent'` plus its durable
+ * `parentSession`; an ordinary fork carries the same parent field and stays a
+ * conversation of its own, so the walk stops at the first session that is not a
+ * subagent child. A nested subagent is itself an ancestor, so each level
+ * aggregates its own descendants.
+ * @param session - the session to resolve lineage for.
+ * @param byId - live sessions by id.
+ * @returns the owning sessions from the nearest parent outward.
+ */
+function subagentAncestors(session, byId) {
+  const ancestors = []
+  let current = session
+  const seen = new Set([current.id])
+  while (current.header?.origin === 'subagent' && current.header.parentSession !== undefined) {
+    const parent = byId.get(current.header.parentSession)
+    if (parent === undefined || seen.has(parent.id)) break
+    seen.add(parent.id)
+    ancestors.push(parent)
+    current = parent
+  }
+  return ancestors
+}
+
+/** Weekdays named by `Intl` for the provider's peak-hours rule. */
+const PEAK_WEEKDAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'])
+
+/**
+ * Read one instant's weekday and minute-of-day in the account's peak timezone
+ * (provider time windows are published in the provider's own timezone, not the
+ * host's).
+ * @param time - epoch milliseconds.
+ * @param timeZone - IANA timezone name.
+ * @returns the short weekday name and minutes since local midnight.
+ */
+function zonedClock(time, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(time))
+  const read = (type) => parts.find(part => part.type === type)?.value ?? ''
+  return {
+    weekday: read('weekday'),
+    minutes: Number(read('hour')) * 60 + Number(read('minute')),
+  }
+}
+
+function windowBounds(text) {
+  const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(String(text).trim())
+  if (match === null) return undefined
+  return {
+    start: Number(match[1]) * 60 + Number(match[2]),
+    end: Number(match[3]) * 60 + Number(match[4]),
+  }
+}
+
+/**
+ * Whether one instant falls in the account's peak windows. An account without
+ * `peak.windows` has a single flat price, which is what every account had
+ * before peak pricing existed.
+ * @param account - the account configuration.
+ * @param time - epoch milliseconds of the settlement.
+ * @returns true when the peak multiplier applies.
+ */
+function isPeak(account, time) {
+  const windows = account.peak?.windows
+  if (!Array.isArray(windows) || windows.length === 0) return false
+  let clock
+  try {
+    clock = zonedClock(time, account.peak.timezone)
+  } catch {
+    // An unusable timezone name cannot classify the window; the flat rate stays.
+    return false
+  }
+  if (account.peak.weekdaysOnly === true && !PEAK_WEEKDAYS.has(clock.weekday)) return false
+  return windows.some((text) => {
+    const bounds = windowBounds(text)
+    return bounds !== undefined && clock.minutes >= bounds.start && clock.minutes < bounds.end
+  })
+}
+
+/**
+ * Price one settlement with the account's rate for its model, multiplied by the
+ * account's peak multiplier when its event time falls inside a peak window.
+ * @param account - the account configuration.
+ * @param model - the route model the settlement used.
+ * @param time - epoch milliseconds of the settlement.
+ * @returns input, cache-hit, and output prices in the account currency per 1M tokens.
+ */
+function rateFor(account, model, time) {
+  const base = account.rates?.[model] ?? account.defaultRate
+  if (base === undefined) return { input: 0, cacheHit: 0, output: 0 }
+  if (!isPeak(account, time)) return { input: base.input, cacheHit: base.cacheHit, output: base.output }
+  const multiplier = toFinite(account.peak.multiplier) || 1
+  return { input: base.input * multiplier, cacheHit: base.cacheHit * multiplier, output: base.output * multiplier }
+}
+
+/**
+ * The multiplier every displayed amount for one account carries. The ledger
+ * keeps metered costs at list prices so the observed ratio stays a comparison
+ * between two different quantities; this factor is applied when a snapshot or a
+ * session total is built.
+ * @param ledger - the loaded ledger.
+ * @param account - the account configuration.
+ * @returns the calibrated factor, 1 when no observation was accepted yet.
+ */
+function factorOf(ledger, account) {
+  const factor = ledger.accounts[account.id]?.calibration?.factor
+  return typeof factor === 'number' && Number.isFinite(factor) && factor > 0 ? factor : 1
+}
+
+/**
+ * Fold one official-balance observation into an account's price factor: the
+ * day's settled balance delta against the same day's locally metered list-price
+ * cost, so a provider price change reaches the figures without an edit here.
+ * Observations below `minObserved` on either side, and ratios outside the
+ * accepted band, are skipped; accepted ratios move the factor by `alpha` (the
+ * first one seeds it).
+ * @param ledger - the loaded ledger, mutated in place.
+ * @param account - the account configuration.
+ * @param today - the local date the observation belongs to.
+ * @param official - the day's balance delta in the account currency.
+ * @returns true when the factor moved.
+ */
+function observeCalibration(ledger, account, today, official) {
+  const settings = account.calibration
+  if (settings === undefined || settings.enabled !== true) return false
+  const state = ledger.accounts[account.id] ??= {}
+  const metered = toFinite(state[today]?.cost)
+  if (metered < settings.minObserved || official < settings.minObserved) return false
+  const ratio = official / metered
+  if (ratio < settings.minFactor || ratio > settings.maxFactor) return false
+  const previous = state.calibration
+  const alpha = Math.min(Math.max(toFinite(settings.alpha), 0), 1)
+  const factor = previous === undefined || previous.observations === 0
+    ? ratio
+    : previous.factor + alpha * (ratio - previous.factor)
+  state.calibration = {
+    factor,
+    ratio,
+    metered,
+    official,
+    observations: (previous?.observations ?? 0) + 1,
+    updatedAt: Date.now(),
+  }
+  return true
 }
 
 function meterPath() {
@@ -216,6 +400,51 @@ function loadMeter(path) {
     // absent or corrupt: start empty
   }
   return { accounts: {} }
+}
+
+/**
+ * Stable fingerprint of every account's price table. A ledger day is priced
+ * incrementally as events arrive, so a changed table leaves the part of the day
+ * that was metered earlier under the superseded prices until the date rolls.
+ * @param accounts - the configured accounts.
+ * @returns the serialized rate tables, compared as one opaque value.
+ */
+function rateTableFingerprint(accounts) {
+  return JSON.stringify(Object.values(accounts).map(account => [
+    account.id, account.defaultRate ?? null, account.rates ?? null, account.peak ?? null,
+  ]))
+}
+
+/**
+ * Re-price the current day's already-metered tokens after a price-table change,
+ * so a mid-day rate adjustment does not leave today's figure as a sum of two
+ * tables. Aggregated tokens carry no model or peak split, so the account's
+ * flat default rate prices them; later settlements still price individually.
+ * History is left alone: earlier days were charged under the table in force
+ * then, and no later table should rewrite what they cost.
+ * @param ledger - the loaded ledger, mutated in place.
+ * @param accounts - the configured accounts.
+ * @param path - the ledger file to persist to.
+ * @returns the number of re-priced day entries.
+ */
+function repriceCurrentDay(ledger, accounts, path) {
+  const fingerprint = rateTableFingerprint(accounts)
+  if (ledger.rateTable === fingerprint) return 0
+  const today = localDate()
+  let repriced = 0
+  for (const account of Object.values(accounts)) {
+    const day = ledger.accounts[account.id]?.[today]
+    if (day === undefined) continue
+    const rate = account.defaultRate ?? { input: 0, cacheHit: 0, output: 0 }
+    day.cost =
+      ((toFinite(day.inputTokens) + toFinite(day.cacheWriteTokens)) / 1_000_000) * rate.input
+      + (toFinite(day.cacheHitTokens) / 1_000_000) * rate.cacheHit
+      + (toFinite(day.outputTokens) / 1_000_000) * rate.output
+    repriced += 1
+  }
+  ledger.rateTable = fingerprint
+  persistMeter(path, ledger)
+  return repriced
 }
 
 
@@ -312,6 +541,10 @@ export function apply(ctx, config) {
   const accounts = config.accounts
   const path = meterPath()
   const ledger = loadMeter(path)
+  const repriced = repriceCurrentDay(ledger, accounts, path)
+  if (repriced > 0) {
+    ctx.logger?.info?.('deepseek-usage: rate table changed; re-priced %d current-day entr%s', repriced, repriced === 1 ? 'y' : 'ies')
+  }
   const selectors = new Map()
   const balances = new Map()
   let scope
@@ -329,7 +562,7 @@ export function apply(ctx, config) {
     if (event.type !== 'assistant/message') return
     const usage = event.data?.usage ?? usageFromStream(event.data?.stream)
     if (usage === undefined) return
-    const route = selectors.get(session.id)?.route() ?? { provider: '', model: '' }
+    const route = routeOf(event, selectors.get(session.id)?.route() ?? { provider: '', model: '' })
     const account = accountFor(accounts, route.provider)
     if (account === undefined) return
     const input = toFinite(usage.inputTokens)
@@ -337,7 +570,8 @@ export function apply(ctx, config) {
     const cacheWrite = toFinite(usage.cacheWriteTokens)
     const output = toFinite(usage.outputTokens)
     if (input === 0 && cacheHit === 0 && output === 0 && cacheWrite === 0) return
-    const rate = rateFor(account, route.model)
+    const at = typeof event.time === 'number' ? event.time : Date.now()
+    const rate = rateFor(account, route.model, at)
     // Token counts are disjoint: billed input = uncached input + cache write;
     // cache reads bill at the cache-hit rate.
     const cost =
@@ -376,13 +610,21 @@ export function apply(ctx, config) {
    * Per-conversation totals, folded from each live session's own log so a
    * resumed conversation keeps its number across process restarts and a fork
    * does not inherit its parent's spend.
-   * @returns session id to { cost, inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests }.
+   *
+   * A subagent runs in its own session, so its spend would otherwise sit
+   * beside the conversation that started it. Each subagent's own cost is added
+   * to every conversation that owns it, which is how `本次对话` answers for what
+   * the conversation actually cost; the subagent's own entry stays in the map
+   * too, so opening it shows its share of the same work.
+   * @returns session id to { cost, ownCost, subagentCost, subagents, inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests }.
    */
   function sessionTotals() {
     const sessions = ctx.get('sessions')
     if (sessions === undefined) return {}
+    const live = sessions.list()
+    const byId = new Map(live.map((session) => [session.id, session]))
     const totals = {}
-    for (const session of sessions.list()) {
+    for (const session of live) {
       const selector = new RequestSelector()
       let cost = 0
       let inputTokens = 0
@@ -398,7 +640,7 @@ export function apply(ctx, config) {
         if (event.type !== 'assistant/message') continue
         const usage = event.data?.usage ?? usageFromStream(event.data?.stream)
         if (usage === undefined) continue
-        const route = selector.route()
+        const route = routeOf(event, selector.route())
         const account = accountFor(accounts, route.provider)
         if (account === undefined) continue
         const input = toFinite(usage.inputTokens)
@@ -406,10 +648,13 @@ export function apply(ctx, config) {
         const cacheWrite = toFinite(usage.cacheWriteTokens)
         const output = toFinite(usage.outputTokens)
         if (input === 0 && cacheHit === 0 && cacheWrite === 0 && output === 0) continue
-        const rate = rateFor(account, route.model)
-        cost += ((input + cacheWrite) / 1_000_000) * rate.input
+        const rate = rateFor(account, route.model, typeof event.time === 'number' ? event.time : Date.now())
+        // A session outlives price changes, so its whole history carries the
+        // account's current factor rather than a per-day one.
+        const factor = factorOf(ledger, account)
+        cost += factor * (((input + cacheWrite) / 1_000_000) * rate.input
           + (cacheHit / 1_000_000) * rate.cacheHit
-          + (output / 1_000_000) * rate.output
+          + (output / 1_000_000) * rate.output)
         inputTokens += input
         outputTokens += output
         cacheHitTokens += cacheHit
@@ -417,7 +662,28 @@ export function apply(ctx, config) {
         requests += 1
       }
       if (requests > 0) {
-        totals[session.id] = { cost, inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests }
+        totals[session.id] = {
+          cost, ownCost: cost, subagentCost: 0, subagents: 0,
+          inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests,
+        }
+      }
+    }
+    for (const session of live) {
+      const own = totals[session.id]
+      if (own === undefined || session.header?.origin !== 'subagent') continue
+      for (const ancestor of subagentAncestors(session, byId)) {
+        const aggregate = totals[ancestor.id] ??= {
+          cost: 0, ownCost: 0, subagentCost: 0, subagents: 0,
+          inputTokens: 0, outputTokens: 0, cacheHitTokens: 0, cacheWriteTokens: 0, requests: 0,
+        }
+        aggregate.cost += own.cost
+        aggregate.subagentCost += own.cost
+        aggregate.subagents += 1
+        aggregate.inputTokens += own.inputTokens
+        aggregate.outputTokens += own.outputTokens
+        aggregate.cacheHitTokens += own.cacheHitTokens
+        aggregate.cacheWriteTokens += own.cacheWriteTokens
+        aggregate.requests += own.requests
       }
     }
     return totals
@@ -429,6 +695,8 @@ export function apply(ctx, config) {
     for (const account of Object.values(accounts)) {
       const bal = balances.get(account.id)
       const day = ledger.accounts[account.id]?.[today]
+      const calibration = ledger.accounts[account.id]?.calibration
+      const factor = factorOf(ledger, account)
       const dayOpen = ledger.accounts[account.id]?.dayOpen?.total ?? null
       const officialToday = (dayOpen !== null && bal?.total !== null && dayOpen > bal?.total)
         ? dayOpen - bal.total
@@ -446,8 +714,13 @@ export function apply(ctx, config) {
         officialTodaySpend: officialToday,
         balanceError: bal?.error ?? null,
         balanceSupported: account.balanceBaseUrl !== '',
+        rateFactor: factor,
+        rateObservations: calibration?.observations ?? 0,
         today: day === undefined ? null : {
-          cost: day.cost,
+          // Calibrated: the ledger's own cost stays at list prices so the
+          // observed ratio keeps comparing the balance with the price table.
+          cost: day.cost * factor,
+          listCost: day.cost,
           inputTokens: day.inputTokens,
           outputTokens: day.outputTokens,
           cacheHitTokens: day.cacheHitTokens,
@@ -542,6 +815,16 @@ export function apply(ctx, config) {
       if (dayEntry.dayOpen === undefined || dayEntry.dayOpen.date !== today) {
         dayEntry.dayOpen = { date: today, total: base.total }
         persistMeter(path, ledger)
+      } else if (dayEntry.dayOpen.total > base.total
+        && observeCalibration(ledger, account, today, dayEntry.dayOpen.total - base.total)) {
+        persistMeter(path, ledger)
+        ctx.logger?.info?.(
+          'deepseek-usage: %s price factor %s from balance delta %s against metered %s',
+          account.id,
+          dayEntry.calibration.factor.toFixed(4),
+          String(dayEntry.calibration.official),
+          String(dayEntry.calibration.metered),
+        )
       }
     }
     balances.set(account.id, base)

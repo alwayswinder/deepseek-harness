@@ -1,4 +1,11 @@
 # deepseek-usage bundle patch: one host row mounting the plugin package.
+#
+# Rates are the provider's published prices in the account currency per 1M
+# tokens (uncached input, cache hit, output). DeepSeek cut the Flash list on
+# 2026-09-10 12:00 Beijing time: off-peak 1 / 0.02 / 4, doubled during the peak
+# windows below. The beta route deepseek-v4.1-flash-expires-on-0910 is billed on
+# the same Flash list; measured against the account's own balance delta, these
+# rates reproduce the day's charge within a few percent.
 - insert:
     - id: deepseek-usage
       name: '@local/dsh-deepseek-usage'
@@ -12,6 +19,8 @@
             balanceBaseUrl: ''
             credential: OPENCODE_API_KEY
             currency: CNY
+            # Placeholder until this gateway's real prices are known: the numbers
+            # below are DeepSeek's superseded Flash list.
             defaultRate:
               input: 1.58
               cacheHit: 0.05
@@ -24,6 +33,38 @@
             credential: DEEPSEEK_OFFICIAL_API_KEY
             currency: CNY
             defaultRate:
-              input: 1.58
-              cacheHit: 0.05
-              output: 4.75
+              input: 1
+              cacheHit: 0.02
+              output: 4
+            rates:
+              deepseek-v4-flash:
+                input: 1
+                cacheHit: 0.02
+                output: 4
+              deepseek-v4-flash-vision-exp:
+                input: 1
+                cacheHit: 0.02
+                output: 4
+              deepseek-v4.1-flash-expires-on-0910:
+                input: 1
+                cacheHit: 0.02
+                output: 4
+            # Peak hours are Beijing time (the provider's own clock), weekdays
+            # only; everything outside these windows bills at the off-peak rate.
+            peak:
+              timezone: Asia/Shanghai
+              multiplier: 2
+              windows:
+                - '09:00-12:00'
+                - '14:00-18:00'
+              weekdaysOnly: true
+            # The rates above stay the list prices; the displayed amounts carry
+            # a factor that tracks the account's own balance delta, so a price
+            # change reaches the numbers without editing this file. Set
+            # `enabled: false` to pin the configured rates exactly.
+            calibration:
+              enabled: true
+              alpha: 0.3
+              minObserved: 0.25
+              minFactor: 0.2
+              maxFactor: 5

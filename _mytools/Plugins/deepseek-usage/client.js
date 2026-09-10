@@ -130,6 +130,19 @@ window.__ModuleLoader__.load({
                 `${fmtTokens(today.inputTokens + today.cacheHitTokens + today.cacheWriteTokens)} in · ${fmtTokens(today.outputTokens)} out`))
       rows.push(h(Row, { key: 'spend', label: '今日消费' }, spendView))
 
+      // The factor every displayed amount carries: 1 means the configured
+      // rates are used unchanged, anything else is tracked from the account's
+      // own balance delta.
+      const factor = typeof account.rateFactor === 'number' ? account.rateFactor : 1
+      const observations = account.rateObservations ?? 0
+      rows.push(h(Row, { key: 'factor', label: '费率校准' },
+        h('span', null,
+          '× ' + factor.toFixed(3),
+          h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
+            observations > 0
+              ? `按官方余额差自动校准 · 已观测 ${observations} 次`
+              : '未观测到余额差，暂用配置费率'))))
+
       if (account.balanceSupported) {
         if (account.balanceError !== null) {
           rows.push(h(Row, { key: 'balance', label: '总余额' },
@@ -192,7 +205,16 @@ window.__ModuleLoader__.load({
         : state.value.sessions?.[props.sessionId]
       if (session !== undefined && session.requests > 0) {
         const symbol = accounts[0]?.symbol ?? '¥'
-        parts.push('本次对话 ' + fmtMoney(symbol, session.cost))
+        // `≈` marks amounts carrying a calibrated price factor rather than the
+        // configured rates alone.
+        const calibrated = accounts.some((a) => typeof a.rateFactor === 'number' && Math.abs(a.rateFactor - 1) > 1e-9)
+        let text = '本次对话 ' + (calibrated ? '≈' : '') + fmtMoney(symbol, session.cost)
+        // Subagents run in their own sessions; their spend is folded into the
+        // conversation that started them, so name the share it contributes.
+        if (typeof session.subagentCost === 'number' && session.subagentCost > 0) {
+          text += '（含 ' + (session.subagents ?? 0) + ' 个子 agent ' + fmtMoney(symbol, session.subagentCost) + '）'
+        }
+        parts.push(text)
       }
       for (const a of accounts) {
         const o = a.officialTodaySpend

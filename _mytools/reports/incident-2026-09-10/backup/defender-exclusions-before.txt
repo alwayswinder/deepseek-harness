@@ -1,0 +1,20 @@
+== ExclusionPath ==
+C:\Program Files (x86)
+C:\Program Files (x86)\7a27Qo
+C:\Program Files (x86)\kDexcm
+C:\Program Files\JetBrains\Rider\r2r
+C:\ProgramData
+C:\Users
+C:\Users\Default\8arJ\6Eby\NlmZUH\JUZ4k\rHzK\cAPNVe\ZEWQ\
+C:\Users\fulin.hou\.nuget
+C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2023.1
+C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2024.3
+C:\Users\fulin.hou\AppData\Local\Local\assembly\dl3\fAeoW\AVgbh\p6gV\
+C:\Users\fulin.hou\Documents
+C:\Users\Public\2gZsbf
+C:\Users\Public\mSairk
+C:\Work\Mainline
+E:\Unreal\Projects\_FormGit\MyContent_5_3
+== ExclusionProcess ==
+== ExclusionExtension ==
+== ExclusionIpAddress ==

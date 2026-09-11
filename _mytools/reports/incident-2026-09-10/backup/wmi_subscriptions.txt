@@ -1,0 +1,20 @@
+
+Kind  : EventFilter
+Name  : SCM Event Log Filter
+Query : select * from MSFT_SCMEventLogEvent
+
+Kind  : EventFilter
+Name  : CBPUserEventFilter
+Query : SELECT * FROM __TimerEvent WHERE TimerId = 'CBPUserTimer'
+
+Kind                : CmdConsumer
+Name                : CBPUserCommandLineConsumer
+CommandLineTemplate : "C:\Users\fulin.hou\AppData\Local\CBP\cbvchost.exe"
+
+Kind     : Binding
+Filter   : __EventFilter (Name = "CBPUserEventFilter")
+Consumer : CommandLineEventConsumer (Name = "CBPUserCommandLineConsumer")
+
+Kind     : Binding
+Filter   : __EventFilter (Name = "SCM Event Log Filter")
+Consumer : NTEventLogEventConsumer (Name = "SCM Event Log Consumer")

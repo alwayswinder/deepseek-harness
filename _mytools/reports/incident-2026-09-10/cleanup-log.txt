@@ -1,0 +1,150 @@
+=== cleanup started 2026/9/10 18:44:37 ===
+18:44:37  --- [1/5] 删除计划任务 ---
+18:44:38    OK  删除任务: Eqk9P
+18:44:38    OK  删除任务: M2Qrn
+18:44:38    OK  删除任务: MicrosoftEdgeUpdateTaskUA Task-S-1-5-18 7DkNk
+18:44:39    OK  删除任务: MicrosoftEdgeUpdateTaskUA Task-S-1-5-18 Dmnhk
+18:44:39  --- [2/5] 终止恶意进程 ---
+18:44:39    OK  终止 BGGmG1 (PID 23088)
+18:44:39    OK  终止 IfpsR9 (PID 5316)
+18:44:39    FAIL 按路径终止 PID : Cannot find a process with the process identifier 5316.
+18:44:39  --- [3/5] 删除恶意服务 ---
+18:44:39    sc delete 8lvo -> [SC] DeleteService SUCCESS
+18:44:39    sc delete us43MKZNbD7xEZ9AsTpEGwhEK -> [SC] DeleteService SUCCESS
+18:44:39  --- TCLService (内核驱动) ---
+18:44:39    sc stop ->  SERVICE_NAME: TCLService          TYPE               : 1  KERNEL_DRIVER           STATE              : 1  STOPPED          WIN32_EXIT_CODE    : 0  (0x0)         SERVICE_EXIT_CODE  : 0  (0x0)         CHECKPOINT         : 0x0         WAIT_HINT          : 0x0
+18:44:41    sc delete -> [SC] DeleteService SUCCESS
+18:44:41  --- [4/5] 删除 Run 自启动值 ---
+18:44:41    OK  删除 Run 值: Tencent SecurityHealth
+18:44:41    OK  删除 Run 值: Alibaba SecurityHealtha
+18:44:41    OK  删除 Run 值: Alibaba SecurityHealthb
+18:44:41  --- [5/5] 删除 WMI 永久订阅 ---
+18:44:41    OK  删除 FilterToConsumerBinding
+18:44:41    OK  删除 CommandLineEventConsumer
+18:44:41    OK  删除 __EventFilter
+18:44:41  === 阶段1 完成 ===
+18:44:56  --- 隔离目录: C:\Quarantine-20260910 ---
+18:44:56    OK  已隔离: C:\Users\Public\mSairk  ->  C:\Quarantine-20260910\Users_Public_mSairk
+18:44:56    OK  已隔离: C:\Users\Public\2gZsbf  ->  C:\Quarantine-20260910\Users_Public_2gZsbf
+18:44:56    OK  已隔离: C:\Program Files (x86)\kDexcm  ->  C:\Quarantine-20260910\Program Files (x86)_kDexcm
+18:44:56    OK  已隔离: C:\Program Files (x86)\7a27Qo  ->  C:\Quarantine-20260910\Program Files (x86)_7a27Qo
+18:44:56    OK  已隔离: C:\Users\Default\8arJ  ->  C:\Quarantine-20260910\Users_Default_8arJ
+18:44:56    OK  已隔离: C:\Users\fulin.hou\AppData\Local\Local  ->  C:\Quarantine-20260910\Users_fulin.hou_AppData_Local_Local
+18:44:56    OK  已隔离: C:\Users\fulin.hou\AppData\Local\CBP  ->  C:\Quarantine-20260910\Users_fulin.hou_AppData_Local_CBP
+18:44:56    OK  已隔离: C:\ProgramData\ESnNP40A  ->  C:\Quarantine-20260910\ProgramData_ESnNP40A
+18:44:56    OK  已隔离: C:\ProgramData\O9VPr4nA  ->  C:\Quarantine-20260910\ProgramData_O9VPr4nA
+18:44:56    OK  已隔离: C:\ProgramData\WindowsInstaller  ->  C:\Quarantine-20260910\ProgramData_WindowsInstaller
+18:44:56    OK  已隔离: C:\Windows\Temp\ranchserv.jpg  ->  C:\Quarantine-20260910\Windows_Temp_ranchserv.jpg
+18:44:56  --- 锁定隔离目录（禁止执行） ---
+18:44:56    icacls -> processed file: C:\Quarantine-20260910 Successfully processed 1 files; Failed processing 0 files
+18:44:56  --- 验证原路径已消失 ---
+18:44:56  --- 残余空目录清理 ---
+18:44:56  === 阶段2 完成 ===
+18:45:08  --- [阶段3-1] 还原 hosts ---
+18:45:08    hosts 已还原: 行数 21, 大小 804 字节 (原 2210 行 / 78409 字节)
+18:45:08  --- [阶段3-2] 恢复 Windows Defender ---
+18:45:08    WinDefend: Start=2 (2=自动 3=手动 4=禁用)
+18:45:08    WdNisSvc: Start=3 (2=自动 3=手动 4=禁用)
+18:45:08    MDCoreSvc: Start=2 (2=自动 3=手动 4=禁用)
+18:45:08    WdNisDrv: Start=3 (2=自动 3=手动 4=禁用)
+18:45:08    sc config WinDefend -> [SC] OpenService FAILED 5:  Access is denied.
+18:45:08    sc start WinDefend -> [SC] StartService FAILED 4551:  Your organization used Device Guard to block this app. Contact your support person for more info.
+18:45:13    WinDefend: Stopped / Automatic
+18:45:13    WdNisSvc: Stopped / Manual
+18:45:13    MDCoreSvc: Stopped / Automatic
+18:45:13  --- [阶段3-3] 即时复核持久化 ---
+18:45:14    计划任务残留: 无
+18:45:14    Run 键残留: 无
+18:45:14    服务 8lvo 存在=False
+18:45:14    服务 us43MKZNbD7xEZ9AsTpEGwhEK 存在=False
+18:45:14    服务 TCLService 存在=False
+18:45:14    WMI 订阅残留: 无
+18:45:14    恶意进程: 无
+18:45:14  === 阶段3 完成 ===
+18:46:54  --- [阶段4] 移除恶意 WDAC 策略 ---
+18:46:54    已备份 -> E:\AI\DSH\_mytools\reports\incident-2026-09-10\backup\SiPolicy.p7b.malware-backup (24972 字节)
+18:46:54    OK  策略文件已移出 CodeIntegrity 目录
+18:46:54    原路径是否还存在: False
+18:46:54  --- 检查 Tokens / 其他策略缓存 ---
+18:46:54    C:\Windows\System32\CodeIntegrity\Tokens\Active -> 0 个文件
+18:46:54    C:\Windows\System32\CodeIntegrity\Tokens\Staged -> 0 个文件
+18:46:54    C:\Windows\System32\CodeIntegrity\CiPolicies\Active -> 0 个文件
+18:46:54    C:\Windows\System32\CodeIntegrity\CiPolicies\Staged -> 0 个文件
+18:46:54  --- 检查是否存在第二份恶意策略 ---
+18:47:54    全盘 SiPolicy.p7b 命中: C:\Windows\servicing\LCU\Package_for_RollupFix~31bf3856ad364e35~amd64~~19041.2728.1.7\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.2486_none_790359f7893615da\f\sipolicy.p7b; C:\Windows\servicing\LCU\Package_for_RollupFix~31bf3856ad364e35~amd64~~19041.2728.1.7\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.2486_none_790359f7893615da\r\sipolicy.p7b; C:\Windows\servicing\LCU\Package_for_RollupFix~31bf3856ad364e35~amd64~~19041.5854.1.15\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.5072_none_792dfa2f89161db0\f\sipolicy.p7b; C:\Windows\WinSxS\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.2486_none_790359f7893615da\SIPolicy.p7b; C:\Windows\WinSxS\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.2486_none_790359f7893615da\f\SIPolicy.p7b; C:\Windows\WinSxS\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.2486_none_790359f7893615da\r\SIPolicy.p7b; C:\Windows\WinSxS\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.5072_none_792dfa2f89161db0\SIPolicy.p7b; C:\Windows\WinSxS\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.5072_none_792dfa2f89161db0\f\SIPolicy.p7b; C:\Windows\WinSxS\amd64_microsoft-windows-hvsi-manager-shared_31bf3856ad364e35_10.0.19041.5072_none_792dfa2f89161db0\r\SIPolicy.p7b
+18:47:54  --- CodeIntegrity 目录现状 ---
+18:47:54  --- 现在再试启动 Defender（策略需重启才卸载，预期仍失败） ---
+18:47:55    [SC] StartService FAILED 4551:  Your organization used Device Guard to block this app. Contact your support person for more info.
+18:47:55  === 阶段4 完成：需重启后才能生效 ===
+18:57:23  --- [阶段5] Defender 排除项清理 ---
+18:57:24    已备份 16 条排除项 -> E:\AI\DSH\_mytools\reports\incident-2026-09-10\backup\defender-exclusions-before.txt
+18:57:24    移除的木马/异常排除项：
+18:57:24      OK  C:\Users\Public\mSairk
+18:57:24      OK  C:\Users\Public\2gZsbf
+18:57:24      OK  C:\Program Files (x86)\kDexcm
+18:57:24      OK  C:\Program Files (x86)\7a27Qo
+18:57:24      OK  C:\Users\Default\8arJ\6Eby\NlmZUH\JUZ4k\rHzK\cAPNVe\ZEWQ\
+18:57:24      OK  C:\Users\fulin.hou\AppData\Local\Local\assembly\dl3\fAeoW\AVgbh\p6gV\
+18:57:24      OK  C:\ProgramData
+18:57:24      OK  C:\Users
+18:57:24      OK  C:\Program Files (x86)
+18:57:24    同时暂存（疑似开发用，稍后可选择性恢复）：
+18:57:24      STAGED  C:\Program Files\JetBrains\Rider\r2r
+18:57:24      STAGED  C:\Users\fulin.hou\.nuget
+18:57:24      STAGED  C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2023.1
+18:57:24      STAGED  C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2024.3
+18:57:24      STAGED  C:\Users\fulin.hou\Documents
+18:57:24      STAGED  C:\Work\Mainline
+18:57:24      STAGED  E:\Unreal\Projects\_FormGit\MyContent_5_3
+18:57:26    兜底清空剩余 1 条
+18:57:28    当前排除项数量: 1
+18:57:28    排除进程/扩展名/IP: 1 / 1 / 1
+
+18:57:28  --- 身份确认：未知进程 7428 / 4232 ---
+18:57:28      PID 7428: Name=svchost Path=
+18:57:28      PID 4232: Name=MpDefenderCoreService Path=
+18:57:29  === 阶段5 完成 ===
+18:57:40  --- [阶段6] 用 Defender 定点扫描待确认项 ---
+18:57:40    扫描 C:\ProgramData\D3623F1645EC4C86BEEA8FF670DEC91E -> 未发现威胁
+18:57:40    扫描 C:\ProgramData\DAB82F40459941168DB43EC964A6A6DC -> 未发现威胁
+18:57:40    扫描 C:\ProgramData\00527600834032EC31C681CF65BCE980 -> 未发现威胁
+18:57:40    扫描 C:\ProgramData\08B2E134DCCB9DDB510B7B7A4E89D7DF -> 未发现威胁
+18:57:40    扫描 C:\Users\Public\Win -> 未发现威胁
+18:57:41    扫描 C:\Users\fulin.hou\AppData\Roaming\SysCleanPro -> 未发现威胁
+18:57:41    扫描 C:\ProgramData\wincompress -> 未发现威胁
+18:57:41    扫描 C:\ProgramData\tianxiang -> 未发现威胁
+18:57:41    扫描 C:\Users\Public\Nwt -> 未发现威胁
+18:57:41  --- 扫描后检查威胁记录 ---
+18:59:59  --- [阶段7] 恢复用户自己的开发目录排除项 ---
+18:59:59    OK  恢复: C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2024.3
+18:59:59    OK  恢复: D:\Unreal\FromGithub\_Others\TESTFor5_5
+18:59:59    OK  恢复: D:\Unreal\FromGithub\MyPlent
+19:00:00    OK  恢复: C:\Work\Mainline
+19:00:00    OK  恢复: D:\Unreal\FromGithub\MyGASProject
+19:00:00    OK  恢复: D:\Unreal\FromGithub\AIProject\MyAITestProject
+19:00:00    OK  恢复: D:\Unreal\FromGithub\AIProject\AISnake
+19:00:00    OK  恢复: E:\Unreal\Projects\_FormGit\MyContent_5_3
+19:00:02    当前排除项共 8 条：
+19:00:02      C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2024.3
+19:00:02      C:\Work\Mainline
+19:00:02      D:\Unreal\FromGithub\_Others\TESTFor5_5
+19:00:02      D:\Unreal\FromGithub\AIProject\AISnake
+19:00:02      D:\Unreal\FromGithub\AIProject\MyAITestProject
+19:00:02      D:\Unreal\FromGithub\MyGASProject
+19:00:02      D:\Unreal\FromGithub\MyPlent
+19:00:02      E:\Unreal\Projects\_FormGit\MyContent_5_3
+
+19:00:02  --- 未恢复（判定为木马或来源异常） ---
+19:00:02      保持移除: C:\Users\Public\mSairk
+19:00:02      保持移除: C:\Users\Public\2gZsbf
+19:00:02      保持移除: C:\Program Files (x86)\kDexcm
+19:00:02      保持移除: C:\Program Files (x86)\7a27Qo
+19:00:02      保持移除: C:\Users\Default\8arJ\6Eby\NlmZUH\JUZ4k\rHzK\cAPNVe\ZEWQ\
+19:00:02      保持移除: C:\Users\fulin.hou\AppData\Local\Local\assembly\dl3\fAeoW\AVgbh\p6gV\
+19:00:02      保持移除: C:\ProgramData
+19:00:02      保持移除: C:\Users
+19:00:02      保持移除: C:\Program Files (x86)
+19:00:02      保持移除: C:\Program Files\JetBrains\Rider\r2r
+19:00:02      保持移除: C:\Users\fulin.hou\.nuget
+19:00:02      保持移除: C:\Users\fulin.hou\Documents
+19:00:02      保持移除: C:\Users\fulin.hou\AppData\Local\JetBrains\Rider2023.1

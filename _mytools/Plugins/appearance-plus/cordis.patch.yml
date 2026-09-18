@@ -1,0 +1,12 @@
+# appearance-plus bundle patch: mount the Host settings namespace; the package's
+# browser half registers the themes and the configuration page.
+- insert:
+    - id: appearance-plus
+      name: '@local/dsh-appearance-plus'
+      config:
+        preset: default
+        backgroundUrl: ''
+        backgroundOpacity: 0.72
+        backgroundBlur: 0
+        backgroundFit: cover
+        surfaceOpacity: 0.86

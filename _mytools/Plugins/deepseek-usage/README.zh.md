@@ -6,7 +6,8 @@ DeepSeek Harness 的树外插件：在设置页（插件 → 插件配置）提�
 
 - **今日消费** —— 当日花费，由 DSH 已经记录在 `assistant/message` 会话事件上的 token 用量在本地计量，并按各账户配置的费率（¥/百万 token）计价；所有会话都计入，包含子 agent。
 - **总余额** —— 账户支持时，从该账户的官方端点（`GET {baseURL}/user/balance`）获取总余额，每 `refreshSeconds` 刷新一次（默认 300 秒）。
-- **本次对话** —— 当前对话的花费（显示在对话输入框下方），包含该对话派生的子 agent，并标出它们所占的份额；卡片顶部另有更新时间与时区提示。
+
+设置卡片和对话输入框下方的汇总条只显示这两项账户汇总；卡片顶部另有更新时间与时区提示。
 
 ## 工作原理
 
@@ -76,7 +77,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/deepseek-usage
 
 ### 自动校准
 
-每个账户的展示金额都带一个**费率系数**。只要余额接口可用，每次刷新就把当天已结算的余额差与当天按列表价记账的金额相比；被采纳的比值按 `calibration.alpha` 折入系数（首次观测直接作为初值；超出 `minFactor`/`maxFactor` 的比值、或任一侧低于 `minObserved` 的观测都丢弃）。账本始终按列表价记账，所以这个比较始终是两个独立量的比较。因此服务商调价后，卡片与对话条上的数字会自动跟上——卡片显示当前系数，对话条给已校准的金额标上 `≈`——不需要改这个目录；把 `calibration.enabled` 设为 `false` 即可完全沿用配置费率。
+每个账户的展示金额都带一个**费率系数**。只要余额接口可用，每次刷新就把当天已结算的余额差与当天按列表价记账的金额相比；被采纳的比值按 `calibration.alpha` 折入系数（首次观测直接作为初值；超出 `minFactor`/`maxFactor` 的比值、或任一侧低于 `minObserved` 的观测都丢弃）。账本始终按列表价记账，所以这个比较始终是两个独立量的比较。因此服务商调价后，显示的消费金额会自动跟上，卡片同时显示当前系数，无需修改这个目录；把 `calibration.enabled` 设为 `false` 即可完全沿用配置费率。
 
 由此带来两条限制：
 
@@ -89,6 +90,5 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/deepseek-usage
 - 本地计量只覆盖流经本 DSH 实例的请求。
 - 官方余额比产生它的请求晚几分钟结算，因此余额差会短暂落后于本地计量值。
 - `assistant/attempt` 结算（已中断或报错、但仍上报了用量的流）不计入。
-- 子 agent 的花费按会话血缘归属：子 agent 会话（`origin: 'subagent'` 且带 `parentSession`）会折进每一个拥有它的对话，而共用同一父会话的普通分叉仍各自独立；父会话不在运行中的子 agent 只保留自己那条记录。
 - `opencode.ai/zen` **不提供**公开余额端点，因此 openCode 账户只显示消费，并带一个“该平台无余额接口”标记；它的随附费率只是占位值。
 - 官方 DeepSeek 账户需要把密钥存为 `DEEPSEEK_OFFICIAL_API_KEY` 凭据（例如通过模型页面或 `$DSH_HOME/.credentials.yaml`）。

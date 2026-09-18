@@ -7,9 +7,8 @@
  * and reads live data from the `deepseek-usage` settings namespace through the
  * standard settings mirror — the Host publishes the snapshot, no RPC needed.
  *
- * The card registers as a keyed `settings.plugin.item` entry; the Plugins
- * configuration tab renders it whenever the Host serves the `deepseek-usage`
- * namespace and hides it otherwise.
+ * The settings card and composer account summary render whenever the Host
+ * serves the `deepseek-usage` namespace and stay hidden otherwise.
  */
 window.__ModuleLoader__.load({
   id: '@local/dsh-deepseek-usage',
@@ -190,7 +189,7 @@ window.__ModuleLoader__.load({
     }
 
 
-    // ---- conversation strip: balance + official-delta spend under the chat ----
+    // ---- account summary under the chat -----------------------------------
 
     function UsageStrip(props) {
       const state = props.useUsageCard((s) => s)
@@ -200,22 +199,6 @@ window.__ModuleLoader__.load({
       // say; every other account stays visible so a missing credential or an
       // unreachable balance endpoint shows up instead of hiding the strip.
       const parts = []
-      const session = props.sessionId === undefined
-        ? undefined
-        : state.value.sessions?.[props.sessionId]
-      if (session !== undefined && session.requests > 0) {
-        const symbol = accounts[0]?.symbol ?? '¥'
-        // `≈` marks amounts carrying a calibrated price factor rather than the
-        // configured rates alone.
-        const calibrated = accounts.some((a) => typeof a.rateFactor === 'number' && Math.abs(a.rateFactor - 1) > 1e-9)
-        let text = '本次对话 ' + (calibrated ? '≈' : '') + fmtMoney(symbol, session.cost)
-        // Subagents run in their own sessions; their spend is folded into the
-        // conversation that started them, so name the share it contributes.
-        if (typeof session.subagentCost === 'number' && session.subagentCost > 0) {
-          text += '（含 ' + (session.subagents ?? 0) + ' 个子 agent ' + fmtMoney(symbol, session.subagentCost) + '）'
-        }
-        parts.push(text)
-      }
       for (const a of accounts) {
         const o = a.officialTodaySpend
         const loc = a.today

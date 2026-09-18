@@ -1,6 +1,6 @@
 {
-  "name": "@local/dsh-deepseek-usage",
-  "description": "DeepSeek Harness out-of-tree plugin: per-account usage & balance card on the settings page. Shows today's spend (metered locally from session token usage) and total balance (official /user/balance when the account supports it).",
+  "name": "@local/dsh-appearance-plus",
+  "description": "DeepSeek Harness appearance bundle with selectable color themes and configurable image backgrounds.",
   "version": "0.1.0",
   "private": true,
   "type": "module",

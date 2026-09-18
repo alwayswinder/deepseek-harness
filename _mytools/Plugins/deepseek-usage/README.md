@@ -11,9 +11,8 @@ page (Plugins → 插件配置). Shows, per configured account:
 - **总余额** — total balance from the account's official endpoint
   (`GET {baseURL}/user/balance`) when the account supports one, refreshed every
   `refreshSeconds` (default 300s).
-- **本次对话** — the current conversation's spend, shown under the composer. It
-  includes the subagents that conversation spawned and names their share. The
-  header also reports the update time and timezone.
+
+The settings card and the summary below the composer show only these account totals. The card header also reports the update time and timezone.
 
 ## How it works
 
@@ -117,8 +116,7 @@ day's metered cost at list prices; an accepted ratio moves the factor by
 `minFactor`/`maxFactor`, or observations below `minObserved` on either side, are
 ignored). The ledger keeps metering at list prices, so the comparison always
 weighs two independent quantities. A provider price change therefore reaches
-every figure — the card shows the factor, and the conversation strip marks
-calibrated amounts with `≈` — without editing this directory; set
+every displayed spend amount, and the card shows the factor, without editing this directory; set
 `calibration.enabled: false` to pin the configured rates exactly.
 
 Two limits follow from what is observable:
@@ -142,10 +140,6 @@ billing — and note that:
   it, so the balance delta trails the locally metered figure briefly.
 - `assistant/attempt` settlements (an aborted or errored stream that still
   reported usage) are not metered.
-- Subagent spend is attributed by session lineage: a subagent session
-  (`origin: 'subagent'` plus `parentSession`) folds into every conversation that
-  owns it, while an ordinary fork of the same parent stays separate. A subagent
-  whose parent is not live keeps its own entry only.
 - `opencode.ai/zen` exposes **no** public balance endpoint, so the openCode
   account shows spend only and a "该平台无余额接口" badge; its shipped rates are
   placeholders.

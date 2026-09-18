@@ -613,9 +613,8 @@ export function apply(ctx, config) {
    *
    * A subagent runs in its own session, so its spend would otherwise sit
    * beside the conversation that started it. Each subagent's own cost is added
-   * to every conversation that owns it, which is how `本次对话` answers for what
-   * the conversation actually cost; the subagent's own entry stays in the map
-   * too, so opening it shows its share of the same work.
+   * to every conversation that owns it. The subagent's own entry stays in the
+   * map so snapshot consumers can inspect both aggregate and individual usage.
    * @returns session id to { cost, ownCost, subagentCost, subagents, inputTokens, outputTokens, cacheHitTokens, cacheWriteTokens, requests }.
    */
   function sessionTotals() {

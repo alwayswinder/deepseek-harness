@@ -19,6 +19,7 @@ window.__ModuleLoader__.load({
     const NS = 'appearance-plus'
     const LOCAL_IMAGE = 'local://appearance-plus-background'
     const LOCAL_IMAGE_KEY = 'dsh.appearance-plus.local-image.v1'
+    const LOCAL_IMAGE_SEEN_KEY = 'dsh.appearance-plus.local-image.seen.v1'
     const LOCAL_IMAGE_MAX_DATA_URL = 1_800_000
 
     const DEFAULTS = Object.freeze({
@@ -27,7 +28,11 @@ window.__ModuleLoader__.load({
       backgroundOpacity: 0.72,
       backgroundBlur: 0,
       backgroundFit: 'cover',
-      surfaceOpacity: 0.86,
+      // Surfaces keep the image visible: the image reaches the screen at
+      // backgroundOpacity × (1 - surfaceOpacity), so the shipped 0.86 left a
+      // chosen background at roughly a tenth of its strength and read as "the
+      // image did not load".
+      surfaceOpacity: 0.62,
     })
 
     const PALETTES = Object.freeze([
@@ -160,6 +165,7 @@ window.__ModuleLoader__.load({
       backgroundPlaceholder: 'https://…，或选择本地图片',
       chooseLocal: '选择本地图片',
       localSelected: '本地图片（保存在当前设备）',
+      localMissing: '本设备未保存这张本地图片，请重新选择。',
       removeBackground: '移除背景',
       backgroundOpacity: '图片亮度',
       surfaceOpacity: '界面遮罩',
@@ -196,6 +202,7 @@ window.__ModuleLoader__.load({
       backgroundPlaceholder: 'https://… or choose a local image',
       chooseLocal: 'Choose local image',
       localSelected: 'Local image (saved on this device)',
+      localMissing: 'This device has no copy of the local image. Choose it again.',
       removeBackground: 'Remove background',
       backgroundOpacity: 'Image visibility',
       surfaceOpacity: 'Surface opacity',
@@ -325,12 +332,26 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
     }
 
     function readLocalImage() {
-      try { return localStorage.getItem(LOCAL_IMAGE_KEY) ?? '' }
-      catch { return '' }
+      try {
+        const stored = localStorage.getItem(LOCAL_IMAGE_KEY) ?? ''
+        // Record that this origin held an image, so an emptied store can be
+        // told apart from an origin that never received one.
+        if (stored !== '') localStorage.setItem(LOCAL_IMAGE_SEEN_KEY, '1')
+        return stored
+      } catch { return '' }
+    }
+
+    /** Whether this origin ever stored a local image, so its absence means removal. */
+    function localImageEverSeen() {
+      try { return localStorage.getItem(LOCAL_IMAGE_SEEN_KEY) !== null }
+      catch { return false }
     }
 
     function writeLocalImage(dataUrl) {
-      try { localStorage.setItem(LOCAL_IMAGE_KEY, dataUrl) }
+      try {
+        localStorage.setItem(LOCAL_IMAGE_KEY, dataUrl)
+        localStorage.setItem(LOCAL_IMAGE_SEEN_KEY, '1')
+      }
       catch { throw new Error('image-store-failed') }
     }
 
@@ -341,7 +362,7 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
     function createController(ctx, scope, background) {
       let state = {
         status: 'loading', value: DEFAULTS, writable: false, revision: undefined,
-        saving: false, previewing: false, error: null,
+        saving: false, previewing: false, error: null, localMissing: false,
       }
       let current = DEFAULTS
       let saved = DEFAULTS
@@ -383,7 +404,13 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
       function derive() {
         const snapshot = scope.getSnapshot()
         let value = snapshot.value === undefined ? DEFAULTS : { ...DEFAULTS, ...snapshot.value }
-        if (!previewing && value.backgroundUrl === LOCAL_IMAGE && persistedLocalSource === '') {
+        const missing = !previewing && value.backgroundUrl === LOCAL_IMAGE && persistedLocalSource === ''
+        // Only the origin that stored an image may retire the profile's
+        // sentinel; writing from any other origin would erase a background the
+        // storing origin still holds, because the settings document is shared
+        // while localStorage is per origin.
+        const retirable = missing && localImageEverSeen()
+        if (retirable) {
           value = { ...value, backgroundUrl: '' }
           if (!clearingMissingLocalImage) {
             clearingMissingLocalImage = true
@@ -396,6 +423,7 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
           value,
           writable: snapshot.writable,
           revision: snapshot.revision,
+          localMissing: missing && !retirable,
         })
         if (snapshot.value !== undefined && !previewing) applySettings(value)
       }
@@ -674,7 +702,9 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
             h('input', {
               type: draft.backgroundUrl === LOCAL_IMAGE ? 'text' : 'url', disabled,
               readOnly: draft.backgroundUrl === LOCAL_IMAGE,
-              value: draft.backgroundUrl === LOCAL_IMAGE ? props.t('localSelected') : draft.backgroundUrl,
+              value: draft.backgroundUrl === LOCAL_IMAGE
+                ? props.t(state.localMissing ? 'localMissing' : 'localSelected')
+                : draft.backgroundUrl,
               placeholder: props.t('backgroundPlaceholder'),
               onChange: (event) => { clearLocalPreview(); update('backgroundUrl', event.target.value, '', null, 350) },
               style: { height: '36px', boxSizing: 'border-box', padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
@@ -702,6 +732,7 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
           h('button', { type: 'button', disabled, onClick: () => { clearLocalPreview(); apply({ ...DEFAULTS }, '', null, 0) }, style: buttonStyle(false, disabled) }, props.t('reset')),
           processingImage && h('span', { style: { color: 'var(--dsw-alias-label-secondary)' } }, props.t('processingImage')),
           state.saving && h('span', { style: { color: 'var(--dsw-alias-label-secondary)' } }, props.t('saving')),
+          state.localMissing && h('span', { style: { color: 'var(--dsw-alias-state-warn-primary)' } }, props.t('localMissing')),
           notice && h('span', { style: { color: notice === props.t('saved') ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice),
           state.error && h('span', { style: { color: 'var(--dsw-alias-state-error-primary)' } }, state.error),
         ),

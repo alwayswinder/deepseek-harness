@@ -17,7 +17,7 @@ export const Config = z.object({
   backgroundOpacity: z.number().min(0.05).max(1).default(0.72),
   backgroundBlur: z.number().step(1).min(0).max(30).default(0),
   backgroundFit: z.union(['cover', 'contain', 'stretch', 'tile']).default('cover'),
-  surfaceOpacity: z.number().min(0.45).max(1).default(0.86),
+  surfaceOpacity: z.number().min(0.45).max(1).default(0.62),
 })
 
 /** Register the settings namespace when the profile provides durable settings. */

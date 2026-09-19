@@ -28,12 +28,13 @@ Open **Plugins → Appearance Plus** after the bundle is active. Choose Default,
 
 Paste an HTTP(S) image URL or choose a local image. The page previews the file immediately, converts it to a capacity-bounded WebP image, and rejects local input above 20 MB. Image visibility, interface overlay opacity, blur, and fit are also saved automatically; slider and URL writes use a short delay so continuous edits are stored together.
 
-The source bundle is installed into a profile with the standard file-package form:
+Web installs the bundle from a terminal:
 
 ```text
-dsh plugin --profile desktop add file:E:/AI/DSH/_mytools/Plugins/appearance-plus
-dsh plugin --profile web add file:E:/AI/DSH/_mytools/Plugins/appearance-plus
+dsh plugin --profile web add file:<repo>/_mytools/Plugins/appearance-plus
 ```
+
+Desktop owns its own profile (`$DSH_HOME/profiles/desktop`) and refuses `dsh plugin --profile desktop`, so install the bundle there once per machine from the application's **Plugins → Add plugin** dialog with the absolute path of this directory. Both a bare absolute path and a `file:` spec work: the plugin must resolve `@deepseek-ai/schemastery` from its own directory, and `build.bat`, `build-desktop.bat`, `start-dsh.bat` and `start-desktop.bat` link `_mytools/Plugins/node_modules/@deepseek-ai/schemastery` to the vendored copy before they run. Without that link the Host cannot import the plugin and reports the bundle as failed to enable.
 
 Restart Desktop or reload the Web application after the first installation so the browser bundle enters the client graph.
 

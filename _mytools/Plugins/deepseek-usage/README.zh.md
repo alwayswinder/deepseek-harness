@@ -25,6 +25,8 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/deepseek-usage
 
 然后重启 `dsh web`（bundle 行在启动时激活，浏览器必须加载新的客户端 bundle），并打开 设置 → 插件 → 插件配置。`_mytools/start-dsh.bat` 会自己完成这次注册，并把 profile 里已安装的副本同步到最新，因此用该脚本启动无需手动执行上面的命令，之后对插件目录的改动也会被带进去。
 
+Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh plugin --profile desktop`：请在应用的**插件 → 添加插件**对话框中填入本目录的绝对路径，每台机器安装一次。Host 半需要从插件自身目录解析 `@deepseek-ai/schemastery`，该依赖由 `_mytools/ensure-plugin-modules.bat` 提供，所有构建与启动脚本都会调用它。
+
 ## 配置
 
 编辑本目录下的 `cordis.patch.yml`（或在 `$DSH_HOME/profiles/web/cordis.patch.yml` 中覆盖 `deepseek-usage` 行）：

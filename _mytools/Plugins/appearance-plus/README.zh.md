@@ -28,12 +28,13 @@ kind: "package-bundle"
 
 可以粘贴 HTTP(S) 图片地址，也可以选择本地图片。页面会立即预览文件，把它转换为容量受限的 WebP 图片，并拒绝超过 20 MB 的本地输入。图片亮度、界面遮罩、模糊和铺放方式也会自动保存；滑块和图片地址使用短暂延迟，把连续修改合并后写入。
 
-源码组合包使用标准的文件包形式安装到配置中：
+Web 端在终端安装：
 
 ```text
-dsh plugin --profile desktop add file:E:/AI/DSH/_mytools/Plugins/appearance-plus
-dsh plugin --profile web add file:E:/AI/DSH/_mytools/Plugins/appearance-plus
+dsh plugin --profile web add file:<repo>/_mytools/Plugins/appearance-plus
 ```
+
+Desktop 拥有自己的配置（`$DSH_HOME/profiles/desktop`），并拒绝 `dsh plugin --profile desktop`；因此要在应用的**插件 → 添加插件**对话框中填入本目录的绝对路径，每台机器安装一次。裸绝对路径和 `file:` 形式都可以：插件必须能从自身目录解析 `@deepseek-ai/schemastery`，而 `build.bat`、`build-desktop.bat`、`start-dsh.bat` 和 `start-desktop.bat` 都会在运行前把 `_mytools/Plugins/node_modules/@deepseek-ai/schemastery` 链接到 vendor 中的副本。缺少该链接时 Host 无法导入插件，会把组合包报告为启用失败。
 
 首次安装后重启 Desktop 或重新加载 Web 应用，使浏览器包进入客户端图。
 

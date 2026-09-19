@@ -43,6 +43,13 @@ the new client bundle) and open Settings → Plugins → 插件配置.
 profile's installed copy, so a launch through that script needs no manual step
 and picks up later edits to this directory.
 
+Desktop keeps its own profile (`$DSH_HOME/profiles/desktop`) and refuses
+`dsh plugin --profile desktop`: install the bundle there once per machine from
+the application's **Plugins → Add plugin** dialog with the absolute path of
+this directory. The host half resolves `@deepseek-ai/schemastery` from the
+plugin's own directory, which `_mytools/ensure-plugin-modules.bat` supplies;
+every build and start script runs it.
+
 ## Configuration
 
 Edit `cordis.patch.yml` in this directory (or override the `deepseek-usage` row

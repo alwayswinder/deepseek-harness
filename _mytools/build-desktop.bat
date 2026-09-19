@@ -3,6 +3,12 @@ setlocal
 chcp 65001 >nul
 
 rem Build the DSH Electron desktop app without launching it.
+rem Steps: dependencies, the Web build that the Desktop host serves, the
+rem Electron shell, and the prepared development runtime that start-desktop.bat
+rem loads.
+rem Preparing that runtime downloads a pinned Node and Python runtime from
+rem GitHub and PyPI, so this script needs direct or proxied network access; it
+rem fails before writing the project when the download is unreachable.
 rem This script must remain in a direct child folder of the repository root.
 
 rem Remove injected launch variables that can interfere with the pnpm shim.
@@ -15,6 +21,11 @@ rem Resolve the repository root from this script's location.
 for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
 if not exist "%DSH_REPO%\apps\desktop\package.json" goto :missingRepo
 cd /d "%DSH_REPO%" || goto :failure
+
+rem The out-of-tree plugins under _mytools\Plugins import
+rem @deepseek-ai/schemastery from their own directory; link the vendored copy
+rem so the Desktop profile can load them after this build.
+call "%~dp0ensure-plugin-modules.bat"
 
 rem Locate pnpm; Explorer launches may have a different PATH.
 where pnpm >nul 2>&1
@@ -73,6 +84,10 @@ echo [desktop build] Preparing the development project and bundled runtime...
 call "%PNPM_CMD%" exec tsx "%~dp0prepare-desktop.ts"
 if errorlevel 1 goto :failure
 
+rem start-desktop.bat loads this descriptor; without it Electron reports the
+rem missing runtime instead of starting the host.
+if not exist "%DSH_REPO%\apps\desktop\.desktop-build\development\project\desktop-runtime.json" goto :missingRuntime
+
 for /f "delims=" %%H in ('git rev-parse HEAD 2^>nul') do set "BUILD_REVISION=%%H"
 if not defined BUILD_REVISION goto :missingGitRevision
 if not exist "%DSH_REPO%\apps\desktop\.desktop-build\development" mkdir "%DSH_REPO%\apps\desktop\.desktop-build\development"
@@ -105,6 +120,17 @@ exit /b 1
 
 :missingGitRevision
 echo [desktop build] Cannot read the current Git revision.
+pause
+exit /b 1
+
+:missingRuntime
+echo.
+echo [desktop build] The development project was not prepared:
+echo [desktop build]   apps\desktop\.desktop-build\development\project\desktop-runtime.json
+echo [desktop build] is missing. Preparing it downloads the pinned Node and
+echo [desktop build] Python runtime from GitHub and PyPI; without that access it
+echo [desktop build] fails before writing the project. Configure the proxy and
+echo [desktop build] run this script again.
 pause
 exit /b 1
 

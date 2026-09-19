@@ -2,6 +2,7 @@
 
 import { execFileSync } from 'node:child_process'
 import {
+  existsSync,
   lstatSync,
   mkdirSync,
   readFileSync,
@@ -46,6 +47,54 @@ function removeOwnedPath(path: string): void {
   else rmSync(path, { recursive: true })
 }
 
+/**
+ * Whether a link no longer names a package: its target is gone, or the target
+ * is a leftover directory from a renamed package without a manifest. pnpm keeps
+ * such links from earlier checkouts; resolving one aborts the dependency view,
+ * and one that still resolves would abort the project manifest walk instead.
+ */
+function isStaleLink(path: string): boolean {
+  let stat: ReturnType<typeof lstatSync>
+  try {
+    stat = lstatSync(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+  if (!stat.isSymbolicLink()) return false
+  return !existsSync(join(path, 'package.json'))
+}
+
+/**
+ * Drop stale package links under one dependency root so `linkPackage` and the
+ * project manifest walk only ever see live packages.
+ */
+function pruneStaleLinks(root: string): void {
+  let entries: ReturnType<typeof readdirSync>
+  try {
+    entries = readdirSync(root, { withFileTypes: true })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  for (const entry of entries) {
+    if (entry.name === '.bin') continue
+    const path = join(root, entry.name)
+    if (entry.name.startsWith('@') && entry.isDirectory()) {
+      for (const scoped of readdirSync(path, { withFileTypes: true })) {
+        const child = join(path, scoped.name)
+        if (!isStaleLink(child)) continue
+        unlinkSync(child)
+        console.log(`desktop preparation: removed stale dependency link ${child}`)
+      }
+      continue
+    }
+    if (!isStaleLink(path)) continue
+    unlinkSync(path)
+    console.log(`desktop preparation: removed stale dependency link ${path}`)
+  }
+}
+
 function linkPackage(source: string, destination: string): void {
   removeOwnedPath(destination)
   mkdirSync(dirname(destination), { recursive: true })
@@ -71,10 +120,14 @@ function overlayDependencies(sourceRoot: string): void {
 function prepareDependencyView(): void {
   removeOwnedPath(DEPENDENCY_VIEW)
   mkdirSync(DEPENDENCY_VIEW, { recursive: true })
-  overlayDependencies(join(REPOSITORY_ROOT, 'node_modules', '.pnpm', 'node_modules'))
+  const pnpmRoot = join(REPOSITORY_ROOT, 'node_modules', '.pnpm', 'node_modules')
+  const cliRoot = join(CLI_ROOT, 'node_modules')
+  pruneStaleLinks(pnpmRoot)
+  pruneStaleLinks(cliRoot)
+  overlayDependencies(pnpmRoot)
   // CLI links are authoritative for direct runtime dependencies and cover packages
   // that pnpm did not expose through its workspace-wide virtual-hoist directory.
-  overlayDependencies(join(CLI_ROOT, 'node_modules'))
+  overlayDependencies(cliRoot)
 }
 
 const requireFromDesktop = createRequire(join(APP_ROOT, 'package.json'))

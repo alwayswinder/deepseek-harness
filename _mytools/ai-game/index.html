@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#080b10" />
+    <title>断星协议：回合制节奏战斗 Demo</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main id="game" aria-label="断星协议战斗演示">
+      <canvas id="scene" aria-hidden="true"></canvas>
+
+      <div class="grain" aria-hidden="true"></div>
+      <div class="vignette" aria-hidden="true"></div>
+
+      <header class="top-hud">
+        <div class="brand">
+          <span class="brand-mark">N//B</span>
+          <div>
+            <strong>断星协议</strong>
+            <small>NOCT BREAK PROTOCOL</small>
+          </div>
+        </div>
+        <div class="turn-box">
+          <span id="turnLabel">等待链接</span>
+          <strong id="roundLabel">ROUND 01</strong>
+        </div>
+        <button id="muteButton" class="icon-button" type="button" aria-label="切换声音">声音 ON</button>
+      </header>
+
+      <section class="fighter-hud player-hud" aria-label="玩家状态">
+        <div class="hud-title">
+          <span>执行者</span>
+          <strong>零 / ZERO</strong>
+          <b id="playerHpText">100 / 100</b>
+        </div>
+        <div class="bar-shell"><div id="playerHpBar" class="bar hp player-bar"></div></div>
+        <div class="energy-row">
+          <span>脉冲能量</span>
+          <div id="energyPips" class="pips" aria-label="脉冲能量"></div>
+        </div>
+      </section>
+
+      <section class="fighter-hud enemy-hud" aria-label="敌人状态">
+        <div class="hud-title">
+          <b id="enemyHpText">160 / 160</b>
+          <strong>裂骸兽 / RAVAGER</strong>
+          <span>精英异生体</span>
+        </div>
+        <div class="bar-shell"><div id="enemyHpBar" class="bar hp enemy-bar"></div></div>
+        <div class="energy-row enemy-energy">
+          <div id="staggerPips" class="pips danger" aria-label="敌人架势"></div>
+          <span>架势</span>
+        </div>
+      </section>
+
+      <section id="messageRail" class="message-rail" aria-live="polite">
+        <span id="messageKicker">SYSTEM</span>
+        <strong id="messageText">选择作战指令</strong>
+      </section>
+
+      <section id="skillPanel" class="skill-panel" aria-label="技能选择">
+        <button class="skill-card" type="button" data-skill="0">
+          <span class="skill-num">01</span>
+          <span class="skill-copy">
+            <b>月蚀连斩</b>
+            <small>LUNAR SEVER · 快速四连击</small>
+            <em>轻 · 重 · 轻 · 重</em>
+          </span>
+          <span class="skill-cost">+1 EN</span>
+        </button>
+        <button class="skill-card" type="button" data-skill="1">
+          <span class="skill-num">02</span>
+          <span class="skill-copy">
+            <b>贯星重刃</b>
+            <small>STAR PIERCER · 破势重击</small>
+            <em>重 · 重 · 轻 · 重</em>
+          </span>
+          <span class="skill-cost">+1 EN</span>
+        </button>
+        <button class="skill-card ultimate" type="button" data-skill="2">
+          <span class="skill-num">03</span>
+          <span class="skill-copy">
+            <b>苍穹处决</b>
+            <small>SKY EXECUTION · 高危五段</small>
+            <em>轻 · 重 · 重 · 轻 · 重</em>
+          </span>
+          <span class="skill-cost">2 EN</span>
+        </button>
+      </section>
+
+      <section id="rhythmPanel" class="rhythm-panel is-hidden" aria-label="节奏输入">
+        <div class="rhythm-header">
+          <span id="sequenceLabel">COMBO INPUT</span>
+          <strong id="judgementText">READY</strong>
+          <span id="comboText">0 CHAIN</span>
+        </div>
+        <div class="timing-core">
+          <svg class="timing-ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="timing-ring-track" cx="60" cy="60" r="54"></circle>
+            <circle id="timingArc" class="timing-ring-arc" cx="60" cy="60" r="54"></circle>
+          </svg>
+          <div class="timing-reticle" aria-hidden="true"></div>
+          <strong id="timingKey" class="timing-key">轻</strong>
+          <span id="timingCaption" class="timing-caption">左键轻击</span>
+        </div>
+        <div id="notesLayer" class="notes-layer" aria-label="连招进度"></div>
+        <div id="rhythmLegend" class="rhythm-legend">圆环蓄满并高亮时输入</div>
+      </section>
+
+      <section id="qtePanel" class="qte-panel is-hidden" aria-label="追击 QTE">
+        <div class="qte-ring"><span>左</span></div>
+        <strong>追击机会</strong>
+        <small>EXECUTION LINK</small>
+      </section>
+
+      <div id="touchControls" class="touch-controls" aria-label="触屏按键">
+        <button type="button" data-key="left">轻击</button>
+        <button type="button" data-key="right">重击</button>
+        <button type="button" data-key="defense">防御</button>
+      </div>
+
+      <section id="intro" class="modal intro-modal">
+        <div class="modal-eyebrow">COMBAT SIMULATION // 01</div>
+        <h1>断星协议</h1>
+        <p class="intro-lead">回合制决策 × 即时节奏攻防</p>
+        <div class="briefing-grid">
+          <div><span>01</span><b>选择招式</b><p>每回合选择一套攻击动作。</p></div>
+          <div><span>02</span><b>轻重连招</b><p>左键轻击、右键重击，踩准每一拍。</p></div>
+          <div><span>03</span><b>完美弹反</b><p>敌人攻击时点击右键防御。</p></div>
+        </div>
+        <button id="startButton" class="primary-button" type="button"><span>建立战斗链接</span><small>ENTER / TAP TO START</small></button>
+        <p class="fine-print">玩家回合：左键轻击 / 右键重击 · 敌方回合：右键防御</p>
+      </section>
+
+      <section id="result" class="modal result-modal is-hidden" aria-live="assertive">
+        <div id="resultEyebrow" class="modal-eyebrow">MISSION COMPLETE</div>
+        <h2 id="resultTitle">目标肃清</h2>
+        <div class="result-stats">
+          <div><span>回合</span><b id="statRounds">03</b></div>
+          <div><span>完美判定</span><b id="statPerfect">12</b></div>
+          <div><span>最高连击</span><b id="statCombo">05</b></div>
+        </div>
+        <button id="restartButton" class="primary-button" type="button"><span>再次挑战</span><small>RESTART BATTLE</small></button>
+      </section>
+
+      <div id="flash" class="flash" aria-hidden="true"></div>
+    </main>
+    <script src="game.js"></script>
+  </body>
+</html>

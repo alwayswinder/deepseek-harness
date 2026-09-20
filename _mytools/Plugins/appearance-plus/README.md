@@ -28,7 +28,7 @@ Open **Plugins → Appearance Plus** after the bundle is active. Choose Default,
 
 Paste an HTTP(S) image URL or choose a local image. The page previews the file immediately, converts it to a capacity-bounded WebP image, and rejects local input above 20 MB. Image visibility, interface overlay opacity, blur, and fit are also saved automatically; slider and URL writes use a short delay so continuous edits are stored together.
 
-A chosen image reaches the screen at `image visibility × (1 - interface overlay opacity)`, so the interface overlay decides how much of it survives. The shipped 0.62 keeps a wallpaper clearly visible while the surfaces stay readable; the earlier 0.86 left about a tenth of the image and read as a background that never loaded.
+A chosen image reaches the screen at `image visibility × (1 - interface overlay opacity)`, so the interface overlay decides how much of it survives. The default 0.62 keeps a wallpaper clearly visible while the surfaces stay readable; the slider reaches down to 0.15, which makes the sidebar, messages, composer, settings rows, and code blocks translucent together, so most of the image survives even stacked surfaces. Dropdowns and tips float directly over the image on their own floor of 0.82 so their text stays readable.
 
 Web installs the bundle from a terminal:
 

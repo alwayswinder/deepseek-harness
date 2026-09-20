@@ -17,7 +17,10 @@ export const Config = z.object({
   backgroundOpacity: z.number().min(0.05).max(1).default(0.72),
   backgroundBlur: z.number().step(1).min(0).max(30).default(0),
   backgroundFit: z.union(['cover', 'contain', 'stretch', 'tile']).default('cover'),
-  surfaceOpacity: z.number().min(0.45).max(1).default(0.62),
+  // The lower bound is shared with the browser half's SURFACE_OPACITY_MIN: the
+  // slider cannot offer a value this schema rejects, or the write fails and the
+  // page falls back to the last saved value.
+  surfaceOpacity: z.number().min(0.15).max(1).default(0.62),
 })
 
 /** Register the settings namespace when the profile provides durable settings. */

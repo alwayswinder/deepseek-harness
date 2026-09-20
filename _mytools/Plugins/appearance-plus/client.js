@@ -21,6 +21,15 @@ window.__ModuleLoader__.load({
     const LOCAL_IMAGE_KEY = 'dsh.appearance-plus.local-image.v1'
     const LOCAL_IMAGE_SEEN_KEY = 'dsh.appearance-plus.local-image.seen.v1'
     const LOCAL_IMAGE_MAX_DATA_URL = 1_800_000
+    // The overlay slider drives every surface that the wallpaper shows through;
+    // its lower bound decides how much of the image can survive a stack of
+    // nested surfaces, because each one multiplies the opacity again.
+    const SURFACE_OPACITY_MIN = 0.15
+    // Dropdowns, menus, and tips float above the page with no surface of their
+    // own behind the text, so their alpha keeps a readable floor.
+    const FLOAT_OPACITY_MIN = 0.82
+    const SURFACE_OPACITY_VAR = '--dsh-appearance-surface-opacity'
+    const FLOAT_OPACITY_VAR = '--dsh-appearance-float-opacity'
 
     const DEFAULTS = Object.freeze({
       preset: 'default',
@@ -257,6 +266,62 @@ window.__ModuleLoader__.load({
       return 'url(' + JSON.stringify(source) + ')'
     }
 
+    // Every token that paints an opaque surface over the wallpaper, and the
+    // floating layers that must stay legible above a busy image. Each entry
+    // keeps the token's own color and takes only its alpha from the slider, so
+    // a tinted row still reads as tinted.
+    const SURFACE_TOKENS = Object.freeze({
+      light: Object.freeze([
+        ['--dsw-alias-bg-base', '248 251 247'],
+        ['--dsw-alias-bg-layer-1', '255 255 255'],
+        ['--dsw-alias-bg-layer-2', '243 247 241'],
+        ['--dsw-alias-bg-layer-3', '238 244 236'],
+        ['--dsw-specific-sidebar-fill', '235 242 232'],
+        ['--dsw-specific-input-major', '255 255 255'],
+        ['--dsw-alias-bg-module-platform', '240 246 237'],
+        ['--dsw-specific-selector', '240 246 237'],
+        ['--dsw-alias-bg-multi-select', '240 246 237'],
+        ['--dsw-alias-markdown-code-block', '245 250 242'],
+        ['--dsw-alias-markdown-code-block-banner', '245 250 242'],
+        ['--dsw-alias-markdown-inline-code', '238 244 236'],
+        ['--dsw-alias-markdown-tag', '238 244 236'],
+        ['--dsw-alias-markdown-placeholder', '238 244 236'],
+      ]),
+      dark: Object.freeze([
+        ['--dsw-alias-bg-base', '16 21 25'],
+        ['--dsw-alias-bg-layer-1', '24 31 36'],
+        ['--dsw-alias-bg-layer-2', '31 40 46'],
+        ['--dsw-alias-bg-layer-3', '38 48 55'],
+        ['--dsw-specific-sidebar-fill', '22 30 35'],
+        ['--dsw-specific-input-major', '31 40 46'],
+        ['--dsw-alias-bg-module-platform', '44 55 63'],
+        ['--dsw-specific-selector', '44 55 63'],
+        ['--dsw-alias-bg-multi-select', '44 55 63'],
+        ['--dsw-alias-markdown-code-block', '27 35 40'],
+        ['--dsw-alias-markdown-code-block-banner', '27 35 40'],
+        ['--dsw-alias-markdown-inline-code', '33 42 48'],
+        ['--dsw-alias-markdown-tag', '44 55 63'],
+        ['--dsw-alias-markdown-placeholder', '44 55 63'],
+      ]),
+    })
+
+    const FLOAT_TOKENS = Object.freeze({
+      light: Object.freeze([
+        ['--dsw-alias-bg-overlay', '250 253 248'],
+        ['--dsw-specific-menu', '250 253 248'],
+        ['--dsw-specific-tip', '245 250 242'],
+      ]),
+      dark: Object.freeze([
+        ['--dsw-alias-bg-overlay', '38 48 55'],
+        ['--dsw-specific-menu', '38 48 55'],
+        ['--dsw-specific-tip', '44 55 63'],
+      ]),
+    })
+
+    function tokenRules(tokens, opacityVar) {
+      return tokens.map(([token, rgb]) => `  ${token}: rgb(${rgb} / var(${opacityVar})) !important;`).join('\n')
+    }
+
     function createBackgroundManager() {
       const style = document.createElement('style')
       style.dataset.dshAppearancePlus = 'true'
@@ -285,20 +350,12 @@ body[data-dsh-appearance-background] #root {
   background: transparent !important;
 }
 body[data-dsh-appearance-background]:not([data-ds-dark-theme]) {
-  --dsw-alias-bg-base: rgb(248 251 247 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-layer-1: rgb(255 255 255 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-layer-2: rgb(243 247 241 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-layer-3: rgb(238 244 236 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-overlay: rgb(255 255 255 / 0.94) !important;
-  --dsw-specific-sidebar-fill: rgb(235 242 232 / var(--dsh-appearance-surface-opacity)) !important;
+${tokenRules(SURFACE_TOKENS.light, SURFACE_OPACITY_VAR)}
+${tokenRules(FLOAT_TOKENS.light, FLOAT_OPACITY_VAR)}
 }
 body[data-dsh-appearance-background][data-ds-dark-theme] {
-  --dsw-alias-bg-base: rgb(16 21 25 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-layer-1: rgb(24 31 36 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-layer-2: rgb(31 40 46 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-layer-3: rgb(38 48 55 / var(--dsh-appearance-surface-opacity)) !important;
-  --dsw-alias-bg-overlay: rgb(29 37 43 / 0.95) !important;
-  --dsw-specific-sidebar-fill: rgb(22 30 35 / var(--dsh-appearance-surface-opacity)) !important;
+${tokenRules(SURFACE_TOKENS.dark, SURFACE_OPACITY_VAR)}
+${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
 }`
       document.head.append(style)
 
@@ -307,7 +364,8 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
         body.removeAttribute('data-dsh-appearance-background')
         for (const name of [
           '--dsh-appearance-image', '--dsh-appearance-image-size', '--dsh-appearance-image-repeat',
-          '--dsh-appearance-image-opacity', '--dsh-appearance-image-blur', '--dsh-appearance-surface-opacity',
+          '--dsh-appearance-image-opacity', '--dsh-appearance-image-blur',
+          SURFACE_OPACITY_VAR, FLOAT_OPACITY_VAR,
         ]) body.style.removeProperty(name)
       }
 
@@ -325,7 +383,9 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
           body.style.setProperty('--dsh-appearance-image-repeat', repeat)
           body.style.setProperty('--dsh-appearance-image-opacity', String(clamp(settings.backgroundOpacity, 0.05, 1)))
           body.style.setProperty('--dsh-appearance-image-blur', clamp(settings.backgroundBlur, 0, 30) + 'px')
-          body.style.setProperty('--dsh-appearance-surface-opacity', String(clamp(settings.surfaceOpacity, 0.45, 1)))
+          const surface = clamp(settings.surfaceOpacity, SURFACE_OPACITY_MIN, 1)
+          body.style.setProperty(SURFACE_OPACITY_VAR, String(surface))
+          body.style.setProperty(FLOAT_OPACITY_VAR, String(Math.max(surface, FLOAT_OPACITY_MIN)))
         },
         dispose() { clear(); style.remove() },
       }
@@ -718,7 +778,7 @@ body[data-dsh-appearance-background][data-ds-dark-theme] {
             h('button', { type: 'button', disabled, onClick: () => { clearLocalPreview(); update('backgroundUrl', '', '') }, style: buttonStyle(false, disabled) }, props.t('removeBackground')),
           ),
           h(RangeRow, { label: props.t('backgroundOpacity'), value: Math.round(draft.backgroundOpacity * 100), min: 5, max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('backgroundOpacity', Number(event.target.value) / 100, localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
-          h(RangeRow, { label: props.t('surfaceOpacity'), value: Math.round(draft.surfaceOpacity * 100), min: 45, max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('surfaceOpacity', Number(event.target.value) / 100, localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
+          h(RangeRow, { label: props.t('surfaceOpacity'), value: Math.round(draft.surfaceOpacity * 100), min: Math.round(SURFACE_OPACITY_MIN * 100), max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('surfaceOpacity', Number(event.target.value) / 100, localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
           h(RangeRow, { label: props.t('blur'), value: draft.backgroundBlur, min: 0, max: 30, step: 1, suffix: 'px', disabled, onChange: (event) => update('backgroundBlur', Number(event.target.value), localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
           h('label', { style: { display: 'grid', gridTemplateColumns: '130px 1fr', gap: '12px', alignItems: 'center' } },
             h('span', null, props.t('fit')),

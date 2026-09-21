@@ -5,3 +5,9 @@ dist/
 *.tsbuildinfo
 .PHONY
 *.tgz
+
+# The exported holdings snapshot, and any ledger export dropped here: real
+# positions. They stay machine-local because this repository is public. Remove
+# these lines only for a private clone.
+positions.json
+*.xlsx

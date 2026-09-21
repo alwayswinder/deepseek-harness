@@ -1,24 +1,27 @@
 /**
- * Stock P&L overlay plugin, node half: registers `/api/stock-pnl` on the
- * shared web server. Each request resolves the login Cookie through the
- * credential-reference seam and fetches one normalized snapshot from the
- * Tonghuashun investment-ledger API. The browser half renders the returned
- * JSON as a floating card; the Cookie itself never leaves the host process.
+ * Stock P&L plugin, node half: registers `/api/stock-pnl` on the shared web
+ * server. While no Cookie is configured the route answers from the exported
+ * position file that ships in this package, priced with the public quote feed;
+ * with a Cookie it answers from the Tonghuashun ledger API instead. The Cookie
+ * itself never leaves the host process.
  * @module @deepseek-ai/dsh-client-ui-stock-pnl
  */
 
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { CookieAcquirer, resolvePlaywright } from './acquire.ts'
 import { collectStats, cookieField, fetchFundKey, INDEX_URL, listPortfolios, normalizeCookie, PNL_URL, type Portfolio, verifyCookie } from './fetch.ts'
+import { collectLocalStats, DEFAULT_MINUTE_REFRESH_MS } from './local.ts'
 import type { Stats } from './types.ts'
 
 export const name = 'ui-stock-pnl'
 export const inject = ['webServer', 'credentials']
 
-/** The same-origin route the floating card polls. */
+/** The same-origin route the composer strip polls. */
 export const ROUTE_PATH = '/api/stock-pnl'
 
 /** Plugin config: the Cookie reference and ledger identity/endpoints. */
@@ -35,8 +38,16 @@ export interface Config {
   pnlUrl?: string
   /** Index endpoint override (tests point at a scripted server). */
   indexUrl?: string
-  /** Poll interval the card should use, in milliseconds; defaults to 20000. */
+  /** Poll interval the strip should use, in milliseconds; defaults to 20000. */
   pollMs?: number
+  /**
+   * Exported-position snapshot feeding the local quote source; defaults to
+   * `positions.json` beside this package's own files, so the single file a
+   * person replaces when the holdings change lives in the plugin directory.
+   */
+  positionsFile?: string
+  /** How long one intraday P&L series stays cached, in milliseconds; defaults to 120000. */
+  minuteRefreshMs?: number
 }
 
 /** Schemastery config for the overlay route. */
@@ -48,6 +59,8 @@ export const Config: z<Config> = z.object({
   pnlUrl: z.string().default(PNL_URL),
   indexUrl: z.string().default(INDEX_URL),
   pollMs: z.number().min(1000).default(20000),
+  positionsFile: z.string().default(''),
+  minuteRefreshMs: z.number().min(10000).default(DEFAULT_MINUTE_REFRESH_MS),
 })
 
 /** Fully materialized route policy; defaulting happens here, never inline. */
@@ -59,6 +72,8 @@ interface ResolvedConfig {
   pnlUrl: string
   indexUrl: string
   pollMs: number
+  positionsFile: string
+  minuteRefreshMs: number
 }
 
 /** Resolve defaults the same way Schemastery would, so direct `apply` calls stay correct. */
@@ -71,7 +86,21 @@ function resolveConfig(config: Config): ResolvedConfig {
     pnlUrl: config.pnlUrl ?? PNL_URL,
     indexUrl: config.indexUrl ?? INDEX_URL,
     pollMs: config.pollMs ?? 20000,
+    positionsFile: config.positionsFile ?? '',
+    minuteRefreshMs: config.minuteRefreshMs ?? DEFAULT_MINUTE_REFRESH_MS,
   }
+}
+
+/** The package directory (the parent of the built `lib/` this module loads from). */
+const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url))
+
+/**
+ * The exported-position snapshot the local quote source reads by default: one
+ * file in the plugin directory, so swapping the holdings is copying one file
+ * into the package rather than hunting a path under the DSH home directory.
+ */
+function defaultPositionsFile(): string {
+  return path.join(PACKAGE_ROOT, 'positions.json')
 }
 
 /** Resolve one credential-reference value through the seam; `undefined` when unconfigured. */
@@ -83,8 +112,12 @@ async function resolveCredential(ctx: Context, ref: string): Promise<string | un
 /** The web server's response type, derived from the route contract (no node import). */
 type RouteResponse = Parameters<NonNullable<WebRoute['handler']>>[1]
 
-/** The route's response value: the ledger snapshot plus the poll interval the card should use. */
-export type RouteStats = Stats & { readonly poll_ms: number }
+/** The route's response value: the stats snapshot plus the poll interval the strip should use. */
+export type RouteStats = Stats & {
+  readonly poll_ms: number
+  /** Which source answered: the ledger API through a Cookie, or the local quote feed. */
+  readonly source: 'ledger' | 'local'
+}
 
 /** Write a JSON response (same-origin only, so no CORS header). */
 function writeJson<T>(res: RouteResponse, status: number, value: T): void {
@@ -112,6 +145,20 @@ export function apply(ctx: Context, config: Config = {}): void {
       try {
         const cookie = await resolveCredential(ctx, spec.cookieEnv)
 
+        // Without a ledger session the exported positions plus the public quote
+        // feed still produce the whole payload, so the strip stays live for a
+        // deployment that never signs in.
+        if (cookie === undefined || cookie.length === 0) {
+          const local = await collectLocalStats({
+            positionsFile: spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile,
+            minuteRefreshMs: spec.minuteRefreshMs,
+          })
+          if (local !== undefined) {
+            writeJson(res, 200, { ...local, poll_ms: spec.pollMs, source: 'local' })
+            return
+          }
+        }
+
         // Derive the ledger user id (same fallback as collectStats) so we can
         // call the account_list API when fund_key has not yet been stored.
         // The Cookie is normalized first (the store folds long values across
@@ -138,7 +185,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           user_id: spec.user_id,
           fund_key: fundKey,
         })
-        writeJson(res, 200, { ...stats, poll_ms: spec.pollMs })
+        writeJson(res, 200, { ...stats, poll_ms: spec.pollMs, source: 'ledger' })
       } catch (error) {
         ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
         if (res.headersSent) {
@@ -152,7 +199,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
   ctx.effect(() => ctx.webServer.register(route), 'ui-stock-pnl: /api/stock-pnl route')
 
-  // Portfolio list endpoint: lets the card render a portfolio selector.
+  // Portfolio list endpoint: lets a client render a portfolio selector.
   const portfolioRoute: WebRoute = {
     kind: 'exact',
     path: '/api/stock-pnl/portfolios',
@@ -195,6 +242,16 @@ export function apply(ctx: Context, config: Config = {}): void {
   const verifyHandler: WebRoute['handler'] = async (_req, res) => {
     try {
       const cookie = await resolveCredential(ctx, spec.cookieEnv)
+      if (cookie === undefined || cookie.length === 0) {
+        const local = await collectLocalStats({
+          positionsFile: spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile,
+          minuteRefreshMs: spec.minuteRefreshMs,
+        })
+        if (local !== undefined) {
+          writeJson(res, 200, { configured: false, valid: false, error: '本地行情模式：数据来自导出的持仓快照，无需 Cookie' })
+          return
+        }
+      }
       const user = spec.user_id.length > 0 ? spec.user_id : undefined
       const result = await verifyCookie(cookie, user)
       writeJson(res, 200, {

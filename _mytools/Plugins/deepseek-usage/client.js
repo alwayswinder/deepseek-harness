@@ -191,10 +191,68 @@ window.__ModuleLoader__.load({
 
     // ---- account summary under the chat -----------------------------------
 
+    // The portfolio P&L figures the stock-holdings plugin publishes on
+    // /api/stock-pnl. The strip opens with that bare number; a deployment
+    // without the route or without exported positions simply has no figure.
+    const STOCK_PNL_POLL_MS = 20000
+
+    function fmtStockPnl(value) {
+      const amount = Math.abs(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      return (value < 0 ? '-' : '+') + amount
+    }
+
+    /** Today's portfolio P&L amount, or null while there is nothing usable. */
+    function useStockPnl() {
+      const [value, setValue] = React.useState(null)
+      React.useEffect(() => {
+        let disposed = false
+        let timer
+        const load = () => {
+          fetch('/api/stock-pnl')
+            .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+            .then((body) => {
+              if (disposed) return
+              const usable = body !== null && typeof body === 'object' && !body.error && Number.isFinite(body.pnl_yk)
+              setValue(usable ? body.pnl_yk : null)
+              const next = Number(body && body.poll_ms) >= 1000 ? body.poll_ms : STOCK_PNL_POLL_MS
+              timer = setTimeout(load, next)
+            })
+            .catch(() => {
+              if (disposed) return
+              setValue(null)
+              timer = setTimeout(load, STOCK_PNL_POLL_MS)
+            })
+        }
+        load()
+        return () => {
+          disposed = true
+          if (timer !== undefined) clearTimeout(timer)
+        }
+      }, [])
+      return value
+    }
+
+    const STRIP_STYLE = {
+      boxSizing: 'border-box',
+      width: 'calc(var(--dsh-composer-card-max-width, 768px) - var(--dsh-composer-dock-inset, 8px) - var(--dsh-composer-dock-inset, 8px))',
+      minWidth: 'min(100%, 280px)',
+      maxWidth: '100%',
+      margin: '0 auto',
+      padding: '2px var(--dsh-composer-dock-inset, 8px) 0',
+      fontSize: '11px', color: 'var(--dsw-alias-label-secondary)',
+      display: 'flex', gap: '16px', flexWrap: 'wrap', lineHeight: '16px',
+    }
+
     function UsageStrip(props) {
       const state = props.useUsageCard((s) => s)
-      if (state.status === 'unavailable' || state.value === undefined) return null
-      const accounts = Object.values(state.value.accounts ?? {})
+      const pnl = useStockPnl()
+      // The P&L cell is the raw amount in the strip's own text colour: no label,
+      // no currency or percent sign, nothing else identifying the figure.
+      const cells = []
+      if (pnl !== null) cells.push(h('span', { key: 'stock-pnl' }, fmtStockPnl(pnl)))
+      const accounts = state.status === 'unavailable' || state.value === undefined
+        ? []
+        : Object.values(state.value.accounts ?? {})
       // An account with neither a fetched balance nor local spend has nothing to
       // say; every other account stays visible so a missing credential or an
       // unreachable balance endpoint shows up instead of hiding the strip.
@@ -221,19 +279,9 @@ window.__ModuleLoader__.load({
         else if (!hasBalance) text += a.balanceError !== null ? ' · 余额不可用' : ' · 未配置 Key'
         parts.push(text)
       }
-      if (parts.length === 0) return null
-      return h('div', {
-        style: {
-          boxSizing: 'border-box',
-          width: 'calc(var(--dsh-composer-card-max-width, 768px) - var(--dsh-composer-dock-inset, 8px) - var(--dsh-composer-dock-inset, 8px))',
-          minWidth: 'min(100%, 280px)',
-          maxWidth: '100%',
-          margin: '0 auto',
-          padding: '2px var(--dsh-composer-dock-inset, 8px) 0',
-          fontSize: '11px', color: 'var(--dsw-alias-label-secondary)',
-          display: 'flex', gap: '16px', flexWrap: 'wrap', lineHeight: '16px',
-        },
-      }, ...parts.map((text, i) => h('span', { key: i }, text)))
+      for (let i = 0; i < parts.length; i++) cells.push(h('span', { key: 'usage-' + i }, parts[i]))
+      if (cells.length === 0) return null
+      return h('div', { style: STRIP_STYLE }, ...cells)
     }
 
     // ---- plugin -----------------------------------------------------------

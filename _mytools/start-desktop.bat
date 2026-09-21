@@ -2,6 +2,22 @@
 setlocal
 chcp 65001 >nul
 
+rem Logitech G HUB starts this batch with stdout and stderr already closed, and
+rem cmd.exe terminates on the first console write while both are unusable (measured:
+rem it died on ensure-plugin-modules.bat's "[plugins] ..." line, before wscript ever
+rem ran). One usable stream is enough, so re-run this script once with stderr on a
+rem log file under %TEMP% and let that copy do the actual launch. stdout stays on
+rem the console, which keeps the messages and the pauses working when the script is
+rem started from Explorer or a terminal.
+if "%~1"=="redirected" goto :streamsReady
+set "DSH_ERR_LOG=%TEMP%\dsh-desktop-stderr.log"
+copy /y nul "%DSH_ERR_LOG%" >nul 2>&1
+if errorlevel 1 set "DSH_ERR_LOG=%TEMP%\dsh-desktop-stderr-%RANDOM%.log"
+call "%~f0" redirected 2> "%DSH_ERR_LOG%"
+exit /b 0
+
+:streamsReady
+
 rem Launch the prepared Electron app directly and detach it from this window.
 rem Run build-desktop.bat after pulling or changing source files: the app loads
 rem the prepared project under apps\desktop\.desktop-build\development, and that
@@ -31,7 +47,14 @@ if not exist "%DESKTOP_EXE%" goto :missingElectron
 if not exist "%DESKTOP_PROJECT%\desktop-runtime.json" goto :missingRuntime
 
 if not exist "%DESKTOP_DEVELOPMENT%" mkdir "%DESKTOP_DEVELOPMENT%"
-break > "%DESKTOP_LOG%"
+rem The launching cmd.exe holds the log file open for the whole life of the app it
+rem started (start-dsh-service.vbs redirects the app output there), so while an
+rem earlier Desktop instance is alive the redirection below cannot open this path
+rem and cmd.exe exits without ever running electron.exe. Fall back to a per-launch
+rem log then; Electron still starts, so a second press focuses the open window.
+copy /y nul "%DESKTOP_LOG%" >nul 2>&1
+if errorlevel 1 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop-%RANDOM%.log"
+forfiles /p "%DESKTOP_DEVELOPMENT%" /m "desktop-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
 wscript.exe //nologo "%~dp0start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_DEVELOPMENT%\electron-user-data" "%DESKTOP_APP%"
 echo [desktop] Launch requested. Log: %DESKTOP_LOG%
 exit /b 0

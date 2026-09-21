@@ -2,6 +2,23 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
+rem Logitech G HUB starts this batch with stdout and stderr already closed, and
+rem cmd.exe terminates on the first console write while both are unusable (a G4
+rem macro press died on ensure-plugin-modules.bat's "[plugins] ..." line before the
+rem service was ever started). One usable stream is enough, so re-run this script
+rem once with stderr on a log file under %TEMP% and let that copy do the launch.
+rem stdout stays on the console, which keeps the status messages and the pauses
+rem working when the script is started from Explorer or a terminal.
+if "%~1"=="redirected" goto :streamsReady
+set "DSH_ERR_LOG=%TEMP%\dsh-web-stderr.log"
+copy /y nul "%DSH_ERR_LOG%" >nul 2>&1
+if errorlevel 1 set "DSH_ERR_LOG=%TEMP%\dsh-web-stderr-%RANDOM%.log"
+call "%~f0" redirected %* 2> "%DSH_ERR_LOG%"
+exit /b 0
+
+:streamsReady
+if "%~1"=="redirected" shift
+
 rem ============================================================
 rem Start DSH Web.
 rem
@@ -21,7 +38,8 @@ rem Run build.bat after pulling or editing packages\*, then run this script.
 rem
 rem Usage: start-dsh.bat [port]   (default port 3080)
 rem The status window may be closed after the service starts.
-rem The current launch log is dsh-web.log next to this script.
+rem The current launch log is dsh-web.log next to this script; when a running
+rem service still holds that file, the launch uses dsh-web-<random>.log instead.
 rem Use stop-dsh.bat [port] to stop the service.
 rem This script must remain in a direct child folder of the repository root.
 rem ============================================================
@@ -56,8 +74,14 @@ rem The out-of-tree plugins import @deepseek-ai/schemastery from their own
 rem directory; link the vendored copy so a profile can load them on this machine.
 call "%~dp0ensure-plugin-modules.bat"
 
-rem Clear the previous launch log.
-break > "%DSH_LOG%"
+rem The launching cmd.exe holds the log file open for the whole life of the service
+rem it started (start-dsh-service.vbs redirects the service output there), so while
+rem a service is running the redirection below cannot open this path and cmd.exe
+rem exits without ever running node. Fall back to a per-launch log then, and prune
+rem fallback logs older than a day.
+copy /y nul "%DSH_LOG%" >nul 2>&1
+if errorlevel 1 set "DSH_LOG=%~dp0dsh-web-%RANDOM%.log"
+forfiles /p "%~dp0." /m "dsh-web-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
 
 rem ---- Prefer the locally built checkout ----
 if not exist "%DSH_REPO%\node_modules" goto :needsBuild

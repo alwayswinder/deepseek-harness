@@ -58,6 +58,27 @@ window.__ModuleLoader__.load({
     const COVER_Z_INDEX = 10000
     const LOCK_FADE_IN_SECONDS = 2.4
     const LOCK_FADE_OUT_SECONDS = 0.22
+    // The Desktop shell mirrors two page variables into the window's own
+    // caption: the fill behind its minimize, maximize, and close buttons and the
+    // colour of their glyphs. Fully transparent values hide that caption while
+    // the lock screen covers the window, and the window itself is never touched.
+    const CAPTION_ATTR = 'data-dsh-appearance-caption'
+    // Plugin-owned signal that the cleared colours are in effect; the Desktop
+    // shell only re-reads the caption when body's style attribute changes.
+    const CAPTION_STATE_VAR = '--dsh-appearance-caption'
+    const CAPTION_FILL_VAR = '--dsw-specific-sidebar-fill'
+    const CAPTION_SYMBOL_VAR = '--dsw-alias-label-primary'
+    const CAPTION_TRANSPARENT = 'rgba(0, 0, 0, 0)'
+    // The caption follows only once the lock screen has finished covering the
+    // window, so the interface is never seen with an invisible label colour.
+    const CAPTION_HIDE_DELAY_MS = LOCK_FADE_IN_SECONDS * 1000 + 200
+    // Surface-token reads retry on this cadence, up to COLOR_RETRY_LIMIT times,
+    // while the stylesheet that defines them is still missing.
+    const COLOR_RETRY_MS = 400
+    const COLOR_RETRY_LIMIT = 25
+    // The Desktop application document; the Web client is served over http(s)
+    // and has no caption of its own to hide.
+    const DESKTOP_DOCUMENT = location.protocol === 'dsh-app:'
     const IDLE_SECONDS_MIN = 3
     const IDLE_SECONDS_MAX = 600
     // The idle clock ticks instead of re-arming a timeout per pointer event,
@@ -90,7 +111,7 @@ window.__ModuleLoader__.load({
 
     const PALETTES = Object.freeze([
       Object.freeze({
-        id: 'eye-green', labelKey: 'preset.eyeGreen', scheme: 'light', preview: '#dfeeda',
+        id: 'eye-green', labelKey: 'preset.eyeGreen', scheme: 'light', preview: '#eef6e9',
         tokens: Object.freeze({
           '--dsw-alias-bg-base': '#eef6e9',
           '--dsw-alias-bg-layer-1': '#f7fbf4',
@@ -108,11 +129,11 @@ window.__ModuleLoader__.load({
           '--dsw-alias-label-primary': '#243529',
           '--dsw-alias-label-secondary': '#526659',
           '--dsw-alias-label-tertiary': '#708176',
-          '--dsw-specific-sidebar-fill': '#dcebd5',
+          '--dsw-specific-sidebar-fill': '#eef6e9',
         }),
       }),
       Object.freeze({
-        id: 'warm-paper', labelKey: 'preset.warmPaper', scheme: 'light', preview: '#eadfca',
+        id: 'warm-paper', labelKey: 'preset.warmPaper', scheme: 'light', preview: '#f7f1e5',
         tokens: Object.freeze({
           '--dsw-alias-bg-base': '#f7f1e5',
           '--dsw-alias-bg-layer-1': '#fcf8ef',
@@ -130,11 +151,11 @@ window.__ModuleLoader__.load({
           '--dsw-alias-label-primary': '#3b3025',
           '--dsw-alias-label-secondary': '#6d6050',
           '--dsw-alias-label-tertiary': '#8a7c68',
-          '--dsw-specific-sidebar-fill': '#eadfca',
+          '--dsw-specific-sidebar-fill': '#f7f1e5',
         }),
       }),
       Object.freeze({
-        id: 'ocean', labelKey: 'preset.ocean', scheme: 'light', preview: '#d5e9ef',
+        id: 'ocean', labelKey: 'preset.ocean', scheme: 'light', preview: '#edf6f8',
         tokens: Object.freeze({
           '--dsw-alias-bg-base': '#edf6f8',
           '--dsw-alias-bg-layer-1': '#f7fbfc',
@@ -152,11 +173,11 @@ window.__ModuleLoader__.load({
           '--dsw-alias-label-primary': '#23373d',
           '--dsw-alias-label-secondary': '#526970',
           '--dsw-alias-label-tertiary': '#70858b',
-          '--dsw-specific-sidebar-fill': '#d5e9ef',
+          '--dsw-specific-sidebar-fill': '#edf6f8',
         }),
       }),
       Object.freeze({
-        id: 'lavender', labelKey: 'preset.lavender', scheme: 'light', preview: '#e5def0',
+        id: 'lavender', labelKey: 'preset.lavender', scheme: 'light', preview: '#f4f0f8',
         tokens: Object.freeze({
           '--dsw-alias-bg-base': '#f4f0f8',
           '--dsw-alias-bg-layer-1': '#faf8fc',
@@ -174,11 +195,11 @@ window.__ModuleLoader__.load({
           '--dsw-alias-label-primary': '#352d3d',
           '--dsw-alias-label-secondary': '#665b70',
           '--dsw-alias-label-tertiary': '#82778c',
-          '--dsw-specific-sidebar-fill': '#e5def0',
+          '--dsw-specific-sidebar-fill': '#f4f0f8',
         }),
       }),
       Object.freeze({
-        id: 'midnight', labelKey: 'preset.midnight', scheme: 'dark', preview: '#263746',
+        id: 'midnight', labelKey: 'preset.midnight', scheme: 'dark', preview: '#111920',
         tokens: Object.freeze({
           '--dsw-alias-bg-base': '#111920',
           '--dsw-alias-bg-layer-1': '#19242d',
@@ -196,7 +217,7 @@ window.__ModuleLoader__.load({
           '--dsw-alias-label-primary': '#e5edf1',
           '--dsw-alias-label-secondary': '#afc0c9',
           '--dsw-alias-label-tertiary': '#879ca7',
-          '--dsw-specific-sidebar-fill': '#182631',
+          '--dsw-specific-sidebar-fill': '#111920',
         }),
       }),
     ])
@@ -384,10 +405,13 @@ body[data-dsh-appearance-background]::before {
   opacity: var(${IMAGE_OPACITY_VAR});
   filter: blur(var(--dsh-appearance-image-blur));
 }
+/* The root paints the base surface itself: the image layer sits behind it, and
+   a region the application leaves unpainted would otherwise show that image at
+   full strength whatever the overlay slider says. */
 body[data-dsh-appearance-background] #root {
   position: relative;
   z-index: 1;
-  background: transparent !important;
+  background-color: var(--dsw-alias-bg-base) !important;
 }
 body[${LOCK_ATTR}] {
   ${COVER_FADE_VAR}: 0;
@@ -421,6 +445,11 @@ body[${LOCK_ATTR}]::after {
       let covered = false
       let colors = {}
       let rules = ''
+      let colorRetryTimer = null
+      let colorAttempts = 0
+      // A late theme stylesheet arrives as a load event on its head element.
+      const onHeadLoad = () => { if (Object.values(colors).includes('')) refreshColors() }
+      document.head.addEventListener('load', onHeadLoad, true)
 
       /**
        * Read the resolved colour of every surface token from the active theme.
@@ -442,15 +471,44 @@ body[${LOCK_ATTR}]::after {
       /** Re-derive the surface sheet from the current theme and Color theme. */
       function refreshColors() {
         colors = readColors()
+        // Re-armed from the read, not from the write below: an unresolved read
+        // rebuilds the same text and would otherwise end the backoff after one
+        // attempt.
+        scheduleColorRetry()
         const surfaces = alphaRules(SURFACE_TOKENS, colors, SURFACE_OPACITY_VAR)
         const floats = alphaRules(FLOAT_TOKENS, colors, FLOAT_OPACITY_VAR)
         // One colour set serves both base palettes: a color theme carries its
         // own scheme, and the built-in palette is re-read when the scheme flips.
+        // The caption rule repeats the surface selectors so it matches their
+        // specificity and, being last, outranks them for the two cleared
+        // variables; the bare selector covers a profile with no wallpaper.
         const next = `body[data-dsh-appearance-background]:not([data-ds-dark-theme]) {\n${surfaces}\n${floats}\n}\n`
-          + `body[data-dsh-appearance-background][data-ds-dark-theme] {\n${surfaces}\n${floats}\n}`
+          + `body[data-dsh-appearance-background][data-ds-dark-theme] {\n${surfaces}\n${floats}\n}\n`
+          + `body[${CAPTION_ATTR}],\n`
+          + `body[data-dsh-appearance-background][${CAPTION_ATTR}],\n`
+          + `body[${LOCK_ATTR}][${CAPTION_ATTR}] {\n  ${CAPTION_FILL_VAR}: ${CAPTION_TRANSPARENT} !important;\n  ${CAPTION_SYMBOL_VAR}: ${CAPTION_TRANSPARENT} !important;\n}`
         if (next === rules) return
         rules = next
         tokens.textContent = next
+      }
+
+      /**
+       * The plugin can be applied before the stylesheet that defines the surface
+       * tokens has loaded, and every read then comes back empty — which would
+       * leave the sheet without a single surface rule. Re-read on a short backoff
+       * until the tokens resolve, and let a late stylesheet load settle it sooner.
+       */
+      function scheduleColorRetry() {
+        if (colorRetryTimer !== null || colorAttempts >= COLOR_RETRY_LIMIT) return
+        if (!Object.values(colors).includes('')) {
+          colorAttempts = 0
+          return
+        }
+        colorAttempts += 1
+        colorRetryTimer = setTimeout(() => {
+          colorRetryTimer = null
+          refreshColors()
+        }, COLOR_RETRY_MS)
       }
 
       /**
@@ -528,6 +586,8 @@ body[${LOCK_ATTR}]::after {
         isCovered() { return lockSource !== '' && covered },
         refreshColors,
         dispose() {
+          if (colorRetryTimer !== null) clearTimeout(colorRetryTimer)
+          document.head.removeEventListener('load', onHeadLoad, true)
           clearImage('background')
           clearImage('lock')
           base.remove()
@@ -585,6 +645,8 @@ body[${LOCK_ATTR}]::after {
       let idleElapsed = false
       // Last pointer position, to tell a real move from an engine re-emission.
       let lastPointer = null
+      // Pending caption hide, so a short lock never clears the caption colours.
+      let captionTimer = null
       const store = createSnapshotStore(state)
 
       function publish(patch) {
@@ -600,10 +662,47 @@ body[${LOCK_ATTR}]::after {
        * Whether the lock screen belongs on screen right now. The layer owns the
        * last value, and the settings page is the one place it must stay away so
        * the interface being configured stays reachable. The window itself is
-       * never resized or made fullscreen: the lock screen owns page pixels only.
+       * never resized or made fullscreen: the lock screen owns page pixels, and
+       * the caption it hides is repainted by the shell from two page variables.
        */
       function refreshCover() {
-        background.setCover(current.lockEnabled === true && !pageOpen && !busy && idleElapsed)
+        const cover = current.lockEnabled === true && !pageOpen && !busy && idleElapsed
+        background.setCover(cover)
+        syncCaption(cover)
+      }
+
+      /**
+       * Hide the Desktop window caption once the lock screen has covered the
+       * window, and restore it before the interface comes back, so the label
+       * colour is never seen as transparent.
+       * @param cover - whether the lock screen is up.
+       */
+      function syncCaption(cover) {
+        if (!DESKTOP_DOCUMENT) return
+        if (captionTimer !== null) {
+          clearTimeout(captionTimer)
+          captionTimer = null
+        }
+        if (!cover) { showCaption(); return }
+        captionTimer = setTimeout(() => { captionTimer = null; hideCaption() }, CAPTION_HIDE_DELAY_MS)
+      }
+
+      /**
+       * The shell re-reads both caption colours when body's style attribute
+       * changes. This plugin-owned property is that signal: the cleared values
+       * come from the stylesheet, and the theme's own tokens — which the
+       * presenter writes inline on body — are never touched.
+       */
+      function hideCaption() {
+        const body = document.body
+        body.setAttribute(CAPTION_ATTR, '')
+        body.style.setProperty(CAPTION_STATE_VAR, '1')
+      }
+
+      function showCaption() {
+        const body = document.body
+        body.removeAttribute(CAPTION_ATTR)
+        body.style.removeProperty(CAPTION_STATE_VAR)
       }
 
       function openPage() {
@@ -800,6 +899,8 @@ body[${LOCK_ATTR}]::after {
         dispose: () => {
           unsubscribe()
           clearInterval(idleTimer)
+          if (captionTimer !== null) clearTimeout(captionTimer)
+          showCaption()
           window.removeEventListener('pointerdown', notePointerDown, { capture: true })
           window.removeEventListener('pointermove', notePointerMove, { capture: true })
           for (const type of ACTIVITY_EVENTS) window.removeEventListener(type, noteActivity, { capture: true })

@@ -17,9 +17,25 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const NS = 'appearance-plus'
-    const LOCAL_IMAGE = 'local://appearance-plus-background'
-    const LOCAL_IMAGE_KEY = 'dsh.appearance-plus.local-image.v1'
-    const LOCAL_IMAGE_SEEN_KEY = 'dsh.appearance-plus.local-image.seen.v1'
+    // Two independent images: the background wallpaper behind the interface,
+    // and the lock-screen wallpaper that replaces the interface while the
+    // client is idle. Each local copy is device-local, so each slot keeps its
+    // own storage keys and its own durable sentinel.
+    const SLOTS = Object.freeze({
+      background: Object.freeze({
+        field: 'backgroundUrl',
+        sentinel: 'local://appearance-plus-background',
+        imageKey: 'dsh.appearance-plus.local-image.v1',
+        seenKey: 'dsh.appearance-plus.local-image.seen.v1',
+      }),
+      lock: Object.freeze({
+        field: 'lockUrl',
+        sentinel: 'local://appearance-plus-lock',
+        imageKey: 'dsh.appearance-plus.lock-image.v1',
+        seenKey: 'dsh.appearance-plus.lock-image.seen.v1',
+      }),
+    })
+    const SLOT_NAMES = Object.freeze(Object.keys(SLOTS))
     const LOCAL_IMAGE_MAX_DATA_URL = 1_800_000
     // The overlay slider drives every surface that the wallpaper shows through;
     // its lower bound decides how much of the image can survive a stack of
@@ -28,8 +44,29 @@ window.__ModuleLoader__.load({
     // Dropdowns, menus, and tips float above the page with no surface of their
     // own behind the text, so their alpha keeps a readable floor.
     const FLOAT_OPACITY_MIN = 0.82
+    const IMAGE_OPACITY_VAR = '--dsh-appearance-image-opacity'
     const SURFACE_OPACITY_VAR = '--dsh-appearance-surface-opacity'
     const FLOAT_OPACITY_VAR = '--dsh-appearance-float-opacity'
+    // The lock-screen layer: the same viewport, drawn above the interface
+    // instead of behind it. Only its fade factor is registered `@property` and
+    // transitioned, so the rest of the settings stay instant.
+    const COVER_FADE_VAR = '--dsh-appearance-cover-fade'
+    const LOCK_ATTR = 'data-dsh-appearance-lock'
+    const COVER_ATTR = 'data-dsh-appearance-cover'
+    // Above every portalled menu, modal, and toast (the client tops out at
+    // z-index 1100), so nothing floats over the lock screen.
+    const COVER_Z_INDEX = 10000
+    const LOCK_FADE_IN_SECONDS = 2.4
+    const LOCK_FADE_OUT_SECONDS = 0.22
+    const IDLE_SECONDS_MIN = 3
+    const IDLE_SECONDS_MAX = 600
+    // The idle clock ticks instead of re-arming a timeout per pointer event,
+    // which arrives at pointer-device rate.
+    const IDLE_TICK_MS = 500
+    // `pointerdown` and `pointermove` are handled apart from these: the first is
+    // the one event an opaque lock screen consumes, the second needs to ignore
+    // engine re-emissions.
+    const ACTIVITY_EVENTS = Object.freeze(['wheel', 'keydown'])
 
     const DEFAULTS = Object.freeze({
       preset: 'default',
@@ -42,6 +79,13 @@ window.__ModuleLoader__.load({
       // chosen background at roughly a tenth of its strength and read as "the
       // image did not load".
       surfaceOpacity: 0.62,
+      // The lock screen is what the idle clock drives: with `lockEnabled` on
+      // and a lock image configured, no input for `lockSeconds` and no running
+      // task put that image over the whole interface.
+      lockUrl: '',
+      lockEnabled: true,
+      lockSeconds: 20,
+      lockFit: 'cover',
     })
 
     const PALETTES = Object.freeze([
@@ -184,6 +228,11 @@ window.__ModuleLoader__.load({
       'fit.contain': '完整显示',
       'fit.stretch': '拉伸',
       'fit.tile': '平铺',
+      lock: '锁屏壁纸',
+      lockUrl: '图片地址',
+      lockEnabled: '空闲时启用',
+      lockSeconds: '空闲判定',
+      lockHint: '无操作满这段时间后整屏换成这张图片，对话与侧栏被完全遮住；点击、滚动、按键或移动鼠标后快速恢复，任务运行期间不进入锁屏。',
       reset: '恢复默认',
       saving: '正在自动保存…',
       saved: '已自动保存',
@@ -221,6 +270,11 @@ window.__ModuleLoader__.load({
       'fit.contain': 'Contain',
       'fit.stretch': 'Stretch',
       'fit.tile': 'Tile',
+      lock: 'Lock screen wallpaper',
+      lockUrl: 'Image URL',
+      lockEnabled: 'Enable when idle',
+      lockSeconds: 'Idle delay',
+      lockHint: 'After this long without input the whole window becomes this image and the conversation and sidebar disappear. A click, scroll, key press, or pointer move brings them back at once, and a running task keeps the lock screen away.',
       reset: 'Restore defaults',
       saving: 'Saving automatically…',
       saved: 'Saved automatically',
@@ -248,13 +302,11 @@ window.__ModuleLoader__.load({
       return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min
     }
 
-    function sourceFor(settings, localSource) {
-      let source = settings.backgroundUrl.trim()
-      if (source === LOCAL_IMAGE) {
+    function sourceFor(slot, settings, localSource) {
+      let source = String(settings[SLOTS[slot].field] ?? '').trim()
+      if (source === SLOTS[slot].sentinel) {
         source = localSource ?? ''
-        if (source === '') {
-          try { source = localStorage.getItem(LOCAL_IMAGE_KEY) ?? '' } catch { source = '' }
-        }
+        if (source === '') source = readLocalImage(slot)
       }
       if (source === '') return ''
       const lower = source.toLowerCase()
@@ -267,65 +319,53 @@ window.__ModuleLoader__.load({
     }
 
     // Every token that paints an opaque surface over the wallpaper, and the
-    // floating layers that must stay legible above a busy image. Each entry
-    // keeps the token's own color and takes only its alpha from the slider, so
-    // a tinted row still reads as tinted.
-    const SURFACE_TOKENS = Object.freeze({
-      light: Object.freeze([
-        ['--dsw-alias-bg-base', '248 251 247'],
-        ['--dsw-alias-bg-layer-1', '255 255 255'],
-        ['--dsw-alias-bg-layer-2', '243 247 241'],
-        ['--dsw-alias-bg-layer-3', '238 244 236'],
-        ['--dsw-specific-sidebar-fill', '235 242 232'],
-        ['--dsw-specific-input-major', '255 255 255'],
-        ['--dsw-alias-bg-module-platform', '240 246 237'],
-        ['--dsw-specific-selector', '240 246 237'],
-        ['--dsw-alias-bg-multi-select', '240 246 237'],
-        ['--dsw-alias-markdown-code-block', '245 250 242'],
-        ['--dsw-alias-markdown-code-block-banner', '245 250 242'],
-        ['--dsw-alias-markdown-inline-code', '238 244 236'],
-        ['--dsw-alias-markdown-tag', '238 244 236'],
-        ['--dsw-alias-markdown-placeholder', '238 244 236'],
-      ]),
-      dark: Object.freeze([
-        ['--dsw-alias-bg-base', '16 21 25'],
-        ['--dsw-alias-bg-layer-1', '24 31 36'],
-        ['--dsw-alias-bg-layer-2', '31 40 46'],
-        ['--dsw-alias-bg-layer-3', '38 48 55'],
-        ['--dsw-specific-sidebar-fill', '22 30 35'],
-        ['--dsw-specific-input-major', '31 40 46'],
-        ['--dsw-alias-bg-module-platform', '44 55 63'],
-        ['--dsw-specific-selector', '44 55 63'],
-        ['--dsw-alias-bg-multi-select', '44 55 63'],
-        ['--dsw-alias-markdown-code-block', '27 35 40'],
-        ['--dsw-alias-markdown-code-block-banner', '27 35 40'],
-        ['--dsw-alias-markdown-inline-code', '33 42 48'],
-        ['--dsw-alias-markdown-tag', '44 55 63'],
-        ['--dsw-alias-markdown-placeholder', '44 55 63'],
-      ]),
-    })
+    // floating layers that must stay legible above a busy image. The colour of
+    // each one is read back from the active theme, so the selected color theme
+    // survives the wallpaper; only the alpha comes from the overlay slider.
+    const SURFACE_TOKENS = Object.freeze([
+      '--dsw-alias-bg-base',
+      '--dsw-alias-bg-layer-1',
+      '--dsw-alias-bg-layer-2',
+      '--dsw-alias-bg-layer-3',
+      '--dsw-specific-sidebar-fill',
+      '--dsw-specific-input-major',
+      '--dsw-alias-bg-module-platform',
+      '--dsw-specific-selector',
+      '--dsw-alias-bg-multi-select',
+      '--dsw-alias-markdown-code-block',
+      '--dsw-alias-markdown-code-block-banner',
+      '--dsw-alias-markdown-inline-code',
+      '--dsw-alias-markdown-tag',
+      '--dsw-alias-markdown-placeholder',
+    ])
 
-    const FLOAT_TOKENS = Object.freeze({
-      light: Object.freeze([
-        ['--dsw-alias-bg-overlay', '250 253 248'],
-        ['--dsw-specific-menu', '250 253 248'],
-        ['--dsw-specific-tip', '245 250 242'],
-      ]),
-      dark: Object.freeze([
-        ['--dsw-alias-bg-overlay', '38 48 55'],
-        ['--dsw-specific-menu', '38 48 55'],
-        ['--dsw-specific-tip', '44 55 63'],
-      ]),
-    })
+    const FLOAT_TOKENS = Object.freeze([
+      '--dsw-alias-bg-overlay',
+      '--dsw-specific-menu',
+      '--dsw-specific-tip',
+    ])
 
-    function tokenRules(tokens, opacityVar) {
-      return tokens.map(([token, rgb]) => `  ${token}: rgb(${rgb} / var(${opacityVar})) !important;`).join('\n')
+    function alphaRules(tokens, colors, opacityVar) {
+      return tokens.map((token) => {
+        const color = colors[token]
+        // A token the active theme does not define keeps its own value: an
+        // unreadable colour would invalidate the declaration and leave the
+        // surface unpainted.
+        if (color === undefined || color === '') return ''
+        return `  ${token}: color-mix(in srgb, ${color} calc(var(${opacityVar}) * 100%), transparent) !important;`
+      }).filter((rule) => rule !== '').join('\n')
     }
 
     function createBackgroundManager() {
-      const style = document.createElement('style')
-      style.dataset.dshAppearancePlus = 'true'
-      style.textContent = `
+      const base = document.createElement('style')
+      base.dataset.dshAppearancePlus = 'true'
+      // Two layers: the background wallpaper behind the interface, and the lock
+      // screen above it. Only the lock screen's fade factor is transitioned.
+      base.textContent = `
+@property ${COVER_FADE_VAR} { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property ${IMAGE_OPACITY_VAR} { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property ${SURFACE_OPACITY_VAR} { syntax: '<number>'; inherits: true; initial-value: 1; }
+@property ${FLOAT_OPACITY_VAR} { syntax: '<number>'; inherits: true; initial-value: 1; }
 body[data-dsh-appearance-background] {
   position: relative;
   isolation: isolate;
@@ -341,7 +381,7 @@ body[data-dsh-appearance-background]::before {
   background-position: center;
   background-size: var(--dsh-appearance-image-size);
   background-repeat: var(--dsh-appearance-image-repeat);
-  opacity: var(--dsh-appearance-image-opacity);
+  opacity: var(${IMAGE_OPACITY_VAR});
   filter: blur(var(--dsh-appearance-image-blur));
 }
 body[data-dsh-appearance-background] #root {
@@ -349,80 +389,186 @@ body[data-dsh-appearance-background] #root {
   z-index: 1;
   background: transparent !important;
 }
-body[data-dsh-appearance-background]:not([data-ds-dark-theme]) {
-${tokenRules(SURFACE_TOKENS.light, SURFACE_OPACITY_VAR)}
-${tokenRules(FLOAT_TOKENS.light, FLOAT_OPACITY_VAR)}
+body[${LOCK_ATTR}] {
+  ${COVER_FADE_VAR}: 0;
+  transition-property: ${COVER_FADE_VAR};
+  transition-duration: ${LOCK_FADE_OUT_SECONDS}s;
+  transition-timing-function: ease-out;
 }
-body[data-dsh-appearance-background][data-ds-dark-theme] {
-${tokenRules(SURFACE_TOKENS.dark, SURFACE_OPACITY_VAR)}
-${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
+body[${LOCK_ATTR}][${COVER_ATTR}] {
+  ${COVER_FADE_VAR}: 1;
+  transition-duration: ${LOCK_FADE_IN_SECONDS}s;
+  transition-timing-function: ease-in-out;
+}
+body[${LOCK_ATTR}]::after {
+  content: '';
+  position: fixed;
+  inset: -36px;
+  z-index: ${COVER_Z_INDEX};
+  pointer-events: none;
+  background-image: var(--dsh-appearance-lock-image);
+  background-position: center;
+  background-size: var(--dsh-appearance-lock-image-size);
+  background-repeat: var(--dsh-appearance-lock-image-repeat);
+  opacity: var(${COVER_FADE_VAR});
 }`
-      document.head.append(style)
+      const tokens = document.createElement('style')
+      tokens.dataset.dshAppearancePlus = 'true'
+      document.head.append(base, tokens)
 
-      function clear() {
-        const body = document.body
-        body.removeAttribute('data-dsh-appearance-background')
-        for (const name of [
-          '--dsh-appearance-image', '--dsh-appearance-image-size', '--dsh-appearance-image-repeat',
-          '--dsh-appearance-image-opacity', '--dsh-appearance-image-blur',
-          SURFACE_OPACITY_VAR, FLOAT_OPACITY_VAR,
-        ]) body.style.removeProperty(name)
+      let backgroundSource = ''
+      let lockSource = ''
+      let covered = false
+      let colors = {}
+      let rules = ''
+
+      /**
+       * Read the resolved colour of every surface token from the active theme.
+       * @returns token name to CSS colour, '' for a token this theme omits.
+       */
+      function readColors() {
+        // The override sheet has to leave the cascade first, or the read returns
+        // the alpha version of the very value it is about to replace.
+        tokens.disabled = true
+        const computed = getComputedStyle(document.body)
+        const read = {}
+        try {
+          for (const token of SURFACE_TOKENS) read[token] = computed.getPropertyValue(token).trim()
+          for (const token of FLOAT_TOKENS) read[token] = computed.getPropertyValue(token).trim()
+        } finally { tokens.disabled = false }
+        return read
       }
 
+      /** Re-derive the surface sheet from the current theme and Color theme. */
+      function refreshColors() {
+        colors = readColors()
+        const surfaces = alphaRules(SURFACE_TOKENS, colors, SURFACE_OPACITY_VAR)
+        const floats = alphaRules(FLOAT_TOKENS, colors, FLOAT_OPACITY_VAR)
+        // One colour set serves both base palettes: a color theme carries its
+        // own scheme, and the built-in palette is re-read when the scheme flips.
+        const next = `body[data-dsh-appearance-background]:not([data-ds-dark-theme]) {\n${surfaces}\n${floats}\n}\n`
+          + `body[data-dsh-appearance-background][data-ds-dark-theme] {\n${surfaces}\n${floats}\n}`
+        if (next === rules) return
+        rules = next
+        tokens.textContent = next
+      }
+
+      /**
+       * Place one image, or clear its layer when its source is gone.
+       * @param slot - which of the two layers this image belongs to.
+       * @param value - the image address, possibly a device-local sentinel.
+       * @param localSource - live preview source for a device-local image.
+       */
+      function applyImage(slot, value, localSource) {
+        const source = sourceFor(slot, value, localSource)
+        const body = document.body
+        if (source === '') { clearImage(slot); return }
+        const lock = slot === 'lock'
+        const fit = lock ? value.lockFit : value.backgroundFit
+        const size = fit === 'stretch' ? '100% 100%' : fit === 'tile' ? 'auto' : fit
+        const repeat = fit === 'tile' ? 'repeat' : 'no-repeat'
+        const prefix = lock ? '--dsh-appearance-lock-image' : '--dsh-appearance-image'
+        body.setAttribute(lock ? LOCK_ATTR : 'data-dsh-appearance-background', '')
+        body.style.setProperty(prefix, cssImage(source))
+        body.style.setProperty(prefix + '-size', size)
+        body.style.setProperty(prefix + '-repeat', repeat)
+        if (lock) {
+          lockSource = source
+          return
+        }
+        backgroundSource = source
+        body.style.setProperty(IMAGE_OPACITY_VAR, String(clamp(value.backgroundOpacity, 0.05, 1)))
+        body.style.setProperty('--dsh-appearance-image-blur', clamp(value.backgroundBlur, 0, 30) + 'px')
+        const surface = clamp(value.surfaceOpacity, SURFACE_OPACITY_MIN, 1)
+        body.style.setProperty(SURFACE_OPACITY_VAR, String(surface))
+        body.style.setProperty(FLOAT_OPACITY_VAR, String(Math.max(surface, FLOAT_OPACITY_MIN)))
+      }
+
+      function clearImage(slot) {
+        const body = document.body
+        const lock = slot === 'lock'
+        const prefix = lock ? '--dsh-appearance-lock-image' : '--dsh-appearance-image'
+        body.removeAttribute(lock ? LOCK_ATTR : 'data-dsh-appearance-background')
+        const names = [prefix, prefix + '-size', prefix + '-repeat']
+        if (lock) {
+          lockSource = ''
+          body.removeAttribute(COVER_ATTR)
+        } else {
+          backgroundSource = ''
+          names.push(IMAGE_OPACITY_VAR, '--dsh-appearance-image-blur', SURFACE_OPACITY_VAR, FLOAT_OPACITY_VAR)
+        }
+        for (const name of names) body.style.removeProperty(name)
+      }
+
+      function syncCover() {
+        const body = document.body
+        if (lockSource !== '' && covered) body.setAttribute(COVER_ATTR, '')
+        else body.removeAttribute(COVER_ATTR)
+      }
+
+      refreshColors()
+
       return {
-        apply(settings, localSource) {
-          const source = sourceFor(settings, localSource)
-          if (source === '') { clear(); return }
-          const fit = settings.backgroundFit
-          const size = fit === 'stretch' ? '100% 100%' : fit === 'tile' ? 'auto' : fit
-          const repeat = fit === 'tile' ? 'repeat' : 'no-repeat'
-          const body = document.body
-          body.setAttribute('data-dsh-appearance-background', '')
-          body.style.setProperty('--dsh-appearance-image', cssImage(source))
-          body.style.setProperty('--dsh-appearance-image-size', size)
-          body.style.setProperty('--dsh-appearance-image-repeat', repeat)
-          body.style.setProperty('--dsh-appearance-image-opacity', String(clamp(settings.backgroundOpacity, 0.05, 1)))
-          body.style.setProperty('--dsh-appearance-image-blur', clamp(settings.backgroundBlur, 0, 30) + 'px')
-          const surface = clamp(settings.surfaceOpacity, SURFACE_OPACITY_MIN, 1)
-          body.style.setProperty(SURFACE_OPACITY_VAR, String(surface))
-          body.style.setProperty(FLOAT_OPACITY_VAR, String(Math.max(surface, FLOAT_OPACITY_MIN)))
+        /** Place both images from one settings value; the layer owns the rest. */
+        apply(settings, sources) {
+          // The client can apply before the shell stylesheets are parsed; a
+          // later theme change refills the gaps, and this retries until it does.
+          if (Object.values(colors).includes('')) refreshColors()
+          applyImage('background', settings, sources.background)
+          applyImage('lock', settings, sources.lock)
+          syncCover()
         },
-        dispose() { clear(); style.remove() },
+        /** Raise or drop the lock screen over the interface. */
+        setCover(next) {
+          if (covered === next) return
+          covered = next
+          syncCover()
+        },
+        /** Whether the opaque lock screen is the layer the user is looking at. */
+        isCovered() { return lockSource !== '' && covered },
+        refreshColors,
+        dispose() {
+          clearImage('background')
+          clearImage('lock')
+          base.remove()
+          tokens.remove()
+        },
       }
     }
 
-    function readLocalImage() {
+    function readLocalImage(slot) {
       try {
-        const stored = localStorage.getItem(LOCAL_IMAGE_KEY) ?? ''
+        const stored = localStorage.getItem(SLOTS[slot].imageKey) ?? ''
         // Record that this origin held an image, so an emptied store can be
         // told apart from an origin that never received one.
-        if (stored !== '') localStorage.setItem(LOCAL_IMAGE_SEEN_KEY, '1')
+        if (stored !== '') localStorage.setItem(SLOTS[slot].seenKey, '1')
         return stored
       } catch { return '' }
     }
 
     /** Whether this origin ever stored a local image, so its absence means removal. */
-    function localImageEverSeen() {
-      try { return localStorage.getItem(LOCAL_IMAGE_SEEN_KEY) !== null }
+    function localImageEverSeen(slot) {
+      try { return localStorage.getItem(SLOTS[slot].seenKey) !== null }
       catch { return false }
     }
 
-    function writeLocalImage(dataUrl) {
+    function writeLocalImage(slot, dataUrl) {
       try {
-        localStorage.setItem(LOCAL_IMAGE_KEY, dataUrl)
-        localStorage.setItem(LOCAL_IMAGE_SEEN_KEY, '1')
+        localStorage.setItem(SLOTS[slot].imageKey, dataUrl)
+        localStorage.setItem(SLOTS[slot].seenKey, '1')
       }
       catch { throw new Error('image-store-failed') }
     }
 
-    function deleteLocalImage() {
-      try { localStorage.removeItem(LOCAL_IMAGE_KEY) } catch {}
+    function deleteLocalImage(slot) {
+      try { localStorage.removeItem(SLOTS[slot].imageKey) } catch {}
     }
 
     function createController(ctx, scope, background) {
       let state = {
         status: 'loading', value: DEFAULTS, writable: false, revision: undefined,
-        saving: false, previewing: false, error: null, localMissing: false,
+        saving: false, previewing: false, error: null,
+        localMissing: { background: false, lock: false },
       }
       let current = DEFAULTS
       let saved = DEFAULTS
@@ -431,7 +577,14 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
       let saveTail = Promise.resolve()
       let clearingMissingLocalImage = false
       let disposePalette
-      let persistedLocalSource = readLocalImage()
+      const persistedLocalSource = { background: readLocalImage('background'), lock: readLocalImage('lock') }
+      // Lock-screen state: entered after the idle delay with no Agent running.
+      let busy = false
+      let pageOpen = false
+      let lastActivity = Date.now()
+      let idleElapsed = false
+      // Last pointer position, to tell a real move from an engine re-emission.
+      let lastPointer = null
       const store = createSnapshotStore(state)
 
       function publish(patch) {
@@ -439,7 +592,80 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
         store.set(state)
       }
 
-      function applySettings(value, localSource) {
+      function idleDelayMs() {
+        return clamp(current.lockSeconds, IDLE_SECONDS_MIN, IDLE_SECONDS_MAX) * 1000
+      }
+
+      /**
+       * Whether the lock screen belongs on screen right now. The layer owns the
+       * last value, and the settings page is the one place it must stay away so
+       * the interface being configured stays reachable. The window itself is
+       * never resized or made fullscreen: the lock screen owns page pixels only.
+       */
+      function refreshCover() {
+        background.setCover(current.lockEnabled === true && !pageOpen && !busy && idleElapsed)
+      }
+
+      function openPage() {
+        if (pageOpen) return
+        pageOpen = true
+        refreshCover()
+      }
+
+      function closePage() {
+        if (!pageOpen) return
+        pageOpen = false
+        refreshCover()
+      }
+
+      function setBusy(next) {
+        if (busy === next) return
+        busy = next
+        refreshCover()
+      }
+
+      function noteActivity() {
+        lastActivity = Date.now()
+        if (!idleElapsed) return
+        idleElapsed = false
+        refreshCover()
+      }
+
+      /** An opaque lock screen consumes the click that dismisses it. */
+      function notePointerDown(event) {
+        if (background.isCovered()) {
+          event.stopPropagation()
+          event.preventDefault()
+        }
+        noteActivity()
+      }
+
+      /**
+       * A pointer move counts only when the pointer actually moved: resizing or
+       * moving the window makes the engine re-emit a move at the position the
+       * pointer already had, which would otherwise retire the lock screen.
+       */
+      function notePointerMove(event) {
+        const position = `${event.screenX},${event.screenY}`
+        if (position === lastPointer) return
+        lastPointer = position
+        noteActivity()
+      }
+
+      const idleTimer = setInterval(() => {
+        const elapsed = Date.now() - lastActivity >= idleDelayMs()
+        if (elapsed === idleElapsed) return
+        idleElapsed = elapsed
+        refreshCover()
+      }, IDLE_TICK_MS)
+
+      window.addEventListener('pointerdown', notePointerDown, { capture: true })
+      window.addEventListener('pointermove', notePointerMove, { capture: true, passive: true })
+      for (const type of ACTIVITY_EVENTS) {
+        window.addEventListener(type, noteActivity, { capture: true, passive: true })
+      }
+
+      function applySettings(value, localSources = {}) {
         const previousPreset = current.preset
         current = value
         const palette = paletteFor(value.preset)
@@ -458,24 +684,33 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
           disposePalette = undefined
           if (previousPreset !== 'default') ctx.theme.setTheme('system')
         }
-        background.apply(value, value.backgroundUrl === LOCAL_IMAGE ? localSource ?? persistedLocalSource : undefined)
+        background.apply(value, localSources)
+        refreshCover()
       }
 
       function derive() {
         const snapshot = scope.getSnapshot()
         let value = snapshot.value === undefined ? DEFAULTS : { ...DEFAULTS, ...snapshot.value }
-        const missing = !previewing && value.backgroundUrl === LOCAL_IMAGE && persistedLocalSource === ''
-        // Only the origin that stored an image may retire the profile's
-        // sentinel; writing from any other origin would erase a background the
-        // storing origin still holds, because the settings document is shared
-        // while localStorage is per origin.
-        const retirable = missing && localImageEverSeen()
-        if (retirable) {
-          value = { ...value, backgroundUrl: '' }
-          if (!clearingMissingLocalImage) {
-            clearingMissingLocalImage = true
-            void scope.set('backgroundUrl', '').finally(() => { clearingMissingLocalImage = false })
+        const localMissing = { background: false, lock: false }
+        const retired = {}
+        for (const slot of SLOT_NAMES) {
+          const field = SLOTS[slot].field
+          const missing = !previewing && value[field] === SLOTS[slot].sentinel && persistedLocalSource[slot] === ''
+          // Only the origin that stored an image may retire the profile's
+          // sentinel; writing from any other origin would erase an image the
+          // storing origin still holds, because the settings document is shared
+          // while localStorage is per origin.
+          if (missing && localImageEverSeen(slot)) {
+            value = { ...value, [field]: '' }
+            retired[field] = ''
+          } else {
+            localMissing[slot] = missing
           }
+        }
+        if (Object.keys(retired).length > 0 && !clearingMissingLocalImage) {
+          clearingMissingLocalImage = true
+          void scope.mutate(Object.entries(retired).map(([field, next]) => ({ op: 'set', path: [field], value: next })))
+            .finally(() => { clearingMissingLocalImage = false })
         }
         saved = value
         publish({
@@ -483,7 +718,7 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
           value,
           writable: snapshot.writable,
           revision: snapshot.revision,
-          localMissing: missing && !retirable,
+          localMissing,
         })
         if (snapshot.value !== undefined && !previewing) applySettings(value)
       }
@@ -492,39 +727,49 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
       derive()
 
       return {
+        openPage,
+        closePage,
+        setBusy,
         inject: () => ({
           hooks: { appearance: store },
-          preview: (draft, localSource) => {
+          open: openPage,
+          close: closePage,
+          preview: (draft, localSources) => {
             previewing = true
             publish({ previewing: true, error: null })
-            applySettings({ ...DEFAULTS, ...draft }, localSource)
+            applySettings({ ...DEFAULTS, ...draft }, localSources)
           },
           restore: () => {
             previewing = false
             publish({ previewing: false })
             applySettings(saved)
           },
-          save: (draft, localDataUrl) => {
+          save: (draft, localDataUrls = {}) => {
             const generation = ++saveGeneration
             publish({ saving: true, error: null })
             const operation = async () => {
-              const previousLocalSource = persistedLocalSource
-              let replacedLocalSource = false
+              const previous = { ...persistedLocalSource }
+              const replaced = []
               try {
-                if (draft.backgroundUrl === LOCAL_IMAGE && typeof localDataUrl === 'string' && localDataUrl !== '') {
-                  writeLocalImage(localDataUrl)
-                  persistedLocalSource = localDataUrl
-                  replacedLocalSource = true
-                } else if (draft.backgroundUrl === LOCAL_IMAGE && persistedLocalSource === '') {
-                  throw new Error('image-store-failed')
+                for (const slot of SLOT_NAMES) {
+                  const field = SLOTS[slot].field
+                  const dataUrl = localDataUrls[slot]
+                  if (draft[field] === SLOTS[slot].sentinel && typeof dataUrl === 'string' && dataUrl !== '') {
+                    writeLocalImage(slot, dataUrl)
+                    persistedLocalSource[slot] = dataUrl
+                    replaced.push(slot)
+                  } else if (draft[field] === SLOTS[slot].sentinel && persistedLocalSource[slot] === '') {
+                    throw new Error('image-store-failed')
+                  }
                 }
                 const fields = Object.keys(DEFAULTS)
                 await scope.mutate(fields.map((field) => ({
                   op: 'set', path: [field], value: draft[field],
                 })))
-                if (draft.backgroundUrl !== LOCAL_IMAGE) {
-                  deleteLocalImage()
-                  persistedLocalSource = ''
+                for (const slot of SLOT_NAMES) {
+                  if (draft[SLOTS[slot].field] === SLOTS[slot].sentinel) continue
+                  deleteLocalImage(slot)
+                  persistedLocalSource[slot] = ''
                 }
                 if (generation === saveGeneration) {
                   saved = { ...DEFAULTS, ...draft }
@@ -534,14 +779,14 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
                 }
                 return { ok: true }
               } catch (error) {
-                if (replacedLocalSource) {
-                  if (previousLocalSource === '') deleteLocalImage()
+                for (const slot of replaced) {
+                  if (previous[slot] === '') deleteLocalImage(slot)
                   else {
-                    try { writeLocalImage(previousLocalSource) } catch {}
+                    try { writeLocalImage(slot, previous[slot]) } catch {}
                   }
-                  persistedLocalSource = previousLocalSource
-                  if (generation === saveGeneration) applySettings(saved)
+                  persistedLocalSource[slot] = previous[slot]
                 }
+                if (replaced.length > 0 && generation === saveGeneration) applySettings(saved)
                 const message = error instanceof Error ? error.message : String(error)
                 if (generation === saveGeneration) publish({ saving: false, error: message })
                 return { ok: false, error: message }
@@ -554,6 +799,10 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
         }),
         dispose: () => {
           unsubscribe()
+          clearInterval(idleTimer)
+          window.removeEventListener('pointerdown', notePointerDown, { capture: true })
+          window.removeEventListener('pointermove', notePointerMove, { capture: true })
+          for (const type of ACTIVITY_EVENTS) window.removeEventListener(type, noteActivity, { capture: true })
           disposePalette?.()
         },
       }
@@ -626,17 +875,26 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
       const [draft, setDraft] = React.useState(state.value)
       const [notice, setNotice] = React.useState('')
       const [processingImage, setProcessingImage] = React.useState(false)
-      const localPreviewUrlRef = React.useRef('')
-      const localDataUrlRef = React.useRef(null)
+      // One live preview URL and one optimised data URL per image slot.
+      const localPreviewUrlsRef = React.useRef({})
+      const localDataUrlsRef = React.useRef({})
       const draftRef = React.useRef(state.value)
       const pendingSaveRef = React.useRef(null)
       const saveTimerRef = React.useRef(null)
       const saveRequestRef = React.useRef(0)
 
-      function clearLocalPreview() {
-        if (localPreviewUrlRef.current !== '') URL.revokeObjectURL(localPreviewUrlRef.current)
-        localPreviewUrlRef.current = ''
-        localDataUrlRef.current = null
+      function localSources() {
+        return { ...localPreviewUrlsRef.current }
+      }
+
+      function clearLocalPreview(slot) {
+        const slots = slot === undefined ? SLOT_NAMES : [slot]
+        for (const name of slots) {
+          const url = localPreviewUrlsRef.current[name]
+          if (typeof url === 'string' && url !== '') URL.revokeObjectURL(url)
+          delete localPreviewUrlsRef.current[name]
+          delete localDataUrlsRef.current[name]
+        }
       }
 
       React.useEffect(() => {
@@ -646,15 +904,21 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
         clearLocalPreview()
       }, [state.revision, state.previewing, state.saving])
 
-      React.useEffect(() => () => {
-        if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
-        if (pendingSaveRef.current !== null) {
-          const pending = pendingSaveRef.current
-          pendingSaveRef.current = null
-          void props.save(pending.draft, pending.localDataUrl)
+      React.useEffect(() => {
+        // The page is the images' preview: keep them on screen while it is
+        // mounted, and keep the lock screen away whatever the idle clock says.
+        props.open()
+        return () => {
+          props.close()
+          if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
+          if (pendingSaveRef.current !== null) {
+            const pending = pendingSaveRef.current
+            pendingSaveRef.current = null
+            void props.save(pending.draft, pending.localDataUrls)
+          }
+          clearLocalPreview()
+          props.restore()
         }
-        if (localPreviewUrlRef.current !== '') URL.revokeObjectURL(localPreviewUrlRef.current)
-        props.restore()
       }, [])
 
       if (state.status === 'unavailable') {
@@ -670,29 +934,29 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
         pendingSaveRef.current = null
         if (pending === null) return
         const request = ++saveRequestRef.current
-        void props.save(pending.draft, pending.localDataUrl).then((result) => {
+        void props.save(pending.draft, pending.localDataUrls).then((result) => {
           if (request !== saveRequestRef.current) return
           setNotice(result.ok ? props.t('saved')
             : result.error === 'image-store-failed' ? props.t('imageStoreFailed') : props.t('saveFailed') + result.error)
         })
       }
 
-      function apply(next, localSource, localDataUrl, delay) {
+      function apply(next, delay) {
         draftRef.current = next
         setDraft(next)
-        props.preview(next, localSource)
+        props.preview(next, localSources())
         setNotice('')
-        pendingSaveRef.current = { draft: next, localDataUrl }
+        pendingSaveRef.current = { draft: next, localDataUrls: { ...localDataUrlsRef.current } }
         if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current)
         if (delay === 0) flushSave()
         else saveTimerRef.current = setTimeout(flushSave, delay)
       }
 
-      function update(field, value, localSource = localPreviewUrlRef.current, localDataUrl = localDataUrlRef.current, delay = 0) {
-        apply({ ...draftRef.current, [field]: value }, localSource, localDataUrl, delay)
+      function update(field, value, delay = 0) {
+        apply({ ...draftRef.current, [field]: value }, delay)
       }
 
-      async function chooseLocal(event) {
+      async function chooseLocal(slot, event) {
         const file = event.target.files?.[0]
         event.target.value = ''
         if (file === undefined) return
@@ -705,29 +969,68 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
           setNotice(props.t('imageTooLarge'))
           return
         }
-        clearLocalPreview()
+        clearLocalPreview(slot)
         const objectUrl = URL.createObjectURL(file)
-        localPreviewUrlRef.current = objectUrl
+        localPreviewUrlsRef.current[slot] = objectUrl
+        const field = SLOTS[slot].field
         const previous = draftRef.current
-        const next = { ...previous, backgroundUrl: LOCAL_IMAGE }
+        const next = { ...previous, [field]: SLOTS[slot].sentinel }
         draftRef.current = next
         setDraft(next)
-        props.preview(next, objectUrl)
+        props.preview(next, localSources())
         setProcessingImage(true)
         try {
           const dataUrl = await optimizeLocalImage(file, objectUrl)
-          if (localPreviewUrlRef.current !== objectUrl) return
-          localDataUrlRef.current = dataUrl
-          apply(next, objectUrl, dataUrl, 0)
+          if (localPreviewUrlsRef.current[slot] !== objectUrl) return
+          localDataUrlsRef.current[slot] = dataUrl
+          apply(next, 0)
         } catch (error) {
-          if (localPreviewUrlRef.current !== objectUrl) return
-          clearLocalPreview()
+          if (localPreviewUrlsRef.current[slot] !== objectUrl) return
+          clearLocalPreview(slot)
           draftRef.current = previous
           setDraft(previous)
-          props.preview(previous)
+          props.preview(previous, localSources())
           const code = error instanceof Error ? error.message : ''
           setNotice(code === 'image-store-failed' ? props.t('imageStoreFailed') : props.t('invalidImage'))
         } finally { setProcessingImage(false) }
+      }
+
+      /** The address row and the local-image buttons shared by both image slots. */
+      function imagePicker(slot) {
+        const field = SLOTS[slot].field
+        const local = draft[field] === SLOTS[slot].sentinel
+        return [
+          h('label', { key: 'url', style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+            h('span', null, props.t(slot === 'lock' ? 'lockUrl' : 'backgroundUrl')),
+            h('input', {
+              type: local ? 'text' : 'url', disabled,
+              readOnly: local,
+              value: local
+                ? props.t(state.localMissing[slot] ? 'localMissing' : 'localSelected')
+                : draft[field],
+              placeholder: props.t('backgroundPlaceholder'),
+              onChange: (event) => { clearLocalPreview(slot); update(field, event.target.value, 350) },
+              style: { height: '36px', boxSizing: 'border-box', padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
+            }),
+          ),
+          h('div', { key: 'buttons', style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+            h('label', { style: buttonStyle(false, disabled) },
+              props.t('chooseLocal'),
+              h('input', { type: 'file', accept: 'image/*', disabled, onChange: (event) => chooseLocal(slot, event), style: { display: 'none' } }),
+            ),
+            h('button', { type: 'button', disabled, onClick: () => { clearLocalPreview(slot); update(field, '') }, style: buttonStyle(false, disabled) }, props.t('removeBackground')),
+          ),
+        ]
+      }
+
+      function fitRow(field, value) {
+        return h('label', { style: { display: 'grid', gridTemplateColumns: '130px 1fr', gap: '12px', alignItems: 'center' } },
+          h('span', null, props.t('fit')),
+          h('select', {
+            value, disabled, onChange: (event) => update(field, event.target.value),
+            style: { height: '34px', padding: '5px 9px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
+          }, ...['cover', 'contain', 'stretch', 'tile'].map((fit) => h('option', { key: fit, value: fit }, props.t('fit.' + fit)))),
+        )
       }
 
       const presetButtons = [
@@ -757,42 +1060,36 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
         ),
         h('section', { style: sectionStyle() },
           h('strong', { style: { fontSize: '14px' } }, props.t('background')),
-          h('label', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
-            h('span', null, props.t('backgroundUrl')),
+          ...imagePicker('background'),
+          h(RangeRow, { label: props.t('backgroundOpacity'), value: Math.round(draft.backgroundOpacity * 100), min: 5, max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('backgroundOpacity', Number(event.target.value) / 100, 150) }),
+          h(RangeRow, { label: props.t('surfaceOpacity'), value: Math.round(draft.surfaceOpacity * 100), min: Math.round(SURFACE_OPACITY_MIN * 100), max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('surfaceOpacity', Number(event.target.value) / 100, 150) }),
+          h(RangeRow, { label: props.t('blur'), value: draft.backgroundBlur, min: 0, max: 30, step: 1, suffix: 'px', disabled, onChange: (event) => update('backgroundBlur', Number(event.target.value), 150) }),
+          fitRow('backgroundFit', draft.backgroundFit),
+        ),
+        h('section', { style: sectionStyle() },
+          h('strong', { style: { fontSize: '14px' } }, props.t('lock')),
+          ...imagePicker('lock'),
+          fitRow('lockFit', draft.lockFit),
+          h('label', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
             h('input', {
-              type: draft.backgroundUrl === LOCAL_IMAGE ? 'text' : 'url', disabled,
-              readOnly: draft.backgroundUrl === LOCAL_IMAGE,
-              value: draft.backgroundUrl === LOCAL_IMAGE
-                ? props.t(state.localMissing ? 'localMissing' : 'localSelected')
-                : draft.backgroundUrl,
-              placeholder: props.t('backgroundPlaceholder'),
-              onChange: (event) => { clearLocalPreview(); update('backgroundUrl', event.target.value, '', null, 350) },
-              style: { height: '36px', boxSizing: 'border-box', padding: '7px 10px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
+              type: 'checkbox', checked: draft.lockEnabled === true, disabled,
+              onChange: (event) => update('lockEnabled', event.target.checked),
             }),
+            h('span', null, props.t('lockEnabled')),
           ),
-          h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
-            h('label', { style: buttonStyle(false, disabled) },
-              props.t('chooseLocal'),
-              h('input', { type: 'file', accept: 'image/*', disabled, onChange: chooseLocal, style: { display: 'none' } }),
-            ),
-            h('button', { type: 'button', disabled, onClick: () => { clearLocalPreview(); update('backgroundUrl', '', '') }, style: buttonStyle(false, disabled) }, props.t('removeBackground')),
-          ),
-          h(RangeRow, { label: props.t('backgroundOpacity'), value: Math.round(draft.backgroundOpacity * 100), min: 5, max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('backgroundOpacity', Number(event.target.value) / 100, localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
-          h(RangeRow, { label: props.t('surfaceOpacity'), value: Math.round(draft.surfaceOpacity * 100), min: Math.round(SURFACE_OPACITY_MIN * 100), max: 100, step: 1, suffix: '%', disabled, onChange: (event) => update('surfaceOpacity', Number(event.target.value) / 100, localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
-          h(RangeRow, { label: props.t('blur'), value: draft.backgroundBlur, min: 0, max: 30, step: 1, suffix: 'px', disabled, onChange: (event) => update('backgroundBlur', Number(event.target.value), localPreviewUrlRef.current, localDataUrlRef.current, 150) }),
-          h('label', { style: { display: 'grid', gridTemplateColumns: '130px 1fr', gap: '12px', alignItems: 'center' } },
-            h('span', null, props.t('fit')),
-            h('select', {
-              value: draft.backgroundFit, disabled, onChange: (event) => update('backgroundFit', event.target.value),
-              style: { height: '34px', padding: '5px 9px', borderRadius: '8px', border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-base)', color: 'var(--dsw-alias-label-primary)' },
-            }, ...['cover', 'contain', 'stretch', 'tile'].map((fit) => h('option', { key: fit, value: fit }, props.t('fit.' + fit)))),
-          ),
+          h(RangeRow, {
+            label: props.t('lockSeconds'), value: draft.lockSeconds,
+            min: IDLE_SECONDS_MIN, max: IDLE_SECONDS_MAX, step: 1, suffix: 's',
+            disabled: disabled || draft.lockEnabled !== true,
+            onChange: (event) => update('lockSeconds', Number(event.target.value), 200),
+          }),
+          h('span', { style: { color: 'var(--dsw-alias-label-secondary)', lineHeight: '18px' } }, props.t('lockHint')),
         ),
         h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
-          h('button', { type: 'button', disabled, onClick: () => { clearLocalPreview(); apply({ ...DEFAULTS }, '', null, 0) }, style: buttonStyle(false, disabled) }, props.t('reset')),
+          h('button', { type: 'button', disabled, onClick: () => { clearLocalPreview(); apply({ ...DEFAULTS }, 0) }, style: buttonStyle(false, disabled) }, props.t('reset')),
           processingImage && h('span', { style: { color: 'var(--dsw-alias-label-secondary)' } }, props.t('processingImage')),
           state.saving && h('span', { style: { color: 'var(--dsw-alias-label-secondary)' } }, props.t('saving')),
-          state.localMissing && h('span', { style: { color: 'var(--dsw-alias-state-warn-primary)' } }, props.t('localMissing')),
+          (state.localMissing.background || state.localMissing.lock) && h('span', { style: { color: 'var(--dsw-alias-state-warn-primary)' } }, props.t('localMissing')),
           notice && h('span', { style: { color: notice === props.t('saved') ? 'var(--dsw-alias-state-success-primary)' : 'var(--dsw-alias-state-error-primary)' } }, notice),
           state.error && h('span', { style: { color: 'var(--dsw-alias-state-error-primary)' } }, state.error),
         ),
@@ -811,8 +1108,27 @@ ${tokenRules(FLOAT_TOKENS.dark, FLOAT_OPACITY_VAR)}
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'appearance-plus: dictionaries')
         const background = createBackgroundManager()
         ctx.effect(() => () => { background.dispose() }, 'appearance-plus: background layer')
+        // A Color theme arrives as a theme token override, so the surface
+        // colours the wallpaper derives from it change on the same event.
+        ctx.effect(() => ctx.on('theme/change', () => { background.refreshColors() }), 'appearance-plus: surface colours')
         const scope = ctx.settingsScope.bind({ namespace: NS })
         const controller = createController(ctx, scope, background)
+        // Optional: without the sessions service the wallpaper never treats a
+        // running Agent as a reason to stay hidden.
+        ctx.inject(['sessions'], (sessionCtx) => {
+          const list = sessionCtx.sessions.list
+          const update = () => {
+            const byId = list.getSnapshot().byId
+            let running = false
+            for (const id of Object.keys(byId)) {
+              if (byId[id].running === true) { running = true; break }
+            }
+            controller.setBusy(running)
+          }
+          const unsubscribe = list.subscribe(update)
+          update()
+          ctx.effect(() => unsubscribe, 'appearance-plus: session activity')
+        })
         const t = ctx.locale.bind(NS)
         ctx.slots.inject('plugins.item', () => ctx.slots.register({
           name: 'plugins.item',

@@ -1,7 +1,7 @@
 {
   "name": "@local/dsh-appearance-plus",
-  "description": "DeepSeek Harness appearance bundle with selectable color themes and configurable image backgrounds.",
-  "version": "0.1.0",
+  "description": "DeepSeek Harness appearance bundle with selectable color themes, configurable image backgrounds, and an idle lock screen.",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "main": "index.js",

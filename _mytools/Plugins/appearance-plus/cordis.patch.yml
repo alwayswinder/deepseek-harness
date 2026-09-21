@@ -10,3 +10,7 @@
         backgroundBlur: 0
         backgroundFit: cover
         surfaceOpacity: 0.62
+        lockUrl: ''
+        lockEnabled: true
+        lockSeconds: 20
+        lockFit: cover

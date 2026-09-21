@@ -21,6 +21,14 @@ export const Config = z.object({
   // slider cannot offer a value this schema rejects, or the write fails and the
   // page falls back to the last saved value.
   surfaceOpacity: z.number().min(0.15).max(1).default(0.62),
+  // The lock screen is a second, independent image: `lockEnabled` gates it
+  // behind the quiet period `lockSeconds`, after which it covers the whole
+  // interface. The bounds are shared with the browser half's slider, so the page
+  // cannot offer a value this schema rejects.
+  lockUrl: z.string().default(''),
+  lockEnabled: z.boolean().default(true),
+  lockSeconds: z.number().step(1).min(3).max(600).default(20),
+  lockFit: z.union(['cover', 'contain', 'stretch', 'tile']).default('cover'),
 })
 
 /** Register the settings namespace when the profile provides durable settings. */

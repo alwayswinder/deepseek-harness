@@ -9,33 +9,41 @@
 
   const ui = {
     intro: $("#intro"), result: $("#result"), start: $("#startButton"), restart: $("#restartButton"),
-    skillPanel: $("#skillPanel"), skillCards: $$(".skill-card"), rhythmPanel: $("#rhythmPanel"),
+    skillPanel: $("#skillPanel"), charge: $("#chargeButton"), transform: $("#transformButton"), attack: $("#attackButton"),
+    defend: $("#defendButton"), skip: $("#skipButton"), rhythmPanel: $("#rhythmPanel"),
     notes: $("#notesLayer"), sequenceLabel: $("#sequenceLabel"), timingArc: $("#timingArc"),
     timingKey: $("#timingKey"), timingCaption: $("#timingCaption"),
     judgement: $("#judgementText"), combo: $("#comboText"), legend: $("#rhythmLegend"),
     qte: $("#qtePanel"), messageKicker: $("#messageKicker"), message: $("#messageText"),
     playerHp: $("#playerHpBar"), enemyHp: $("#enemyHpBar"), playerHpText: $("#playerHpText"),
-    enemyHpText: $("#enemyHpText"), energy: $("#energyPips"), stagger: $("#staggerPips"),
+    enemyHpText: $("#enemyHpText"), playerAp: $("#playerApPips"), stagger: $("#staggerPips"),
+    playerAtb: $("#playerAtbBar"), bossAtb: $("#bossAtbBar"), guardBadge: $("#guardBadge"), chargeBadge: $("#chargeBadge"),
+    transformBadge: $("#transformBadge"), bossAp: $("#bossApPips"),
+    playerSpeed: $("#playerSpeedText"), bossSpeed: $("#bossSpeedText"),
     turn: $("#turnLabel"), round: $("#roundLabel"), flash: $("#flash"), mute: $("#muteButton"),
     resultEyebrow: $("#resultEyebrow"), resultTitle: $("#resultTitle"), statRounds: $("#statRounds"),
     statPerfect: $("#statPerfect"), statCombo: $("#statCombo")
   };
 
-  const skills = [
-    { name: "月蚀连斩", code: "LUNAR SEVER", keys: ["left", "right", "left", "right"], gaps: [650, 620, 720], lead: 1050, base: 26, energy: 1, color: "#76fff0" },
-    { name: "贯星重刃", code: "STAR PIERCER", keys: ["right", "right", "left", "right"], gaps: [820, 780, 900], lead: 1150, base: 38, energy: 1, color: "#ffbd5c" },
-    { name: "苍穹处决", code: "SKY EXECUTION", keys: ["left", "right", "right", "left", "right"], gaps: [600, 620, 760, 620], lead: 1050, base: 55, energy: -2, color: "#c7a5ff" }
-  ];
+  const PLAYER_MAX_HP = 60;
+  const BOSS_MAX_HP = 320;
+  const ATTACK_BASE_DAMAGE = 40;
+  const ATTACK_COLOR = "#76fff0";
+  const BOSS_HOLD_CHANCE = .20;
 
   const enemyPatterns = [
-    { name: "撕裂三连", beats: [800, 640, 640], damage: 10 },
-    { name: "暴虐突袭", beats: [630, 430, 800, 440], damage: 9 },
-    { name: "终焉乱舞", beats: [530, 530, 410, 720, 410], damage: 8 }
+    { name: "撕裂三连", beats: [800, 640, 640], damage: 11 },
+    { name: "暴虐突袭", beats: [630, 430, 800, 440], damage: 10 },
+    { name: "终焉乱舞", beats: [530, 530, 410, 720, 410], damage: 9 }
   ];
 
+  const ATB_RATE = .56;
+
   const state = {
-    phase: "intro", round: 1, playerHp: 100, enemyHp: 160, energy: 0, stagger: 5,
-    vulnerability: false, perfectTotal: 0, bestCombo: 0, combo: 0, selectedSkill: 0,
+    phase: "intro", actionCount: 0, bossActions: 0, playerControlId: 0, playerHp: PLAYER_MAX_HP, enemyHp: BOSS_MAX_HP, stagger: 5,
+    playerSpeed: 72, bossSpeed: 36, playerAtb: 0, bossAtb: 35, playerAp: 1, bossAp: 0, bossHolding: false,
+    guarding: false, guardControlId: 0, charged: false, transformUntilControl: 0, currentAttack: null, currentEnemyCombo: false,
+    vulnerability: false, perfectTotal: 0, bestCombo: 0, combo: 0,
     notes: [], sequenceStart: 0, sequenceEnd: 0, qteUntil: 0, qteResolved: false,
     lastTime: 0, shake: 0, flash: 0, playerAction: 0, playerMotion: null, enemyAction: 0, enemyOffset: 0,
     particles: [], slashes: [], damageTexts: [], sparks: [], running: false, muted: false
@@ -77,14 +85,31 @@
   }
 
   function updateHud() {
-    ui.playerHp.style.width = `${Math.max(0, state.playerHp)}%`;
-    ui.enemyHp.style.width = `${Math.max(0, state.enemyHp / 1.6)}%`;
-    ui.playerHpText.textContent = `${Math.max(0, Math.ceil(state.playerHp))} / 100`;
-    ui.enemyHpText.textContent = `${Math.max(0, Math.ceil(state.enemyHp))} / 160`;
-    [...ui.energy.children].forEach((pip, i) => pip.classList.toggle("on", i < state.energy));
+    ui.playerHp.style.width = `${Math.max(0, state.playerHp / PLAYER_MAX_HP * 100)}%`;
+    ui.enemyHp.style.width = `${Math.max(0, state.enemyHp / BOSS_MAX_HP * 100)}%`;
+    ui.playerHpText.textContent = `${Math.max(0, Math.ceil(state.playerHp))} / ${PLAYER_MAX_HP}`;
+    ui.enemyHpText.textContent = `${Math.max(0, Math.ceil(state.enemyHp))} / ${BOSS_MAX_HP}`;
+    [...ui.playerAp.children].forEach((pip, i) => pip.classList.toggle("on", i < state.playerAp));
     [...ui.stagger.children].forEach((pip, i) => pip.classList.toggle("on", i < state.stagger));
-    ui.round.textContent = `ROUND ${String(state.round).padStart(2, "0")}`;
-    ui.skillCards[2].disabled = state.energy < 2 || state.phase !== "choose";
+    ui.playerAtb.style.width = `${state.playerAtb}%`;
+    ui.bossAtb.style.width = `${state.bossAtb}%`;
+    ui.playerSpeed.textContent = `SPD ${state.playerSpeed}`;
+    ui.bossSpeed.textContent = `SPD ${state.bossSpeed}`;
+    ui.guardBadge.classList.toggle("on", state.guarding);
+    ui.chargeBadge.classList.toggle("on", state.charged);
+    ui.transformBadge.classList.toggle("on", isTransformed());
+    ui.transformBadge.textContent = `变身 ${Math.max(0, state.transformUntilControl - state.playerControlId + 1)}`;
+    ui.charge.classList.toggle("armed", state.charged);
+    ui.transform.classList.toggle("armed", isTransformed());
+    ui.defend.classList.toggle("armed", state.guarding);
+    [...ui.bossAp.children].forEach((pip, i) => pip.classList.toggle("on", i < state.bossAp));
+    ui.round.textContent = state.phase === "intro" ? "ATB // STANDBY" : `${isAtbPaused() ? "ATB PAUSED" : "ATB"} // ${state.playerAp} AP`;
+    const canCommand = state.phase === "atb-wait" && state.playerAp > 0;
+    ui.charge.disabled = !canCommand || state.playerAp < 1 || state.charged;
+    ui.transform.disabled = !canCommand || state.playerAp < 1 || isTransformed();
+    ui.attack.disabled = !canCommand || state.playerAp < 1;
+    ui.defend.disabled = !canCommand || state.guarding;
+    ui.skip.disabled = !canCommand;
   }
 
   function setMessage(kicker, text) {
@@ -95,9 +120,13 @@
   function startGame() {
     initAudio();
     Object.assign(state, {
-      phase: "choose", round: 1, playerHp: 100, enemyHp: 160, energy: 0, stagger: 5,
+      phase: "atb-wait", actionCount: 1, bossActions: 0, playerControlId: 1,
+      playerHp: PLAYER_MAX_HP, enemyHp: BOSS_MAX_HP, stagger: 5,
+      playerAtb: 0, bossAtb: 35, playerAp: 1, bossAp: 0, bossHolding: false,
+      guarding: false, guardControlId: 0, charged: false, transformUntilControl: 0, currentAttack: null, currentEnemyCombo: false,
       vulnerability: false, perfectTotal: 0, bestCombo: 0, combo: 0, notes: [],
-      enemyOffset: 0, playerMotion: null, running: true, qteResolved: false
+      enemyOffset: 0, playerAction: 0, playerMotion: null, enemyAction: 0,
+      running: true, qteResolved: false
     });
     state.particles.length = state.slashes.length = state.damageTexts.length = state.sparks.length = 0;
     ui.intro.classList.add("is-hidden");
@@ -106,34 +135,167 @@
     ui.rhythmPanel.classList.add("is-hidden");
     ui.qte.classList.add("is-hidden");
     gameRoot.dataset.input = "";
-    ui.turn.textContent = "玩家回合";
-    setMessage("YOUR TURN", "选择作战指令");
+    ui.turn.textContent = "ATB 实时战斗";
+    setMessage("1 AP READY", "选择指令，双方 ATB 已暂停");
     updateHud();
     tone(220, .08, "sine", .04); tone(330, .12, "sine", .035, .08); tone(494, .2, "sine", .03, .17);
   }
 
-  function chooseSkill(index) {
-    if (state.phase !== "choose") return;
-    const skill = skills[index];
-    if (index === 2 && state.energy < 2) {
-      setMessage("ENERGY LOW", "脉冲能量不足");
+  function spendPlayerAp(cost) {
+    if (state.phase !== "atb-wait" || state.playerAp < cost) {
+      setMessage("AP LOW", "行动力不足");
       tone(90, .16, "square", .025);
-      return;
+      return false;
     }
-    state.selectedSkill = index;
-    state.energy = Math.max(0, Math.min(3, state.energy + skill.energy));
+    if (state.playerAp === 3) state.playerAtb = 0;
+    state.playerAp -= cost;
+    return true;
+  }
+
+  function chooseCharge() {
+    if (state.charged || !spendPlayerAp(1)) return;
+    state.charged = true;
+    setMessage("CHARGE READY", "下一次攻击：基础伤害 ×2 · PERFECT ×3");
+    tone(260, .18, "sawtooth", .035); tone(520, .2, "sine", .035, .12);
+    updateHud();
+  }
+
+  function chooseTransform() {
+    if (isTransformed() || !spendPlayerAp(1)) return;
+    state.transformUntilControl = state.playerControlId + 1;
+    setMessage("SHIFT ACTIVE", "当前及下一控制窗口：攻击判定 4 → 2");
+    burst(innerWidth * .35, innerHeight * .52, "#c8a4ff", 20);
+    tone(420, .16, "triangle", .035); tone(840, .25, "sine", .035, .12);
+    updateHud();
+  }
+
+  function chooseAttack() {
+    if (!spendPlayerAp(1)) return;
+    const transformed = isTransformed();
+    const noteCount = transformed ? 2 : 4;
+    const skill = {
+      name: transformed ? "变身攻击" : "随机斩击",
+      code: transformed ? "SHIFT STRIKE" : "RANDOM STRIKE",
+      keys: Array.from({ length: noteCount }, () => Math.random() < .5 ? "left" : "right"),
+      gaps: transformed ? [820] : [650, 620, 720],
+      lead: 1050,
+      color: transformed ? "#c8a4ff" : ATTACK_COLOR
+    };
+    state.currentAttack = { charged: state.charged, transformed, color: skill.color };
+    state.charged = false;
     state.phase = "player-sequence";
     state.combo = 0;
     ui.skillPanel.classList.add("is-hidden");
     ui.rhythmPanel.classList.remove("is-hidden");
     gameRoot.dataset.input = "attack";
-    ui.sequenceLabel.textContent = `${skill.code} // COMBO INPUT`;
-    ui.legend.textContent = "圆环蓄满并高亮时输入";
+    ui.sequenceLabel.textContent = `${skill.code} // ${noteCount} RANDOM INPUTS`;
+    ui.legend.textContent = state.currentAttack.charged ? "蓄力生效 · 基础 ×2 · PERFECT ×3" : "随机轻重按键 · 圆环高亮时输入";
     setMessage("ATTACK SEQUENCE", skill.name);
     state.playerAction = 1;
     scheduleNotes(skill);
     updateHud();
     tone(260, .08, "triangle", .03); tone(390, .09, "triangle", .025, .08);
+  }
+
+  function chooseDefense() {
+    if (state.phase !== "atb-wait" || state.playerAp < 1 || state.guarding) return;
+    if (!spendPlayerAp(1)) return;
+    state.guarding = true;
+    state.guardControlId = state.playerControlId;
+    setMessage("GUARD ARMED", "防御已准备 · Boss 下次攻击可弹反");
+    tone(440, .08, "triangle", .035); tone(660, .12, "sine", .025, .08);
+    updateHud();
+  }
+
+  function skipAction() {
+    if (state.phase !== "atb-wait" || state.playerAp < 1) return;
+    if (state.playerAp === 3) state.playerAtb = 0;
+    state.phase = "atb-yield";
+    ui.turn.textContent = "PLAYER PASS";
+    setMessage("ATB RACE", `保留 ${state.playerAp} AP · 下一条先满者行动`);
+    tone(180, .08, "triangle", .02);
+    updateHud();
+  }
+
+  function returnToAtb(newControl = false, kicker = null, text = null) {
+    if (state.playerHp <= 0 || state.enemyHp <= 0) return;
+    if (newControl && state.playerAp > 0) {
+      state.playerControlId += 1;
+      state.actionCount += 1;
+      if (state.guarding && state.guardControlId < state.playerControlId) state.guarding = false;
+      if (state.transformUntilControl < state.playerControlId) state.transformUntilControl = 0;
+    }
+    state.phase = "atb-wait";
+    state.playerAction = 0;
+    state.playerMotion = null;
+    state.enemyAction = state.vulnerability ? 3 : 0;
+    ui.skillPanel.classList.remove("is-hidden");
+    ui.rhythmPanel.classList.add("is-hidden");
+    gameRoot.dataset.input = "";
+    ui.turn.textContent = "ATB 实时战斗";
+    if (kicker && text) setMessage(kicker, text);
+    else if (state.vulnerability) setMessage("BREAK WINDOW", "敌人失衡 · 把握进攻机会");
+    else if (state.playerAp > 0) setMessage("ATB PAUSED", "选择指令 · 决策期间行动条停止");
+    else setMessage("ATB CHARGING", "行动力积累中");
+    updateHud();
+  }
+
+  function isPlayerActionWindow() {
+    if (state.phase === "atb-wait") return state.playerAp > 0;
+    return ["player-sequence", "qte", "player-transition"].includes(state.phase);
+  }
+
+  function isTransformed() {
+    return state.transformUntilControl >= state.playerControlId && state.transformUntilControl > 0;
+  }
+
+  function isAtbPaused() {
+    return isPlayerActionWindow() || ["enemy-telegraph", "enemy-sequence", "enemy-unguarded", "enemy-transition"].includes(state.phase);
+  }
+
+  function updateAtb(dt) {
+    if (!state.running || isAtbPaused()) return;
+    let changed = false;
+    const playerWasWaiting = state.phase === "atb-yield" || (state.phase === "atb-wait" && state.playerAp === 0);
+    if (state.playerAp < 3 || state.phase === "atb-yield") {
+      state.playerAtb += state.playerSpeed * ATB_RATE * dt;
+      if (state.playerAtb >= 100) {
+        state.playerAtb = state.playerAp < 3 ? state.playerAtb - 100 : 100;
+        if (state.playerAp < 3) state.playerAp += 1;
+        changed = true;
+        tone(760, .07, "sine", .025); tone(1040, .1, "sine", .02, .06);
+        if (playerWasWaiting) returnToAtb(true, "PLAYER READY", `玩家 ATB 率先充满 · 当前 ${state.playerAp} AP`);
+      }
+    } else {
+      state.playerAtb = 100;
+    }
+    if (state.bossAp < 2) {
+      state.bossAtb += state.bossSpeed * ATB_RATE * dt;
+      if (state.bossAtb >= 100) {
+        state.bossAtb -= 100;
+        state.bossAp += 1;
+        if (state.bossAp === 1) {
+          state.bossHolding = Math.random() < BOSS_HOLD_CHANCE;
+          if (state.bossHolding && !isPlayerActionWindow()) setMessage("BOSS HOLDS", "Boss 跳过行动 · 积攒第二格 ATB");
+        } else {
+          state.bossHolding = false;
+        }
+        changed = true;
+      }
+    } else {
+      state.bossAtb = 100;
+    }
+    if (changed) updateHud();
+    else {
+      ui.playerAtb.style.width = `${Math.min(100, state.playerAtb)}%`;
+      ui.bossAtb.style.width = `${Math.min(100, state.bossAtb)}%`;
+    }
+  }
+
+  function processAtbQueue() {
+    const bossCanAct = state.phase === "atb-yield" || (state.phase === "atb-wait" && state.playerAp === 0);
+    const bossWillAct = state.bossAp >= 2 || (state.bossAp === 1 && !state.bossHolding);
+    if (bossCanAct && bossWillAct) startEnemyTurn();
   }
 
   function scheduleNotes(skill) {
@@ -263,18 +425,22 @@
   }
 
   function finishPlayerSequence() {
-    const skill = skills[state.selectedSkill];
     const perfects = state.notes.filter((n) => n.status === "perfect").length;
-    const goods = state.notes.filter((n) => n.status === "good").length;
-    const accuracy = (perfects * 1.3 + goods * .8) / state.notes.length;
-    let damage = Math.max(5, Math.round(skill.base * (.42 + accuracy * .58)));
+    const charged = state.currentAttack?.charged === true;
+    const damagePerNote = ATTACK_BASE_DAMAGE / state.notes.length;
+    let damage = Math.round(state.notes.reduce((sum, note) => {
+      const multiplier = charged
+        ? note.status === "perfect" ? 3 : note.status === "good" ? 2.5 : 2
+        : note.status === "perfect" ? 1.8 : note.status === "good" ? 1.4 : 1;
+      return sum + damagePerNote * multiplier;
+    }, 0));
     if (state.vulnerability) {
       damage = Math.round(damage * 1.35);
       state.vulnerability = false;
       setMessage("BREAK BONUS", "架势崩解 · 伤害提升");
     }
     state.enemyHp -= damage;
-    addDamageText(innerWidth * .72, innerHeight * .45, damage, skill.color);
+    addDamageText(innerWidth * .72, innerHeight * .45, damage, state.currentAttack?.color || ATTACK_COLOR, charged ? "蓄力" : "");
     state.shake = 12;
     ui.rhythmPanel.classList.add("is-hidden");
     gameRoot.dataset.input = "";
@@ -287,9 +453,9 @@
     if (perfects === state.notes.length) {
       startQte();
     } else {
-      state.phase = "transition";
-      setMessage("DAMAGE", `造成 ${damage} 点伤害`);
-      setTimeout(startEnemyTurn, 1050);
+      state.phase = "player-transition";
+      setMessage(charged ? "CHARGED HIT" : "DAMAGE", `造成 ${damage} 点伤害`);
+      setTimeout(() => returnToAtb(false), 1050);
     }
   }
 
@@ -309,7 +475,7 @@
     ui.qte.classList.add("is-hidden");
     gameRoot.dataset.input = "";
     if (success) {
-      const bonus = state.selectedSkill === 2 ? 24 : 16;
+      const bonus = 20;
       state.enemyHp -= bonus;
       state.playerAction = 2;
       state.shake = 22;
@@ -327,29 +493,72 @@
     } else {
       setMessage("LINK LOST", "追击窗口关闭");
     }
-    state.phase = "transition";
-    setTimeout(startEnemyTurn, 950);
+    state.phase = "player-transition";
+    setTimeout(() => returnToAtb(false), 950);
   }
 
   function startEnemyTurn() {
-    if (state.enemyHp <= 0) return;
+    if (!["atb-wait", "atb-yield"].includes(state.phase) || state.enemyHp <= 0 || state.bossAp < 1) return;
+    const isCombo = state.bossAp >= 2;
+    if (isCombo) state.bossAtb = 0;
+    state.bossAp -= isCombo ? 2 : 1;
+    state.bossHolding = false;
+    state.currentEnemyCombo = isCombo;
+    state.bossActions += 1;
     state.phase = "enemy-telegraph";
-    ui.turn.textContent = "敌方回合";
-    const index = Math.min(enemyPatterns.length - 1, Math.floor((state.round - 1) / 2));
-    const pattern = enemyPatterns[index];
-    setMessage("ENEMY TURN", pattern.name);
-    gameRoot.dataset.input = "defense";
+    ui.turn.textContent = isCombo ? "BOSS OVERDRIVE" : "BOSS ACTION";
+    const index = Math.min(enemyPatterns.length - 1, Math.floor((state.bossActions - 1) / 2));
+    const basePattern = enemyPatterns[index];
+    const pattern = {
+      name: isCombo ? `超载 · ${basePattern.name}` : basePattern.name,
+      beats: isCombo ? basePattern.beats.map((gap) => Math.round(gap / 1.2)) : basePattern.beats,
+      damage: basePattern.damage * (isCombo ? 2 : 1),
+      combo: isCombo
+    };
+    const canParry = state.guarding;
+    state.guarding = false;
+    setMessage(isCombo ? "BOSS CHARGING" : canParry ? "GUARD RESPONSE" : "ENEMY ATTACK", isCombo ? "两格行动力 · 蓄力后发动双倍伤害连招" : canParry ? `${pattern.name} · 准备弹反` : `${pattern.name} · 未进入防御`);
+    gameRoot.dataset.input = canParry ? "defense" : "";
     state.enemyAction = 1;
+    updateHud();
     tone(92, .35, "sawtooth", .045);
+    if (isCombo) {
+      setTimeout(() => {
+        if (state.phase !== "enemy-telegraph") return;
+        setMessage("POWER ×2", `${pattern.name} · 节奏速度 ×1.2`);
+        burst(innerWidth * .69, innerHeight * .44, "#ff655f", 28);
+        tone(70, .45, "sawtooth", .07); tone(420, .22, "square", .035, .1);
+      }, 700);
+    }
     setTimeout(() => {
       if (state.phase !== "enemy-telegraph") return;
-      state.phase = "enemy-sequence";
-      state.combo = 0;
-      ui.rhythmPanel.classList.remove("is-hidden");
-      ui.sequenceLabel.textContent = `${pattern.name} // PARRY SEQUENCE`;
-      ui.legend.textContent = "攻击抵达光标时点击鼠标右键防御 · 连续完美可崩解架势";
-      scheduleDefense(pattern);
-    }, 900);
+      if (canParry) {
+        state.phase = "enemy-sequence";
+        state.combo = 0;
+        ui.rhythmPanel.classList.remove("is-hidden");
+        ui.sequenceLabel.textContent = `${pattern.name} // ${isCombo ? "1.2× OVERDRIVE" : "PARRY SEQUENCE"}`;
+        ui.legend.textContent = isCombo ? "双倍伤害连招 · 攻击节奏加快 1.2 倍" : "攻击抵达光标时点击鼠标右键防御 · 连续完美可崩解架势";
+        scheduleDefense(pattern);
+      } else {
+        resolveUnguardedBossAttack(pattern);
+      }
+    }, isCombo ? 1400 : 900);
+  }
+
+  function resolveUnguardedBossAttack(pattern) {
+    state.phase = "enemy-unguarded";
+    const damage = Math.round(pattern.damage * pattern.beats.length * .75);
+    state.playerHp -= damage;
+    enemyHitEffect();
+    addDamageText(innerWidth * .31, innerHeight * .43, damage, "#ff6a64", "直击");
+    setMessage("DIRECT HIT", `未防御 · 承受 ${damage} 点伤害`);
+    updateHud();
+    if (state.playerHp <= 0) {
+      state.phase = "ending";
+      setTimeout(() => endBattle(false), 850);
+      return;
+    }
+    setTimeout(() => returnToAtb(true), 900);
   }
 
   function scheduleDefense(pattern) {
@@ -400,22 +609,9 @@
     } else {
       setMessage("DAMAGE TAKEN", `承受 ${damage} 点伤害 · ${misses} 次失误`);
     }
-    state.phase = "transition";
-    state.round += 1;
+    state.phase = "enemy-transition";
     updateHud();
-    setTimeout(startPlayerTurn, 1250);
-  }
-
-  function startPlayerTurn() {
-    if (state.playerHp <= 0 || state.enemyHp <= 0) return;
-    state.phase = "choose";
-    state.playerAction = 0;
-    state.enemyAction = state.vulnerability ? 3 : 0;
-    ui.turn.textContent = "玩家回合";
-    ui.skillPanel.classList.remove("is-hidden");
-    gameRoot.dataset.input = "";
-    setMessage(state.vulnerability ? "BREAK WINDOW" : "YOUR TURN", state.vulnerability ? "敌人失衡 · 把握进攻机会" : "选择作战指令");
-    updateHud();
+    setTimeout(() => returnToAtb(true), 1250);
   }
 
   function parryEffect(perfect) {
@@ -451,7 +647,7 @@
     const upperCut = index % 2 === 1;
     const y1 = innerHeight * (upperCut ? .38 : .57);
     const y2 = innerHeight * (upperCut ? .57 : .38);
-    const color = base ? "rgba(145,255,244,.5)" : skills[state.selectedSkill].color;
+    const color = base ? "rgba(145,255,244,.5)" : state.currentAttack?.color || ATTACK_COLOR;
     slash(startX, y1, endX, y2, color, base ? 3 : (heavy ? 7 : 4) + power * 2);
     if (!connects) return;
     burst(endX, y2, color, base ? 4 : Math.round((heavy ? 13 : 8) * power));
@@ -467,7 +663,7 @@
     burst(innerWidth * .35, innerHeight * .51, "#ff645d", 15);
     slash(innerWidth * .58, innerHeight * .36, innerWidth * .34, innerHeight * .58, "#ff4f51", 8);
     tone(70, .18, "sawtooth", .065);
-    setTimeout(() => { if (state.phase === "enemy-sequence") { state.enemyAction = 1; state.playerAction = 0; } }, 220);
+    setTimeout(() => { if (["enemy-sequence", "enemy-unguarded"].includes(state.phase)) { state.enemyAction = 1; state.playerAction = 0; } }, 220);
   }
 
   function addDamageText(x, y, amount, color, prefix = "") {
@@ -502,7 +698,7 @@
     ui.resultEyebrow.textContent = win ? "MISSION COMPLETE" : "LINK TERMINATED";
     ui.resultTitle.textContent = win ? "目标肃清" : "作战失败";
     ui.resultTitle.style.color = win ? "#eafffb" : "#ff7479";
-    ui.statRounds.textContent = String(state.round).padStart(2, "0");
+    ui.statRounds.textContent = String(state.actionCount).padStart(2, "0");
     ui.statPerfect.textContent = String(state.perfectTotal).padStart(2, "0");
     ui.statCombo.textContent = String(state.bestCombo).padStart(2, "0");
     ui.result.classList.remove("is-hidden");
@@ -570,7 +766,10 @@
     if(state.playerAction===3) x=w*.39;
     if(state.playerAction===4) x=w*.31;
     const s=Math.min(w/1400,h/850)*1.05;
+    const transformed=isTransformed();
+    const chargedEffect=state.charged||(state.currentAttack?.charged===true&&["player-sequence","qte","player-transition"].includes(state.phase));
     ctx.save(); ctx.translate(x,y); ctx.scale(s,s); ctx.rotate(bodyTilt);
+    drawPlayerAura(t,transformed,chargedEffect);
     ctx.fillStyle="rgba(0,0,0,.42)"; ctx.beginPath(); ctx.ellipse(0,82,80,15,0,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle="#0b0d0e";ctx.lineWidth=15;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(-8,19);ctx.lineTo(-24,77);ctx.lineTo(-44,116);ctx.stroke();
@@ -584,12 +783,50 @@
     ctx.strokeStyle="#d8e3e4";ctx.lineWidth=10;ctx.beginPath();ctx.moveTo(-23,-42);ctx.lineTo(-55,-3);ctx.stroke();ctx.beginPath();ctx.moveTo(24,-40);ctx.lineTo(58,-4);ctx.stroke();
     ctx.strokeStyle="#081013";ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(-55,-3);ctx.lineTo(-12,20);ctx.stroke();
     ctx.save();ctx.translate(-41,1);ctx.rotate(swordAngle);
-    const swordGlow=ctx.createLinearGradient(0,0,196,0);swordGlow.addColorStop(0,"#152326");swordGlow.addColorStop(.5,"#dffefa");swordGlow.addColorStop(1,"#69fff0");
-    if(motion&&motionProgress>.2&&motionProgress<.88){ctx.strokeStyle="rgba(107,255,241,.18)";ctx.lineWidth=22;ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(205,0);ctx.stroke();}
+    const bladeColor=chargedEffect?"#fff0a8":transformed?"#c9a8ff":"#69fff0";
+    const swordGlow=ctx.createLinearGradient(0,0,196,0);swordGlow.addColorStop(0,"#152326");swordGlow.addColorStop(.5,"#f4fffd");swordGlow.addColorStop(1,bladeColor);
+    if(motion&&motionProgress>.2&&motionProgress<.88){ctx.strokeStyle=chargedEffect?"rgba(255,226,124,.3)":transformed?"rgba(202,166,255,.28)":"rgba(107,255,241,.18)";ctx.lineWidth=chargedEffect?30:22;ctx.beginPath();ctx.moveTo(8,0);ctx.lineTo(205,0);ctx.stroke();}
     ctx.strokeStyle=swordGlow;ctx.lineWidth=7;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(196,0);ctx.stroke();
-    ctx.strokeStyle="rgba(110,255,242,.75)";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(5,-4);ctx.lineTo(201,-4);ctx.stroke();ctx.restore();
-    ctx.fillStyle="#7efff1";ctx.fillRect(-8,-43,5,36);ctx.fillStyle="rgba(126,255,241,.35)";ctx.fillRect(-13,-45,15,40);
+    ctx.strokeStyle=bladeColor;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(5,-4);ctx.lineTo(201,-4);ctx.stroke();ctx.restore();
+    ctx.fillStyle=bladeColor;ctx.fillRect(-8,-43,5,36);ctx.globalAlpha=.35;ctx.fillRect(-13,-45,15,40);ctx.globalAlpha=1;
+    drawPlayerGuard(t);
     ctx.restore();
+  }
+
+  function drawPlayerAura(t,transformed,chargedEffect) {
+    if (transformed) {
+      const pulse=.72+.18*Math.sin(t*.006);
+      const aura=ctx.createRadialGradient(0,-18,20,0,-18,150);
+      aura.addColorStop(0,`rgba(211,180,255,${.12*pulse})`);
+      aura.addColorStop(.58,`rgba(143,78,255,${.18*pulse})`);
+      aura.addColorStop(1,"rgba(98,42,190,0)");
+      ctx.fillStyle=aura;ctx.beginPath();ctx.ellipse(0,-18,145,190,0,0,Math.PI*2);ctx.fill();
+      ctx.save();ctx.rotate(t*.0007);ctx.setLineDash([18,13]);ctx.strokeStyle=`rgba(203,164,255,${.48*pulse})`;ctx.lineWidth=3;ctx.beginPath();ctx.ellipse(0,76,104,28,0,0,Math.PI*2);ctx.stroke();ctx.restore();
+      for(let i=0;i<5;i++){
+        const a=t*.0016+i*Math.PI*2/5;
+        const px=Math.cos(a)*82,py=-22+Math.sin(a)*112;
+        ctx.fillStyle=`rgba(218,192,255,${.38+.24*Math.sin(a+t*.004)})`;ctx.shadowColor="#b47cff";ctx.shadowBlur=12;ctx.fillRect(px-2,py-10,4,20);ctx.shadowBlur=0;
+      }
+    }
+    if (chargedEffect) {
+      const pulse=.65+.35*Math.sin(t*.011);
+      ctx.strokeStyle=`rgba(255,226,121,${.42+.28*pulse})`;ctx.shadowColor="#ffe277";ctx.shadowBlur=20;ctx.lineWidth=4;ctx.beginPath();ctx.arc(-4,-24,75+8*pulse,-2.4,.9);ctx.stroke();ctx.shadowBlur=0;
+      for(let i=0;i<6;i++){
+        const a=-t*.0022+i*Math.PI/3;
+        const radius=64+(i%2)*25;
+        const px=Math.cos(a)*radius,py=-24+Math.sin(a)*radius*1.35;
+        ctx.fillStyle=i%2?"#fff8c8":"#78fff1";ctx.fillRect(px-2,py-2,4,4);
+      }
+    }
+  }
+
+  function drawPlayerGuard(t) {
+    if (!state.guarding) return;
+    const pulse=.68+.22*Math.sin(t*.009);
+    ctx.save();ctx.translate(58,-16);ctx.scale(.72,1);
+    ctx.strokeStyle=`rgba(255,202,104,${pulse})`;ctx.shadowColor="#ffc15d";ctx.shadowBlur=18;ctx.lineWidth=6;ctx.beginPath();ctx.arc(0,0,105,-1.25,1.25);ctx.stroke();
+    ctx.strokeStyle=`rgba(255,238,190,${.32*pulse})`;ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,88,-1.18,1.18);ctx.stroke();
+    ctx.restore();ctx.shadowBlur=0;
   }
 
   function drawEnemy(t) {
@@ -627,6 +864,8 @@
 
   function frame(now) {
     const dt=Math.min(.033,(now-state.lastTime)/1000||0);state.lastTime=now;
+    updateAtb(dt);
+    processAtbQueue();
     ctx.save();
     if(state.shake>0){ctx.translate((Math.random()-.5)*state.shake,(Math.random()-.5)*state.shake);state.shake=Math.max(0,state.shake-dt*45);}
     drawBackground(now);drawEnemy(now);drawPlayer(now);drawEffects(dt);ctx.restore();
@@ -645,11 +884,13 @@
   function handleKey(event) {
     const key=event.key.toLowerCase();
     if(state.phase==="intro"&&event.key==="Enter")startGame();
-    if(state.phase==="choose"&&["1","2","3"].includes(key))chooseSkill(Number(key)-1);
+    if(state.phase==="atb-wait"&&key==="1")chooseCharge();
+    if(state.phase==="atb-wait"&&key==="2")chooseTransform();
+    if(state.phase==="atb-wait"&&key==="3")chooseAttack();
   }
 
   function handlePointer(event) {
-    if (event.target.closest("#touchControls")) return;
+    if (event.target.closest("#touchControls, #skillPanel")) return;
     const key = event.button === 0 ? "left" : event.button === 2 ? "right" : null;
     if (!key || !["player-sequence", "enemy-sequence", "qte"].includes(state.phase)) return;
     event.preventDefault();
@@ -659,7 +900,11 @@
 
   ui.start.addEventListener("click",startGame);
   ui.restart.addEventListener("click",startGame);
-  ui.skillCards.forEach((card,i)=>card.addEventListener("click",()=>chooseSkill(i)));
+  ui.charge.addEventListener("click",chooseCharge);
+  ui.transform.addEventListener("click",chooseTransform);
+  ui.attack.addEventListener("click",chooseAttack);
+  ui.defend.addEventListener("click",chooseDefense);
+  ui.skip.addEventListener("click",skipAction);
   ui.mute.addEventListener("click",()=>{state.muted=!state.muted;ui.mute.textContent=`声音 ${state.muted?"OFF":"ON"}`;if(!state.muted)initAudio();});
   $("#touchControls").addEventListener("pointerdown",(event)=>{const button=event.target.closest("button");if(button){event.preventDefault();event.stopPropagation();initAudio();judgeInput(button.dataset.key==="defense"?"right":button.dataset.key);}});
   gameRoot.addEventListener("pointerdown", handlePointer);
@@ -667,5 +912,5 @@
   window.addEventListener("keydown",handleKey);
   window.addEventListener("resize",resize);
 
-  makePips(ui.energy,3);makePips(ui.stagger,5);resize();updateHud();requestAnimationFrame(frame);
+  makePips(ui.playerAp,3);makePips(ui.stagger,5);resize();updateHud();requestAnimationFrame(frame);
 })();

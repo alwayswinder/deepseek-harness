@@ -22,9 +22,9 @@ for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
 if not exist "%DSH_REPO%\apps\desktop\package.json" goto :missingRepo
 cd /d "%DSH_REPO%" || goto :failure
 
-rem The out-of-tree plugins under _mytools\Plugins import
-rem @deepseek-ai/schemastery from their own directory; link the vendored copy
-rem so the Desktop profile can load them after this build.
+rem The out-of-tree plugins under _mytools\Plugins need two setup steps: link
+rem the peer packages they import from their own directory, and build the ones
+rem that ship sources instead of built files. Both steps are idempotent.
 call "%~dp0ensure-plugin-modules.bat"
 
 rem Locate pnpm; Explorer launches may have a different PATH.
@@ -52,6 +52,8 @@ goto :missingPnpm
 :pnpmReady
 echo [desktop build] Repository: %DSH_REPO%
 echo [desktop build] pnpm command: %PNPM_CMD%
+
+call "%~dp0ensure-plugin-builds.bat" "%PNPM_CMD%"
 
 if not exist "%DSH_REPO%\node_modules\.pnpm\node_modules" goto :install
 echo [desktop build] Checking pnpm workspace links...

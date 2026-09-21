@@ -23,14 +23,17 @@ for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
 if not exist "%DSH_REPO%\package.json" goto :missingRepo
 cd /d "%DSH_REPO%" || goto :failure
 
-rem The out-of-tree plugins under _mytools\Plugins import
-rem @deepseek-ai/schemastery from their own directory; link the vendored copy.
+rem The out-of-tree plugins under _mytools\Plugins need two setup steps: link
+rem the peer packages they import from their own directory, and build the ones
+rem that ship sources instead of built files. Both steps are idempotent.
 call "%~dp0ensure-plugin-modules.bat"
 
 call :findPnpm
 if not defined PNPM_CMD goto :missingPnpm
 echo [build] Repository: %DSH_REPO%
 echo [build] pnpm command: %PNPM_CMD%
+
+call "%~dp0ensure-plugin-builds.bat" "%PNPM_CMD%"
 
 rem Install first: `clean` and `build` both run workspace devDependencies
 rem (tsx, typescript), which do not exist until this step has succeeded.

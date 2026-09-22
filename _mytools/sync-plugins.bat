@@ -43,6 +43,7 @@ rem under Plugins\, then its package name under @local. Add a line here when a
 rem profile starts installing another such plugin.
 call :syncPlugin appearance-plus dsh-appearance-plus
 call :syncPlugin deepseek-usage dsh-deepseek-usage
+call :syncPlugin dsh-fish-tank dsh-fish-tank
 
 if defined PLUGIN_FAILED exit /b 1
 exit /b 0
@@ -65,7 +66,7 @@ if not exist "%SYNC_SRC%\package.json" (
 )
 if not exist "%SYNC_DEST%\package.json" goto :eof
 
-for %%F in (index.js client.js cordis.patch.yml package.json README.md README.zh.md README.i18n.yaml) do (
+for %%F in (index.js client.js cordis.patch.yml package.json README.md README.zh.md README.i18n.yaml bg.jpg) do (
     if exist "%SYNC_SRC%\%%F" (
         rem Comparing first keeps an unchanged plugin's timestamps alone, so a
         rem launch that changed nothing writes nothing.

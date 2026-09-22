@@ -1,0 +1,31 @@
+{
+  "name": "@local/dsh-fish-tank",
+  "description": "DSH 养鱼游戏插件 — 右侧悬浮鱼按钮进入全屏像素海底世界：鱼群 AI 游动、投喂、吹泡泡。A pixel-art aquarium overlay for the DSH web GUI: floating fish button opens a fullscreen canvas tank with wandering fish, feeding, and bubbles.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "bg.jpg",
+    "README.md",
+    "README.zh.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

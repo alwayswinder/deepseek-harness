@@ -1,0 +1,6 @@
+# fish-tank bundle patch: one host row mounting the plugin package. The host
+# half (index.js) serves the packaged concept image; the browser half
+# (client.js) registers the floating fish button and the fullscreen aquarium.
+- insert:
+    - id: fish-tank
+      name: '@local/dsh-fish-tank'

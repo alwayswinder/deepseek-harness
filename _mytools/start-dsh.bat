@@ -65,10 +65,11 @@ rem Arguments are passed to the service script individually, so a port can be
 rem appended without re-quoting the whole command line.
 set "DSH_WEB_ARGS=web --no-open --port %DSH_PORT%"
 
-rem Out-of-tree plugin this launcher enables on the web profile before every
-rem start (see :ensureUsagePlugin): usage & balance card on the settings page.
-set "DSH_USAGE_DIR=%~dp0Plugins\deepseek-usage"
-set "DSH_USAGE_URL=file:%DSH_USAGE_DIR:\=/%"
+rem Out-of-tree plugins this launcher enables on the web profile before every
+rem start (see :ensureLocalPlugins): the usage & balance card on the settings
+rem page and the fish-tank aquarium overlay. Space-separated directory names
+rem under Plugins\; add one here when a new profile plugin joins.
+set "DSH_LOCAL_PLUGINS=deepseek-usage dsh-fish-tank"
 
 rem The out-of-tree plugins import @deepseek-ai/schemastery from their own
 rem directory; link the vendored copy so a profile can load them on this machine.
@@ -105,7 +106,7 @@ goto :fallback
 :local
 echo [dsh] Using the local build: %DSH_REPO%\apps\cli\lib\bin.js
 echo [dsh] node command: %NODE_CMD%
-call :ensureUsagePlugin local
+call :ensureLocalPlugins local
 echo.
 echo [dsh] Starting the service in the background (no browser)...
 wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%NODE_CMD%" "apps\cli\lib\bin.js" %DSH_WEB_ARGS%
@@ -123,7 +124,7 @@ rem registry fetch is slow and the launch environment can break npm's launcher.
 if exist "%APPDATA%\npm\dsh.cmd" (
     echo [dsh] Using the globally installed dsh CLI instead.
     echo.
-    call :ensureUsagePlugin global
+    call :ensureLocalPlugins global
     echo.
     echo [dsh] Starting the service in the background ^(no browser^)...
     wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%APPDATA%\npm\dsh.cmd" %DSH_WEB_ARGS%
@@ -134,7 +135,7 @@ if exist "%APPDATA%\npm\dsh.cmd" (
     exit /b 0
 )
 echo [dsh] Local build and global dsh unavailable; falling back to npx.
-call :ensureUsagePlugin npx
+call :ensureLocalPlugins npx
 echo.
 echo [dsh] Starting the service in the background (no browser)...
 wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "npx.cmd" --yes @deepseek-ai/dsh %DSH_WEB_ARGS%
@@ -187,55 +188,70 @@ for /d %%D in ("%USERPROFILE%\.workbuddy\binaries\node\versions\*") do (
 exit /b 1
 
 rem ============================================================
-rem Ensure the deepseek-usage plugin is registered in the web profile.
+rem Ensure the out-of-tree plugins are registered in the web profile.
 rem `dsh plugin add` is idempotent: when the plugin is already registered it
 rem resolves "Already up to date" and reconciles to a no-op, and when the
 rem profile is fresh or was reset it installs the package and appends the
 rem dsh.profile.bundles row the loader mounts at boot. Running it on every
 rem start self-heals any half-registered state.
 rem %1 = local | global | npx, matching how this script resolved dsh.
+rem The plugin list is DSH_LOCAL_PLUGINS: directory names under Plugins\.
 rem ============================================================
-:ensureUsagePlugin
-if exist "%DSH_USAGE_DIR%\package.json" goto :usageRegister
-echo [dsh] WARNING: deepseek-usage plugin source missing at %DSH_USAGE_DIR%; web will start without it.
-goto :eof
-
-:usageRegister
-echo [dsh] deepseek-usage plugin: registering in the web profile (idempotent)...
-if "%1"=="local" goto :usageLocal
-if "%1"=="global" goto :usageGlobal
-echo [dsh] WARNING: cannot auto-register the plugin while launching through npx. Run this once in a terminal:
-echo [dsh]   dsh plugin --profile web add %DSH_USAGE_URL%
+:ensureLocalPlugins
+set "PLUGIN_MODE=%~1"
+set "PLUGIN_ANY_FAILED="
+if "%PLUGIN_MODE%"=="local" goto :pluginsLocal
+if "%PLUGIN_MODE%"=="global" goto :pluginsRegister
+echo [dsh] WARNING: cannot auto-register the plugins while launching through npx. Run this once in a terminal:
+for %%P in (%DSH_LOCAL_PLUGINS%) do echo [dsh]   dsh plugin --profile web add file:%~dp0Plugins\%%P
 call "%~dp0sync-plugins.bat" web
 goto :eof
 
-:usageLocal
+:pluginsLocal
 rem Registration runs the built CLI: the same entry this launcher starts.
-if not defined PNPM_CMD goto :usageNoPnpm
+if not defined PNPM_CMD goto :pluginsNoPnpm
 for %%D in ("%PNPM_CMD%") do set "PNPM_BIN_DIR=%%~dpD"
 if defined PNPM_BIN_DIR set "PATH=%PNPM_BIN_DIR%;%PATH%"
-pushd "%DSH_REPO%"
-"%NODE_CMD%" "apps\cli\lib\bin.js" plugin --profile web add "%DSH_USAGE_URL%"
-set "USAGE_EXIT=%errorlevel%"
-popd
-goto :usageDone
+goto :pluginsRegister
 
-:usageNoPnpm
-echo [dsh] WARNING: pnpm was not found; skipping the deepseek-usage plugin registration.
+:pluginsNoPnpm
+echo [dsh] WARNING: pnpm was not found; skipping the plugin registration.
 call "%~dp0sync-plugins.bat" web
 goto :eof
 
-:usageGlobal
-call "%APPDATA%\npm\dsh.cmd" plugin --profile web add "%DSH_USAGE_URL%"
-set "USAGE_EXIT=%errorlevel%"
-goto :usageDone
-
-:usageDone
+:pluginsRegister
+if "%PLUGIN_MODE%"=="local" pushd "%DSH_REPO%"
+for %%P in (%DSH_LOCAL_PLUGINS%) do call :registerOnePlugin %%P
+if "%PLUGIN_MODE%"=="local" popd
 call "%~dp0sync-plugins.bat" web
-if "%USAGE_EXIT%"=="0" goto :usageEnabled
-echo [dsh] WARNING: deepseek-usage plugin registration failed (exit %USAGE_EXIT%); web will start without it.
+if not defined PLUGIN_ANY_FAILED goto :pluginsEnabled
+echo [dsh] WARNING: one or more plugin registrations failed; web will start without those.
 goto :eof
 
-:usageEnabled
-echo [dsh] deepseek-usage plugin: enabled.
+:pluginsEnabled
+echo [dsh] out-of-tree plugins: enabled.
+goto :eof
+
+rem ============================================================
+rem Register one plugin directory into the web profile.
+rem %1 = directory name under Plugins\. Warns and records failure when the
+rem source is missing; a nonzero add exit records failure too.
+rem ============================================================
+:registerOnePlugin
+set "PLUGIN_DIR=%~dp0Plugins\%~1"
+set "PLUGIN_URL=file:%PLUGIN_DIR:\=/%"
+if not exist "%PLUGIN_DIR%\package.json" (
+    echo [dsh] WARNING: plugin source missing at %PLUGIN_DIR%; web will start without it.
+    set "PLUGIN_ANY_FAILED=1"
+    goto :eof
+)
+echo [dsh] %~1 plugin: registering in the web profile (idempotent)...
+if "%PLUGIN_MODE%"=="local" goto :registerOneLocal
+call "%APPDATA%\npm\dsh.cmd" plugin --profile web add "%PLUGIN_URL%"
+if errorlevel 1 set "PLUGIN_ANY_FAILED=1"
+goto :eof
+
+:registerOneLocal
+"%NODE_CMD%" "apps\cli\lib\bin.js" plugin --profile web add "%PLUGIN_URL%"
+if errorlevel 1 set "PLUGIN_ANY_FAILED=1"
 goto :eof

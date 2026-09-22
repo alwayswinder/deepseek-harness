@@ -20,8 +20,8 @@
 | --- | --- | --- |
 | `build.bat` | 构建整个工作副本：装依赖 → `clean` → 构建 packages/CLI/Web UI，最后校验 `apps\cli\lib\bin.js` 与 `apps\web\dist\index.html` 都在。 | 拉完上游或改过 `packages\`、`apps\` 后跑一次。中途会调用下面两个 `ensure-plugin-*.bat`。 |
 | `build-desktop.bat` | 桌面端全流程：上面那些 → Electron shell（`build:desktop`）→ 准备 `.desktop-build\development` 工程与 bundled runtime，并写 `build-revision.txt`。 | 准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理。 |
-| `start-dsh.bat [端口]` | 启动网页版（默认 3080）。启动前幂等地把 `deepseek-usage` 注册进 web profile 并刷新 profile 里的插件副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`；token 链接和日志在同目录 `dsh-web.log`。 | 别用 `pnpm dsh web` 起同一棵树（会串模块面，工具全部报 `prepare` 未定义）。本地没构建时会依次退回全局 `dsh`、`npx`。 |
-| `start-desktop.bat` | 启动 Electron 桌面端，加载 `apps\desktop\.desktop-build\development` 里已准备好的工程，profile 用 `$DSH_HOME\profiles\desktop`。 | 必须先跑过 `build-desktop.bat`。关窗口即停。 |
+| `start-dsh.bat [端口]` | 启动网页版（默认 3080）。启动前幂等地把 `deepseek-usage` 注册进 web profile，再用 `sync-plugins.bat` 把 profile 里的插件副本刷成最新源码，然后用 node 直接跑 `apps\cli\lib\bin.js web`；token 链接和日志在同目录 `dsh-web.log`。 | 别用 `pnpm dsh web` 起同一棵树（会串模块面，工具全部报 `prepare` 未定义）。本地没构建时会依次退回全局 `dsh`、`npx`。 |
+| `start-desktop.bat` | 启动 Electron 桌面端，加载 `apps\desktop\.desktop-build\development` 里已准备好的工程，profile 用 `$DSH_HOME\profiles\desktop`；启动前同样用 `sync-plugins.bat` 刷新 desktop profile 里的插件副本。 | 必须先跑过 `build-desktop.bat`。关窗口即停。 |
 | `stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
 | `start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
 
@@ -30,9 +30,12 @@
 | 脚本 | 干什么 |
 | --- | --- |
 | `ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：`@deepseek-ai/schemastery` → `vendor\schemastery`，`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`。链接已正确就跳过，缺了就补。 |
-| `ensure-plugin-builds.bat` | 给"有源码、没 `lib\`"的树外插件做一次性构建（目前只有 `dsh-ths-holdings`）。已构建就跳过；首次会 `pnpm install --frozen-lockfile`，需要能访问 npm 镜像。 |
+| `ensure-plugin-builds.bat` | 每次调用都重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），所以拉完上游改过 `src\` 后 `lib\` 会跟着更新；装依赖只有每台机器第一次会 `pnpm install --frozen-lockfile`，需要能访问 npm 镜像。 |
+| `sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`）刷新成 `Plugins\` 里的最新源码；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
-这两个都由 `build.bat` / `build-desktop.bat` 自动调用，平时不用手点。
+`ensure-plugin-*.bat` 由 `build.bat` / `build-desktop.bat` 自动调用，`sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
+
+以 `file:` 依赖装进 profile 的插件是**一次性副本**（pnpm 不记录内容哈希），所以只改 `Plugins\` 里的源码而不重启启动脚本，界面会一直是旧的。以 `link:` 装的插件（`dsh-ths-holdings`）本身指向源码目录，不需要这一步。
 
 ## 树外插件（`Plugins\`）
 

@@ -9,11 +9,13 @@ rem
 rem Such a plugin declares its entry points under lib\ and ignores lib\ in its
 rem own .gitignore, so a machine that has the sources but never built them
 rem loads no entry at all and the profile reports the bundle as failed to
-rem enable. This step runs once per machine: an existing lib\index.js is this
-rem machine's finished state.
+rem enable.
 rem
-rem The plugin's pinned pnpm-lock.yaml supplies the toolchain, so the first run
-rem on a machine needs registry access; later runs reuse node_modules.
+rem Installing is once per machine: the plugin's own node_modules is that
+rem marker, and the pinned pnpm-lock.yaml supplies the toolchain, so only the
+rem first run needs registry access. The build runs on every call instead,
+rem because a profile that installs the plugin as a link loads lib\ directly
+rem and a pulled change to src\ would otherwise never reach it.
 rem
 rem %1 = pnpm command to use; resolved here when omitted.
 rem build.bat and build-desktop.bat call this after locating pnpm.
@@ -38,7 +40,8 @@ if defined PLUGIN_FAILED exit /b 1
 exit /b 0
 
 rem ============================================================
-rem Build one plugin in place when its entry file is missing.
+rem Build one plugin in place. Installs its dependencies when this machine has
+rem none, then rebuilds from source.
 rem %1 = plugin directory name under Plugins\.
 rem Sets PLUGIN_FAILED when the build cannot run, fails, or leaves no entry.
 rem ============================================================
@@ -50,17 +53,17 @@ if not exist "%PLUGIN_DIR%\package.json" (
     set "PLUGIN_FAILED=1"
     goto :eof
 )
-if exist "%PLUGIN_DIR%\lib\index.js" (
-    echo [plugins] %~1: built output present.
-    goto :eof
+
+pushd "%PLUGIN_DIR%"
+if not exist "%PLUGIN_DIR%\node_modules" (
+    echo [plugins] %~1: installing dependencies - first run on this machine...
+    rem --ignore-workspace keeps the plugin's own pinned lockfile authoritative:
+    rem the repository above it is a pnpm workspace this directory is not part of.
+    call "%PLUGIN_PNPM%" install --frozen-lockfile --ignore-workspace
+    if errorlevel 1 goto :buildFailed
 )
 
-echo [plugins] %~1: building from source - first run on this machine...
-pushd "%PLUGIN_DIR%"
-rem --ignore-workspace keeps the plugin's own pinned lockfile authoritative:
-rem the repository above it is a pnpm workspace this directory is not part of.
-call "%PLUGIN_PNPM%" install --frozen-lockfile --ignore-workspace
-if errorlevel 1 goto :buildFailed
+echo [plugins] %~1: building from source...
 call "%PLUGIN_PNPM%" --ignore-workspace run build
 if errorlevel 1 goto :buildFailed
 if not exist "%PLUGIN_DIR%\lib\index.js" goto :buildNoEntry

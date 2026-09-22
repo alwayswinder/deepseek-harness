@@ -43,6 +43,11 @@ rem @deepseek-ai/schemastery from their own directory; link the vendored copy
 rem so a plugin installed as a link into the profile can activate.
 call "%~dp0ensure-plugin-modules.bat"
 
+rem The profile installs its JavaScript plugins as file: directory copies, which
+rem pnpm writes once and never reconciles against the source; refresh them so a
+rem pulled plugin change is what this launch loads.
+call "%~dp0sync-plugins.bat" desktop
+
 if not exist "%DESKTOP_EXE%" goto :missingElectron
 if not exist "%DESKTOP_PROJECT%\desktop-runtime.json" goto :missingRuntime
 

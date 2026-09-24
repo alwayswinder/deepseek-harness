@@ -1,0 +1,4 @@
+# One host row serves the packaged artwork; the browser row contributes the pet.
+- insert:
+    - id: little-icon
+      name: '@local/dsh-little-icon'

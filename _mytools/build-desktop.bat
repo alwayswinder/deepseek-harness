@@ -129,8 +129,6 @@ if not exist "%DSH_REPO%\apps\desktop\.desktop-build\targets\win-x64\runtime\pri
 for /f "delims=" %%H in ('git rev-parse HEAD 2^>nul') do set "BUILD_REVISION=%%H"
 if not defined BUILD_REVISION goto :missingGitRevision
 > "%DSH_REPO%\apps\web\dist\.dsh-build-revision" echo %BUILD_REVISION%
-if not exist "%DSH_REPO%\apps\desktop\.desktop-build\development" mkdir "%DSH_REPO%\apps\desktop\.desktop-build\development"
-> "%DSH_REPO%\apps\desktop\.desktop-build\development\build-revision.txt" echo %BUILD_REVISION%
 
 echo.
 echo [desktop build] Completed successfully.

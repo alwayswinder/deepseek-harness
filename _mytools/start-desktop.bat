@@ -20,9 +20,8 @@ exit /b %DSH_LAUNCH_EXIT%
 :streamsReady
 
 rem Launch the prepared Electron app directly and detach it from this window.
-rem Run build-desktop.bat after pulling or changing source files: the app loads
-rem the prepared project under apps\desktop\.desktop-build\development, and that
-rem directory exists only after that script has completed.
+rem This launcher checks only files required to start; deciding whether source
+rem changes need a rebuild belongs to the user.
 for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
 
 set "NODE_OPTIONS="
@@ -44,7 +43,7 @@ set "DESKTOP_PROJECT=%DESKTOP_DEVELOPMENT%\project"
 set "DESKTOP_EXE=%DESKTOP_APP%\node_modules\electron\dist\electron.exe"
 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop.log"
 set "DSH_DESKTOP_PRIMARY_RUNTIME_DIR=%DESKTOP_APP%\.desktop-build\targets\win-x64\runtime\primary-runtime"
-set "BUILD_REVISION_FILE=%DESKTOP_DEVELOPMENT%\build-revision.txt"
+set "MISSING_STARTUP_FILE="
 
 rem The out-of-tree plugins the Desktop profile loads import
 rem @deepseek-ai/schemastery from their own directory; link the vendored copy
@@ -59,18 +58,16 @@ call "%~dp0build\sync-plugins.bat" desktop
 if errorlevel 1 goto :pluginFailure
 
 if not exist "%DESKTOP_EXE%" goto :missingElectron
-if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" goto :missingBuild
-if not exist "%DESKTOP_APP%\lib\main.js" goto :missingBuild
-if not exist "%DSH_REPO%\apps\desktop-host\lib\index.js" goto :missingBuild
-if not exist "%DESKTOP_PROJECT%\desktop-runtime.json" goto :missingBuild
-if not exist "%DSH_DESKTOP_PRIMARY_RUNTIME_DIR%\runtime.json" goto :missingBuild
-if not exist "%BUILD_REVISION_FILE%" goto :staleBuild
-set "BUILT_REVISION="
-set /p BUILT_REVISION=<"%BUILD_REVISION_FILE%"
-set "CURRENT_REVISION="
-for /f "delims=" %%H in ('git -C "%DSH_REPO%" rev-parse HEAD 2^>nul') do set "CURRENT_REVISION=%%H"
-if not defined CURRENT_REVISION goto :staleBuild
-if /i not "%BUILT_REVISION%"=="%CURRENT_REVISION%" goto :staleBuild
+if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" set "MISSING_STARTUP_FILE=%DSH_REPO%\apps\cli\lib\profile-boot.js"
+if defined MISSING_STARTUP_FILE goto :missingBuild
+if not exist "%DESKTOP_APP%\lib\main.js" set "MISSING_STARTUP_FILE=%DESKTOP_APP%\lib\main.js"
+if defined MISSING_STARTUP_FILE goto :missingBuild
+if not exist "%DSH_REPO%\apps\desktop-host\lib\index.js" set "MISSING_STARTUP_FILE=%DSH_REPO%\apps\desktop-host\lib\index.js"
+if defined MISSING_STARTUP_FILE goto :missingBuild
+if not exist "%DESKTOP_PROJECT%\desktop-runtime.json" set "MISSING_STARTUP_FILE=%DESKTOP_PROJECT%\desktop-runtime.json"
+if defined MISSING_STARTUP_FILE goto :missingBuild
+if not exist "%DSH_DESKTOP_PRIMARY_RUNTIME_DIR%\runtime.json" set "MISSING_STARTUP_FILE=%DSH_DESKTOP_PRIMARY_RUNTIME_DIR%\runtime.json"
+if defined MISSING_STARTUP_FILE goto :missingBuild
 
 if not exist "%DESKTOP_DEVELOPMENT%" mkdir "%DESKTOP_DEVELOPMENT%"
 rem The launching cmd.exe holds the log file open for the whole life of the app it
@@ -94,14 +91,9 @@ pause
 exit /b 1
 
 :missingBuild
-echo [desktop] The prepared Desktop build is incomplete.
+echo [desktop] Required startup file is missing:
+echo [desktop]   %MISSING_STARTUP_FILE%
 echo [desktop] Run build-desktop.bat and try again.
-pause
-exit /b 1
-
-:staleBuild
-echo [desktop] The prepared Desktop build does not match the current Git revision.
-echo [desktop] Run build-desktop.bat after pulling upstream changes.
 pause
 exit /b 1
 

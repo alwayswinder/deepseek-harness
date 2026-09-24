@@ -76,9 +76,27 @@ echo [desktop build] Synchronizing dependencies...
 call "%PNPM_CMD%" install
 if errorlevel 1 goto :failure
 
+rem Keep immutable upstream archives outside .desktop-build, which clean removes.
+rem The runtime builder verifies cached bytes against the pinned SHA-256 before use.
+set "DESKTOP_DOWNLOAD_CACHE=%DSH_REPO%\.cache\desktop-downloads"
+if not exist "%DESKTOP_DOWNLOAD_CACHE%" mkdir "%DESKTOP_DOWNLOAD_CACHE%"
+if errorlevel 1 goto :failure
+echo [desktop build] Runtime download cache: %DESKTOP_DOWNLOAD_CACHE%
+set "LEGACY_DESKTOP_DOWNLOAD_CACHE=%DSH_REPO%\apps\desktop\.desktop-build\downloads"
+if exist "%LEGACY_DESKTOP_DOWNLOAD_CACHE%\" (
+    echo [desktop build] Preserving cached runtime downloads...
+    robocopy "%LEGACY_DESKTOP_DOWNLOAD_CACHE%" "%DESKTOP_DOWNLOAD_CACHE%" /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 >nul
+    if errorlevel 8 goto :failure
+)
+
 rem A running development Desktop keeps desktop.log open, which makes clean
 rem fail on Windows. Stop only Electron instances owned by this checkout.
 call :stopRepositoryDesktop
+if errorlevel 1 goto :failure
+
+rem The prepared primary runtime is an immutable cache junction. Detach it before
+rem clean removes .desktop-build so the cache target remains outside that tree.
+call :detachCachedPrimaryRuntime
 if errorlevel 1 goto :failure
 
 echo [desktop build] Cleaning previous build outputs...
@@ -130,6 +148,14 @@ exit /b %errorlevel%
 :stopRepositoryDesktop
 if not exist "%DSH_REPO%\apps\desktop\node_modules\electron\dist\electron.exe" exit /b 0
 powershell.exe -NoProfile -Command "$target = [IO.Path]::GetFullPath((Join-Path $env:DSH_REPO 'apps\desktop\node_modules\electron\dist\electron.exe')); $processes = @(Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $target }); if ($processes.Count -gt 0) { Write-Host '[desktop build] Stopping the running Desktop instance before cleaning...'; $processes | Stop-Process -Force -ErrorAction Stop }"
+exit /b %errorlevel%
+
+:detachCachedPrimaryRuntime
+set "DESKTOP_PRIMARY_RUNTIME=%DSH_REPO%\apps\desktop\.desktop-build\targets\win-x64\runtime\primary-runtime"
+fsutil reparsepoint query "%DESKTOP_PRIMARY_RUNTIME%" >nul 2>&1
+if errorlevel 1 exit /b 0
+echo [desktop build] Detaching cached primary runtime before cleaning...
+rmdir "%DESKTOP_PRIMARY_RUNTIME%"
 exit /b %errorlevel%
 
 :missingRepo

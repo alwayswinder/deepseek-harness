@@ -11,20 +11,30 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  writeFileSync,
+  type Dirent,
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../../apps/desktop/src/host-protocol.ts'
 import type { DesktopRelease } from '../../apps/desktop/src/release.ts'
 import { prepareDevelopmentProject } from '../../apps/desktop/scripts/development-project.ts'
-import { resolveDesktopBuildTarget } from '../../apps/desktop/scripts/desktop-build-paths.mjs'
-import { preparePrimaryRuntime } from '../../apps/desktop/scripts/prepare-primary-runtime.ts'
+import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from '../../apps/desktop/scripts/desktop-build-paths.mjs'
+import { smokePrimaryRuntime } from '../../apps/desktop/scripts/prepare-primary-runtime.ts'
+import {
+  prepareOfficeSkillAssets,
+  preparePrimaryRuntime as preparePrimaryRuntimePayload,
+  primaryRuntimePayloadDigest,
+} from '../../scripts/primary-runtime/prepare.ts'
+import runtimeLock from '../../scripts/primary-runtime/lock.json' with { type: 'json' }
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..')
 const APP_ROOT = join(REPOSITORY_ROOT, 'apps', 'desktop')
 const CLI_ROOT = join(REPOSITORY_ROOT, 'apps', 'cli')
 const DEVELOPMENT_ROOT = join(APP_ROOT, '.desktop-build', 'development')
 const DEPENDENCY_VIEW = join(DEVELOPMENT_ROOT, 'dependency-view')
+const DOWNLOAD_CACHE = join(REPOSITORY_ROOT, '.cache', 'desktop-downloads')
+const PRIMARY_RUNTIME_CACHE = join(REPOSITORY_ROOT, '.cache', 'desktop-primary-runtime')
 
 interface PackageManifest {
   readonly version?: string
@@ -71,7 +81,7 @@ function isStaleLink(path: string): boolean {
  * project manifest walk only ever see live packages.
  */
 function pruneStaleLinks(root: string): void {
-  let entries: ReturnType<typeof readdirSync>
+  let entries: Dirent<string>[]
   try {
     entries = readdirSync(root, { withFileTypes: true })
   } catch (error) {
@@ -147,13 +157,47 @@ const release: DesktopRelease = {
 }
 
 prepareDependencyView()
+const target = resolveDesktopBuildTarget()
+const buildPaths = desktopTargetBuildPaths(target)
 prepareDevelopmentProject({
   projectDir: join(DEVELOPMENT_ROOT, 'project'),
   cliDir: CLI_ROOT,
   hostDir: join(REPOSITORY_ROOT, 'apps', 'desktop-host'),
   dependencyDir: DEPENDENCY_VIEW,
   release,
-  target: resolveDesktopBuildTarget(),
+  target,
 })
-await preparePrimaryRuntime()
+const payloadDigest = primaryRuntimePayloadDigest(target, runtimeLock, release.pnpmVersion)
+const runtimeCache = join(PRIMARY_RUNTIME_CACHE, target, release.version, payloadDigest)
+const runtimeCacheMarker = join(runtimeCache, 'ready.json')
+const marker = `${JSON.stringify({ schemaVersion: 1, target, version: release.version, payloadDigest })}\n`
+let cacheReady = false
+try { cacheReady = readFileSync(runtimeCacheMarker, 'utf8') === marker } catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+}
+if (!cacheReady) {
+  removeOwnedPath(runtimeCache)
+  await preparePrimaryRuntimePayload({
+    target,
+    output: runtimeCache,
+    cache: DOWNLOAD_CACHE,
+    version: release.version,
+  })
+  removeOwnedPath(join(runtimeCache, 'office-skills'))
+  writeFileSync(runtimeCacheMarker, marker)
+  console.log(`desktop preparation: cached primary runtime ${payloadDigest}`)
+} else {
+  console.log(`desktop preparation: reusing cached primary runtime ${payloadDigest}`)
+}
+
+const primaryRuntime = join(buildPaths.runtime, 'primary-runtime')
+removeOwnedPath(primaryRuntime)
+removeOwnedPath(buildPaths.runtime)
+linkPackage(join(runtimeCache, 'primary-runtime'), primaryRuntime)
+const requireFromBuild = createRequire(import.meta.url)
+await prepareOfficeSkillAssets(
+  join(dirname(requireFromBuild.resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets'),
+  join(buildPaths.runtime, 'office-skills'),
+)
+smokePrimaryRuntime(primaryRuntime)
 console.log('desktop preparation: development project and primary runtime are ready')

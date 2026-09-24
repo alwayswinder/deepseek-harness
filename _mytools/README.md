@@ -19,7 +19,7 @@
 | 脚本 | 干什么 | 备注 |
 | --- | --- | --- |
 | `build.bat` | 构建整个工作副本：仅关闭当前工作副本的 Electron → 同步依赖 → `clean` → 构建 packages/CLI/Web UI，校验 CLI、profile boot 和 Web 产物，并写入当前 Git revision。 | 拉完上游或改过 `packages\`、`apps\` 后跑一次。树外插件的依赖或构建失败会立即终止。 |
-| `build-desktop.bat` | 桌面端全流程：仅关闭当前工作副本的 Electron → 同步依赖 → `clean` → 构建 packages/CLI/Web UI 和 Electron shell → 准备 `.desktop-build\development` 工程与 bundled runtime，校验全部启动产物后写入 Web 与 Desktop revision。 | 准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理。 |
+| `build-desktop.bat` | 桌面端全流程：仅关闭当前工作副本的 Electron → 同步依赖 → `clean` → 构建 packages/CLI/Web UI 和 Electron shell → 准备 `.desktop-build\development` 工程与 bundled runtime，校验全部启动产物后写入 Web 与 Desktop revision。 | 准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理；下载归档和已展开的 primary runtime 使用根目录 `.cache` 下的内容寻址缓存。 |
 | `start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
 | `start-desktop.bat` | 校验构建 revision、CLI profile boot、Electron、Desktop Host 和 primary runtime，同步 desktop profile 的插件副本后启动 Electron。 | 必须先跑过 `build-desktop.bat`；上游 revision 变化会明确要求重新构建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。 |
 | `stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
@@ -34,6 +34,8 @@
 | `build\sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`）刷新成 `Plugins\` 里的最新源码；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
 `build\ensure-plugin-*.bat` 由 `build.bat` / `build-desktop.bat` 自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
+
+`build-desktop.bat` 在第一次使用新流程时会把旧的 `apps\desktop\.desktop-build\downloads` 内容迁移到 `.cache\desktop-downloads`。后续 `clean` 仍会删除编译产物和开发工程，但保留下载归档，以及按目标、Desktop 版本和 payload 摘要索引的 `.cache\desktop-primary-runtime`；归档只在锁定哈希变化时重新下载，primary runtime 只在目标、版本、解释器、wheel 或 pnpm 输入变化时重新展开。构建目录通过 junction 使用缓存的 primary runtime，Office skill 资产仍从当前源码刷新，所有 native-target 检查仍会执行。
 
 以 `file:` 依赖装进 profile 的插件是**一次性副本**（pnpm 不记录内容哈希），所以只改 `Plugins\` 里的源码而不重启启动脚本，界面会一直是旧的。以 `link:` 装的插件（`dsh-ths-holdings`）本身指向源码目录，不需要这一步。
 

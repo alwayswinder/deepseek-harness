@@ -442,7 +442,15 @@ body[${LOCK_ATTR}]::after {
 
       let backgroundSource = ''
       let lockSource = ''
+      // The lock image counts as on screen only after the browser has decoded
+      // it. The Desktop caption colours are cleared while this layer is what
+      // the user looks at, so an image that never arrives would otherwise
+      // leave the interface without its primary text and without a lock
+      // screen drawn over it.
+      let lockReady = false
+      let lockProbe = null
       let covered = false
+      let paintedListener = () => {}
       let colors = {}
       let rules = ''
       let colorRetryTimer = null
@@ -531,7 +539,7 @@ body[${LOCK_ATTR}]::after {
         body.style.setProperty(prefix + '-size', size)
         body.style.setProperty(prefix + '-repeat', repeat)
         if (lock) {
-          lockSource = source
+          setLockSource(source)
           return
         }
         backgroundSource = source
@@ -549,7 +557,7 @@ body[${LOCK_ATTR}]::after {
         body.removeAttribute(lock ? LOCK_ATTR : 'data-dsh-appearance-background')
         const names = [prefix, prefix + '-size', prefix + '-repeat']
         if (lock) {
-          lockSource = ''
+          setLockSource('')
           body.removeAttribute(COVER_ATTR)
         } else {
           backgroundSource = ''
@@ -558,9 +566,58 @@ body[${LOCK_ATTR}]::after {
         for (const name of names) body.style.removeProperty(name)
       }
 
+      /**
+       * Adopt a lock image, or drop the layer when its address is gone. The
+       * image is probed first: the layer only counts as on screen once the
+       * browser can actually paint it, because the caption colours are
+       * cleared from the page while the lock screen covers the window.
+       * @param source - the resolved image address, '' to drop the layer.
+       */
+      function setLockSource(source) {
+        if (lockSource === source) return
+        lockSource = source
+        dropLockProbe()
+        setLockReady(false)
+        if (source === '') return
+        const probe = new Image()
+        lockProbe = probe
+        probe.onload = () => {
+          if (lockProbe !== probe) return
+          dropLockProbe()
+          setLockReady(true)
+        }
+        // An image that fails to load keeps the layer off screen, so a broken
+        // address can never blank the interface from behind.
+        probe.onerror = () => { if (lockProbe === probe) dropLockProbe() }
+        probe.src = source
+      }
+
+      /** Retire the probe of a superseded image, so only the newest one counts. */
+      function dropLockProbe() {
+        if (lockProbe === null) return
+        lockProbe.onload = null
+        lockProbe.onerror = null
+        lockProbe = null
+      }
+
+      /**
+       * Publish a change in what the lock layer paints. The image arriving is
+       * the one change the idle clock cannot see.
+       * @param next - whether the decoded image is available.
+       */
+      function setLockReady(next) {
+        if (lockReady === next) return
+        lockReady = next
+        syncCover()
+        paintedListener(isCovered())
+      }
+
+      /** Whether the lock layer owns the window right now. */
+      function isCovered() { return lockSource !== '' && lockReady && covered }
+
       function syncCover() {
         const body = document.body
-        if (lockSource !== '' && covered) body.setAttribute(COVER_ATTR, '')
+        if (isCovered()) body.setAttribute(COVER_ATTR, '')
         else body.removeAttribute(COVER_ATTR)
       }
 
@@ -583,13 +640,21 @@ body[${LOCK_ATTR}]::after {
           syncCover()
         },
         /** Whether the opaque lock screen is the layer the user is looking at. */
-        isCovered() { return lockSource !== '' && covered },
+        isCovered,
+        /**
+         * Register the callback for the painted state the layer changes on its
+         * own, which is the lock image finishing or failing to load.
+         * @param listener - receives whether the layer now owns the window.
+         */
+        onPaintedChange(listener) { paintedListener = listener },
         refreshColors,
         dispose() {
           if (colorRetryTimer !== null) clearTimeout(colorRetryTimer)
           document.head.removeEventListener('load', onHeadLoad, true)
+          paintedListener = () => {}
           clearImage('background')
           clearImage('lock')
+          dropLockProbe()
           base.remove()
           tokens.remove()
         },
@@ -668,24 +733,36 @@ body[${LOCK_ATTR}]::after {
       function refreshCover() {
         const cover = current.lockEnabled === true && !pageOpen && !busy && idleElapsed
         background.setCover(cover)
-        syncCaption(cover)
+        // The caption follows the painted layer, not the idle clock: with no
+        // lock image, or one that never loads, there is no lock screen to hide
+        // it behind, and clearing it would blank the interface's own text.
+        syncCaption(background.isCovered())
       }
 
       /**
        * Hide the Desktop window caption once the lock screen has covered the
        * window, and restore it before the interface comes back, so the label
        * colour is never seen as transparent.
-       * @param cover - whether the lock screen is up.
+       * @param painted - whether the lock screen is the layer on screen now.
        */
-      function syncCaption(cover) {
+      function syncCaption(painted) {
         if (!DESKTOP_DOCUMENT) return
         if (captionTimer !== null) {
           clearTimeout(captionTimer)
           captionTimer = null
         }
-        if (!cover) { showCaption(); return }
-        captionTimer = setTimeout(() => { captionTimer = null; hideCaption() }, CAPTION_HIDE_DELAY_MS)
+        if (!painted) { showCaption(); return }
+        captionTimer = setTimeout(() => {
+          captionTimer = null
+          // The image can fail, and the idle state can turn over, while the
+          // fade-in this wait covers is still running.
+          if (background.isCovered()) hideCaption()
+        }, CAPTION_HIDE_DELAY_MS)
       }
+
+      // The lock image arriving after the idle clock already asked for the
+      // cover is the one painted-state change the controller cannot see.
+      background.onPaintedChange(syncCaption)
 
       /**
        * The shell re-reads both caption colours when body's style attribute
@@ -900,6 +977,7 @@ body[${LOCK_ATTR}]::after {
           unsubscribe()
           clearInterval(idleTimer)
           if (captionTimer !== null) clearTimeout(captionTimer)
+          background.onPaintedChange(() => {})
           showCaption()
           window.removeEventListener('pointerdown', notePointerDown, { capture: true })
           window.removeEventListener('pointermove', notePointerMove, { capture: true })

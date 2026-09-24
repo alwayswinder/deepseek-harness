@@ -1,4 +1,5 @@
 @echo off
+setlocal
 chcp 65001 >nul
 
 rem ============================================================
@@ -8,8 +9,6 @@ rem from these artifacts (apps\cli\lib\bin.js and apps\web\dist).
 rem build-desktop.bat repeats these steps and then prepares the Electron shell.
 rem This script must remain in a direct child folder of the repository root.
 rem ============================================================
-
-setlocal
 
 rem Remove injected launch variables that can interfere with the pnpm shim.
 set "NODE_OPTIONS="
@@ -26,19 +25,26 @@ cd /d "%DSH_REPO%" || goto :failure
 rem The out-of-tree plugins under _mytools\Plugins need two setup steps: link
 rem the peer packages they import from their own directory, and build the ones
 rem that ship sources instead of built files. Both steps are idempotent.
-call "%~dp0ensure-plugin-modules.bat"
+call "%~dp0build\ensure-plugin-modules.bat"
+if errorlevel 1 goto :pluginFailure
 
 call :findPnpm
 if not defined PNPM_CMD goto :missingPnpm
 echo [build] Repository: %DSH_REPO%
 echo [build] pnpm command: %PNPM_CMD%
 
-call "%~dp0ensure-plugin-builds.bat" "%PNPM_CMD%"
+call "%~dp0build\ensure-plugin-builds.bat" "%PNPM_CMD%"
+if errorlevel 1 goto :pluginFailure
 
 rem Install first: `clean` and `build` both run workspace devDependencies
 rem (tsx, typescript), which do not exist until this step has succeeded.
 echo [build] Installing dependencies...
 call "%PNPM_CMD%" install
+if errorlevel 1 goto :failure
+
+rem A running development Desktop keeps desktop.log open, which makes clean
+rem fail on Windows. Stop only Electron instances owned by this checkout.
+call :stopRepositoryDesktop
 if errorlevel 1 goto :failure
 
 echo [build] Cleaning previous build outputs...
@@ -51,10 +57,15 @@ if errorlevel 1 goto :failure
 
 rem start-dsh.bat launches these artifacts; a missing one breaks startup.
 if not exist "%DSH_REPO%\apps\cli\lib\bin.js" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" goto :missingArtifacts
 if not exist "%DSH_REPO%\apps\web\dist\index.html" goto :missingArtifacts
 
+for /f "delims=" %%H in ('git rev-parse HEAD 2^>nul') do set "BUILD_REVISION=%%H"
+if not defined BUILD_REVISION goto :missingGitRevision
+> "%DSH_REPO%\apps\web\dist\.dsh-build-revision" echo %BUILD_REVISION%
+
 echo.
-echo [build] Verified apps\cli\lib\bin.js and apps\web\dist\index.html.
+echo [build] Verified the CLI, profile boot, and Web artifacts.
 echo [build] Completed successfully. Now run start-dsh.bat.
 pause
 exit /b 0
@@ -63,7 +74,14 @@ exit /b 0
 echo.
 echo [build] The build reported success but the Web artifacts are missing:
 echo [build]   apps\cli\lib\bin.js
+echo [build]   apps\cli\lib\profile-boot.js
 echo [build]   apps\web\dist\index.html
+pause
+exit /b 1
+
+:pluginFailure
+echo.
+echo [build] The out-of-tree plugin setup failed. See the [plugins] message above.
 pause
 exit /b 1
 
@@ -80,12 +98,22 @@ echo [build] Install pnpm (or Node.js with Corepack) and try again.
 pause
 exit /b 1
 
+:missingGitRevision
+echo [build] Cannot read the current Git revision.
+pause
+exit /b 1
+
 :failure
 set "BUILD_EXIT=%errorlevel%"
 echo.
 echo [build] Failed with exit code %BUILD_EXIT%.
 pause
 exit /b %BUILD_EXIT%
+
+:stopRepositoryDesktop
+if not exist "%DSH_REPO%\apps\desktop\node_modules\electron\dist\electron.exe" exit /b 0
+powershell.exe -NoProfile -Command "$target = [IO.Path]::GetFullPath((Join-Path $env:DSH_REPO 'apps\desktop\node_modules\electron\dist\electron.exe')); $processes = @(Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $target }); if ($processes.Count -gt 0) { Write-Host '[build] Stopping the running Desktop instance before cleaning...'; $processes | Stop-Process -Force -ErrorAction Stop }"
+exit /b %errorlevel%
 
 rem ============================================================
 rem Locate pnpm; Explorer launches may have a different PATH.

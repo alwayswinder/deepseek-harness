@@ -1,5 +1,5 @@
-# appearance-plus bundle patch: mount the Host settings namespace; the package's
-# browser half registers the themes and the configuration page.
+# appearance-plus bundle patch: mount the Host configuration form; the package's
+# browser half registers the themes and the custom configuration page.
 - insert:
     - id: appearance-plus
       name: '@local/dsh-appearance-plus'

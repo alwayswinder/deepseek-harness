@@ -11,18 +11,17 @@ rem own .gitignore, so a machine that has the sources but never built them
 rem loads no entry at all and the profile reports the bundle as failed to
 rem enable.
 rem
-rem Installing is once per machine: the plugin's own node_modules is that
-rem marker, and the pinned pnpm-lock.yaml supplies the toolchain, so only the
-rem first run needs registry access. The build runs on every call instead,
-rem because a profile that installs the plugin as a link loads lib\ directly
-rem and a pulled change to src\ would otherwise never reach it.
+rem The pinned pnpm-lock.yaml is reconciled on every call so a pulled dependency
+rem change cannot leave the plugin on an old node_modules tree. The build also
+rem runs every time because linked profiles load lib\ directly.
 rem
 rem %1 = pnpm command to use; resolved here when omitted.
 rem build.bat and build-desktop.bat call this after locating pnpm.
 rem ============================================================
 
-rem Resolve the repository root from this script's location.
-for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
+rem Resolve the repository and _mytools roots from this script's location.
+for %%I in ("%~dp0..\..") do set "DSH_REPO=%%~fI"
+for %%I in ("%~dp0..") do set "MYTOOLS_ROOT=%%~fI"
 
 set "PLUGIN_PNPM=%~1"
 if not defined PLUGIN_PNPM call :findPnpm
@@ -46,7 +45,7 @@ rem %1 = plugin directory name under Plugins\.
 rem Sets PLUGIN_FAILED when the build cannot run, fails, or leaves no entry.
 rem ============================================================
 :buildPlugin
-set "PLUGIN_DIR=%~dp0Plugins\%~1"
+set "PLUGIN_DIR=%MYTOOLS_ROOT%\Plugins\%~1"
 
 if not exist "%PLUGIN_DIR%\package.json" (
     echo [plugins] WARNING: %PLUGIN_DIR% is not a package; skipping its build.
@@ -55,13 +54,11 @@ if not exist "%PLUGIN_DIR%\package.json" (
 )
 
 pushd "%PLUGIN_DIR%"
-if not exist "%PLUGIN_DIR%\node_modules" (
-    echo [plugins] %~1: installing dependencies - first run on this machine...
-    rem --ignore-workspace keeps the plugin's own pinned lockfile authoritative:
-    rem the repository above it is a pnpm workspace this directory is not part of.
-    call "%PLUGIN_PNPM%" install --frozen-lockfile --ignore-workspace
-    if errorlevel 1 goto :buildFailed
-)
+echo [plugins] %~1: synchronizing pinned dependencies...
+rem --ignore-workspace keeps the plugin's own pinned lockfile authoritative:
+rem the repository above it is a pnpm workspace this directory is not part of.
+call "%PLUGIN_PNPM%" install --frozen-lockfile --ignore-workspace
+if errorlevel 1 goto :buildFailed
 
 echo [plugins] %~1: building from source...
 call "%PLUGIN_PNPM%" --ignore-workspace run build

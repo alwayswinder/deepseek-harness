@@ -624,7 +624,7 @@ body[${LOCK_ATTR}]::after {
       try { localStorage.removeItem(SLOTS[slot].imageKey) } catch {}
     }
 
-    function createController(ctx, scope, background) {
+    function createController(ctx, form, background) {
       let state = {
         status: 'loading', value: DEFAULTS, writable: false, revision: undefined,
         saving: false, previewing: false, error: null,
@@ -788,7 +788,7 @@ body[${LOCK_ATTR}]::after {
       }
 
       function derive() {
-        const snapshot = scope.getSnapshot()
+        const snapshot = form.getSnapshot()
         let value = snapshot.value === undefined ? DEFAULTS : { ...DEFAULTS, ...snapshot.value }
         const localMissing = { background: false, lock: false }
         const retired = {}
@@ -797,7 +797,7 @@ body[${LOCK_ATTR}]::after {
           const missing = !previewing && value[field] === SLOTS[slot].sentinel && persistedLocalSource[slot] === ''
           // Only the origin that stored an image may retire the profile's
           // sentinel; writing from any other origin would erase an image the
-          // storing origin still holds, because the settings document is shared
+          // storing origin still holds, because the profile config is shared
           // while localStorage is per origin.
           if (missing && localImageEverSeen(slot)) {
             value = { ...value, [field]: '' }
@@ -808,7 +808,7 @@ body[${LOCK_ATTR}]::after {
         }
         if (Object.keys(retired).length > 0 && !clearingMissingLocalImage) {
           clearingMissingLocalImage = true
-          void scope.mutate(Object.entries(retired).map(([field, next]) => ({ op: 'set', path: [field], value: next })))
+          void form.mutate(Object.entries(retired).map(([field, next]) => ({ op: 'set', path: [field], value: next })))
             .finally(() => { clearingMissingLocalImage = false })
         }
         saved = value
@@ -822,7 +822,7 @@ body[${LOCK_ATTR}]::after {
         if (snapshot.value !== undefined && !previewing) applySettings(value)
       }
 
-      const unsubscribe = scope.subscribe(derive)
+      const unsubscribe = form.subscribe(derive)
       derive()
 
       return {
@@ -862,7 +862,7 @@ body[${LOCK_ATTR}]::after {
                   }
                 }
                 const fields = Object.keys(DEFAULTS)
-                await scope.mutate(fields.map((field) => ({
+                await form.mutate(fields.map((field) => ({
                   op: 'set', path: [field], value: draft[field],
                 })))
                 for (const slot of SLOT_NAMES) {
@@ -1204,7 +1204,7 @@ body[${LOCK_ATTR}]::after {
 
     const plugin = {
       name: 'appearance-plus-client',
-      inject: ['slots', 'settingsScope', 'theme', 'locale'],
+      inject: ['slots', 'configForms', 'theme', 'locale'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'appearance-plus: dictionaries')
         const background = createBackgroundManager()
@@ -1212,8 +1212,8 @@ body[${LOCK_ATTR}]::after {
         // A Color theme arrives as a theme token override, so the surface
         // colours the wallpaper derives from it change on the same event.
         ctx.effect(() => ctx.on('theme/change', () => { background.refreshColors() }), 'appearance-plus: surface colours')
-        const scope = ctx.settingsScope.bind({ namespace: NS })
-        const controller = createController(ctx, scope, background)
+        const form = ctx.configForms.get(NS)
+        const controller = createController(ctx, form, background)
         // Optional: without the sessions service the wallpaper never treats a
         // running Agent as a reason to stay hidden.
         ctx.inject(['sessions'], (sessionCtx) => {

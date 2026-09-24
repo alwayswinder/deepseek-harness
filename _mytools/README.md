@@ -12,28 +12,28 @@
 | 日常启动桌面端 | `start-desktop.bat` |
 | 关掉网页版 | `stop-dsh.bat` |
 | 持仓变了，更新对话上方那个数字 | 把账本导出的 `.xlsx` 拖到 [Plugins/dsh-ths-holdings/ths-export-positions.bat](Plugins/dsh-ths-holdings/ths-export-positions.bat) |
-| 合完上游，怀疑 preset 指向了不存在的包 | `node _mytools/check-presets.mjs` |
+| 合完上游，怀疑 preset 指向了不存在的包 | 先运行 `build.bat`，再运行 `node _mytools/build/check-presets.mjs` |
 
 ## 启动 / 构建 / 停止
 
 | 脚本 | 干什么 | 备注 |
 | --- | --- | --- |
-| `build.bat` | 构建整个工作副本：装依赖 → `clean` → 构建 packages/CLI/Web UI，最后校验 `apps\cli\lib\bin.js` 与 `apps\web\dist\index.html` 都在。 | 拉完上游或改过 `packages\`、`apps\` 后跑一次。中途会调用下面两个 `ensure-plugin-*.bat`。 |
-| `build-desktop.bat` | 桌面端全流程：上面那些 → Electron shell（`build:desktop`）→ 准备 `.desktop-build\development` 工程与 bundled runtime，并写 `build-revision.txt`。 | 准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理。 |
-| `start-dsh.bat [端口]` | 启动网页版（默认 3080）。启动前幂等地把 `deepseek-usage` 注册进 web profile，再用 `sync-plugins.bat` 把 profile 里的插件副本刷成最新源码，然后用 node 直接跑 `apps\cli\lib\bin.js web`；token 链接和日志在同目录 `dsh-web.log`。 | 别用 `pnpm dsh web` 起同一棵树（会串模块面，工具全部报 `prepare` 未定义）。本地没构建时会依次退回全局 `dsh`、`npx`。 |
-| `start-desktop.bat` | 启动 Electron 桌面端，加载 `apps\desktop\.desktop-build\development` 里已准备好的工程，profile 用 `$DSH_HOME\profiles\desktop`；启动前同样用 `sync-plugins.bat` 刷新 desktop profile 里的插件副本。 | 必须先跑过 `build-desktop.bat`。关窗口即停。 |
+| `build.bat` | 构建整个工作副本：仅关闭当前工作副本的 Electron → 同步依赖 → `clean` → 构建 packages/CLI/Web UI，校验 CLI、profile boot 和 Web 产物，并写入当前 Git revision。 | 拉完上游或改过 `packages\`、`apps\` 后跑一次。树外插件的依赖或构建失败会立即终止。 |
+| `build-desktop.bat` | 桌面端全流程：仅关闭当前工作副本的 Electron → 同步依赖 → `clean` → 构建 packages/CLI/Web UI 和 Electron shell → 准备 `.desktop-build\development` 工程与 bundled runtime，校验全部启动产物后写入 Web 与 Desktop revision。 | 准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理。 |
+| `start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
+| `start-desktop.bat` | 校验构建 revision、CLI profile boot、Electron、Desktop Host 和 primary runtime，同步 desktop profile 的插件副本后启动 Electron。 | 必须先跑过 `build-desktop.bat`；上游 revision 变化会明确要求重新构建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。 |
 | `stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
-| `start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
+| `build\start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
 
 ## 插件支持脚本（工作副本级）
 
 | 脚本 | 干什么 |
 | --- | --- |
-| `ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：`@deepseek-ai/schemastery` → `vendor\schemastery`，`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`。链接已正确就跳过，缺了就补。 |
-| `ensure-plugin-builds.bat` | 每次调用都重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），所以拉完上游改过 `src\` 后 `lib\` 会跟着更新；装依赖只有每台机器第一次会 `pnpm install --frozen-lockfile`，需要能访问 npm 镜像。 |
-| `sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`）刷新成 `Plugins\` 里的最新源码；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
+| `build\ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：`@deepseek-ai/schemastery` → `vendor\schemastery`，`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`。链接已正确就跳过，缺了就补。 |
+| `build\ensure-plugin-builds.bat` | 每次都按插件自己的 lockfile 同步依赖，再重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），避免更新后沿用旧 `node_modules` 或 `lib\`。 |
+| `build\sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`）刷新成 `Plugins\` 里的最新源码；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
-`ensure-plugin-*.bat` 由 `build.bat` / `build-desktop.bat` 自动调用，`sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
+`build\ensure-plugin-*.bat` 由 `build.bat` / `build-desktop.bat` 自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
 
 以 `file:` 依赖装进 profile 的插件是**一次性副本**（pnpm 不记录内容哈希），所以只改 `Plugins\` 里的源码而不重启启动脚本，界面会一直是旧的。以 `link:` 装的插件（`dsh-ths-holdings`）本身指向源码目录，不需要这一步。
 
@@ -45,7 +45,7 @@
 | `deepseek-usage` | 设置页的用量/余额卡片；**对话输入框上方那条汇总**（余额、今日消费 —— 现在最前面还有一个不标单位的持仓盈亏数字）。 | web、desktop |
 | `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时。 | desktop |
 
-`Plugins\node_modules\@deepseek-ai\` 是给上面这些插件用的 peer 链接，由 `ensure-plugin-modules.bat` 维护，不要手改。
+`Plugins\node_modules\@deepseek-ai\` 是给上面这些插件用的 peer 链接，由 `build\ensure-plugin-modules.bat` 维护，不要手改。
 
 ### `dsh-ths-holdings` 的数据
 
@@ -62,8 +62,8 @@
 
 | 文件 | 说明 |
 | --- | --- |
-| `check-presets.mjs` | 体检 `$DSH_HOME\.agent-presets` 里的 preset 是否还指向存在的包（合上游后行名很容易过期）。用法 `node _mytools/check-presets.mjs [--all]`，退出码 1 表示有坏的。 |
-| `prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build-desktop.bat` 调用。 |
+| `build\check-presets.mjs` | 让已构建的本地 CLI 组合 Web profile，再检查每个 `preset-*` 声明引用的插件包能否从该 profile 解析。用法 `node _mytools/build/check-presets.mjs`，退出码 1 表示有坏的。 |
+| `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build-desktop.bat` 调用。 |
 | `.gitattributes` | 固定 `*.bat` 以 CRLF 检出（cmd 按 CRLF 解析）。 |
 | `dsh-web.log` | `start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
 | `ai-game\` | 个人东西（ATB 回合制战斗 demo，纯 HTML/CSS/JS），与 DSH 运行无关。 |

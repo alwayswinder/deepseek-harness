@@ -11,8 +11,8 @@ DeepSeek Harness 的树外插件：在设置页（插件 → 插件配置）提�
 
 ## 工作原理
 
-- **Host 侧**（`index.js`，纯 ESM）：通过 harness 凭据服务解析每个账户的凭据、拉取余额，把会话 token 用量折算成按账户、按本地日期记账的账本，持久化在 `$DSH_HOME/storages/deepseek-usage-meter.json`，并把去抖后的快照发布到 `deepseek-usage` 设置命名空间。
-- **浏览器侧**（`client.js`）：手工构建的 lazy-CJS 工厂 bundle，通过 `window.__ModuleLoader__.load` 注册。卡片经 `ctx.settingsScope` 绑定 `deepseek-usage` 命名空间；标准设置镜像把 Host 的发布送达浏览器，无需自定义 RPC。
+- **Host 侧**（`index.js`，纯 ESM）：通过 harness 凭据服务解析每个账户的凭据、拉取余额，把会话 token 用量折算成按账户、按本地日期记账的账本，持久化在 `$DSH_HOME/storages/deepseek-usage-meter.json`，并把去抖后的快照发布到 `deepseek-usage` Config 的热更新 `metrics` 字段。
+- **浏览器侧**（`client.js`）：手工构建的 lazy-CJS 工厂 bundle，通过 `window.__ModuleLoader__.load` 注册。卡片经 `ctx.configForms` 读取 `deepseek-usage` 表单并渲染其中的 `metrics` 字段；标准配置镜像把 Host 的发布送达浏览器，无需自定义 RPC。
 
 不修改任何 harness 包。该插件位于包树之外，因此上游更新与构建不受影响。移除方式：`dsh plugin --profile web remove @local/dsh-deepseek-usage`。
 
@@ -25,7 +25,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/deepseek-usage
 
 然后重启 `dsh web`（bundle 行在启动时激活，浏览器必须加载新的客户端 bundle），并打开 设置 → 插件 → 插件配置。`_mytools/start-dsh.bat` 会自己完成这次注册，并把 profile 里已安装的副本同步到最新，因此用该脚本启动无需手动执行上面的命令，之后对插件目录的改动也会被带进去。
 
-Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh plugin --profile desktop`：请在应用的**插件 → 添加插件**对话框中填入本目录的绝对路径，每台机器安装一次。Host 半需要从插件自身目录解析 `@deepseek-ai/schemastery`，该依赖由 `_mytools/ensure-plugin-modules.bat` 提供，所有构建与启动脚本都会调用它。
+Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh plugin --profile desktop`：请在应用的**插件 → 添加插件**对话框中填入本目录的绝对路径，每台机器安装一次。Host 半需要从插件自身目录解析 `@deepseek-ai/schemastery`，该依赖由 `_mytools/build/ensure-plugin-modules.bat` 提供，所有构建与启动脚本都会调用它。
 
 ## 配置
 

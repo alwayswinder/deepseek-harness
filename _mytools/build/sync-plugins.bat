@@ -26,6 +26,13 @@ if "%~1"=="" (
 )
 
 set "PROFILE_NAME=%~1"
+if /i not "%PROFILE_NAME%"=="web" if /i not "%PROFILE_NAME%"=="desktop" (
+    echo [plugins] Unknown profile "%PROFILE_NAME%"; expected web or desktop.
+    exit /b 1
+)
+
+rem Resolve the _mytools root from this script's location.
+for %%I in ("%~dp0..") do set "MYTOOLS_ROOT=%%~fI"
 
 rem Resolve the harness home as the harness does: an unset or whitespace-only
 rem DSH_HOME falls back to %USERPROFILE%\.dsh, and a leading ~ expands to the
@@ -34,6 +41,7 @@ set "DSH_HOME_DIR="
 for /f "tokens=*" %%A in ("%DSH_HOME%") do set "DSH_HOME_DIR=%%A"
 if not defined DSH_HOME_DIR set "DSH_HOME_DIR=%USERPROFILE%\.dsh"
 if "%DSH_HOME_DIR:~0,1%"=="~" set "DSH_HOME_DIR=%USERPROFILE%%DSH_HOME_DIR:~1%"
+for %%I in ("%DSH_HOME_DIR%") do set "DSH_HOME_DIR=%%~fI"
 
 set "PROFILE_LOCAL=%DSH_HOME_DIR%\profiles\%PROFILE_NAME%\node_modules\@local"
 set "PLUGIN_FAILED="
@@ -55,7 +63,7 @@ rem A profile that does not install this plugin is skipped, so one script
 rem serves every profile. Sets PLUGIN_FAILED when a copy fails.
 rem ============================================================
 :syncPlugin
-set "SYNC_SRC=%~dp0Plugins\%~1"
+set "SYNC_SRC=%MYTOOLS_ROOT%\Plugins\%~1"
 set "SYNC_DEST=%PROFILE_LOCAL%\%~2"
 set "SYNC_CHANGED="
 

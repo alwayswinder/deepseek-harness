@@ -4,7 +4,7 @@
  * Hand-built lazy-CJS factory artifact: the module system executes this file,
  * which registers the bundle factory through window.__ModuleLoader__.load. The
  * factory requires only platform-table modules (react, @deepseek-ai/dsh-client-store)
- * and reads live data from the `deepseek-usage` settings namespace through the
+ * and reads live data from the `deepseek-usage` configuration form through the
  * standard settings mirror — the Host publishes the snapshot, no RPC needed.
  *
  * The settings card and composer account summary render whenever the Host
@@ -52,12 +52,12 @@ window.__ModuleLoader__.load({
     // ---- card controller --------------------------------------------------
 
     /**
-     * Bridge the `deepseek-usage` settings scope onto the card: every Host
-     * publish lands in the mirror, the scope emits, and the snapshot store the
+     * Bridge the `deepseek-usage` configuration form onto the card: every Host
+     * publish lands in the mirror, the form emits, and the snapshot store the
      * renderer binds as useUsageCard updates.
      */
     function createController(ctx) {
-      const scope = ctx.settingsScope.bind({ namespace: NS })
+      const form = ctx.configForms.get(NS)
       const store = createSnapshotStore({
         status: 'loading',
         value: undefined,
@@ -65,27 +65,24 @@ window.__ModuleLoader__.load({
       })
 
       function derive() {
-        const snap = scope.getSnapshot()
+        const snap = form.getSnapshot()
         if (snap === undefined) return
         const next = {
           status: snap.status ?? 'loading',
-          value: snap.value ?? undefined,
-          writable: snap.writable ?? false,
+          value: snap.value?.metrics ?? undefined,
+          writable: false,
         }
         store.set(next)
       }
 
-      scope.subscribe(derive)
+      const unsubscribe = form.subscribe(derive)
       derive()
 
       return {
         inject: () => ({
           hooks: { usageCard: store },
         }),
-        dispose: () => {
-          // scope.subscribe already returns a disposer when the scope is bound
-          // to this fiber; the mirror update path keeps no other handles.
-        },
+        dispose: unsubscribe,
       }
     }
 
@@ -288,7 +285,7 @@ window.__ModuleLoader__.load({
 
     const plugin = {
       name: 'deepseek-usage-client',
-      inject: ['slots', 'settingsScope'],
+      inject: ['slots', 'configForms'],
       apply(ctx) {
         const controller = createController(ctx)
         ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({

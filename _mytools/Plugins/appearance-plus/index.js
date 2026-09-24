@@ -29,11 +29,11 @@ export const Config = z.object({
   lockEnabled: z.boolean().default(true),
   lockSeconds: z.number().step(1).min(3).max(600).default(20),
   lockFit: z.union(['cover', 'contain', 'stretch', 'tile']).default('cover'),
-})
+}).volatile()
 
-/** Register the settings namespace when the profile provides durable settings. */
-export function apply(ctx, config) {
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.register(NS, Config, { base: config })
+/** Keep the schema-derived settings form behind the plugin's custom page. */
+export function apply(ctx) {
+  ctx.inject(['settings'], (child) => {
+    child.effect(() => child.settings.configure({ auto: false }, ctx.fiber))
   })
 }

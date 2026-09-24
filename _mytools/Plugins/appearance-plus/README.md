@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This profile layer adds five color themes, a background-image editor, and an idle lock screen to the Plugins page. Preferences are stored in the active DSH settings document; a selected local image stays in that browser or Desktop profile. The bundle changes presentation only and does not alter conversations or model requests.
+This profile layer adds five color themes, a background-image editor, and an idle lock screen to the Plugins page. Preferences are live fields in the bundle's active profile configuration; a selected local image stays in that browser or Desktop profile. The bundle changes presentation only and does not alter conversations or model requests.
 
 ## Table of Contents
 
@@ -48,11 +48,11 @@ Restart Desktop or reload the Web application after the first installation so th
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-[`index.js`](index.js) registers the `appearance-plus` settings namespace. [`client.js`](client.js) applies palettes through a named `ctx.theme` token-override layer, projects both saved images onto its own stylesheets, and contributes the configuration page through `plugins.item`. The override keeps the built-in light or dark preference as its durable base, so settings synchronization cannot replace the selected palette. [`cordis.patch.yml`](cordis.patch.yml) mounts the Host row.
+[`index.js`](index.js) marks the bundle's Config as live and disables the automatically generated form because the bundle supplies its own page. [`client.js`](client.js) reads that form through `ctx.configForms`, applies palettes through a named `ctx.theme` token-override layer, projects both saved images onto its own stylesheets, and contributes the configuration page through `plugins.item`. The override keeps the built-in light or dark preference as its durable base, so configuration synchronization cannot replace the selected palette. [`cordis.patch.yml`](cordis.patch.yml) mounts the Host row.
 
 Two owned stylesheets carry both images. One declares the background layer behind `#root` and the lock layer above everything — above every portalled menu, modal, and toast — with the single `@property`-registered fade factor the lock transition runs on; the other re-derives each surface token from the active theme as `color-mix(...)` over the saved overlay alpha, which is what lets a Color theme survive the background image instead of being replaced by a shipped colour table. The idle clock is a local 500 ms interval over the pointer, wheel, and key listeners, and "a task is running" is the `running` flag on any row of `ctx.sessions.list`, read through an optional injection, so a profile without the sessions service simply never locks. A pointer move counts as input only when the pointer actually moved, because resizing or moving the window makes the engine re-emit a move at the position the pointer already had. The Desktop caption is cleared by the same stylesheet, on an attribute the controller sets one fade after the lock screen covers the window and removes as it leaves; the shell is told to re-read those colours through a plugin-owned property, because it re-reads only when body's style attribute changes and the palette tokens the theme writes there must stay untouched. Surface colours are re-read on a short backoff while the stylesheet that defines them is still missing, and the root element paints the base surface itself, so a region the application leaves unpainted obeys the overlay instead of showing the raw image.
 
-Each image slot keeps its own local-storage keys and its own durable sentinel: a chosen local image is stored as a compressed data URL in this browser profile, the settings document carries only the sentinel, and `settings.yaml` never holds image bytes. A sentinel retires only on the origin that stored the image and then lost it; another origin reports that this device has no copy and leaves the shared setting alone, because the settings document is shared while local storage is per origin.
+Each image slot keeps its own local-storage keys and its own durable sentinel: a chosen local image is stored as a compressed data URL in this browser profile, while the active profile configuration carries only the sentinel and never holds image bytes. A sentinel retires only on the origin that stored the image and then lost it; another origin reports that this device has no copy and leaves the shared preference alone, because profile configuration is shared while local storage is per origin.
 
 </details>
 

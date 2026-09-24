@@ -25,7 +25,8 @@ cd /d "%DSH_REPO%" || goto :failure
 rem The out-of-tree plugins under _mytools\Plugins need two setup steps: link
 rem the peer packages they import from their own directory, and build the ones
 rem that ship sources instead of built files. Both steps are idempotent.
-call "%~dp0ensure-plugin-modules.bat"
+call "%~dp0build\ensure-plugin-modules.bat"
+if errorlevel 1 goto :pluginFailure
 
 rem Locate pnpm; Explorer launches may have a different PATH.
 where pnpm >nul 2>&1
@@ -53,7 +54,8 @@ goto :missingPnpm
 echo [desktop build] Repository: %DSH_REPO%
 echo [desktop build] pnpm command: %PNPM_CMD%
 
-call "%~dp0ensure-plugin-builds.bat" "%PNPM_CMD%"
+call "%~dp0build\ensure-plugin-builds.bat" "%PNPM_CMD%"
+if errorlevel 1 goto :pluginFailure
 
 if not exist "%DSH_REPO%\node_modules\.pnpm\node_modules" goto :install
 echo [desktop build] Checking pnpm workspace links...
@@ -74,6 +76,15 @@ echo [desktop build] Synchronizing dependencies...
 call "%PNPM_CMD%" install
 if errorlevel 1 goto :failure
 
+rem A running development Desktop keeps desktop.log open, which makes clean
+rem fail on Windows. Stop only Electron instances owned by this checkout.
+call :stopRepositoryDesktop
+if errorlevel 1 goto :failure
+
+echo [desktop build] Cleaning previous build outputs...
+call "%PNPM_CMD%" run clean
+if errorlevel 1 goto :failure
+
 echo [desktop build] Building DSH packages...
 call "%PNPM_CMD%" run build
 if errorlevel 1 goto :failure
@@ -83,15 +94,23 @@ call "%PNPM_CMD%" run build:desktop
 if errorlevel 1 goto :failure
 
 echo [desktop build] Preparing the development project and bundled runtime...
-call "%PNPM_CMD%" exec tsx "%~dp0prepare-desktop.ts"
+call "%PNPM_CMD%" exec tsx "%~dp0build\prepare-desktop.ts"
 if errorlevel 1 goto :failure
 
-rem start-desktop.bat loads this descriptor; without it Electron reports the
-rem missing runtime instead of starting the host.
-if not exist "%DSH_REPO%\apps\desktop\.desktop-build\development\project\desktop-runtime.json" goto :missingRuntime
+rem start-desktop.bat loads these outputs directly. Validate all cross-package
+rem entries so a successful root command cannot leave a partial Desktop build.
+if not exist "%DSH_REPO%\apps\cli\lib\bin.js" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\web\dist\index.html" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\desktop\lib\main.js" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\desktop-host\lib\index.js" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\desktop\node_modules\electron\dist\electron.exe" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\desktop\.desktop-build\development\project\desktop-runtime.json" goto :missingArtifacts
+if not exist "%DSH_REPO%\apps\desktop\.desktop-build\targets\win-x64\runtime\primary-runtime\runtime.json" goto :missingArtifacts
 
 for /f "delims=" %%H in ('git rev-parse HEAD 2^>nul') do set "BUILD_REVISION=%%H"
 if not defined BUILD_REVISION goto :missingGitRevision
+> "%DSH_REPO%\apps\web\dist\.dsh-build-revision" echo %BUILD_REVISION%
 if not exist "%DSH_REPO%\apps\desktop\.desktop-build\development" mkdir "%DSH_REPO%\apps\desktop\.desktop-build\development"
 > "%DSH_REPO%\apps\desktop\.desktop-build\development\build-revision.txt" echo %BUILD_REVISION%
 
@@ -106,6 +125,11 @@ fsutil reparsepoint query "%~1" >nul 2>&1 || exit /b 0
 if exist "%~1\" exit /b 0
 echo [desktop build] Removing stale dependency link: %~1
 rmdir "%~1"
+exit /b %errorlevel%
+
+:stopRepositoryDesktop
+if not exist "%DSH_REPO%\apps\desktop\node_modules\electron\dist\electron.exe" exit /b 0
+powershell.exe -NoProfile -Command "$target = [IO.Path]::GetFullPath((Join-Path $env:DSH_REPO 'apps\desktop\node_modules\electron\dist\electron.exe')); $processes = @(Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $target }); if ($processes.Count -gt 0) { Write-Host '[desktop build] Stopping the running Desktop instance before cleaning...'; $processes | Stop-Process -Force -ErrorAction Stop }"
 exit /b %errorlevel%
 
 :missingRepo
@@ -125,14 +149,18 @@ echo [desktop build] Cannot read the current Git revision.
 pause
 exit /b 1
 
-:missingRuntime
+:missingArtifacts
 echo.
-echo [desktop build] The development project was not prepared:
-echo [desktop build]   apps\desktop\.desktop-build\development\project\desktop-runtime.json
-echo [desktop build] is missing. Preparing it downloads the pinned Node and
-echo [desktop build] Python runtime from GitHub and PyPI; without that access it
-echo [desktop build] fails before writing the project. Configure the proxy and
-echo [desktop build] run this script again.
+echo [desktop build] The build reported success but a required Desktop artifact is missing.
+echo [desktop build] Required outputs include CLI profile boot, Web assets, Electron,
+echo [desktop build] Desktop Host, the development descriptor, and the primary runtime.
+echo [desktop build] Check the build output above, then run this script again.
+pause
+exit /b 1
+
+:pluginFailure
+echo.
+echo [desktop build] The out-of-tree plugin setup failed. See the [plugins] message above.
 pause
 exit /b 1
 

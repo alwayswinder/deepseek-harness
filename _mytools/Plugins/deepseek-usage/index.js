@@ -8,8 +8,9 @@
  * provider token usage, which the host prices with the account's configured
  * rates and folds into a per-account, per-local-day ledger persisted under the
  * harness home. The computed snapshot is published (debounced) into the
- * `deepseek-usage` settings namespace; the browser card renders it through the
- * standard settings mirror, so no custom RPC or subprocess is involved.
+ * plugin's volatile `metrics` config field; the browser card renders it through
+ * the standard configuration-form mirror, so no custom RPC or subprocess is
+ * involved.
  *
  * This file is the plugin's own source. It lives outside the harness package
  * tree and never affects upstream updates or builds.
@@ -52,8 +53,8 @@ function toFinite(value) {
  * Resolve the harness home with the same rules the harness uses
  * (`resolveDshHome`): `$DSH_HOME` when set and not blank, else `~/.dsh`, with
  * a leading `~` expanded and the result made absolute. Keeping these rules
- * identical is what makes the plugin's meter and settings writes land beside
- * the harness's own files on every machine.
+ * identical is what makes the plugin's meter land beside the harness's own
+ * files on every machine.
  * @returns the absolute harness home path.
  */
 function dshHome() {
@@ -125,8 +126,6 @@ async function resolveKey(ctx, account) {
   return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : undefined
 }
 
-let lastYamlDedupe = ''
-
 export const name = 'deepseek-usage'
 
 export const Config = z.object({
@@ -174,6 +173,12 @@ export const Config = z.object({
     }),
   })).default({}),
   refreshSeconds: z.number().default(30),
+  metrics: z.any().default({
+    updatedAt: 0,
+    timezone: '',
+    accounts: {},
+    sessions: {},
+  }).volatile(),
 })
 
 /**
@@ -448,78 +453,6 @@ function repriceCurrentDay(ledger, accounts, path) {
 }
 
 
-/**
- * Direct settings-document writer. The settings service's file persistence can
- * wedge in this composition, leaving the browser mirror reading a stale
- * document; writing our own section keeps the served value current. Only a
- * changed snapshot (compared without `updatedAt`) touches the disk.
- */
-
-function settingsDocPath() {
-  return join(dshHome(), 'settings.yaml')
-}
-
-function yamlScalar(value) {
-  if (value === null || value === undefined) return 'null'
-  if (typeof value === 'number') return String(value)
-  if (typeof value === 'boolean') return value ? 'true' : 'false'
-  return JSON.stringify(String(value))
-}
-
-function yamlBlockLines(value, indent) {
-  const lines = []
-  for (const [key, child] of Object.entries(value)) {
-    const pad = ' '.repeat(indent)
-    if (child !== null && typeof child === 'object') {
-      lines.push(`${pad}${key}:`)
-      lines.push(...yamlBlockLines(child, indent + 2))
-    } else {
-      lines.push(`${pad}${key}: ${yamlScalar(child)}`)
-    }
-  }
-  return lines
-}
-
-/** Replace one top-level section (its own indented block) in a yaml text. */
-function replaceTopSection(text, key, blockLines) {
-  const lines = text.split(/\r?\n/)
-  let start = -1
-  let end = lines.length
-  for (let i = 0; i < lines.length; i += 1) {
-    if (!/^\S/.test(lines[i])) continue
-    if (start >= 0) { end = i; break }
-    if (lines[i].startsWith(`${key}:`)) start = i
-  }
-  const body = start >= 0
-    ? [...lines.slice(0, start), ...blockLines, ...lines.slice(end)]
-    : [...lines, '', ...blockLines]
-  return body.join('\n')
-}
-
-function writeSnapshotYaml(snapshot, dedupeKey) {
-  const block = ['deepseek-usage:']
-  for (const [key, value] of Object.entries({ updatedAt: Date.now(), timezone: snapshot.timezone, accounts: snapshot.accounts, sessions: snapshot.sessions })) {
-    if (value !== null && typeof value === 'object') {
-      block.push(`  ${key}:`)
-      block.push(...yamlBlockLines(value, 4))
-    } else {
-      block.push(`  ${key}: ${yamlScalar(value)}`)
-    }
-  }
-  const json = JSON.stringify(dedupeKey)
-  try {
-    const path = settingsDocPath()
-    const text = readFileSync(path, 'utf8')
-    if (json === lastYamlDedupe && text.includes('deepseek-usage:')) return
-    const next = replaceTopSection(text, 'deepseek-usage', block)
-    writeFileSync(path, next)
-    lastYamlDedupe = json
-  } catch (error) {
-    // Non-fatal: the settings-scope publish is the primary channel.
-    console.warn('deepseek-usage: settings doc write failed', error?.message ?? String(error))
-  }
-}
-
 function persistMeter(path, meter) {
   try {
     mkdirSync(dirname(path), { recursive: true })
@@ -529,13 +462,6 @@ function persistMeter(path, meter) {
     console.warn('deepseek-usage: meter persist failed', error?.message ?? String(error))
   }
 }
-
-const metricsSchema = z.object({
-  updatedAt: z.number(),
-  timezone: z.string(),
-  accounts: z.dict(z.object({})),
-  sessions: z.dict(z.object({})),
-})
 
 export function apply(ctx, config) {
   const accounts = config.accounts
@@ -547,7 +473,7 @@ export function apply(ctx, config) {
   }
   const selectors = new Map()
   const balances = new Map()
-  let scope
+  let publishRevision = 0
 
   function foldMessage(session, event) {
     if (event.type === 'request/header') {
@@ -736,8 +662,8 @@ export function apply(ctx, config) {
   }
 
   // Debounced (and deduped) publish of the computed snapshot: an unchanged
-  // snapshot is skipped so idle sessions never write the settings document, and
-  // the client mirror only refreshes when the card's numbers move.
+  // snapshot is skipped so the client mirror refreshes only when the card's
+  // numbers move.
   let publishTimer
   let publishing = false
   let lastPublished = ''
@@ -749,15 +675,18 @@ export function apply(ctx, config) {
     }, 1500)
   }
   async function publish() {
-    if (scope === undefined || publishing) return
+    if (publishing) return
     const snapshot = snapshotFor()
     const { updatedAt: _, ...comparable } = snapshot
     const serialized = JSON.stringify(comparable)
     if (serialized === lastPublished) return
     publishing = true
     try {
-      writeSnapshotYaml(snapshot, serialized)
+      // SettingsForms reads the live fiber config when the Client reloads its
+      // mirror. This field is host-owned and the custom card never mutates it.
+      config.metrics = snapshot
       lastPublished = serialized
+      ctx.emit('settings/document-updated', NS, ++publishRevision)
     } catch (error) {
       ctx.logger?.warn?.('deepseek-usage: publish failed (%s)', error?.message ?? String(error))
     } finally {
@@ -834,10 +763,9 @@ export function apply(ctx, config) {
     await publish()
   }
 
-  // Register the host-owned metrics namespace once settings is available.
-  ctx.inject(['settings'], (settingsCtx) => {
-    const settings = settingsCtx.get('settings')
-    scope = settings.register(NS, metricsSchema)
+  // Keep the schema-derived metrics form behind the plugin's custom card.
+  ctx.inject(['settings'], (child) => {
+    child.effect(() => child.settings.configure({ auto: false }, ctx.fiber))
     void refreshAll(false)
   })
 
@@ -848,6 +776,5 @@ export function apply(ctx, config) {
     if (publishTimer !== undefined) clearTimeout(publishTimer)
     selectors.clear()
     balances.clear()
-    scope = undefined
   })
 }

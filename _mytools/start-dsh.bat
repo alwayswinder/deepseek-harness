@@ -1,5 +1,15 @@
 @echo off
+setlocal
 chcp 65001 >nul
+
+rem Resolve the Harness home before changing cwd so the plugin sync and the
+rem background service agree when DSH_HOME is blank, tilde-based, or relative.
+set "DSH_HOME_DIR="
+for /f "tokens=*" %%A in ("%DSH_HOME%") do set "DSH_HOME_DIR=%%A"
+if not defined DSH_HOME_DIR set "DSH_HOME_DIR=%USERPROFILE%\.dsh"
+if "%DSH_HOME_DIR:~0,1%"=="~" set "DSH_HOME_DIR=%USERPROFILE%%DSH_HOME_DIR:~1%"
+for %%I in ("%DSH_HOME_DIR%") do set "DSH_HOME=%%~fI"
+
 cd /d "%~dp0"
 
 rem Logitech G HUB starts this batch with stdout and stderr already closed, and
@@ -14,7 +24,8 @@ set "DSH_ERR_LOG=%TEMP%\dsh-web-stderr.log"
 copy /y nul "%DSH_ERR_LOG%" >nul 2>&1
 if errorlevel 1 set "DSH_ERR_LOG=%TEMP%\dsh-web-stderr-%RANDOM%.log"
 call "%~f0" redirected %* 2> "%DSH_ERR_LOG%"
-exit /b 0
+set "DSH_LAUNCH_EXIT=%errorlevel%"
+exit /b %DSH_LAUNCH_EXIT%
 
 :streamsReady
 if "%~1"=="redirected" shift
@@ -61,6 +72,9 @@ for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
 set "DSH_LOG=%~dp0dsh-web.log"
 set "DSH_PORT=3080"
 if not "%~1"=="" set "DSH_PORT=%~1"
+for /f "delims=0123456789" %%A in ("%DSH_PORT%") do goto :invalidPort
+if %DSH_PORT% LSS 1 goto :invalidPort
+if %DSH_PORT% GTR 65535 goto :invalidPort
 rem Arguments are passed to the service script individually, so a port can be
 rem appended without re-quoting the whole command line.
 set "DSH_WEB_ARGS=web --no-open --port %DSH_PORT%"
@@ -73,7 +87,8 @@ set "DSH_LOCAL_PLUGINS=deepseek-usage dsh-fish-tank"
 
 rem The out-of-tree plugins import @deepseek-ai/schemastery from their own
 rem directory; link the vendored copy so a profile can load them on this machine.
-call "%~dp0ensure-plugin-modules.bat"
+call "%~dp0build\ensure-plugin-modules.bat"
+if errorlevel 1 goto :pluginFailure
 
 rem The launching cmd.exe holds the log file open for the whole life of the service
 rem it started (start-dsh-service.vbs redirects the service output there), so while
@@ -87,7 +102,15 @@ forfiles /p "%~dp0." /m "dsh-web-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
 rem ---- Prefer the locally built checkout ----
 if not exist "%DSH_REPO%\node_modules" goto :needsBuild
 if not exist "%DSH_REPO%\apps\cli\lib\bin.js" goto :needsBuild
+if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" goto :needsBuild
 if not exist "%DSH_REPO%\apps\web\dist\index.html" goto :needsBuild
+if not exist "%DSH_REPO%\apps\web\dist\.dsh-build-revision" goto :needsBuild
+set "BUILT_REVISION="
+set /p BUILT_REVISION=<"%DSH_REPO%\apps\web\dist\.dsh-build-revision"
+set "CURRENT_REVISION="
+for /f "delims=" %%H in ('git -C "%DSH_REPO%" rev-parse HEAD 2^>nul') do set "CURRENT_REVISION=%%H"
+if not defined CURRENT_REVISION goto :needsBuild
+if /i not "%BUILT_REVISION%"=="%CURRENT_REVISION%" goto :needsBuild
 call :findPnpm
 call :findNode
 if not defined NODE_CMD goto :missingNode
@@ -107,9 +130,11 @@ goto :fallback
 echo [dsh] Using the local build: %DSH_REPO%\apps\cli\lib\bin.js
 echo [dsh] node command: %NODE_CMD%
 call :ensureLocalPlugins local
+if errorlevel 1 goto :pluginFailure
 echo.
 echo [dsh] Starting the service in the background (no browser)...
-wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%NODE_CMD%" "apps\cli\lib\bin.js" %DSH_WEB_ARGS%
+wscript "%~dp0build\start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%NODE_CMD%" "apps\cli\lib\bin.js" %DSH_WEB_ARGS%
+if errorlevel 1 goto :launchFailure
 echo.
 echo [dsh] Launch requested. This window can now be closed.
 echo [dsh] URL: http://127.0.0.1:%DSH_PORT%/  (the token link is in the log)
@@ -125,9 +150,11 @@ if exist "%APPDATA%\npm\dsh.cmd" (
     echo [dsh] Using the globally installed dsh CLI instead.
     echo.
     call :ensureLocalPlugins global
+    if errorlevel 1 goto :pluginFailure
     echo.
     echo [dsh] Starting the service in the background ^(no browser^)...
-    wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%APPDATA%\npm\dsh.cmd" %DSH_WEB_ARGS%
+    wscript "%~dp0build\start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%APPDATA%\npm\dsh.cmd" %DSH_WEB_ARGS%
+    if errorlevel 1 goto :launchFailure
     echo.
     echo [dsh] Launch requested. This window can now be closed.
     echo [dsh] Log: %DSH_LOG%
@@ -136,13 +163,30 @@ if exist "%APPDATA%\npm\dsh.cmd" (
 )
 echo [dsh] Local build and global dsh unavailable; falling back to npx.
 call :ensureLocalPlugins npx
+if errorlevel 1 goto :pluginFailure
 echo.
 echo [dsh] Starting the service in the background (no browser)...
-wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "npx.cmd" --yes @deepseek-ai/dsh %DSH_WEB_ARGS%
+wscript "%~dp0build\start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "npx.cmd" --yes @deepseek-ai/dsh %DSH_WEB_ARGS%
+if errorlevel 1 goto :launchFailure
 echo.
 echo [dsh] Launch requested. This window can now be closed. Log: %DSH_LOG%
 pause
 exit /b 0
+
+:invalidPort
+echo [dsh] Port must be an integer from 1 through 65535.
+pause
+exit /b 1
+
+:pluginFailure
+echo [dsh] Out-of-tree plugin setup failed. Fix the [plugins] error above.
+pause
+exit /b 1
+
+:launchFailure
+echo [dsh] The hidden launcher failed to start DSH Web.
+pause
+exit /b 1
 
 rem ============================================================
 rem Locate pnpm; Explorer launches may have a different PATH.
@@ -204,8 +248,8 @@ if "%PLUGIN_MODE%"=="local" goto :pluginsLocal
 if "%PLUGIN_MODE%"=="global" goto :pluginsRegister
 echo [dsh] WARNING: cannot auto-register the plugins while launching through npx. Run this once in a terminal:
 for %%P in (%DSH_LOCAL_PLUGINS%) do echo [dsh]   dsh plugin --profile web add file:%~dp0Plugins\%%P
-call "%~dp0sync-plugins.bat" web
-goto :eof
+call "%~dp0build\sync-plugins.bat" web
+exit /b %errorlevel%
 
 :pluginsLocal
 rem Registration runs the built CLI: the same entry this launcher starts.
@@ -216,21 +260,22 @@ goto :pluginsRegister
 
 :pluginsNoPnpm
 echo [dsh] WARNING: pnpm was not found; skipping the plugin registration.
-call "%~dp0sync-plugins.bat" web
-goto :eof
+call "%~dp0build\sync-plugins.bat" web
+exit /b %errorlevel%
 
 :pluginsRegister
 if "%PLUGIN_MODE%"=="local" pushd "%DSH_REPO%"
 for %%P in (%DSH_LOCAL_PLUGINS%) do call :registerOnePlugin %%P
 if "%PLUGIN_MODE%"=="local" popd
-call "%~dp0sync-plugins.bat" web
+call "%~dp0build\sync-plugins.bat" web
+if errorlevel 1 set "PLUGIN_ANY_FAILED=1"
 if not defined PLUGIN_ANY_FAILED goto :pluginsEnabled
 echo [dsh] WARNING: one or more plugin registrations failed; web will start without those.
-goto :eof
+exit /b 1
 
 :pluginsEnabled
 echo [dsh] out-of-tree plugins: enabled.
-goto :eof
+exit /b 0
 
 rem ============================================================
 rem Register one plugin directory into the web profile.

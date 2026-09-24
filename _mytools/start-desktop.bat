@@ -14,7 +14,8 @@ set "DSH_ERR_LOG=%TEMP%\dsh-desktop-stderr.log"
 copy /y nul "%DSH_ERR_LOG%" >nul 2>&1
 if errorlevel 1 set "DSH_ERR_LOG=%TEMP%\dsh-desktop-stderr-%RANDOM%.log"
 call "%~f0" redirected 2> "%DSH_ERR_LOG%"
-exit /b 0
+set "DSH_LAUNCH_EXIT=%errorlevel%"
+exit /b %DSH_LAUNCH_EXIT%
 
 :streamsReady
 
@@ -26,8 +27,13 @@ for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
 
 set "NODE_OPTIONS="
 set "ELECTRON_RUN_AS_NODE="
-rem Share the normal Harness home so Desktop sees existing Web sessions and settings.
-set "DSH_HOME=%USERPROFILE%\.dsh"
+rem Share the configured Harness home so Desktop sees the same Web sessions and
+rem settings. Resolve blank, tilde, and relative values before changing cwd.
+set "DSH_HOME_DIR="
+for /f "tokens=*" %%A in ("%DSH_HOME%") do set "DSH_HOME_DIR=%%A"
+if not defined DSH_HOME_DIR set "DSH_HOME_DIR=%USERPROFILE%\.dsh"
+if "%DSH_HOME_DIR:~0,1%"=="~" set "DSH_HOME_DIR=%USERPROFILE%%DSH_HOME_DIR:~1%"
+for %%I in ("%DSH_HOME_DIR%") do set "DSH_HOME=%%~fI"
 set "DSH_DESKTOP_HOST_INSPECT_PORT=9230"
 set "DSH_DESKTOP_OPEN_DEVTOOLS=0"
 set "ELECTRON_ENABLE_LOGGING=0"
@@ -37,19 +43,34 @@ set "DESKTOP_DEVELOPMENT=%DESKTOP_APP%\.desktop-build\development"
 set "DESKTOP_PROJECT=%DESKTOP_DEVELOPMENT%\project"
 set "DESKTOP_EXE=%DESKTOP_APP%\node_modules\electron\dist\electron.exe"
 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop.log"
+set "DSH_DESKTOP_PRIMARY_RUNTIME_DIR=%DESKTOP_APP%\.desktop-build\targets\win-x64\runtime\primary-runtime"
+set "BUILD_REVISION_FILE=%DESKTOP_DEVELOPMENT%\build-revision.txt"
 
 rem The out-of-tree plugins the Desktop profile loads import
 rem @deepseek-ai/schemastery from their own directory; link the vendored copy
 rem so a plugin installed as a link into the profile can activate.
-call "%~dp0ensure-plugin-modules.bat"
+call "%~dp0build\ensure-plugin-modules.bat"
+if errorlevel 1 goto :pluginFailure
 
 rem The profile installs its JavaScript plugins as file: directory copies, which
 rem pnpm writes once and never reconciles against the source; refresh them so a
 rem pulled plugin change is what this launch loads.
-call "%~dp0sync-plugins.bat" desktop
+call "%~dp0build\sync-plugins.bat" desktop
+if errorlevel 1 goto :pluginFailure
 
 if not exist "%DESKTOP_EXE%" goto :missingElectron
-if not exist "%DESKTOP_PROJECT%\desktop-runtime.json" goto :missingRuntime
+if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" goto :missingBuild
+if not exist "%DESKTOP_APP%\lib\main.js" goto :missingBuild
+if not exist "%DSH_REPO%\apps\desktop-host\lib\index.js" goto :missingBuild
+if not exist "%DESKTOP_PROJECT%\desktop-runtime.json" goto :missingBuild
+if not exist "%DSH_DESKTOP_PRIMARY_RUNTIME_DIR%\runtime.json" goto :missingBuild
+if not exist "%BUILD_REVISION_FILE%" goto :staleBuild
+set "BUILT_REVISION="
+set /p BUILT_REVISION=<"%BUILD_REVISION_FILE%"
+set "CURRENT_REVISION="
+for /f "delims=" %%H in ('git -C "%DSH_REPO%" rev-parse HEAD 2^>nul') do set "CURRENT_REVISION=%%H"
+if not defined CURRENT_REVISION goto :staleBuild
+if /i not "%BUILT_REVISION%"=="%CURRENT_REVISION%" goto :staleBuild
 
 if not exist "%DESKTOP_DEVELOPMENT%" mkdir "%DESKTOP_DEVELOPMENT%"
 rem The launching cmd.exe holds the log file open for the whole life of the app it
@@ -60,7 +81,8 @@ rem log then; Electron still starts, so a second press focuses the open window.
 copy /y nul "%DESKTOP_LOG%" >nul 2>&1
 if errorlevel 1 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop-%RANDOM%.log"
 forfiles /p "%DESKTOP_DEVELOPMENT%" /m "desktop-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
-wscript.exe //nologo "%~dp0start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_DEVELOPMENT%\electron-user-data" "%DESKTOP_APP%"
+wscript.exe //nologo "%~dp0build\start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_DEVELOPMENT%\electron-user-data" "%DESKTOP_APP%"
+if errorlevel 1 goto :launchFailure
 echo [desktop] Launch requested. Log: %DESKTOP_LOG%
 exit /b 0
 
@@ -71,10 +93,24 @@ echo [desktop] Run build-desktop.bat (it installs dependencies) and try again.
 pause
 exit /b 1
 
-:missingRuntime
-echo [desktop] The development runtime is not prepared:
-echo [desktop]   %DESKTOP_PROJECT%\desktop-runtime.json
-echo [desktop] Run build-desktop.bat first. Preparing that runtime downloads the
-echo [desktop] pinned Node and Python runtime, so it needs GitHub and PyPI access.
+:missingBuild
+echo [desktop] The prepared Desktop build is incomplete.
+echo [desktop] Run build-desktop.bat and try again.
+pause
+exit /b 1
+
+:staleBuild
+echo [desktop] The prepared Desktop build does not match the current Git revision.
+echo [desktop] Run build-desktop.bat after pulling upstream changes.
+pause
+exit /b 1
+
+:pluginFailure
+echo [desktop] Out-of-tree plugin setup failed. Fix the [plugins] error above.
+pause
+exit /b 1
+
+:launchFailure
+echo [desktop] The hidden launcher failed to start Electron.
 pause
 exit /b 1

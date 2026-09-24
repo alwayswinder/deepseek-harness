@@ -14,12 +14,13 @@ import {
 } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
-import { DESKTOP_HOST_PROTOCOL_VERSION } from '../apps/desktop/src/host-protocol.ts'
-import type { DesktopRelease } from '../apps/desktop/src/release.ts'
-import { prepareDevelopmentProject } from '../apps/desktop/scripts/development-project.ts'
-import { preparePrimaryRuntime } from '../apps/desktop/scripts/prepare-primary-runtime.ts'
+import { DESKTOP_HOST_PROTOCOL_VERSION } from '../../apps/desktop/src/host-protocol.ts'
+import type { DesktopRelease } from '../../apps/desktop/src/release.ts'
+import { prepareDevelopmentProject } from '../../apps/desktop/scripts/development-project.ts'
+import { resolveDesktopBuildTarget } from '../../apps/desktop/scripts/desktop-build-paths.mjs'
+import { preparePrimaryRuntime } from '../../apps/desktop/scripts/prepare-primary-runtime.ts'
 
-const REPOSITORY_ROOT = resolve(import.meta.dirname, '..')
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '..', '..')
 const APP_ROOT = join(REPOSITORY_ROOT, 'apps', 'desktop')
 const CLI_ROOT = join(REPOSITORY_ROOT, 'apps', 'cli')
 const DEVELOPMENT_ROOT = join(APP_ROOT, '.desktop-build', 'development')
@@ -152,6 +153,7 @@ prepareDevelopmentProject({
   hostDir: join(REPOSITORY_ROOT, 'apps', 'desktop-host'),
   dependencyDir: DEPENDENCY_VIEW,
   release,
+  target: resolveDesktopBuildTarget(),
 })
 await preparePrimaryRuntime()
 console.log('desktop preparation: development project and primary runtime are ready')

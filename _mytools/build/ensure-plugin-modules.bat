@@ -25,10 +25,11 @@ rem build.bat, build-desktop.bat, start-dsh.bat and start-desktop.bat call this,
 rem so a machine needs no manual setup beyond running one of them.
 rem ============================================================
 
-rem Resolve the repository root from this script's location.
-for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
+rem Resolve the repository and _mytools roots from this script's location.
+for %%I in ("%~dp0..\..") do set "DSH_REPO=%%~fI"
+for %%I in ("%~dp0..") do set "MYTOOLS_ROOT=%%~fI"
 
-set "PLUGIN_MODULE_ROOT=%~dp0Plugins\node_modules\@deepseek-ai"
+set "PLUGIN_MODULE_ROOT=%MYTOOLS_ROOT%\Plugins\node_modules\@deepseek-ai"
 set "PLUGIN_FAILED="
 
 rem One call per peer package: its name under @deepseek-ai, and the directory

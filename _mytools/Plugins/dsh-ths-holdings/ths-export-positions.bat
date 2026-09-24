@@ -21,14 +21,30 @@ if "%~1"=="" (
     pause
     exit /b 1
 )
+if not exist "%~f1" (
+    echo [positions] Input file not found: %~f1
+    pause
+    exit /b 1
+)
+if /i not "%~x1"==".xlsx" (
+    echo [positions] Input must be an .xlsx workbook: %~f1
+    pause
+    exit /b 1
+)
 
 rem Pick a Python that can import openpyxl: the Desktop runtime ships one, while
 rem a machine's own Python usually does not have it. The wildcard sits in the
 rem last path component because cmd cannot expand one in the middle, and every
 rem candidate proves itself by importing the library.
 set "PYTHON_CMD="
-if not defined DSH_HOME set "DSH_HOME=%USERPROFILE%\.dsh"
-for /d %%R in ("%DSH_HOME%\dsh-runtimes\*") do call :tryPython "%%R\dependencies\python\python.exe"
+for %%I in ("%~dp0..\..\..") do set "DSH_REPO=%%~fI"
+set "DSH_HOME_DIR="
+for /f "tokens=*" %%A in ("%DSH_HOME%") do set "DSH_HOME_DIR=%%A"
+if not defined DSH_HOME_DIR set "DSH_HOME_DIR=%USERPROFILE%\.dsh"
+if "%DSH_HOME_DIR:~0,1%"=="~" set "DSH_HOME_DIR=%USERPROFILE%%DSH_HOME_DIR:~1%"
+for %%I in ("%DSH_HOME_DIR%") do set "DSH_HOME_DIR=%%~fI"
+call :tryPython "%DSH_REPO%\apps\desktop\.desktop-build\targets\win-x64\runtime\primary-runtime\dependencies\python\python.exe"
+for /d %%R in ("%DSH_HOME_DIR%\dsh-runtimes\*") do call :tryPython "%%R\dependencies\python\python.exe"
 call :tryPython python
 call :tryPython py
 if not defined PYTHON_CMD (

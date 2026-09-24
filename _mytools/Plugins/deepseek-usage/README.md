@@ -20,11 +20,12 @@ The settings card and the summary below the composer show only these account tot
   through the harness credentials service, fetches balances, folds session
   token usage into a per-account per-local-day ledger persisted at
   `$DSH_HOME/storages/deepseek-usage-meter.json`, and publishes a debounced
-  snapshot into the `deepseek-usage` settings namespace.
+  snapshot into the `deepseek-usage` Config's live `metrics` field.
 - **Browser half** (`client.js`): a hand-built lazy-CJS factory bundle
-  registered via `window.__ModuleLoader__.load`. The card binds the
-  `deepseek-usage` namespace through `ctx.settingsScope`; the standard settings
-  mirror delivers Host publishes with no custom RPC.
+  registered via `window.__ModuleLoader__.load`. The card reads the
+  `deepseek-usage` form through `ctx.configForms` and renders its `metrics`
+  field; the standard configuration mirror delivers Host publishes with no
+  custom RPC.
 
 No harness package is modified. The plugin lives outside the package tree, so
 upstream updates and builds are unaffected. To remove it:
@@ -47,7 +48,7 @@ Desktop keeps its own profile (`$DSH_HOME/profiles/desktop`) and refuses
 `dsh plugin --profile desktop`: install the bundle there once per machine from
 the application's **Plugins → Add plugin** dialog with the absolute path of
 this directory. The host half resolves `@deepseek-ai/schemastery` from the
-plugin's own directory, which `_mytools/ensure-plugin-modules.bat` supplies;
+plugin's own directory, which `_mytools/build/ensure-plugin-modules.bat` supplies;
 every build and start script runs it.
 
 ## Configuration

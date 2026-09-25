@@ -1,0 +1,7 @@
+# little-icon bundle patch: one host row mounting the plugin package. The host
+# half (index.js) samples the agent state and supervises the pet process; the
+# pet itself is a separate PowerShell/WPF window (pet/pet.ps1), so it survives
+# the DSH window being tucked away.
+- insert:
+    - id: little-icon
+      name: '@local/dsh-little-icon'

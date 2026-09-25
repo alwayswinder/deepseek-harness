@@ -1,0 +1,125 @@
+---
+description: "DSH desktop pet: a pixel widget living in its own window, floating on top, draggable, switching expression with agent state, tucking the DSH window away on click, with a tray menu."
+kind: "package-bundle"
+---
+
+# @local/dsh-little-icon
+
+English | [中文](README.zh.md)
+
+## Summary
+
+The pet is a **process of its own** (PowerShell + WPF), not an overlay inside the DSH window: it owns a frameless, transparent, always-on-top window, so it stays on the desktop while the DSH window is minimized or tucked away. The host half (`index.js`) samples agent state into a state file; the pet switches its animation from it. Clicking the pet calls user32 `ShowWindow` to tuck the DSH window away or bring it back, and the tray icon offers the same action plus a position reset and quit. The plugin changes no conversation, model request, or session log.
+
+## Table of Contents
+
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Model experience](#model-experience)
+- [Known limitations and deferred work](#known-limitations-and-deferred-work)
+- [Dev note](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## Use this package
+
+**Desktop install.** Desktop owns its own configuration (`$DSH_HOME/profiles/desktop`) and refuses `dsh plugin --profile desktop`; fill this directory's absolute path into the application's **Plugins → Add plugin** dialog once per machine. Desktop must then be restarted: the host half (`index.js`) takes no part in client hot reload, so only a restart loads it.
+
+**Web install** (optional; there the pet only floats and controls no window). `start-dsh.bat` already lists this plugin in `DSH_LOCAL_PLUGINS`, so every start idempotently installs this directory into the web profile as a `file:` copy, and `sync-plugins.bat` refreshes `index.js`, `pet/`, and `assets/` with it. To install it by hand:
+
+```text
+dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
+```
+
+**Size and translucency.** Open the **Plugins** list and click the **Desktop Pet** card: the settings card is drawn on that card's page, between the description and the parts list, so nothing hides behind the `little-icon` row. It leads with:
+
+- **Size** — a 96–320 pixel slider; the pet takes the new size within a frame;
+- **Translucent while idle** — a switch; turn it off and the pet never fades;
+- **Translucency** — available while that switch is on, 15%–100%;
+- plus enable, always-on-top, click behaviour, and animation pace, with idle pacing, happy/startled durations, and the state sampling interval folded under **More**.
+
+Controls write straight to the profile configuration (the `little-icon` entry in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`) and need no restart: the host republishes the state file on a config change and the pet applies it within a second. Toggling **Enable the pet** off and on also ends and restarts the pet process at once. The card comes from the plugin's own browser half (`client.js`), so no second, automatically generated form appears after a restart.
+
+**Interaction.** The pet starts in the bottom-right corner of the primary screen, as translucent as configured, and fully visible under the pointer. Dragging with the left button moves it (the position is stored on release, restored on the next start, and clamped onto the current virtual screen). A **click** — a press that did not move the window — performs the configured `clickAction`: `toggle` (default) tucks a shown DSH window away and restores plus foregrounds it on the next click, `minimize` only minimizes, `none` does nothing. The tray icon's context menu offers "tuck/show DSH", "move to corner", and "quit pet"; double-clicking the tray icon is the same as clicking the pet.
+
+**Configuration fields.** The card's controls write these; every field applies live (a config change republishes the state file and reschedules the sampling timer, and the pet re-reads the state file, so nothing needs a restart):
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Turning it off ends the pet process; turning it back on starts one |
+| `size` | `160` | Window edge in pixels; the frames are built at 256px and scaled down |
+| `translucent` | `true` | Whether the pet fades while the pointer is away |
+| `idleOpacity` | `0.45` | How far it fades; hover is always 1. Ignored while `translucent` is off |
+| `frameMs` | `600` | Milliseconds each animation frame stays on screen |
+| `pollMs` | `800` | Host sampling interval; lower follows the agent sooner, higher costs less |
+| `boredAfterSeconds` | `60` | Idle seconds before `idle` becomes `bored` |
+| `sleepAfterSeconds` | `600` | Further idle seconds before `sleep` |
+| `happyMs` | `3000` | How long `happy` lasts after a busy period ends |
+| `alertMs` | `8000` | How long `alert` lasts after an agent error |
+| `topmost` | `true` | Whether the pet stays above other windows |
+| `clickAction` | `toggle` | `toggle` / `minimize` / `none` |
+
+**State to expression.** `working` (an agent is running, work is queued, or a job is running) → the working frames; `happy` (just left busy) → the happy frames; `alert` (within `alertMs` of `agent/error`) → the peeking frames; idle ages through `idle`, `bored`, and `sleep`. Each state is a four-frame loop.
+
+Local data lives under `$DSH_HOME/little-icon/`: `state.json` (written by the host, read by the pet) and `position.json` (written by the pet). It is per machine and never syncs with the repository; deleting it restores the default position and state.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Implementation details — click to expand</summary>
+
+**Why a separate process is required.** The desktop shell exposes no window capability to plugins: `apps/desktop` has no `Tray`, the main window's `BrowserWindow` sets neither `transparent` nor `alwaysOnTop` nor `skipTaskbar`, `apps/desktop/src/ipc.ts` lists no minimize/hide/restore channel, and `preload-app.ts` exposes only `dshDesktop` (browser views and updates), `dshPlatform` (the usage/top-up embedded page), the directory picker, host paths, and the locale. The renderer runs with `sandbox: true` and `contextIsolation: true`, and `window.open` is denied outright. Decisively, plugin host code runs in the `ELECTRON_RUN_AS_NODE=1` Node child process (`apps/desktop/src/host-process.ts` plus `node-environment.ts`), where `require('electron')` yields the binary path and nothing more. A hidden window stops painting its DOM as well. "The pet stays after DSH is tucked away" therefore needs a process the plugin starts itself.
+
+**Browser half.** `client.js` registers a hand-written settings card into `plugins.bundle.config`, the seat the Plugins page keeps for one bundle's own configuration, keyed by the package name `@local/dsh-little-icon` — drawn right on the plugin list's card page, one click shallower than the `little-icon` row's own page. The card reads no configuration itself: `ctx.configForms.get('little-icon')` yields the row's form, whose accepted sections are mirrored into a snapshot store and handed to the component through the registration's inject face (`hooks.petSettings` plus a `write` callback), so the Host schema stays the single owner of every value. Sliders echo locally while dragging and collapse into one write 250ms after the drag settles; switches and the select write at once. The host half therefore calls `settings.configure({ auto: false })`, so the same fields never appear twice in a generated English form. All copy lives in `ctx.locale` dictionaries (Chinese and English); `tests/smoke.mjs` asserts the two cover the same keys, that the card asks for nothing else, and drives one immediate write and one merged drag through the real form API.
+
+**Host half.** `index.js` samples every `pollMs`: `ctx.get('agents')` for an agent that is `running` or holds queued next-turn/next-step work, `ctx.get('jobs')` for a `running` or `stopping` job (the same test `apps/desktop-host/src/update-tasks.ts` uses), and `ctx.on('agent/error')` for an alert window. The decision itself is the pure `sampleState`, which `tests/smoke.mjs` drives directly. Results go to `$DSH_HOME/little-icon/state.json`: written on change, plus a four-second heartbeat the pet uses to tell whether the host is still alive. `translucent` and `idleOpacity` collapse into one `opacity` field here, so the pet needs no notion of the switch. The pet is started with `child_process.spawn` (`powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File pet/pet.ps1`) carrying the asset directory, the state and position files, and the process id of the window to control; the `ctx.effect` disposer ends it, so DSH leaves no orphan window. In the desktop shell the host's parent is the Electron main process, so that id is simply `process.ppid`; the web profile has no window to control and passes 0.
+
+**Pet process.** `pet/pet.ps1` is a WPF frameless transparent topmost window (`WindowStyle=None`, `AllowsTransparency`, `Topmost`, `ShowActivated=false` so it never steals focus). The script declares the process DPI aware first (`SetProcessDpiAwarenessContext`, falling back a step at a time): PowerShell has no DPI manifest, and a layered window in an unaware process is rendered into a surface at the virtualized size and then stretched by the system, which tiled the pet two-by-two and drew it larger than asked. After `WindowInteropHelper.EnsureHandle()` it adds `WS_EX_TOOLWINDOW` to the handle, because WPF's `ShowInTaskbar=false` does not actually set that style and the pet would otherwise appear in the taskbar and Alt+Tab. A 200ms timer re-reads the state file when its write time moves, applying expression, size, opacity, click action, and topmost; frames advance every `frameMs`, and the script counts the frames on disk instead of reading a constant (most states have four, `working` has six). Dragging uses `DragMove()`, and an unchanged position on release counts as a click. The position is stored in `position.json`, restored at start, and clamped onto a screen.
+
+**Geometry units.** Position and clamping use WPF's own `SystemParameters.WorkArea` and `VirtualScreen*`, which share the device-independent units of `Window.Left/Top`. WinForms reports the work area and virtual screen in physical pixels, and mixing the two pushes the pet off-screen at any display scaling other than 100% — a bottom-right position lands 1.5x too far right and down at 150%. `tests/smoke.mjs --pet` measures the window from a DPI-aware probe and asserts it is inside the screen.
+
+**Window control.** The target starts as `Process.MainWindowHandle` — the real main window, which the untitled helper windows cannot confuse, so it is trusted first. When that reports 0 (a hidden window), the pet enumerates the process's top-level windows and skips IME helpers such as `IME`, `CandidateWindow`, and `MSCTFIME UI`. The handle is cached, because `MainWindowHandle` becomes 0 after `SW_HIDE`. Tucking uses `SW_HIDE` (gone from both the screen and the taskbar, leaving the pet and the tray as the way back); restoring uses `SW_RESTORE` plus `SetForegroundWindow`.
+
+**Encoding.** `pet.ps1` stays pure ASCII: without a BOM, Windows PowerShell 5.1 decodes a `.ps1` as ANSI, which turns UTF-8 Chinese into mojibake and can even swallow quotes into a syntax error. The localized tray labels live in `pet/labels.json`, read as UTF-8, with English defaults when it is missing. `tests/smoke.mjs` asserts the script contains no non-ASCII character.
+
+**Art.** `assets/<state>/1.png … N.png` come from `tools/build-assets.py`, which reads `IconImage/transparent/*.png`. Each source sheet packs several figures onto one 2048×2048 canvas, and the layouts differ: most states are two-by-two (four figures), `working` is three columns by two rows (six), and `sleep` leaves only 14 transparent pixels between its rows. The script therefore assumes no grid and finds figures by alpha projection: empty rows split the sheet into bands (a gap under 8 pixels does not split, and bands too short to be a figure are absorbed into their neighbour so Zzz bubbles and gear icons stay attached), column valleys below 12% of the band's peak split each band into figures, and each region is then cropped to its actual opaque pixels. Figures run top-to-bottom, left-to-right, are pasted bottom-centered onto one shared canvas per state, and share a single global scale taken from the largest figure in the set, so a state never jumps between frames and the character keeps its size across expressions. The artwork decides the frame count, recorded in `assets/frames.json`; the pet counts files rather than reading a constant, so new art needs no code change. `assets/tray.ico` is the multi-size tray icon.
+
+</details>
+
+-----
+
+<a id="model-experience"></a>
+## Model experience
+
+None. The plugin adds no model-visible input, prompt, tool, or session event; it only reads agent and job status.
+
+## <a id="known-limitations-and-deferred-work"></a>Known limitations and deferred work
+
+**"Waiting for your answer" is not wired.** The client-side `ui-session` status carries `pendingInteraction` (approvals, questions, plan review), but the host offers only the `approval/request` waterfall and no read-only query for a pending decision. Rather than inserting a decorative listener into the approval path, this plugin leaves it unused; `alert` is driven solely by `agent/error` and shows the peeking frames.
+
+**"Tuck away" is not a real system tray.** The desktop shell has no `Tray`, so the tray icon belongs to the pet process (`NotifyIcon`), and the action is `SW_HIDE`: the DSH window leaves the screen and the taskbar but leaves no DSH icon in the notification area. If DSH exits some other way, the pet quits on its own within 45 seconds or as soon as the host process is gone.
+
+**A pet that exits stays exited.** After quitting from the tray, no other settings write brings it back — only switching **Enable the pet** off and on, or the next DSH start. That way the quit a user just asked for is not undone.
+
+**The position only clamps to the virtual screen.** A changed monitor layout pulls the window back into view but does not remember a position per display.
+
+**Four frames per expression.** The art fixes each state to a four-frame loop; finer motion (typing, a Zzz bubble) needs new art dropped into the matching state directory.
+
+**The web profile is second class.** There the pet has no DSH window to control, so its tray menu keeps only position reset and quit, and a click does nothing; everything else — the window, expressions, dragging — behaves the same.
+
+<a id="dev-note"></a>
+### Dev note
+
+```text
+python tools/build-assets.py          # regenerate assets/ (bundled DSH Python: Pillow + numpy)
+node tests/smoke.mjs                  # state machine, art, and pet.ps1 -SelfTest (shows no window)
+node tests/smoke.mjs --pet            # additionally runs the apply() lifecycle: start the pet, measure
+                                      # that its window is on screen, change state, dispose
+                                      # (a pet window appears for a few seconds)
+```
+
+Changing `index.js` or `package.json` needs a DSH restart (the host half does not hot reload); changing `pet/pet.ps1`, `pet/labels.json`, or `assets/` needs only a pet restart (quit it from the tray, or restart DSH).

@@ -1,0 +1,39 @@
+{
+  "name": "@local/dsh-little-icon",
+  "description": "DSH 桌宠 — 一个独立于 DSH 窗口的像素小挂件：悬浮置顶、可拖动、按 agent 状态换表情，点击可收起/恢复 DSH 主窗口，并带托盘菜单。A desktop pet for DSH: a frameless always-on-top window that reacts to agent state and tucks the DSH window away.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "icon": "./assets/idle/1.png",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "pet",
+    "assets",
+    "tools",
+    "README.md",
+    "README.zh.md"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "idle": 4,
+  "working": 6,
+  "bored": 4,
+  "sleep": 4,
+  "happy": 4,
+  "alert": 4
+}

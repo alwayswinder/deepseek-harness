@@ -47,8 +47,11 @@
 | `deepseek-usage` | 设置页的用量/余额卡片；**对话输入框上方那条汇总**（余额、今日消费 —— 现在最前面还有一个不标单位的持仓盈亏数字）。 | web、desktop |
 | `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，点一下收起/恢复 DSH 主窗口，带托盘菜单。 | desktop（web 可装，但那里不控制窗口） |
 | `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时。 | desktop |
+| `dsh-pocket` | 手机扫码访问电脑上的 DSH：设置页「手机访问」，局域网二维码（代理监听 3081）+ cloudflared 公网隧道，WebSocket 透传实时同屏。第三方插件（作者 shaobeichen，GPL-2.0）。 | desktop |
 
 `Plugins\node_modules\@deepseek-ai\` 是给上面这些插件用的 peer 链接，由 `build\ensure-plugin-modules.bat` 维护，不要手改。
+
+`dsh-pocket` 的 `lib\service.mjs` 用 `require('qrcode')` 生成二维码，而它以 `link:` 装进 profile（不是 `file:` 副本），所以要在**插件目录自己**装依赖：新机器上先 `cd Plugins\dsh-pocket && npm ci --omit=dev --legacy-peer-deps`，否则设置页里二维码是空图。它不跟着 `build\sync-plugins.bat` 走 —— 那里的文件清单只覆盖 `index.js`/`client.js` 这类布局，而它是 `lib\` + `client\`，`link:` 生效靠的是 junction。
 
 ### `dsh-ths-holdings` 的数据
 

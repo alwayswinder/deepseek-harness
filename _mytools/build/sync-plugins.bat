@@ -52,6 +52,7 @@ rem profile starts installing another such plugin.
 call :syncPlugin appearance-plus dsh-appearance-plus
 call :syncPlugin deepseek-usage dsh-deepseek-usage
 call :syncPlugin dsh-fish-tank dsh-fish-tank
+call :syncPlugin dsh-littleIcon dsh-little-icon
 
 if defined PLUGIN_FAILED exit /b 1
 exit /b 0
@@ -85,6 +86,19 @@ for %%F in (index.js client.js cordis.patch.yml package.json README.md README.zh
                 echo [plugins] WARNING: could not refresh %SYNC_DEST%\%%F.
                 set "PLUGIN_FAILED=1"
             ) else set "SYNC_CHANGED=1"
+        )
+    )
+)
+
+rem Directories a plugin ships beside those files (桌宠的素材与脚本) are mirrored,
+rem because the copy above only ever covers single files. robocopy reports 0-7 on
+rem success and >=8 on failure; it skips identical files, so this stays cheap.
+for %%D in (assets pet locale) do (
+    if exist "%SYNC_SRC%\%%D" (
+        robocopy "%SYNC_SRC%\%%D" "%SYNC_DEST%\%%D" /E /NJH /NJS /NP /NDL /R:0 /W:0 >nul
+        if errorlevel 8 (
+            echo [plugins] WARNING: could not refresh %SYNC_DEST%\%%D.
+            set "PLUGIN_FAILED=1"
         )
     )
 )

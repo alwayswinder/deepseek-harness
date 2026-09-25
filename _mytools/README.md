@@ -31,7 +31,7 @@
 | --- | --- |
 | `build\ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：`@deepseek-ai/schemastery` → `vendor\schemastery`，`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`。链接已正确就跳过，缺了就补。 |
 | `build\ensure-plugin-builds.bat` | 每次都按插件自己的 lockfile 同步依赖，再重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），避免更新后沿用旧 `node_modules` 或 `lib\`。 |
-| `build\sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`）刷新成 `Plugins\` 里的最新源码；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
+| `build\sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`、`dsh-fish-tank`、`dsh-littleIcon`）刷新成 `Plugins\` 里的最新源码，含插件自带的 `assets\`、`pet\`、`locale\` 目录；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
 `build\ensure-plugin-*.bat` 由 `build.bat` / `build-desktop.bat` 自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
 
@@ -45,6 +45,7 @@
 | --- | --- | --- |
 | `appearance-plus` | 插件页增加五套护眼配色、背景图片编辑器，以及空闲锁屏壁纸：无操作满设定秒数后整屏换成锁屏图；桌面端连系统标题栏和三个窗口按钮一起清掉，窗口状态不变。 | web、desktop |
 | `deepseek-usage` | 设置页的用量/余额卡片；**对话输入框上方那条汇总**（余额、今日消费 —— 现在最前面还有一个不标单位的持仓盈亏数字）。 | web、desktop |
+| `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，点一下收起/恢复 DSH 主窗口，带托盘菜单。 | desktop（web 可装，但那里不控制窗口） |
 | `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时。 | desktop |
 
 `Plugins\node_modules\@deepseek-ai\` 是给上面这些插件用的 peer 链接，由 `build\ensure-plugin-modules.bat` 维护，不要手改。

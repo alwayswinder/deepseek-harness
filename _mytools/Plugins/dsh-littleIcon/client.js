@@ -25,6 +25,15 @@ window.__ModuleLoader__.load({
     /** The bundle whose page carries this configuration. */
     const PACKAGE_NAME = '@local/dsh-little-icon'
 
+    /** The Host route that records "the person is still doing something". */
+    const ACTIVITY_PATH = '/api/little-icon/activity'
+
+    /** At most one activity ping per window; the Host only needs coarse recency. */
+    const ACTIVITY_PING_MS = 15_000
+
+    /** Input that counts as using DSH, so the pet never sleeps while you work. */
+    const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'wheel', 'keydown']
+
     /** Mirrors the Host schema defaults so a control never renders blank. */
     const DEFAULTS = {
       enabled: true,
@@ -35,10 +44,11 @@ window.__ModuleLoader__.load({
       clickAction: 'toggle',
       frameMs: 600,
       pollMs: 800,
-      boredAfterSeconds: 60,
-      sleepAfterSeconds: 600,
+      alertMs: 1500,
       happyMs: 3000,
-      alertMs: 8000,
+      boredEverySeconds: 60,
+      boredMs: 5000,
+      sleepAfterSeconds: 600,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -46,9 +56,10 @@ window.__ModuleLoader__.load({
     const OPACITY = { min: 0.15, max: 1, step: 0.05 }
     const FRAME_MS = { min: 120, max: 2000, step: 20 }
     const POLL_MS = { min: 200, max: 5000, step: 100 }
-    const IDLE_SECONDS = { min: 5, max: 3600, step: 5 }
+    const HOLD_MS = { min: 0, max: 15000, step: 500 }
+    const BORED_EVERY_SECONDS = { min: 5, max: 600, step: 5 }
+    const BORED_MS = { min: 500, max: 20000, step: 500 }
     const SLEEP_SECONDS = { min: 30, max: 86400, step: 30 }
-    const HOLD_MS = { min: 0, max: 60000, step: 500 }
 
     /** How long a slider drag settles before its writes are merged into one. */
     const WRITE_DELAY_MS = 250
@@ -74,10 +85,15 @@ window.__ModuleLoader__.load({
       pace: '表情节奏',
       paceHint: '每帧停留的毫秒数。',
       advanced: '更多',
-      boredAfter: '多久变「无聊」',
-      sleepAfter: '多久「打盹」',
+      alertMs: '任务开始的「惊讶」',
+      alertHint: '每次任务开始时先惊讶这么久，然后进入干活中。',
       happyMs: '「开心」保持',
-      alertMs: '「惊讶」保持',
+      happyHint: '一轮活干完后开心多久，然后回到待机。',
+      boredEvery: '无聊间隔',
+      boredHint: '闲着的时候每隔这么久插一次「无聊」。',
+      boredMs: '「无聊」时长',
+      sleepAfter: '无操作多久「打盹」',
+      sleepHint: '鼠标、键盘、拖动桌宠都算操作；一有操作就醒过来回到待机。',
       pollMs: '状态采样间隔',
       pollMsHint: '宿主读取 agent 状态的间隔；改大更省，改小更跟手。',
       pixels: '{value} px',
@@ -110,10 +126,15 @@ window.__ModuleLoader__.load({
       pace: 'Animation pace',
       paceHint: 'Milliseconds each frame stays on screen.',
       advanced: 'More',
-      boredAfter: 'Bored after',
-      sleepAfter: 'Asleep after',
+      alertMs: 'Startle at task start',
+      alertHint: 'How long a new task startles the pet before it starts working.',
       happyMs: 'Happy for',
-      alertMs: 'Startled for',
+      happyHint: 'How long a finished task keeps it happy before it idles again.',
+      boredEvery: 'Boredom interval',
+      boredHint: 'While idle, how often a bored interruption comes around.',
+      boredMs: 'Boredom duration',
+      sleepAfter: 'Asleep after',
+      sleepHint: 'Pointer, keyboard, and dragging the pet all count as activity; any of them wakes it.',
       pollMs: 'State sampling',
       pollMsHint: 'How often the host reads agent state.',
       pixels: '{value} px',
@@ -245,26 +266,34 @@ window.__ModuleLoader__.load({
           h('summary', null, t('advanced')),
           h('div', { className: 'dli-grid' },
             h(Row, {
-              label: t('boredAfter'), value: t('seconds', { value: draft.boredAfterSeconds }), disabled: !editable,
+              label: t('alertMs'), value: t('milliseconds', { value: draft.alertMs }),
+              text: t('alertHint'), disabled: !editable,
+              control: h('input', { min: HOLD_MS.min, max: HOLD_MS.max, step: HOLD_MS.step, ...slider('alertMs') }),
+            }),
+            h(Row, {
+              label: t('happyMs'), value: t('milliseconds', { value: draft.happyMs }),
+              text: t('happyHint'), disabled: !editable,
+              control: h('input', { min: HOLD_MS.min, max: HOLD_MS.max, step: HOLD_MS.step, ...slider('happyMs') }),
+            }),
+            h(Row, {
+              label: t('boredEvery'), value: t('seconds', { value: draft.boredEverySeconds }),
+              text: t('boredHint'), disabled: !editable,
               control: h('input', {
-                min: IDLE_SECONDS.min, max: IDLE_SECONDS.max, step: IDLE_SECONDS.step,
-                ...slider('boredAfterSeconds'),
+                min: BORED_EVERY_SECONDS.min, max: BORED_EVERY_SECONDS.max, step: BORED_EVERY_SECONDS.step,
+                ...slider('boredEverySeconds'),
               }),
             }),
             h(Row, {
-              label: t('sleepAfter'), value: t('seconds', { value: draft.sleepAfterSeconds }), disabled: !editable,
+              label: t('boredMs'), value: t('milliseconds', { value: draft.boredMs }), disabled: !editable,
+              control: h('input', { min: BORED_MS.min, max: BORED_MS.max, step: BORED_MS.step, ...slider('boredMs') }),
+            }),
+            h(Row, {
+              label: t('sleepAfter'), value: t('seconds', { value: draft.sleepAfterSeconds }),
+              text: t('sleepHint'), disabled: !editable,
               control: h('input', {
                 min: SLEEP_SECONDS.min, max: SLEEP_SECONDS.max, step: SLEEP_SECONDS.step,
                 ...slider('sleepAfterSeconds'),
               }),
-            }),
-            h(Row, {
-              label: t('happyMs'), value: t('milliseconds', { value: draft.happyMs }), disabled: !editable,
-              control: h('input', { min: HOLD_MS.min, max: HOLD_MS.max, step: HOLD_MS.step, ...slider('happyMs') }),
-            }),
-            h(Row, {
-              label: t('alertMs'), value: t('milliseconds', { value: draft.alertMs }), disabled: !editable,
-              control: h('input', { min: HOLD_MS.min, max: HOLD_MS.max, step: HOLD_MS.step, ...slider('alertMs') }),
             }),
             h(Row, {
               label: t('pollMs'), value: t('milliseconds', { value: draft.pollMs }), text: t('pollMsHint'), disabled: !editable,
@@ -287,6 +316,25 @@ window.__ModuleLoader__.load({
           injectStyles()
           return () => {}
         }, 'little-icon: stylesheet')
+
+        // The pet sleeps only when nobody is doing anything, and the Host sees
+        // agents and jobs rather than input, so the page reports its own use.
+        // Throttled: the Host only needs to know activity happened recently.
+        let lastPing = 0
+        const ping = () => {
+          const now = Date.now()
+          if (now - lastPing < ACTIVITY_PING_MS) return
+          lastPing = now
+          void fetch(ACTIVITY_PATH, { method: 'POST' }).catch(() => {})
+        }
+        const onVisibility = () => { if (document.visibilityState === 'visible') ping() }
+        for (const name of ACTIVITY_EVENTS) window.addEventListener(name, ping, { passive: true, capture: true })
+        document.addEventListener('visibilitychange', onVisibility)
+        ping()
+        ctx.effect(() => () => {
+          for (const name of ACTIVITY_EVENTS) window.removeEventListener(name, ping, { capture: true })
+          document.removeEventListener('visibilitychange', onVisibility)
+        }, 'little-icon: activity reporting')
 
         // The Host document stays the single owner of every value; this half
         // mirrors the accepted section into a snapshot the card renders.

@@ -207,7 +207,13 @@ if ($SelfTest) {
 }
 
 # ---- single instance --------------------------------------------------------
-$SCRIPT:Mutex = New-Object System.Threading.Mutex($false, 'Local\dsh-littleIcon-pet')
+# One pet per harness home, not one per machine: the name is derived from the
+# state file, so a second DSH sharing this directory cannot stack a second pet on
+# the same window while a test using its own temporary home still can run one.
+$SCRIPT:MutexName = 'Local\dsh-littleIcon-pet-' + [BitConverter]::ToString(
+    [System.Security.Cryptography.SHA256]::Create().ComputeHash(
+        [System.Text.Encoding]::UTF8.GetBytes($SCRIPT:StateFile.ToLowerInvariant()))).Replace('-', '').Substring(0, 16)
+$SCRIPT:Mutex = New-Object System.Threading.Mutex($false, $SCRIPT:MutexName)
 if (-not $SCRIPT:Mutex.WaitOne(0)) {
     Write-Log 'another pet is already running; exiting'
     exit 0
@@ -450,16 +456,20 @@ $window.Add_MouseLeftButtonDown({
     try {
         $beforeX = $window.Left
         $beforeY = $window.Top
-        # DragMove blocks until the button is released; an unchanged position is
-        # a click rather than a drag.
-        $window.DragMove()
-        if ([Math]::Abs($window.Left - $beforeX) -lt 2 -and [Math]::Abs($window.Top - $beforeY) -lt 2) {
-            Invoke-PetClick
-        } else {
-            Save-Position
+        $dragged = $false
+        try {
+            # DragMove blocks until the button is released; a position that did
+            # not move is a click rather than a drag.
+            $window.DragMove()
+            $dragged = [Math]::Abs($window.Left - $beforeX) -ge 2 -or [Math]::Abs($window.Top - $beforeY) -ge 2
+        } catch {
+            # A click fast enough to release the button before DragMove runs
+            # throws; that is still a click, never a drag.
+            $dragged = $false
         }
+        if ($dragged) { Save-Position } else { Invoke-PetClick }
     } catch {
-        Write-Log "drag/click failed: $($_.Exception.Message)"
+        Write-Log "click failed: $($_.Exception.Message)"
     }
 })
 

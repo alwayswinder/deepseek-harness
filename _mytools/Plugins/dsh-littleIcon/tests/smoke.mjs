@@ -18,23 +18,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
-const { sampleState, createTimeline, STATES, FRAMES } = internals
+const { sampleState, createTimeline, isBusy, STATES, ACTIVITY_PATH } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
-// ---- state machine ----------------------------------------------------------
-
-const DEFAULTS = {
-  size: 160,
-  idleOpacity: 0.45,
-  frameMs: 600,
-  boredAfterSeconds: 60,
-  sleepAfterSeconds: 600,
-  happyMs: 3000,
-  alertMs: 8000,
-  topmost: true,
-  clickAction: 'toggle',
-}
+// ---- busy predicate ---------------------------------------------------------
 
 /** @param {object} options - which services exist and what they report. */
 function fakeContext({ running = false, queued = false, jobs = [] } = {}) {
@@ -51,34 +39,66 @@ function fakeContext({ running = false, queued = false, jobs = [] } = {}) {
   return { get: (name) => services[name] }
 }
 
-const idleContext = fakeContext()
-const busyContext = fakeContext({ running: true })
-const queuedContext = fakeContext({ queued: true })
-const jobContext = fakeContext({ jobs: [{ status: 'running' }] })
-const finishedJobContext = fakeContext({ jobs: [{ status: 'completed' }] })
+assert.equal(isBusy(fakeContext()), false)
+assert.equal(isBusy(fakeContext({ running: true })), true, 'a running agent is work')
+assert.equal(isBusy(fakeContext({ queued: true })), true, 'queued work is work')
+assert.equal(isBusy(fakeContext({ jobs: [{ status: 'running' }] })), true, 'a running job is work')
+assert.equal(isBusy(fakeContext({ jobs: [{ status: 'stopping' }] })), true, 'a stopping job is work')
+assert.equal(isBusy(fakeContext({ jobs: [{ status: 'completed' }] })), false)
+assert.equal(isBusy({ get: () => undefined }), false, 'a profile without agents or jobs is never busy')
+
+const DEFAULTS = {
+  size: 160,
+  idleOpacity: 0.45,
+  frameMs: 600,
+  alertMs: 1500,
+  happyMs: 3000,
+  boredEverySeconds: 60,
+  boredMs: 5000,
+  sleepAfterSeconds: 600,
+  topmost: true,
+  clickAction: 'toggle',
+}
 
 const start = 1_000_000
+
+// One task reads as startle, work, joy, idle — then boredom now and then, and
+// sleep once nothing has happened for the configured stretch.
 let timeline = createTimeline(start)
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, start), 'idle')
-assert.equal(sampleState(busyContext, timeline, DEFAULTS, start + 1000), 'working')
-assert.equal(sampleState(queuedContext, timeline, DEFAULTS, start + 2000), 'working')
-assert.equal(sampleState(jobContext, timeline, DEFAULTS, start + 3000), 'working')
+const quiet = (now) => sampleState(false, start, timeline, DEFAULTS, now)
 
-// Busy ends at +4000: a short happy flash first, then ordinary idle. Idle ages
-// from that moment, so boredom and sleep count from the end of the work.
-const busyEnd = start + 4000
-assert.equal(sampleState(finishedJobContext, timeline, DEFAULTS, busyEnd), 'happy')
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, busyEnd + DEFAULTS.happyMs - 1), 'happy')
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, busyEnd + DEFAULTS.happyMs), 'idle')
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, busyEnd + 59_000), 'idle')
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, busyEnd + 61_000), 'bored')
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, busyEnd + 601_000), 'sleep')
+assert.equal(quiet(start), 'idle', 'a fresh pet idles')
+const alertStart = start + 100
+assert.equal(sampleState(true, start, timeline, DEFAULTS, alertStart), 'alert', 'a task starts with the startle frames')
+assert.equal(sampleState(true, start, timeline, DEFAULTS, alertStart + DEFAULTS.alertMs - 1), 'alert')
+assert.equal(sampleState(true, start, timeline, DEFAULTS, alertStart + DEFAULTS.alertMs), 'working')
+const busyEnd = start + 10_000
+assert.equal(sampleState(false, start, timeline, DEFAULTS, busyEnd), 'happy', 'work ends happy')
+assert.equal(quiet(busyEnd + DEFAULTS.happyMs - 1), 'happy')
+assert.equal(quiet(busyEnd + DEFAULTS.happyMs), 'idle')
 
-// An error outranks boredom for its configured window.
-timeline = createTimeline(start)
-timeline.alertUntil = start + DEFAULTS.alertMs
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, start + 100), 'alert')
-assert.equal(sampleState(idleContext, timeline, DEFAULTS, start + DEFAULTS.alertMs), 'idle')
+// Boredom arrives once per interval of quiet, lasts boredMs, and leaves.
+const boredAt = busyEnd + DEFAULTS.boredEverySeconds * 1000
+assert.equal(quiet(boredAt - 1), 'idle')
+assert.equal(quiet(boredAt), 'bored')
+assert.equal(quiet(boredAt + DEFAULTS.boredMs), 'idle')
+
+// Long quiet sleeps the pet; any activity wakes it straight back to idle.
+const asleep = busyEnd + DEFAULTS.sleepAfterSeconds * 1000
+assert.equal(quiet(asleep), 'sleep')
+assert.equal(sampleState(false, asleep, timeline, DEFAULTS, asleep + 500), 'idle', 'activity wakes the pet')
+assert.equal(sampleState(false, asleep + 500, timeline, DEFAULTS, asleep + 40_000), 'idle',
+  'waking restarts the boredom clock rather than showing boredom at once')
+
+// Movement of the pet itself is activity too: the position file's newer
+// timestamp reaches the same rule, and quiet after it sleeps the pet again.
+const moved = asleep + 40_000
+assert.equal(sampleState(false, moved, timeline, DEFAULTS, moved + 200), 'idle')
+const asleepAgain = moved + DEFAULTS.sleepAfterSeconds * 1000
+assert.equal(sampleState(false, moved, timeline, DEFAULTS, asleepAgain), 'sleep')
+
+// A task starting counts as activity as well, and it startles again.
+assert.equal(sampleState(true, moved, timeline, DEFAULTS, asleepAgain + 1000), 'alert')
 
 // Every state the host can publish has frames on disk, and the generator's
 // frames.json agrees with the files: the art decides the count per state (the
@@ -139,9 +159,28 @@ if (process.platform === 'win32') {
 
 // ---- browser half -----------------------------------------------------------
 
-/** Fake `window.__ModuleLoader__`, mirroring how the client module system calls us. */
+/** Fake `window.__ModuleLoader__` plus the browser surface the activity ping uses. */
 let loadedRecord = null
-globalThis.window = { __ModuleLoader__: { load: (record) => { loadedRecord = record } } }
+const windowListeners = new Map()
+const documentListeners = new Map()
+const pings = []
+globalThis.window = {
+  __ModuleLoader__: { load: (record) => { loadedRecord = record } },
+  addEventListener: (name, handler) => { windowListeners.set(name, handler) },
+  removeEventListener: (name) => { windowListeners.delete(name) },
+}
+globalThis.document = {
+  visibilityState: 'visible',
+  getElementById: () => null,
+  createElement: () => ({ id: '', textContent: '' }),
+  head: { appendChild() {} },
+  addEventListener: (name, handler) => { documentListeners.set(name, handler) },
+  removeEventListener: (name) => { documentListeners.delete(name) },
+}
+globalThis.fetch = (url, init) => {
+  pings.push({ url, method: init?.method })
+  return Promise.resolve({ ok: true })
+}
 const reactStub = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   useState: (initial) => [initial, () => {}],
@@ -197,6 +236,14 @@ const [registration] = registrations
 // looks, and the row page behind it is one click too deep.
 assert.equal(registration.options.name, 'plugins.bundle.config')
 assert.equal(registration.options.key, packageName)
+
+// Input reports itself to the Host so the pet can tell "nobody is there" from
+// "no task is running"; it is throttled, so a mouse move is not a request.
+assert.deepEqual([...windowListeners.keys()].sort(), ['keydown', 'pointerdown', 'pointermove', 'wheel'])
+assert.equal(documentListeners.has('visibilitychange'), true)
+assert.deepEqual(pings[0], { url: ACTIVITY_PATH, method: 'POST' }, 'the page reports activity when it loads')
+windowListeners.get('pointermove')()
+assert.equal(pings.length, 1, 'activity pings must be throttled')
 
 const dictionary = dictionaries.get('little-icon')
 assert.ok(dictionary?.zh !== undefined && dictionary?.en !== undefined, 'missing locale dictionaries')
@@ -284,17 +331,23 @@ if (process.argv.includes('--pet')) {
   const handlers = new Map()
   const logged = []
   const autoFormOff = []
+  const routes = []
+  /** What the fake `agents` service reports; the test flips it to start a task. */
+  const agents = { running: false }
   const context = {
-    get: () => undefined,
+    get: (name) => (name === 'agents'
+      ? { list: () => [{ id: 'agent-1', status: agents.running ? 'running' : 'idle', inbox: { nextTurn: [], nextStep: [] } }] }
+      : undefined),
     logger: { info: (...args) => logged.push(args.join(' ')), warn: (...args) => logged.push(args.join(' ')) },
     on: (event, handler) => { handlers.set(event, handler); return () => handlers.delete(event) },
     effect: (factory) => { disposers.push(factory()) },
     // Cordis runs the callback once its services exist; the eager call here keeps
-    // the assertions in apply() exercised without a loader.
+    // the injections in apply() exercised without a loader.
     inject: (_services, callback) => callback({
       effect: (factory) => { disposers.push(factory()) },
       // The real configure returns the disposer that drops the presentation.
       settings: { configure: (presentation) => { autoFormOff.push(presentation.auto); return () => {} } },
+      webServer: { register: (route) => { routes.push(route); return () => {} } },
     }),
   }
   /** A config reference the test can also flip, as the loader does. */
@@ -309,10 +362,13 @@ if (process.argv.includes('--pet')) {
     idleOpacity: ref(0.5),
     frameMs: ref(500),
     pollMs: ref(300),
-    boredAfterSeconds: ref(60),
-    sleepAfterSeconds: ref(600),
-    happyMs: ref(2000),
-    alertMs: ref(3000),
+    alertMs: ref(1000),
+    happyMs: ref(500),
+    boredEverySeconds: ref(30),
+    boredMs: ref(1000),
+    // Short enough that the sleep-and-wake cycle fits in a test, long enough
+    // that the write-rate window below stays inside one steady state.
+    sleepAfterSeconds: ref(6),
     topmost: ref(true),
     clickAction: ref('toggle'),
   }
@@ -389,25 +445,17 @@ $found
     assert.equal(first.state, 'idle')
     assert.equal(first.size, 180)
     assert.equal(first.clickAction, 'toggle')
-    // The custom page owns the fields, so the schema-derived automatic page must
+    // The custom card owns the fields, so the schema-derived automatic page must
     // be switched off or the row would show both.
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
-
-    // The pet process is started by apply(); give it a moment to appear.
-    await new Promise((resolve) => setTimeout(resolve, 2500))
-    assert.equal(countPetProcesses(), 1, `expected exactly one pet process (close a running pet first); log: ${logged.join(' | ')}`)
-
-    // The window must land inside the screen: WPF's Window.Left/Top are DIPs, so
-    // mixing them with physical work-area pixels pushes the pet off-screen at any
-    // scaling other than 100% and nothing would ever be visible.
-    const measured = measurePetWindow()
-    assert.equal(measured.windows.length, 1, `expected one visible pet window, got: ${measured.windows.join(' | ')}`)
-    const [onScreen, geometry] = measured.windows[0].split(' ')
-    assert.equal(onScreen.toLowerCase(), 'true', `the pet window is off-screen (${geometry} on ${measured.virtual})`)
+    // The page reports input here; without it the pet could only see agents and
+    // jobs, and it would sleep while the person is using DSH.
+    assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`), [`exact ${ACTIVITY_PATH}`])
 
     // An unchanged state must not rewrite the file on every poll (300ms here):
     // only the 4s heartbeat refreshes it, so 2.5s of sampling sees at most one
-    // write, where a per-poll writer would produce about eight.
+    // write, where a per-poll writer would produce about eight. Measured before
+    // the pet's own sleep lands, so the window holds one steady state.
     let previous = statSync(statePath).mtimeMs
     let writes = 0
     for (let sample = 0; sample < 50; sample += 1) {
@@ -420,10 +468,54 @@ $found
     }
     assert.ok(writes <= 1, `the state file was rewritten ${writes} times in 2.5s without a state change`)
 
-    // An agent error flips the published state within one poll interval.
-    handlers.get('agent/error')?.()
+    // The pet process is started by apply(); give it a moment to appear.
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    assert.equal(countPetProcesses(), 1, `expected exactly one pet process (close a running pet first); log: ${logged.join(' | ')}`)
+
+    // The window must land inside the screen: WPF's Window.Left/Top are DIPs, so
+    // mixing them with physical work-area pixels pushes the pet off-screen at any
+    // scaling other than 100% and nothing would ever be visible.
+    const measured = measurePetWindow()
+    assert.equal(measured.windows.length, 1, `expected one visible pet window, got: ${measured.windows.join(' | ')}`)
+    const [onScreen, geometry] = measured.windows[0].split(' ')
+    assert.equal(onScreen.toLowerCase(), 'true', `the pet window is off-screen (${geometry} on ${measured.virtual})`)
+
+    // No activity for sleepAfterSeconds (6s here) puts the pet to sleep, and one
+    // activity ping brings it straight back to idle.
+    const readState = () => JSON.parse(readFileSync(statePath, 'utf8')).state
+    const untilAsleep = Date.now() + 12_000
+    while (readState() !== 'sleep' && Date.now() < untilAsleep) {
+      await new Promise((resolve) => setTimeout(resolve, 300))
+    }
+    assert.equal(readState(), 'sleep', 'a quiet pet should fall asleep')
+    const accepted = { writeHead: (code) => { accepted.code = code }, end: () => {} }
+    routes[0].handler({ method: 'POST' }, accepted)
+    assert.equal(accepted.code, 204, 'the activity route answers 204')
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    assert.equal(readState(), 'idle', 'activity should wake the pet')
+    // Anything else on that route is refused.
+    const refused = { writeHead: (code) => { refused.code = code }, end: () => {} }
+    routes[0].handler({ method: 'GET' }, refused)
+    assert.equal(refused.code, 405, 'the activity route only accepts POST')
+
+    // A task starting must play the startle frames before working, and ending it
+    // must play happy before settling back to idle.
+    agents.running = true
+    const untilAlert = Date.now() + 3000
+    while (readState() !== 'alert' && Date.now() < untilAlert) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(readState(), 'alert', 'a task start should play the startle frames')
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    assert.equal(readState(), 'working', 'the pet should keep working after the startle')
+    agents.running = false
+    const untilHappy = Date.now() + 3000
+    while (readState() !== 'happy' && Date.now() < untilHappy) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(readState(), 'happy', 'finishing a task should play the happy frames')
     await new Promise((resolve) => setTimeout(resolve, 1200))
-    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).state, 'alert')
+    assert.equal(readState(), 'idle', 'the pet should settle back to idle')
 
     // Disabling the pet ends its process; enabling it again starts a new one,
     // while an unrelated settings write never resurrects a pet the user quit.

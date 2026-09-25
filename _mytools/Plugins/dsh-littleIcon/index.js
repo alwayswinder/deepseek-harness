@@ -18,9 +18,9 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 
@@ -28,6 +28,14 @@ export const name = 'little-icon'
 
 /** One animation directory per state, built by `tools/build-assets.py`. */
 const STATES = ['idle', 'working', 'bored', 'sleep', 'happy', 'alert']
+
+/**
+ * Same-origin route the browser half pings on user activity. "The pet sleeps
+ * because nobody is doing anything" needs an input signal, and the Host sees
+ * only agents and jobs — pointer and keyboard activity has to arrive from the
+ * page. The pet's own position file counts too, so dragging it also wakes it.
+ */
+const ACTIVITY_PATH = '/api/little-icon/activity'
 
 /** Volatile fields apply to the running plugin without remounting it. */
 export const Config = z.object({
@@ -42,14 +50,16 @@ export const Config = z.object({
   frameMs: z.number().step(10).min(120).max(5000).default(600).volatile(),
   /** Host sampling interval in milliseconds. */
   pollMs: z.number().step(50).min(200).max(10000).default(800).volatile(),
-  /** Idle seconds before the pet leaves `idle` for `bored`. */
-  boredAfterSeconds: z.number().step(1).min(5).max(3600).default(60).volatile(),
-  /** Further idle seconds before it falls asleep. */
-  sleepAfterSeconds: z.number().step(1).min(5).max(86400).default(600).volatile(),
+  /** How long the startle frames play when a task begins. */
+  alertMs: z.number().step(100).min(0).max(60000).default(1500).volatile(),
   /** How long `happy` lasts after a busy period ends. */
   happyMs: z.number().step(100).min(0).max(60000).default(3000).volatile(),
-  /** How long `alert` lasts after an agent error. */
-  alertMs: z.number().step(100).min(0).max(60000).default(8000).volatile(),
+  /** Idle seconds between the pet's occasional `bored` interruptions. */
+  boredEverySeconds: z.number().step(1).min(5).max(3600).default(60).volatile(),
+  /** How long each `bored` interruption lasts. */
+  boredMs: z.number().step(100).min(0).max(60000).default(5000).volatile(),
+  /** Seconds without any user activity before the pet sleeps. */
+  sleepAfterSeconds: z.number().step(1).min(5).max(86400).default(600).volatile(),
   /** Whether the pet stays above other windows. */
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
@@ -119,20 +129,73 @@ class StateFileWriter {
   }
 }
 
-/** Busy/idle bookkeeping that survives between samples. */
+/** Cross-sample bookkeeping: the task edges, the boredom clock, and the last activity. */
 function createTimeline(now) {
-  return { wasBusy: false, idleSince: now, happyUntil: 0, alertUntil: 0 }
+  return {
+    wasBusy: false,
+    alertUntil: 0,
+    happyUntil: 0,
+    boredUntil: 0,
+    nextBoredAt: now + 60_000,
+    lastActivityAt: now,
+  }
 }
 
 /**
  * Decide which state the pet shows.
- * @param ctx - host context carrying the optional `agents` and `jobs` services.
+ *
+ * One task reads as: startle when work begins, work while it runs, joy when it
+ * ends, then idle — with boredom interrupting now and then, and sleep once
+ * nobody has touched anything for long enough. Activity is what leaves sleep, so
+ * the pet never stays asleep while the person is using DSH.
+ *
+ * @param busy - whether an agent or job is running.
+ * @param activityAt - latest user activity seen, in milliseconds.
  * @param timeline - cross-sample bookkeeping, updated in place.
  * @param config - resolved config values.
  * @param now - sample time in milliseconds.
  * @returns one of {@link STATES}.
  */
-function sampleState(ctx, timeline, config, now) {
+function sampleState(busy, activityAt, timeline, config, now) {
+  // New activity restarts the quiet stretch: boredom only comes around after a
+  // full interval without any, and it ends the moment something happens.
+  if (activityAt > timeline.lastActivityAt) {
+    timeline.boredUntil = 0
+    timeline.nextBoredAt = now + config.boredEverySeconds * 1000
+  }
+  timeline.lastActivityAt = Math.max(timeline.lastActivityAt, activityAt)
+  if (busy) {
+    timeline.lastActivityAt = now
+    if (!timeline.wasBusy) {
+      timeline.wasBusy = true
+      timeline.alertUntil = now + config.alertMs
+      timeline.boredUntil = 0
+    }
+    return now < timeline.alertUntil ? 'alert' : 'working'
+  }
+  if (timeline.wasBusy) {
+    timeline.wasBusy = false
+    timeline.happyUntil = now + config.happyMs
+    timeline.lastActivityAt = now
+    timeline.boredUntil = 0
+    timeline.nextBoredAt = now + config.boredEverySeconds * 1000
+  }
+  if (now < timeline.happyUntil) return 'happy'
+  if ((now - timeline.lastActivityAt) / 1000 >= config.sleepAfterSeconds) return 'sleep'
+  if (now >= timeline.nextBoredAt) {
+    // Jittered so the pet reads as idling rather than running a metronome.
+    timeline.boredUntil = now + config.boredMs
+    timeline.nextBoredAt = now + config.boredEverySeconds * 1000 * (0.7 + Math.random() * 0.6)
+  }
+  return now < timeline.boredUntil ? 'bored' : 'idle'
+}
+
+/**
+ * Whether an agent or a job is running; the same test `apps/desktop-host` uses.
+ * @param ctx - host context carrying the optional `agents` and `jobs` services.
+ * @returns true while work is in flight.
+ */
+function isBusy(ctx) {
   const agents = ctx.get('agents')
   const jobs = ctx.get('jobs')
   const live = agents === undefined ? [] : agents.list()
@@ -140,21 +203,7 @@ function sampleState(ctx, timeline, config, now) {
     || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0)
   const jobsBusy = jobs !== undefined && [undefined, ...live].some(agent => jobs.list(agent?.id)
     .some(job => job.status === 'running' || job.status === 'stopping'))
-  if (agentBusy || jobsBusy) {
-    timeline.wasBusy = true
-    return 'working'
-  }
-  if (timeline.wasBusy) {
-    timeline.wasBusy = false
-    timeline.idleSince = now
-    timeline.happyUntil = now + config.happyMs
-  }
-  if (now < timeline.happyUntil) return 'happy'
-  if (now < timeline.alertUntil) return 'alert'
-  const idleSeconds = (now - timeline.idleSince) / 1000
-  if (idleSeconds >= config.sleepAfterSeconds) return 'sleep'
-  if (idleSeconds >= config.boredAfterSeconds) return 'bored'
-  return 'idle'
+  return agentBusy || jobsBusy
 }
 
 /**
@@ -194,11 +243,18 @@ export function apply(ctx, config) {
   const script = fileURLToPath(new URL('./pet/pet.ps1', import.meta.url))
   const assets = fileURLToPath(new URL('./assets', import.meta.url))
 
-  // The desktop shell spawns this host with ELECTRON_RUN_AS_NODE, so the host's
-  // parent is the Electron main process — the window the pet tucks away. The web
-  // profile has no window to control, and the pet then only floats.
-  const dshPid = process.env.ELECTRON_RUN_AS_NODE === '1' ? process.ppid : 0
+  // The desktop shell runs this host as an Electron process in Node mode, so the
+  // host's parent is the Electron main process — the window the pet tucks away.
+  // The running binary is what proves it: ELECTRON_RUN_AS_NODE is inherited by
+  // every child, so a tool or a test started from the host has it too and would
+  // otherwise aim the pet at its own parent. The web profile runs plain node and
+  // has no window to control, so the pet then only floats.
+  const dshPid = process.env.ELECTRON_RUN_AS_NODE === '1' && /^electron(\.exe)?$/iu.test(basename(process.execPath))
+    ? process.ppid
+    : 0
   const timeline = createTimeline(Date.now())
+  /** Latest user activity the browser half reported, in milliseconds. */
+  let reportedActivityAt = Date.now()
   let child
   let timer
   let disposed = false
@@ -217,23 +273,40 @@ export function apply(ctx, config) {
     translucent: config.translucent.get(),
     idleOpacity: config.idleOpacity.get(),
     frameMs: config.frameMs.get(),
-    boredAfterSeconds: config.boredAfterSeconds.get(),
-    sleepAfterSeconds: config.sleepAfterSeconds.get(),
-    happyMs: config.happyMs.get(),
     alertMs: config.alertMs.get(),
+    happyMs: config.happyMs.get(),
+    boredEverySeconds: config.boredEverySeconds.get(),
+    boredMs: config.boredMs.get(),
+    sleepAfterSeconds: config.sleepAfterSeconds.get(),
     topmost: config.topmost.get(),
     clickAction: config.clickAction.get(),
   })
 
+  /**
+   * Latest activity from every source the pet must notice: page input reported
+   * over the route, and the pet's own position file, which changes whenever the
+   * user drags it or asks the tray to move it home.
+   * @returns the newest activity timestamp.
+   */
+  const activityAt = () => {
+    let newest = reportedActivityAt
+    try {
+      newest = Math.max(newest, statSync(positionFile).mtimeMs)
+    } catch {
+      // No position yet: the pet has not been moved on this machine.
+    }
+    return newest
+  }
+
   const publish = () => {
     const now = Date.now()
     const current = values()
-    const state = sampleState(ctx, timeline, current, now)
+    const state = sampleState(isBusy(ctx), activityAt(), timeline, current, now)
     writer.write({
       state,
       size: current.size,
       // The pet applies one opacity; `translucent` is the switch the settings
-      // page exposes, `idleOpacity` how far it fades.
+      // card exposes, `idleOpacity` how far it fades.
       opacity: current.translucent ? current.idleOpacity : 1,
       frameMs: current.frameMs,
       topmost: current.topmost,
@@ -241,6 +314,33 @@ export function apply(ctx, config) {
       updatedAt: now,
     })
   }
+
+  // The page pings this on pointer and keyboard activity; without it the pet
+  // could only tell "no task is running", which is not the same as "nobody is
+  // there", and it would fall asleep while the person is working in DSH.
+  ctx.inject(['webServer'], (webCtx) => {
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: ACTIVITY_PATH,
+      handler: (req, res) => {
+        const connection = ctx.get('connection')
+        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end()
+          return
+        }
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        reportedActivityAt = Date.now()
+        res.writeHead(204)
+        res.end()
+      },
+    }), `little-icon: POST ${ACTIVITY_PATH}`)
+  })
 
   const startPet = () => {
     if (child !== undefined || disposed) return
@@ -285,10 +385,6 @@ export function apply(ctx, config) {
     timer.unref?.()
   }
 
-  ctx.on('agent/error', () => {
-    timeline.alertUntil = Date.now() + config.alertMs.get()
-  })
-
   // The browser half renders the settings on the bundle's page, so the
   // schema-derived automatic page would be a second copy of the same fields.
   ctx.inject(['settings'], (settingsCtx) => {
@@ -321,4 +417,4 @@ export function apply(ctx, config) {
 }
 
 /** Re-exported for the keyless smoke test. */
-export const internals = { sampleState, createTimeline, resolveDshHome, STATES }
+export const internals = { sampleState, createTimeline, isBusy, resolveDshHome, STATES, ACTIVITY_PATH }

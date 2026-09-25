@@ -49,6 +49,7 @@ window.__ModuleLoader__.load({
       boredEverySeconds: 60,
       boredMs: 5000,
       sleepAfterSeconds: 600,
+      sleepWhenHiddenSeconds: 20,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -60,6 +61,7 @@ window.__ModuleLoader__.load({
     const BORED_EVERY_SECONDS = { min: 5, max: 600, step: 5 }
     const BORED_MS = { min: 500, max: 20000, step: 500 }
     const SLEEP_SECONDS = { min: 30, max: 86400, step: 30 }
+    const HIDDEN_SECONDS = { min: 2, max: 600, step: 2 }
 
     /** How long a slider drag settles before its writes are merged into one. */
     const WRITE_DELAY_MS = 250
@@ -90,10 +92,12 @@ window.__ModuleLoader__.load({
       happyMs: '「开心」保持',
       happyHint: '一轮活干完后开心多久，然后回到待机。',
       boredEvery: '无聊间隔',
-      boredHint: '闲着的时候每隔这么久插一次「无聊」。',
+      boredHint: '闲着的时候每隔这么久插一次「无聊」（跟鼠标无关，只看有没有任务在跑）。',
       boredMs: '「无聊」时长',
       sleepAfter: '无操作多久「打盹」',
-      sleepHint: '鼠标、键盘、拖动桌宠都算操作；一有操作就醒过来回到待机。',
+      sleepHint: 'DSH 显示着的时候：鼠标、键盘、拖动桌宠都算操作；一有操作就醒过来回到待机。',
+      hiddenSleep: '收起 DSH 后多久「打盹」',
+      hiddenSleepHint: '收起后只有拖动桌宠算操作；重新显示 DSH、或点一下桌宠也立刻醒来。',
       pollMs: '状态采样间隔',
       pollMsHint: '宿主读取 agent 状态的间隔；改大更省，改小更跟手。',
       pixels: '{value} px',
@@ -131,10 +135,12 @@ window.__ModuleLoader__.load({
       happyMs: 'Happy for',
       happyHint: 'How long a finished task keeps it happy before it idles again.',
       boredEvery: 'Boredom interval',
-      boredHint: 'While idle, how often a bored interruption comes around.',
+      boredHint: 'While the agent is idle, how often a bored interruption comes around (mouse movement does not postpone it).',
       boredMs: 'Boredom duration',
       sleepAfter: 'Asleep after',
-      sleepHint: 'Pointer, keyboard, and dragging the pet all count as activity; any of them wakes it.',
+      sleepHint: 'While DSH is on screen: pointer, keyboard, and dragging the pet all count as activity, and any of them wakes it.',
+      hiddenSleep: 'Asleep after tucking DSH',
+      hiddenSleepHint: 'Tucked away, only dragging the pet counts; showing DSH again — or clicking the pet — wakes it at once.',
       pollMs: 'State sampling',
       pollMsHint: 'How often the host reads agent state.',
       pixels: '{value} px',
@@ -293,6 +299,14 @@ window.__ModuleLoader__.load({
               control: h('input', {
                 min: SLEEP_SECONDS.min, max: SLEEP_SECONDS.max, step: SLEEP_SECONDS.step,
                 ...slider('sleepAfterSeconds'),
+              }),
+            }),
+            h(Row, {
+              label: t('hiddenSleep'), value: t('seconds', { value: draft.sleepWhenHiddenSeconds }),
+              text: t('hiddenSleepHint'), disabled: !editable,
+              control: h('input', {
+                min: HIDDEN_SECONDS.min, max: HIDDEN_SECONDS.max, step: HIDDEN_SECONDS.step,
+                ...slider('sleepWhenHiddenSeconds'),
               }),
             }),
             h(Row, {

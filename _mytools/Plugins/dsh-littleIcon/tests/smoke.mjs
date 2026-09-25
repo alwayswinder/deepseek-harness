@@ -77,28 +77,30 @@ assert.equal(sampleState(false, start, timeline, DEFAULTS, busyEnd), 'happy', 'w
 assert.equal(quiet(busyEnd + DEFAULTS.happyMs - 1), 'happy')
 assert.equal(quiet(busyEnd + DEFAULTS.happyMs), 'idle')
 
-// Boredom arrives once per interval of quiet, lasts boredMs, and leaves.
+// Boredom follows the idle agent rather than the mouse: moving the pointer while
+// nothing runs must not postpone it.
 const boredAt = busyEnd + DEFAULTS.boredEverySeconds * 1000
 assert.equal(quiet(boredAt - 1), 'idle')
-assert.equal(quiet(boredAt), 'bored')
-assert.equal(quiet(boredAt + DEFAULTS.boredMs), 'idle')
+const wiggle = busyEnd + 30_000
+assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, wiggle), 'idle')
+assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, boredAt), 'bored', 'activity while idle must not postpone boredom')
+assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, boredAt + DEFAULTS.boredMs), 'idle')
 
-// Long quiet sleeps the pet; any activity wakes it straight back to idle.
-const asleep = busyEnd + DEFAULTS.sleepAfterSeconds * 1000
-assert.equal(quiet(asleep), 'sleep')
+// Sleep follows activity instead, on the timer the caller puts in force.
+const asleep = wiggle + DEFAULTS.sleepAfterSeconds * 1000
+assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, asleep), 'sleep')
 assert.equal(sampleState(false, asleep, timeline, DEFAULTS, asleep + 500), 'idle', 'activity wakes the pet')
-assert.equal(sampleState(false, asleep + 500, timeline, DEFAULTS, asleep + 40_000), 'idle',
-  'waking restarts the boredom clock rather than showing boredom at once')
+assert.equal(sampleState(false, asleep + 500, timeline, DEFAULTS, asleep + 500 + DEFAULTS.boredEverySeconds * 1000 - 1),
+  'idle', 'waking restarts the boredom clock rather than showing boredom at once')
+// Tucked away the host passes the much shorter timer, and the same rule applies.
+const tucked = { ...DEFAULTS, sleepAfterSeconds: 20 }
+assert.equal(sampleState(false, asleep + 500, timeline, tucked, asleep + 500 + 19_000), 'idle')
+assert.equal(sampleState(false, asleep + 500, timeline, tucked, asleep + 500 + 20_000), 'sleep')
 
-// Movement of the pet itself is activity too: the position file's newer
-// timestamp reaches the same rule, and quiet after it sleeps the pet again.
-const moved = asleep + 40_000
+// Movement of the pet itself is activity too, and a task starting startles again.
+const moved = asleep + 500 + 20_000
 assert.equal(sampleState(false, moved, timeline, DEFAULTS, moved + 200), 'idle')
-const asleepAgain = moved + DEFAULTS.sleepAfterSeconds * 1000
-assert.equal(sampleState(false, moved, timeline, DEFAULTS, asleepAgain), 'sleep')
-
-// A task starting counts as activity as well, and it startles again.
-assert.equal(sampleState(true, moved, timeline, DEFAULTS, asleepAgain + 1000), 'alert')
+assert.equal(sampleState(true, moved, timeline, DEFAULTS, moved + 1000), 'alert')
 
 // Every state the host can publish has frames on disk, and the generator's
 // frames.json agrees with the files: the art decides the count per state (the
@@ -369,6 +371,7 @@ if (process.argv.includes('--pet')) {
     // Short enough that the sleep-and-wake cycle fits in a test, long enough
     // that the write-rate window below stays inside one steady state.
     sleepAfterSeconds: ref(6),
+    sleepWhenHiddenSeconds: ref(2),
     topmost: ref(true),
     clickAction: ref('toggle'),
   }
@@ -497,6 +500,20 @@ $found
     const refused = { writeHead: (code) => { refused.code = code }, end: () => {} }
     routes[0].handler({ method: 'GET' }, refused)
     assert.equal(refused.code, 405, 'the activity route only accepts POST')
+
+    // The pet reports whether DSH is on screen; tucked away, the much shorter
+    // timer applies, and showing DSH again counts as activity and wakes it.
+    // (The test's pet has no window to control, so it writes no report itself.)
+    const windowPath = join(home, 'little-icon', 'window.json')
+    writeFileSync(windowPath, '{"dshVisible":false}\n', 'utf8')
+    const untilTucked = Date.now() + 6000
+    while (readState() !== 'sleep' && Date.now() < untilTucked) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    assert.equal(readState(), 'sleep', 'a tucked DSH should put the pet to sleep on the short timer')
+    writeFileSync(windowPath, '{"dshVisible":true}\n', 'utf8')
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    assert.equal(readState(), 'idle', 'showing DSH again should wake the pet')
 
     // A task starting must play the startle frames before working, and ending it
     // must play happy before settling back to idle.

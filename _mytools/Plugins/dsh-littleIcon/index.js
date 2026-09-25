@@ -18,7 +18,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -60,6 +60,8 @@ export const Config = z.object({
   boredMs: z.number().step(100).min(0).max(60000).default(5000).volatile(),
   /** Seconds without any user activity before the pet sleeps. */
   sleepAfterSeconds: z.number().step(1).min(5).max(86400).default(600).volatile(),
+  /** Sleep timer while DSH is tucked away, where dragging the pet is the only activity. */
+  sleepWhenHiddenSeconds: z.number().step(1).min(2).max(3600).default(20).volatile(),
   /** Whether the pet stays above other windows. */
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
@@ -138,6 +140,8 @@ function createTimeline(now) {
     boredUntil: 0,
     nextBoredAt: now + 60_000,
     lastActivityAt: now,
+    /** Whether the last sample already reported sleep, so waking can be noticed. */
+    asleep: false,
   }
 }
 
@@ -145,27 +149,25 @@ function createTimeline(now) {
  * Decide which state the pet shows.
  *
  * One task reads as: startle when work begins, work while it runs, joy when it
- * ends, then idle — with boredom interrupting now and then, and sleep once
- * nobody has touched anything for long enough. Activity is what leaves sleep, so
- * the pet never stays asleep while the person is using DSH.
+ * ends, then idle. Boredom follows the agent being idle rather than the mouse,
+ * so a person reading a long answer still sees it now and then. Sleep follows
+ * user activity instead: the caller passes the timer in force — much shorter
+ * while DSH is tucked away — and any activity, whether page input, a drag, or
+ * bringing DSH back, leaves sleep for idle.
  *
  * @param busy - whether an agent or job is running.
  * @param activityAt - latest user activity seen, in milliseconds.
  * @param timeline - cross-sample bookkeeping, updated in place.
- * @param config - resolved config values.
+ * @param config - resolved config values; its `sleepAfterSeconds` is the limit in force.
  * @param now - sample time in milliseconds.
  * @returns one of {@link STATES}.
  */
 function sampleState(busy, activityAt, timeline, config, now) {
-  // New activity restarts the quiet stretch: boredom only comes around after a
-  // full interval without any, and it ends the moment something happens.
-  if (activityAt > timeline.lastActivityAt) {
-    timeline.boredUntil = 0
-    timeline.nextBoredAt = now + config.boredEverySeconds * 1000
-  }
+  const active = activityAt > timeline.lastActivityAt
   timeline.lastActivityAt = Math.max(timeline.lastActivityAt, activityAt)
   if (busy) {
     timeline.lastActivityAt = now
+    timeline.asleep = false
     if (!timeline.wasBusy) {
       timeline.wasBusy = true
       timeline.alertUntil = now + config.alertMs
@@ -179,9 +181,20 @@ function sampleState(busy, activityAt, timeline, config, now) {
     timeline.lastActivityAt = now
     timeline.boredUntil = 0
     timeline.nextBoredAt = now + config.boredEverySeconds * 1000
+    timeline.asleep = false
   }
   if (now < timeline.happyUntil) return 'happy'
-  if ((now - timeline.lastActivityAt) / 1000 >= config.sleepAfterSeconds) return 'sleep'
+  if ((now - timeline.lastActivityAt) / 1000 >= config.sleepAfterSeconds) {
+    timeline.asleep = true
+    return 'sleep'
+  }
+  if (timeline.asleep) {
+    // Waking starts a fresh idle stretch rather than resuming mid-boredom.
+    timeline.asleep = false
+    timeline.boredUntil = 0
+    timeline.nextBoredAt = now + config.boredEverySeconds * 1000
+  }
+  if (active) timeline.boredUntil = 0
   if (now >= timeline.nextBoredAt) {
     // Jittered so the pet reads as idling rather than running a metronome.
     timeline.boredUntil = now + config.boredMs
@@ -239,6 +252,8 @@ export function apply(ctx, config) {
   mkdirSync(dataDir, { recursive: true })
   const stateFile = join(dataDir, 'state.json')
   const positionFile = join(dataDir, 'position.json')
+  /** Written by the pet: whether DSH is on screen, which picks the sleep timer. */
+  const windowFile = join(dataDir, 'window.json')
   const writer = new StateFileWriter(stateFile, 4000)
   const script = fileURLToPath(new URL('./pet/pet.ps1', import.meta.url))
   const assets = fileURLToPath(new URL('./assets', import.meta.url))
@@ -255,6 +270,8 @@ export function apply(ctx, config) {
   const timeline = createTimeline(Date.now())
   /** Latest user activity the browser half reported, in milliseconds. */
   let reportedActivityAt = Date.now()
+  /** Last window visibility the pet reported; assumed visible until it says so. */
+  let dshVisible = true
   let child
   let timer
   let disposed = false
@@ -278,6 +295,7 @@ export function apply(ctx, config) {
     boredEverySeconds: config.boredEverySeconds.get(),
     boredMs: config.boredMs.get(),
     sleepAfterSeconds: config.sleepAfterSeconds.get(),
+    sleepWhenHiddenSeconds: config.sleepWhenHiddenSeconds.get(),
     topmost: config.topmost.get(),
     clickAction: config.clickAction.get(),
   })
@@ -298,10 +316,34 @@ export function apply(ctx, config) {
     return newest
   }
 
+  /**
+   * Whether DSH is on screen, as the pet last reported it. Showing or hiding the
+   * window is a deliberate act, so a change also counts as activity — it wakes
+   * the pet when DSH comes back and restarts the tucked timer when it goes away.
+   * @param now - sample time in milliseconds.
+   * @returns whether DSH is on screen.
+   */
+  const readDshVisible = (now) => {
+    try {
+      const reported = JSON.parse(readFileSync(windowFile, 'utf8')).dshVisible
+      if (typeof reported === 'boolean' && reported !== dshVisible) {
+        dshVisible = reported
+        reportedActivityAt = now
+      }
+    } catch {
+      // No report yet, or a half-written one: keep the last known value.
+    }
+    return dshVisible
+  }
+
   const publish = () => {
     const now = Date.now()
     const current = values()
-    const state = sampleState(isBusy(ctx), activityAt(), timeline, current, now)
+    const visible = readDshVisible(now)
+    // Tucked away, the only activity left is dragging the pet, so the pet sleeps
+    // on the much shorter timer the settings card exposes.
+    const config = visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
+    const state = sampleState(isBusy(ctx), activityAt(), timeline, config, now)
     writer.write({
       state,
       size: current.size,

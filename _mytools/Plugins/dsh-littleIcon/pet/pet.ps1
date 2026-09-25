@@ -76,6 +76,11 @@ $SCRIPT:ScriptDir = if ([string]::IsNullOrEmpty($PSScriptRoot)) { (Get-Location)
 $SCRIPT:AssetDir = (Resolve-Path -LiteralPath $AssetDir).Path
 $SCRIPT:StateFile = [System.IO.Path]::GetFullPath($StateFile)
 $SCRIPT:PositionFile = [System.IO.Path]::GetFullPath($PositionFile)
+# Next to the state file, like the position: this pet is the process that tucks
+# DSH away, so it is the one that knows whether the window is on screen, and the
+# host needs that to pick the tucked sleep timer.
+$SCRIPT:WindowFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'window.json'
+$SCRIPT:WindowVisible = $null
 $SCRIPT:DshPid = $DshPid
 
 function Read-Utf8Text([string]$Path) {
@@ -396,6 +401,17 @@ function Switch-DshWindow {
         [void][DshPet.Win32]::SetForegroundWindow($handle)
     }
     Update-TrayMenu
+    Save-WindowState
+}
+
+function Save-WindowState {
+    # Without a DSH window to control there is nothing to report, and writing a
+    # guess would override the host's own view.
+    if ($SCRIPT:DshPid -le 0) { return }
+    $visible = Get-DshShown
+    if ($null -ne $SCRIPT:WindowVisible -and $SCRIPT:WindowVisible -eq $visible) { return }
+    $SCRIPT:WindowVisible = $visible
+    Write-Json $SCRIPT:WindowFile ([ordered]@{ dshVisible = $visible })
 }
 
 function Invoke-PetClick {
@@ -514,6 +530,11 @@ $timer.Add_Tick({
             }
         }
 
+        # Tell the host whether DSH is on screen: the tucked sleep timer is much
+        # shorter than the idle one, and showing DSH again counts as activity.
+        # Once a second is plenty; the file is written only when it changes.
+        if (($SCRIPT:Ticks % 5) -eq 0) { Save-WindowState }
+
         # Leave no orphan window: quit when the host or DSH is gone. About every
         # five seconds.
         if (($SCRIPT:Ticks % 25) -eq 0 -and -not (Test-HostAlive)) {
@@ -532,6 +553,7 @@ try { Initialize-Tray } catch { Write-Log "tray unavailable: $($_.Exception.Mess
 Apply-State (Read-Json $SCRIPT:StateFile)
 Restore-Position
 Update-TrayMenu
+Save-WindowState
 
 # WPF's ShowInTaskbar=false does not put WS_EX_TOOLWINDOW on the real handle, so
 # the pet would still get a taskbar button and an Alt+Tab entry. Set the style on

@@ -55,15 +55,23 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 | `pollMs` | `800` | 宿主采样间隔；改小更跟手，改大更省 |
 | `alertMs` | `1500` | 任务开始时先「惊讶」多久，然后进入干活中 |
 | `happyMs` | `3000` | 一轮活干完后「开心」保持多久，然后回到待机 |
-| `boredEverySeconds` | `60` | 闲着时每隔这么久插一次「无聊」 |
+| `boredEverySeconds` | `60` | 没有任务在跑时，每隔这么久插一次「无聊」 |
 | `boredMs` | `5000` | 每次「无聊」持续多久 |
-| `sleepAfterSeconds` | `600` | 无操作多久后「打盹」 |
+| `sleepAfterSeconds` | `600` | DSH 显示着时，无操作多久「打盹」 |
+| `sleepWhenHiddenSeconds` | `20` | 收起 DSH 后，多久「打盹」（此时只有拖动桌宠算操作） |
 | `topmost` | `true` | 是否始终置顶 |
 | `clickAction` | `toggle` | `toggle` / `minimize` / `none` |
 
-**表情与状态的对应。** 一轮任务读起来是：任务开始 `alert`（惊讶）→ 运行期间 `working`（干活中）→ 结束 `happy`（开心）→ `idle`（待机）。闲着的时候每隔 `boredEverySeconds` 插一段 `bored`（无聊），持续 `boredMs`；**无操作**满 `sleepAfterSeconds` 才 `sleep`（打盹），任何操作都会立刻退出打盹回到待机。这里说的「操作」包括：鼠标、滚轮、键盘在 DSH 页面上的动作，以及拖动桌宠或让托盘把它归位——所以不会出现「人一直在用 DSH，桌宠却睡着了」。每套都是四帧循环。
+**表情与状态的对应。** 一轮任务读起来是：任务开始 `alert`（惊讶）→ 运行期间 `working`（干活中）→ 结束 `happy`（开心）→ `idle`（待机）。
 
-本机数据写在 `$DSH_HOME/little-icon/`：`state.json`（宿主写、桌宠读）与 `position.json`（桌宠写的位置）。它们按机器独立，不随仓库同步，删掉即回到默认位置与默认状态。
+- **无聊**跟着「有没有任务在跑」走，不看鼠标：没有任务时每隔 `boredEverySeconds` 插一段 `boredMs` 的「无聊」，所以读长回复时也会偶尔看到；一旦有操作，当前这段无聊立刻结束。
+- **打盹**跟着「有没有操作」走，而且分两种计时：DSH 显示着时用 `sleepAfterSeconds`，操作包括鼠标、滚轮、键盘在 DSH 页面上的动作、拖动桌宠、单击桌宠；**收起 DSH 之后**改用 `sleepWhenHiddenSeconds`（默认 20 秒），此时唯一可能的操作就是拖动桌宠，或者点桌宠 / 用托盘把 DSH 放回来。两种情况下一有操作都立刻醒来回到待机。
+
+桌宠把「DSH 现在在不在屏幕上」写进 `window.json`，宿主据此选用哪个计时器；显示/收起这个动作本身也算一次操作。
+
+每套表情都是四帧循环。
+
+本机数据写在 `$DSH_HOME/little-icon/`：`state.json`（宿主写、桌宠读）、`position.json`（桌宠写的位置）与 `window.json`（桌宠写的「DSH 在不在屏幕上」）。它们按机器独立，不随仓库同步，删掉即回到默认位置与默认状态。
 
 -----
 
@@ -77,9 +85,9 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **为什么必须是独立进程。** 桌面壳没有向插件开放任何窗口能力：`apps/desktop` 里没有 `Tray`，主窗口的 `BrowserWindow` 也没有 `transparent`/`alwaysOnTop`/`skipTaskbar`；`apps/desktop/src/ipc.ts` 的通道表里没有最小化/隐藏/恢复，`preload-app.ts` 只暴露 `dshDesktop`（浏览器视图与更新）、`dshPlatform`（仅用量/充值内嵌页）、目录选择、宿主路径与语言。渲染进程是 `sandbox: true` + `contextIsolation: true`，`window.open` 一律被拒。更关键的是插件的宿主代码跑在 `ELECTRON_RUN_AS_NODE=1` 的 Node 子进程里（`apps/desktop/src/host-process.ts` + `node-environment.ts`），那里 `require('electron')` 只能拿到二进制路径。窗口一旦隐藏，窗口内的 DOM 也不再绘制。所以「收起 DSH 后桌宠还在」只能靠插件自己起一个进程。
 
-**宿主半边。** `index.js` 每 `pollMs` 采样一次：用 `ctx.get('agents')` 看是否有 agent `running` 或 inbox 里有下一轮/下一步，用 `ctx.get('jobs')` 看是否有 `running`/`stopping` 的 job（判据与 `apps/desktop-host/src/update-tasks.ts` 一致）。状态机是纯函数 `sampleState`，`tests/smoke.mjs` 直接压它；它同时接收「有没有活」和「最近一次操作是什么时候」两个输入。采样结果写进 `$DSH_HOME/little-icon/state.json`：内容变化才写盘，另外每 4 秒补写一次心跳，桌宠据此判断宿主是否还活着。配置里的 `translucent` 与 `idleOpacity` 在这里合并成一个 `opacity` 字段，桌宠不需要知道这个开关。桌宠由 `child_process.spawn` 拉起（`powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File pet/pet.ps1`），参数里带素材目录、状态与位置文件、以及要控制的窗口进程号；`ctx.effect` 的清理函数会结束它，DSH 不会留下孤儿窗口。桌面壳里宿主的父进程就是 Electron 主进程，所以这个进程号直接取自 `process.ppid`；网页版没有可控制的窗口，传 0。
+**宿主半边。** `index.js` 每 `pollMs` 采样一次：用 `ctx.get('agents')` 看是否有 agent `running` 或 inbox 里有下一轮/下一步，用 `ctx.get('jobs')` 看是否有 `running`/`stopping` 的 job（判据与 `apps/desktop-host/src/update-tasks.ts` 一致）。状态机是纯函数 `sampleState`，`tests/smoke.mjs` 直接压它；它接收「有没有活」「最近一次操作」「现在该用哪个打盹计时器」三个输入——计时器由桌宠报告的窗口可见性决定（收起后用短的那条）。采样结果写进 `$DSH_HOME/little-icon/state.json`：内容变化才写盘，另外每 4 秒补写一次心跳，桌宠据此判断宿主是否还活着。配置里的 `translucent` 与 `idleOpacity` 在这里合并成一个 `opacity` 字段，桌宠不需要知道这个开关。桌宠由 `child_process.spawn` 拉起（`powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File pet/pet.ps1`），参数里带素材目录、状态与位置文件、以及要控制的窗口进程号；`ctx.effect` 的清理函数会结束它，DSH 不会留下孤儿窗口。桌面壳里宿主的父进程就是 Electron 主进程，所以这个进程号直接取自 `process.ppid`；网页版没有可控制的窗口，传 0。
 
-**「操作」这个信号从哪来。** 宿主只看得到 agent 和 job，「没人动过」和「没有任务在跑」是两回事——没有输入信号的话，人一直在用 DSH，桌宠照样会睡。所以浏览器半边在 `pointerdown`/`pointermove`/`wheel`/`keydown` 上打点，节流到 15 秒一次，`POST /api/little-icon/activity`（同源路由，按仓库惯例先过 `connection.requestRejection`，非 POST 回 405）；宿主把它和 `position.json` 的修改时间一起取最大值——拖动桌宠、托盘里「回到右下角」同样算操作。于是打盹只在真的一段时间没人碰过任何东西之后才出现，而任务开始本身也算操作。
+**「操作」这个信号从哪来。** 宿主只看得到 agent 和 job，「没人动过」和「没有任务在跑」是两回事——没有输入信号的话，人一直在用 DSH，桌宠照样会睡。所以浏览器半边在 `pointerdown`/`pointermove`/`wheel`/`keydown` 上打点，节流到 15 秒一次，`POST /api/little-icon/activity`（同源路由，按仓库惯例先过 `connection.requestRejection`，非 POST 回 405）；宿主再和 `position.json` 的修改时间取最大值——拖动桌宠、托盘里「回到右下角」同样算操作。收起 DSH 之后页面收不到任何输入（这正是想要的），所以改由桌宠每秒把自己看到的窗口可见性写进 `window.json`，宿主在两种计时器之间切换，并且把「显示/收起」这个变化本身也算作一次操作。于是打盹只在真的一段时间没人碰过任何东西之后才出现，而任务开始本身也算操作。
 
 **桌宠进程。** `pet/pet.ps1` 是 WPF 无边框透明置顶窗口（`WindowStyle=None` + `AllowsTransparency` + `Topmost` + `ShowActivated=false`，不抢焦点）。脚本开头先把进程声明为 DPI 感知（`SetProcessDpiAwarenessContext` 逐级回退）：PowerShell 没有 DPI 清单，非感知进程里的分层窗口会被系统按虚拟化尺寸渲染再拉伸，桌宠会画成 2×2 平铺且比设定尺寸大。随后用 `WindowInteropHelper.EnsureHandle()` 拿到句柄补上 `WS_EX_TOOLWINDOW`——WPF 的 `ShowInTaskbar=false` 并不会真的加上这个样式，否则任务栏和 Alt+Tab 里会多一项。定时器每 200 毫秒按状态文件的修改时间决定是否重读，套用表情、尺寸、不透明度、点击行为与置顶；帧动画按 `frameMs` 轮播，帧数由脚本自己数素材文件（多数表情 4 帧、`干活中` 6 帧）。拖动用 `DragMove()`，松开后位置没变就当成点击。窗口位置存在 `position.json`，启动时读回并夹进屏幕范围。
 
@@ -106,7 +114,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **「收起」不是真正的系统托盘。** 桌面壳没有 `Tray`，托盘图标是桌宠进程自己用 `NotifyIcon` 建的；收起动作是 `SW_HIDE`，DSH 窗口从屏幕和任务栏一起消失，但不会在托盘区留下 DSH 自己的图标。DSH 若被别的方式退出，桌宠最多 45 秒后（或发现宿主进程消失时）自行退出。
 
-**活动只来自 DSH 页面和桌宠本身。** 上报来自 DSH 页面的输入事件，所以 DSH 被收起、最小化或被别的程序盖住时没有输入，桌宠会按 `sleepAfterSeconds` 入睡——这正是想要的；在别的程序里操作不会让它醒着，只有回到 DSH 打字、点鼠标，或者拖动桌宠、让托盘把它归位才会。
+**活动只来自 DSH 页面和桌宠本身。** 上报来自 DSH 页面的输入事件，所以 DSH 被收起、最小化或被别的程序盖住时没有输入：收起状态按 `sleepWhenHiddenSeconds` 打盹（默认 20 秒，只有拖动桌宠能续命），这正是想要的；在别的程序里操作不会让它醒着，只有回到 DSH 打字点鼠标、拖动桌宠，或者把 DSH 放回来才会。
 
 **桌宠被关掉后不会自动重启。** 从托盘退出后，改别的设置不会把它拉回来——只有把**启用桌宠**关掉再打开，或下次启动 DSH，才会重新出现。这样才不会撤销用户刚做的退出。
 

@@ -12,7 +12,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -325,10 +325,18 @@ console.log('little-icon smoke: browser half ok')
 
 if (process.argv.includes('--pet')) {
   assert.equal(process.platform, 'win32', '--pet runs the Windows pet window')
+  // Say it out loud: this run puts a real pet on the desktop for about half a
+  // minute, in its own temporary home so it can coexist with a running pet.
+  console.log('little-icon smoke --pet: showing a real pet window in the TOP-LEFT corner for about 25s')
 
   const home = mkdtempSync(join(tmpdir(), 'little-icon-smoke-'))
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = home
+  // Park it in the top-left corner rather than the default bottom-right, where
+  // the pet a person is actually using lives: a stray window is then obviously
+  // this test's, not a second pet somebody's plugin started.
+  mkdirSync(join(home, 'little-icon'), { recursive: true })
+  writeFileSync(join(home, 'little-icon', 'position.json'), '{"x":0,"y":0}\n', 'utf8')
   const disposers = []
   const handlers = new Map()
   const logged = []
@@ -480,8 +488,13 @@ $found
     // scaling other than 100% and nothing would ever be visible.
     const measured = measurePetWindow()
     assert.equal(measured.windows.length, 1, `expected one visible pet window, got: ${measured.windows.join(' | ')}`)
-    const [onScreen, geometry] = measured.windows[0].split(' ')
-    assert.equal(onScreen.toLowerCase(), 'true', `the pet window is off-screen (${geometry} on ${measured.virtual})`)
+    const [onScreen, position] = measured.windows[0].split(' ')
+    assert.equal(onScreen.toLowerCase(), 'true', `the pet window is off-screen (${measured.windows[0]} on ${measured.virtual})`)
+    // The test parks the pet in the top-left corner through its position file —
+    // one more reason a stray window is recognisably this test's — and that also
+    // proves a stored position is honored at startup.
+    const [left, top] = position.split(',').map(Number)
+    assert.ok(left < 300 && top < 300, `the pet should start in the top-left corner, found ${position}`)
 
     // No activity for sleepAfterSeconds (6s here) puts the pet to sleep, and one
     // activity ping brings it straight back to idle.

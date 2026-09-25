@@ -130,7 +130,9 @@ python tools/build-assets.py          # regenerate assets/ (bundled DSH Python: 
 node tests/smoke.mjs                  # state machine, art, and pet.ps1 -SelfTest (shows no window)
 node tests/smoke.mjs --pet            # additionally runs the apply() lifecycle: start the pet, measure
                                       # that its window is on screen, change state, dispose
-                                      # (a pet window appears for a few seconds)
+                                      # (a real pet window appears for about 25 seconds)
 ```
+
+`--pet` genuinely shows a pet window, in the top-left corner and in its own temporary `$DSH_HOME`, so it can run beside a pet somebody is actually using; the run prints a line saying so. The corner placement is deliberate: a strange pet in the top-left is this test, not a second pet some plugin started.
 
 Changing `index.js` or `package.json` needs a DSH restart (the host half does not hot reload); changing `pet/pet.ps1`, `pet/labels.json`, or `assets/` needs only a pet restart (quit it from the tray, or restart DSH).

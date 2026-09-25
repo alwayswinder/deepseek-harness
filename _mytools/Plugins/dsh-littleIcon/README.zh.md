@@ -133,4 +133,6 @@ node tests/smoke.mjs                  # 状态机、素材、pet.ps1 -SelfTest�
 node tests/smoke.mjs --pet            # 额外跑 apply() 生命周期：起桌宠、量窗口是否在屏幕内、切状态、清理
 ```
 
+`--pet` 会在桌面上**真显示一只桌宠窗口**（左上角、约 25 秒，用的是自己的临时 `$DSH_HOME`，所以能和正在使用的那只并存），运行时也会打印一行说明。它故意放在左上角而不是默认的右下角：万一你看到一只陌生的桌宠，那就是这个测试的，而不是插件多起了一只。
+
 改了 `index.js` 或 `package.json` 要重启 DSH 才生效（宿主半边不热更新）；改 `pet/pet.ps1`、`pet/labels.json` 或 `assets/` 只需重启桌宠进程（从托盘退出，或重启 DSH）。

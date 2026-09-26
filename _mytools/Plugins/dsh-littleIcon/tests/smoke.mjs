@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
-const { sampleState, createTimeline, isBusy, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH } = internals
+const { sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -40,29 +40,31 @@ function fakeContext({ running = false, queued = false, jobs = [] } = {}) {
 }
 
 const noWaiting = new Set()
-assert.equal(isBusy(fakeContext(), noWaiting), false)
-assert.equal(isBusy(fakeContext({ running: true }), noWaiting), true, 'a running agent is work')
-assert.equal(isBusy(fakeContext({ queued: true }), noWaiting), true, 'queued work is work')
-assert.equal(isBusy(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting), true, 'a running job is work')
-assert.equal(isBusy(fakeContext({ jobs: [{ status: 'stopping' }] }), noWaiting), true, 'a stopping job is work')
-assert.equal(isBusy(fakeContext({ jobs: [{ status: 'completed' }] }), noWaiting), false)
-assert.equal(isBusy({ get: () => undefined }, noWaiting), false, 'a profile without agents or jobs is never busy')
+assert.deepEqual(sampleWork(fakeContext(), noWaiting), { busy: false, waiting: false })
+assert.equal(sampleWork(fakeContext({ running: true }), noWaiting).busy, true, 'a running agent is work')
+assert.equal(sampleWork(fakeContext({ queued: true }), noWaiting).busy, true, 'queued work is work')
+assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting).busy, true, 'a running job is work')
+assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'stopping' }] }), noWaiting).busy, true, 'a stopping job is work')
+assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'completed' }] }), noWaiting).busy, false)
+assert.equal(sampleWork({ get: () => undefined }, noWaiting).busy, false, 'a profile without agents or jobs is never busy')
 // An agent waiting for the user is not working: the loop is blocked on the person,
 // so a question on screen — or input queued behind it — must not read as work.
-assert.equal(isBusy(fakeContext({ running: true }), new Set(['agent-1'])), false,
-  'an agent waiting for the user is not work')
-assert.equal(isBusy(fakeContext({ queued: true }), new Set(['agent-1'])), false,
+const askedWork = sampleWork(fakeContext({ running: true }), new Set(['agent-1']))
+assert.equal(askedWork.busy, false, 'an agent waiting for the user is not work')
+assert.equal(askedWork.waiting, true, 'and it is reported as waiting, which the pet shows as surprise')
+assert.equal(sampleWork(fakeContext({ queued: true }), new Set(['agent-1'])).busy, false,
   'input queued while an agent waits for the user is not work either')
-assert.equal(isBusy(fakeContext({ running: true }), new Set(['another-agent'])), true,
+assert.equal(sampleWork(fakeContext({ running: true }), new Set(['another-agent'])).busy, true,
   'a different agent keeps working while one waits')
-assert.equal(isBusy(fakeContext({ running: true, jobs: [{ status: 'running' }] }), new Set(['agent-1'])), true,
+assert.equal(sampleWork(fakeContext({ running: true }), new Set(['another-agent'])).waiting, false,
+  'a question for one agent is not reported for another')
+assert.equal(sampleWork(fakeContext({ running: true, jobs: [{ status: 'running' }] }), new Set(['agent-1'])).busy, true,
   'a background job still counts while an agent waits')
 
 const DEFAULTS = {
   size: 160,
   idleOpacity: 0.45,
   frameMs: 600,
-  alertMs: 1500,
   happyMs: 3000,
   boredEverySeconds: 60,
   boredMs: 5000,
@@ -75,18 +77,32 @@ const DEFAULTS = {
 
 const start = 1_000_000
 
-// One task reads as startle, work, joy, idle — then boredom now and then, and
-// sleep once nothing has happened for the configured stretch.
+/** Work in flight, nobody waiting on the person. */
+const working = { busy: true, waiting: false }
+/** The model blocked on an answer: the pet asks for the decision instead. */
+const waiting = { busy: false, waiting: true }
+/** Nothing under way. */
+const quietWork = { busy: false, waiting: false }
+
+// One run reads as work, surprise while it waits for the person, joy when it ends,
+// then idle — then boredom now and then, and sleep once nothing has happened for
+// the configured stretch.
 let timeline = createTimeline(start)
-const quiet = (now) => sampleState(false, start, timeline, DEFAULTS, now)
+const quiet = (now) => sampleState(quietWork, start, timeline, DEFAULTS, now)
 
 assert.equal(quiet(start), 'idle', 'a fresh pet idles')
-const alertStart = start + 100
-assert.equal(sampleState(true, start, timeline, DEFAULTS, alertStart), 'alert', 'a task starts with the startle frames')
-assert.equal(sampleState(true, start, timeline, DEFAULTS, alertStart + DEFAULTS.alertMs - 1), 'alert')
-assert.equal(sampleState(true, start, timeline, DEFAULTS, alertStart + DEFAULTS.alertMs), 'working')
-const busyEnd = start + 10_000
-assert.equal(sampleState(false, start, timeline, DEFAULTS, busyEnd), 'happy', 'work ends happy')
+assert.equal(sampleState(working, start, timeline, DEFAULTS, start + 100), 'working',
+  'a task starts working directly, with no startle first')
+// A question parks the run on the person, and the surprise lasts as long as the
+// question is unanswered — the whole point of the expression.
+const asked = start + 5000
+assert.equal(sampleState(waiting, start, timeline, DEFAULTS, asked), 'alert', 'waiting for the answer startles')
+assert.equal(sampleState(waiting, start, timeline, DEFAULTS, asked + DEFAULTS.happyMs), 'alert',
+  'the startle does not time out while the question stands')
+assert.equal(sampleState(working, start, timeline, DEFAULTS, asked + 6000), 'working',
+  'the answer puts the pet straight back to work')
+const busyEnd = start + 40_000
+assert.equal(sampleState(quietWork, start, timeline, DEFAULTS, busyEnd), 'happy', 'work ends happy')
 assert.equal(quiet(busyEnd + DEFAULTS.happyMs - 1), 'happy')
 assert.equal(quiet(busyEnd + DEFAULTS.happyMs), 'idle')
 
@@ -95,25 +111,25 @@ assert.equal(quiet(busyEnd + DEFAULTS.happyMs), 'idle')
 const boredAt = busyEnd + DEFAULTS.boredEverySeconds * 1000
 assert.equal(quiet(boredAt - 1), 'idle')
 const wiggle = busyEnd + 30_000
-assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, wiggle), 'idle')
-assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, boredAt), 'bored', 'activity while idle must not postpone boredom')
-assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, boredAt + DEFAULTS.boredMs), 'idle')
+assert.equal(sampleState(quietWork, wiggle, timeline, DEFAULTS, wiggle), 'idle')
+assert.equal(sampleState(quietWork, wiggle, timeline, DEFAULTS, boredAt), 'bored', 'activity while idle must not postpone boredom')
+assert.equal(sampleState(quietWork, wiggle, timeline, DEFAULTS, boredAt + DEFAULTS.boredMs), 'idle')
 
 // Sleep follows activity instead, on the timer the caller puts in force.
 const asleep = wiggle + DEFAULTS.sleepAfterSeconds * 1000
-assert.equal(sampleState(false, wiggle, timeline, DEFAULTS, asleep), 'sleep')
-assert.equal(sampleState(false, asleep, timeline, DEFAULTS, asleep + 500), 'idle', 'activity wakes the pet')
-assert.equal(sampleState(false, asleep + 500, timeline, DEFAULTS, asleep + 500 + DEFAULTS.boredEverySeconds * 1000 - 1),
+assert.equal(sampleState(quietWork, wiggle, timeline, DEFAULTS, asleep), 'sleep')
+assert.equal(sampleState(quietWork, asleep, timeline, DEFAULTS, asleep + 500), 'idle', 'activity wakes the pet')
+assert.equal(sampleState(quietWork, asleep + 500, timeline, DEFAULTS, asleep + 500 + DEFAULTS.boredEverySeconds * 1000 - 1),
   'idle', 'waking restarts the boredom clock rather than showing boredom at once')
 // Tucked away the host passes the much shorter timer, and the same rule applies.
 const tucked = { ...DEFAULTS, sleepAfterSeconds: 20 }
-assert.equal(sampleState(false, asleep + 500, timeline, tucked, asleep + 500 + 19_000), 'idle')
-assert.equal(sampleState(false, asleep + 500, timeline, tucked, asleep + 500 + 20_000), 'sleep')
+assert.equal(sampleState(quietWork, asleep + 500, timeline, tucked, asleep + 500 + 19_000), 'idle')
+assert.equal(sampleState(quietWork, asleep + 500, timeline, tucked, asleep + 500 + 20_000), 'sleep')
 
-// Movement of the pet itself is activity too, and a task starting startles again.
+// Movement of the pet itself is activity too, and a run starting again works at once.
 const moved = asleep + 500 + 20_000
-assert.equal(sampleState(false, moved, timeline, DEFAULTS, moved + 200), 'idle')
-assert.equal(sampleState(true, moved, timeline, DEFAULTS, moved + 1000), 'alert')
+assert.equal(sampleState(quietWork, moved, timeline, DEFAULTS, moved + 200), 'idle')
+assert.equal(sampleState(working, moved, timeline, DEFAULTS, moved + 1000), 'working')
 
 // Tucking DSH away follows what is in front rather than the activity clock: DSH
 // itself in front is never tucked away, and another application in front is what
@@ -478,7 +494,6 @@ if (process.argv.includes('--pet')) {
     idleOpacity: ref(0.5),
     frameMs: ref(500),
     pollMs: ref(300),
-    alertMs: ref(1000),
     happyMs: ref(500),
     boredEverySeconds: ref(30),
     boredMs: ref(1000),
@@ -672,16 +687,14 @@ $found
     await new Promise((resolve) => setTimeout(resolve, 1000))
     assert.equal(readState(), 'idle', 'showing DSH again should wake the pet')
 
-    // A task starting must play the startle frames before working, and ending it
-    // must play happy before settling back to idle.
+    // A task starts working directly — no startle first, surprise belongs to the
+    // question below — and ending it must play happy before settling back to idle.
     agents.running = true
-    const untilAlert = Date.now() + 3000
-    while (readState() !== 'alert' && Date.now() < untilAlert) {
+    const untilWorking = Date.now() + 3000
+    while (readState() !== 'working' && Date.now() < untilWorking) {
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    assert.equal(readState(), 'alert', 'a task start should play the startle frames')
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    assert.equal(readState(), 'working', 'the pet should keep working after the startle')
+    assert.equal(readState(), 'working', 'a task start should go straight to working')
     // The auto-tuck follows what is in front: DSH in front is never tucked away,
     // and going behind an application is what asks for the tuck — with no delay,
     // on the next sample, and without sparing the running task.
@@ -696,24 +709,26 @@ $found
     assert.equal(readTuck(), true, 'going behind another application must ask for the tuck')
     assert.equal(readState(), 'working', 'the tuck must not wait for the running task to finish')
 
-    // A question the agent asks the user parks the run on the person, so the pet
-    // must stop showing work while the choice is unanswered, and resume when the
-    // answer settles. The waterfall the tool calls is what the host observes.
+    // A question the agent asks the user parks the run on the person, so while the
+    // choice is unanswered the pet shows surprise, and the answer puts it back to
+    // work. The waterfall the tool calls is what the host observes.
     const asked = handlers.get('user-questions/request')
     assert.equal(typeof asked, 'function', 'the host must observe the question waterfall')
     const answer = Promise.withResolvers()
     void asked({ agent: { id: 'agent-1' }, questions: [] }, () => answer.promise)
-    const untilIdle = Date.now() + 4000
-    while (readState() === 'working' && Date.now() < untilIdle) {
+    const untilSurprised = Date.now() + 4000
+    while (readState() !== 'alert' && Date.now() < untilSurprised) {
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    assert.notEqual(readState(), 'working', 'waiting for the user must not read as working')
+    assert.equal(readState(), 'alert', 'an unanswered question must surprise the pet')
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    assert.equal(readState(), 'alert', 'the surprise must stand as long as the question does')
     answer.resolve({ answers: [] })
     const untilResumed = Date.now() + 4000
-    while (!['alert', 'working'].includes(readState()) && Date.now() < untilResumed) {
+    while (readState() !== 'working' && Date.now() < untilResumed) {
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    assert.ok(['alert', 'working'].includes(readState()), 'the answer puts the pet back to work')
+    assert.equal(readState(), 'working', 'the answer puts the pet back to work')
 
     agents.running = false
     const untilHappy = Date.now() + 3000

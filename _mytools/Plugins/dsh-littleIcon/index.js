@@ -64,8 +64,6 @@ export const Config = z.object({
   frameMs: z.number().step(10).min(120).max(5000).default(600).volatile(),
   /** Host sampling interval in milliseconds. */
   pollMs: z.number().step(50).min(200).max(10000).default(800).volatile(),
-  /** How long the startle frames play when a task begins. */
-  alertMs: z.number().step(100).min(0).max(60000).default(1500).volatile(),
   /** How long `happy` lasts after a busy period ends. */
   happyMs: z.number().step(100).min(0).max(60000).default(3000).volatile(),
   /** Idle seconds between the pet's occasional `bored` interruptions. */
@@ -149,11 +147,11 @@ class StateFileWriter {
   }
 }
 
-/** Cross-sample bookkeeping: the task edges, the boredom clock, and the last activity. */
+/** Cross-sample bookkeeping: the run edges, the boredom clock, and the last activity. */
 function createTimeline(now) {
   return {
-    wasBusy: false,
-    alertUntil: 0,
+    /** Whether the last sample still had a run in flight: work under way, or a question. */
+    inFlight: false,
     happyUntil: 0,
     boredUntil: 0,
     nextBoredAt: now + 60_000,
@@ -166,35 +164,39 @@ function createTimeline(now) {
 /**
  * Decide which state the pet shows.
  *
- * One task reads as: startle when work begins, work while it runs, joy when it
- * ends, then idle. Boredom follows the agent being idle rather than the mouse,
- * so a person reading a long answer still sees it now and then. Sleep follows
- * user activity instead: the caller passes the timer in force — much shorter
- * while DSH is tucked away — and any activity, whether page input, a drag, or
- * bringing DSH back, leaves sleep for idle.
+ * One run reads as: work while it runs, surprise while it is blocked on the person
+ * — a question with options or an approval is the pet asking for a decision, and it
+ * keeps asking until it is answered — joy when the run ends, then idle. Boredom
+ * follows the agent being idle rather than the mouse, so a person reading a long
+ * answer still sees it now and then. Sleep follows user activity instead: the
+ * caller passes the timer in force — much shorter while DSH is tucked away — and
+ * any activity, whether page input, a drag, or bringing DSH back, leaves sleep for
+ * idle.
  *
- * @param busy - whether an agent or job is running.
+ * @param work - what the agents report: `busy` (work under way) and `waiting` (an agent blocked on the person).
  * @param activityAt - latest user activity seen, in milliseconds.
  * @param timeline - cross-sample bookkeeping, updated in place.
  * @param config - resolved config values; its `sleepAfterSeconds` is the limit in force.
  * @param now - sample time in milliseconds.
  * @returns one of {@link STATES}.
  */
-function sampleState(busy, activityAt, timeline, config, now) {
+function sampleState(work, activityAt, timeline, config, now) {
   const active = activityAt > timeline.lastActivityAt
   timeline.lastActivityAt = Math.max(timeline.lastActivityAt, activityAt)
-  if (busy) {
+  // Work and an unanswered question are one run: neither may report the run as
+  // finished, and a question must not let the pet fall asleep on the person.
+  const inFlight = work.busy || work.waiting
+  if (inFlight) {
     timeline.lastActivityAt = now
     timeline.asleep = false
-    if (!timeline.wasBusy) {
-      timeline.wasBusy = true
-      timeline.alertUntil = now + config.alertMs
+    if (!timeline.inFlight) {
+      timeline.inFlight = true
       timeline.boredUntil = 0
     }
-    return now < timeline.alertUntil ? 'alert' : 'working'
+    return work.waiting ? 'alert' : 'working'
   }
-  if (timeline.wasBusy) {
-    timeline.wasBusy = false
+  if (timeline.inFlight) {
+    timeline.inFlight = false
     timeline.happyUntil = now + config.happyMs
     timeline.lastActivityAt = now
     timeline.boredUntil = 0
@@ -222,15 +224,15 @@ function sampleState(busy, activityAt, timeline, config, now) {
 }
 
 /**
- * Whether an agent or a job is running; the same test `apps/desktop-host` uses,
- * except that an agent blocked on a human answer does not count. The two
- * waterfalls that ask the user leave the agent `running` while they wait, and what
- * the loop waits on then is the person rather than the model.
+ * What the agents report right now: whether work is under way once the agents
+ * blocked on a human answer are set aside, and whether one of them is waiting for
+ * that answer. The two waterfalls that ask the user leave the agent `running`
+ * while they wait, and what the loop waits on then is the person, not the model.
  * @param ctx - host context carrying the optional `agents` and `jobs` services.
  * @param waiting - ids of the agents currently waiting for the user.
- * @returns true while work is in flight.
+ * @returns `busy` with the waiting agents excluded, and `waiting` for any of them.
  */
-function isBusy(ctx, waiting) {
+function sampleWork(ctx, waiting) {
   const agents = ctx.get('agents')
   const jobs = ctx.get('jobs')
   const live = agents === undefined ? [] : agents.list()
@@ -238,7 +240,10 @@ function isBusy(ctx, waiting) {
     || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0))
   const jobsBusy = jobs !== undefined && [undefined, ...live].some(agent => jobs.list(agent?.id)
     .some(job => job.status === 'running' || job.status === 'stopping'))
-  return agentBusy || jobsBusy
+  return {
+    busy: agentBusy || jobsBusy,
+    waiting: live.some(agent => waiting.has(agent.id)),
+  }
 }
 
 /**
@@ -363,7 +368,6 @@ export function apply(ctx, config) {
     translucent: config.translucent.get(),
     idleOpacity: config.idleOpacity.get(),
     frameMs: config.frameMs.get(),
-    alertMs: config.alertMs.get(),
     happyMs: config.happyMs.get(),
     boredEverySeconds: config.boredEverySeconds.get(),
     boredMs: config.boredMs.get(),
@@ -428,7 +432,7 @@ export function apply(ctx, config) {
     // on the much shorter timer the settings card exposes.
     const config = dshWindow.visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
     const activity = activityAt()
-    const state = sampleState(isBusy(ctx, waitingForUser), activity, timeline, config, now)
+    const state = sampleState(sampleWork(ctx, waitingForUser), activity, timeline, config, now)
     writer.write({
       state,
       size: current.size,
@@ -646,4 +650,4 @@ export function apply(ctx, config) {
 }
 
 /** Re-exported for the keyless smoke test. */
-export const internals = { sampleState, createTimeline, isBusy, shouldTuck, resolveDshHome, STATES, ACTIVITY_PATH, COMMANDS_PATH }
+export const internals = { sampleState, createTimeline, sampleWork, shouldTuck, resolveDshHome, STATES, ACTIVITY_PATH, COMMANDS_PATH }

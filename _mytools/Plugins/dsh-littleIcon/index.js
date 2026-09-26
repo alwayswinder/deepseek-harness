@@ -222,16 +222,20 @@ function sampleState(busy, activityAt, timeline, config, now) {
 }
 
 /**
- * Whether an agent or a job is running; the same test `apps/desktop-host` uses.
+ * Whether an agent or a job is running; the same test `apps/desktop-host` uses,
+ * except that an agent blocked on a human answer does not count. The two
+ * waterfalls that ask the user leave the agent `running` while they wait, and what
+ * the loop waits on then is the person rather than the model.
  * @param ctx - host context carrying the optional `agents` and `jobs` services.
+ * @param waiting - ids of the agents currently waiting for the user.
  * @returns true while work is in flight.
  */
-function isBusy(ctx) {
+function isBusy(ctx, waiting) {
   const agents = ctx.get('agents')
   const jobs = ctx.get('jobs')
   const live = agents === undefined ? [] : agents.list()
-  const agentBusy = live.some(agent => agent.status === 'running'
-    || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0)
+  const agentBusy = live.some(agent => !waiting.has(agent.id) && (agent.status === 'running'
+    || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0))
   const jobsBusy = jobs !== undefined && [undefined, ...live].some(agent => jobs.list(agent?.id)
     .some(job => job.status === 'running' || job.status === 'stopping'))
   return agentBusy || jobsBusy
@@ -424,7 +428,7 @@ export function apply(ctx, config) {
     // on the much shorter timer the settings card exposes.
     const config = dshWindow.visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
     const activity = activityAt()
-    const state = sampleState(isBusy(ctx), activity, timeline, config, now)
+    const state = sampleState(isBusy(ctx, waitingForUser), activity, timeline, config, now)
     writer.write({
       state,
       size: current.size,
@@ -464,6 +468,35 @@ export function apply(ctx, config) {
     lastCommandAt = pressed.at
     publishCommand(pressed.command)
   }
+
+  /**
+   * Agents blocked on a human answer right now. Asking the user is a waterfall
+   * request that leaves the agent `running` while it waits, so a pet reading only
+   * the status would show "working" for a decision nobody has seen yet.
+   */
+  const waitingForUser = new Set()
+
+  /**
+   * Follow one request for a human answer until its answer settles, however it
+   * settles. The listener observes only: it returns the waterfall's own promise.
+   * @param agent - the asking agent, as the scoped event carries it.
+   * @param answered - the waterfall's promise for the user's answer.
+   * @returns that same promise.
+   */
+  const trackWaiting = (agent, answered) => {
+    const id = agent?.id
+    if (id !== undefined) {
+      waitingForUser.add(id)
+      const done = () => { waitingForUser.delete(id) }
+      Promise.resolve(answered).then(done, done)
+    }
+    return answered
+  }
+
+  // Prepended so the answerer a shipped bundle composes later cannot short-circuit
+  // the waterfall before this observation; both listeners delegate with next().
+  ctx.on('user-questions/request', (request, next) => trackWaiting(request.agent, next()), { prepend: true })
+  ctx.on('approval/request', (request, next) => trackWaiting(request.agent, next()), { prepend: true })
 
   /** One sampling tick: publish the pet's state, then relay any menu command. */
   const sample = () => {

@@ -39,13 +39,24 @@ function fakeContext({ running = false, queued = false, jobs = [] } = {}) {
   return { get: (name) => services[name] }
 }
 
-assert.equal(isBusy(fakeContext()), false)
-assert.equal(isBusy(fakeContext({ running: true })), true, 'a running agent is work')
-assert.equal(isBusy(fakeContext({ queued: true })), true, 'queued work is work')
-assert.equal(isBusy(fakeContext({ jobs: [{ status: 'running' }] })), true, 'a running job is work')
-assert.equal(isBusy(fakeContext({ jobs: [{ status: 'stopping' }] })), true, 'a stopping job is work')
-assert.equal(isBusy(fakeContext({ jobs: [{ status: 'completed' }] })), false)
-assert.equal(isBusy({ get: () => undefined }), false, 'a profile without agents or jobs is never busy')
+const noWaiting = new Set()
+assert.equal(isBusy(fakeContext(), noWaiting), false)
+assert.equal(isBusy(fakeContext({ running: true }), noWaiting), true, 'a running agent is work')
+assert.equal(isBusy(fakeContext({ queued: true }), noWaiting), true, 'queued work is work')
+assert.equal(isBusy(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting), true, 'a running job is work')
+assert.equal(isBusy(fakeContext({ jobs: [{ status: 'stopping' }] }), noWaiting), true, 'a stopping job is work')
+assert.equal(isBusy(fakeContext({ jobs: [{ status: 'completed' }] }), noWaiting), false)
+assert.equal(isBusy({ get: () => undefined }, noWaiting), false, 'a profile without agents or jobs is never busy')
+// An agent waiting for the user is not working: the loop is blocked on the person,
+// so a question on screen — or input queued behind it — must not read as work.
+assert.equal(isBusy(fakeContext({ running: true }), new Set(['agent-1'])), false,
+  'an agent waiting for the user is not work')
+assert.equal(isBusy(fakeContext({ queued: true }), new Set(['agent-1'])), false,
+  'input queued while an agent waits for the user is not work either')
+assert.equal(isBusy(fakeContext({ running: true }), new Set(['another-agent'])), true,
+  'a different agent keeps working while one waits')
+assert.equal(isBusy(fakeContext({ running: true, jobs: [{ status: 'running' }] }), new Set(['agent-1'])), true,
+  'a background job still counts while an agent waits')
 
 const DEFAULTS = {
   size: 160,
@@ -684,6 +695,26 @@ $found
     }
     assert.equal(readTuck(), true, 'going behind another application must ask for the tuck')
     assert.equal(readState(), 'working', 'the tuck must not wait for the running task to finish')
+
+    // A question the agent asks the user parks the run on the person, so the pet
+    // must stop showing work while the choice is unanswered, and resume when the
+    // answer settles. The waterfall the tool calls is what the host observes.
+    const asked = handlers.get('user-questions/request')
+    assert.equal(typeof asked, 'function', 'the host must observe the question waterfall')
+    const answer = Promise.withResolvers()
+    void asked({ agent: { id: 'agent-1' }, questions: [] }, () => answer.promise)
+    const untilIdle = Date.now() + 4000
+    while (readState() === 'working' && Date.now() < untilIdle) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.notEqual(readState(), 'working', 'waiting for the user must not read as working')
+    answer.resolve({ answers: [] })
+    const untilResumed = Date.now() + 4000
+    while (!['alert', 'working'].includes(readState()) && Date.now() < untilResumed) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.ok(['alert', 'working'].includes(readState()), 'the answer puts the pet back to work')
+
     agents.running = false
     const untilHappy = Date.now() + 3000
     while (readState() !== 'happy' && Date.now() < untilHappy) {

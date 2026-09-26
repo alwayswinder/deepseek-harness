@@ -76,10 +76,10 @@ export const Config = z.object({
   sleepAfterSeconds: z.number().step(1).min(5).max(86400).default(600).volatile(),
   /** Sleep timer while DSH is tucked away, where dragging the pet is the only activity. */
   sleepWhenHiddenSeconds: z.number().step(1).min(2).max(3600).default(20).volatile(),
-  /** Whether the pet tucks DSH away on its own while it is on screen and untouched. */
+  /** Whether the pet tucks DSH away on its own while another application is in front. */
   autoHide: z.boolean().default(true).volatile(),
-  /** Seconds of that stillness before the tuck; a running task does not postpone it. */
-  autoHideSeconds: z.number().step(1).min(5).max(3600).default(20).volatile(),
+  /** Seconds DSH stays behind before that tuck; zero tucks it as soon as it goes behind. */
+  autoHideSeconds: z.number().step(1).min(0).max(3600).default(0).volatile(),
   /** Whether the pet stays above other windows. */
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
@@ -238,20 +238,21 @@ function isBusy(ctx) {
 }
 
 /**
- * Whether the pet should tuck DSH away now: the window is on screen and the user
- * has not touched anything for the configured stretch. Being covered by another
- * window is no protection — that window is exactly the one worth tidying away —
- * and neither is a running task: tucking DSH away while work continues is the
- * point of the setting. The pet executes the tuck, because it owns the window.
- * @param dshWindow - what the pet last reported about the window: `visible` and `foreground`.
- * @param activityAt - latest user activity, in milliseconds.
+ * Whether the pet should tuck DSH away now: another application is in front of a
+ * window that is still on screen, and it has been for the configured stretch.
+ * DSH itself in front is never tucked away, however long nothing is touched, and
+ * neither is a running task a reason to wait: tucking DSH away while work
+ * continues is the point of the setting. The pet executes the tuck, because it
+ * owns the window.
+ * @param dshWindow - what the pet last reported: `visible`, `foreground`, and `behindSince`.
  * @param config - resolved config values.
  * @param now - sample time in milliseconds.
  * @returns whether to ask the pet to tuck DSH away.
  */
-function shouldTuck(dshWindow, activityAt, config, now) {
-  return dshWindow.visible && config.autoHide
-    && (now - activityAt) / 1000 >= config.autoHideSeconds
+function shouldTuck(dshWindow, config, now) {
+  if (!config.autoHide || !dshWindow.visible || dshWindow.foreground) return false
+  if (dshWindow.behindSince === undefined) return false
+  return (now - dshWindow.behindSince) / 1000 >= config.autoHideSeconds
 }
 
 /**
@@ -329,8 +330,13 @@ export function apply(ctx, config) {
   let reportedActivityAt = Date.now()
   /** Last window visibility the pet reported; assumed visible until it says so. */
   let dshVisible = true
-  /** Last window foreground the pet reported; a change there counts as activity. */
-  let dshForeground = false
+  /**
+   * Last foreground the pet reported; assumed in front until it says so, which is
+   * also the state that never asks for a tuck.
+   */
+  let dshForeground = true
+  /** When DSH last went behind an application, in milliseconds; undefined while it is in front. */
+  let behindSince
   /** Timestamp of the last menu command already sent to the page; older ones are history. */
   let lastCommandAt = readCommand(commandFile)?.at ?? 0
   /** Open command streams, one per DSH window that is listening. */
@@ -383,10 +389,10 @@ export function apply(ctx, config) {
 
   /**
    * What the pet last reported about the DSH window: whether it is on screen and
-   * whether it is the window in front. Showing, hiding, and bringing it forward
-   * are all deliberate acts, so either change counts as activity — it wakes the
-   * pet when DSH comes back, restarts the tucked timer when it goes away, and
-   * gives the auto-tuck clock a fresh start when DSH is brought forward.
+   * whether it — or the pet — is what the user has in front, plus when it last
+   * went behind an application. Showing, hiding, and bringing it forward are all
+   * deliberate acts, so either change counts as activity — it wakes the pet when
+   * DSH comes back and restarts the tucked timer when it goes away.
    * @param now - sample time in milliseconds.
    * @returns the known window facts; a field the report leaves out keeps its last value.
    */
@@ -399,12 +405,15 @@ export function apply(ctx, config) {
       }
       if (typeof reported.dshForeground === 'boolean' && reported.dshForeground !== dshForeground) {
         dshForeground = reported.dshForeground
+        // The time DSH went behind is what the auto-tuck counts, so it starts
+        // when the report turns and ends when DSH comes back to the front.
+        behindSince = dshForeground ? undefined : now
         reportedActivityAt = now
       }
     } catch {
       // No report yet, or a half-written one: keep the last known values.
     }
-    return { visible: dshVisible, foreground: dshForeground }
+    return { visible: dshVisible, foreground: dshForeground, behindSince }
   }
 
   const publish = () => {
@@ -427,7 +436,7 @@ export function apply(ctx, config) {
       clickAction: current.clickAction,
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
-      tuck: shouldTuck(dshWindow, activity, current, now),
+      tuck: shouldTuck(dshWindow, current, now),
       updatedAt: now,
     })
   }

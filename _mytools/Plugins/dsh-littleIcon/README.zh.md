@@ -37,14 +37,14 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 - **大小**：96–320 像素的滑块，改完桌宠当帧就变；
 - **闲置时虚化**：开关，关掉就是始终不透明；
 - **虚化程度**：开启虚化时可用，15%–100%；
-- **没操作时自动收起 DSH**：默认开启；下面那条滑块是「无操作多久自动收起」，默认 20 秒，关掉开关时变灰；
+- **切到别的应用就收起 DSH**：默认开启；下面那条滑块是「到后台多久才收起」，默认 0（一切到后台立刻收），关掉开关时变灰；
 - 另外还有启用开关、始终置顶、点击行为、表情节奏，以及折叠在**更多**里的空闲节奏、开心/惊讶时长和状态采样间隔。
 
 控件即时写回 profile 配置（`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 里那一行 `little-icon`），不需要重启：宿主半改配置会重新发布状态文件，桌宠一秒内套用。把**启用桌宠**关掉再打开也能立刻结束/重新拉起桌宠进程。这张卡片由插件的浏览器半边（`client.js`）提供，所以重启后不会再出现第二份自动生成的表单。
 
 **交互。** 桌宠默认贴在主屏右下角，闲置时按上面的设置半透明，鼠标移上去变清晰。按住左键拖动会移动位置（松开即记住，下次启动还原，并夹在当前虚拟屏幕内）。**单击**（没有拖动的那一次按下）执行配置里的 `clickAction`：`toggle`（默认）在 DSH 显示时把它收起、再点恢复并置顶；`minimize` 只最小化；`none` 什么也不做。托盘图标右键提供「收起/显示 DSH」「回到右下角」「退出桌宠」，双击托盘图标等同单击桌宠。除了你点它，桌宠还会在 DSH 被晾着的时候自己动手：见下面「没操作时自动收起」。
 
-**右键菜单。** **右键点桌宠**会弹出和托盘图标一样的菜单，第一项是**对话**：它在 DSH 自己的**右侧 Browser 标签**里打开 <https://chat.deepseek.com>，不经过系统浏览器——这和 DSH 处理对话里 chat 链接（链接偏好选「应用内 Sidebar」时）用的是同一个内嵌页面。菜单里其余几项作用在桌宠自己身上：收起/显示 DSH、回到右下角、退出桌宠。菜单项由桌宠进程画，动作由页面执行，两边通过宿主转交；页面那边没有 Browser 标签可用（比如网页版默认关掉了它）时，这一项只会记一条警告，不会报错。
+**右键菜单。** **右键点桌宠**会弹出和托盘图标一样的菜单，第一项是**对话**：它先把 DSH 放回屏幕并置顶（收起、最小化、或只是被别的窗口盖住都算），再在 DSH 自己的**右侧 Browser 标签**里打开 <https://chat.deepseek.com>，不经过系统浏览器——这和 DSH 处理对话里 chat 链接（链接偏好选「应用内 Sidebar」时）用的是同一个内嵌页面。先放回窗口是必须的：标签页开在一个看不见的窗口里等于没开。菜单里其余几项作用在桌宠自己身上：收起/显示 DSH、回到右下角、退出桌宠。菜单项由桌宠进程画，动作由页面执行，两边通过宿主转交；页面那边没有 Browser 标签可用（比如网页版默认关掉了它）时，这一项只会记一条警告，不会报错。
 
 **配置字段。** 插件页的控件写的都是这些字段，全部即时生效（宿主改配置会重发状态文件并重排定时器，桌宠读状态文件，都不需要重启）：
 
@@ -62,8 +62,8 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 | `boredMs` | `5000` | 每次「无聊」持续多久 |
 | `sleepAfterSeconds` | `600` | DSH 显示着时，无操作多久「打盹」 |
 | `sleepWhenHiddenSeconds` | `20` | 收起 DSH 后，多久「打盹」（此时只有拖动桌宠算操作） |
-| `autoHide` | `true` | DSH 还在屏幕上、又没人操作时，是否自动把它收起 |
-| `autoHideSeconds` | `20` | 多久没操作就自动收起；挡在别的窗口后面也算，任务在跑也照收 |
+| `autoHide` | `true` | DSH 在前面时永不自动收起；切到别的应用后是否自动把它收起 |
+| `autoHideSeconds` | `0` | 切到别的应用后隔多久才收起；`0` 就是立刻。任务在跑也照收 |
 | `topmost` | `true` | 是否始终置顶 |
 | `clickAction` | `toggle` | `toggle` / `minimize` / `none` |
 
@@ -71,9 +71,9 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 - **无聊**跟着「有没有任务在跑」走，不看鼠标：没有任务时每隔 `boredEverySeconds` 插一段 `boredMs` 的「无聊」，所以读长回复时也会偶尔看到；一旦有操作，当前这段无聊立刻结束。
 - **打盹**跟着「有没有操作」走，而且分两种计时：DSH 显示着时用 `sleepAfterSeconds`，操作包括鼠标、滚轮、键盘在 DSH 页面上的动作、拖动桌宠、单击桌宠；**收起 DSH 之后**改用 `sleepWhenHiddenSeconds`（默认 20 秒），此时唯一可能的操作就是拖动桌宠，或者点桌宠 / 用托盘把 DSH 放回来。两种情况下一有操作都立刻醒来回到待机。
-- **没操作时自动收起**（`autoHide`，默认开）跟着「有没有操作」走，但走的是自己那条短计时：DSH 还在屏幕上、而 `autoHideSeconds`（默认 20 秒）内没有任何操作，桌宠就把 DSH 收起，**不看有没有任务在跑**——任务继续跑，窗口先收起来。挡在别的窗口后面不算「你在用它」，所以一样照收：这种情况下它正是该被收拾掉的那扇窗。这里说的操作和打盹那条一样（页面上的鼠标/滚轮/键盘、拖动桌宠、单击桌宠、以及 DSH 被显示/收起/切到前台这件事本身），所以收起之后短的那条打盹计时才开始走。只有最小化或已经收起时才不动，因为那时没有可收拾的窗口。任何一次操作、或者你把 DSH 切到前台，都会重新开始计这 20 秒。
+- **切到别的应用就收起**（`autoHide`，默认开）看的是**前台是谁**，不是「有没有操作」：DSH 自己在最前面时永不自动收起——读长回复、想事情都不再打断你；一旦别的应用跑到前面（你去用编辑器、浏览器），桌宠就把 DSH 收起，`autoHideSeconds`（默认 0）是切到后台之后的宽限时间，0 就是下一拍就收。**不看有没有任务在跑**：任务继续跑，窗口先收起来。只有 DSH 还显示在屏幕上时才有这一步，最小化或已经收起时不动。DSH 自己的对话框、更新提示，以及桌宠自己的窗口都算「DSH 在这边」，所以拖动桌宠不会把 DSH 收掉。要把它放回来：点桌宠或走托盘，放回来的同时它会重新成为前台，于是不会立刻又被收起。
 
-桌宠把「DSH 现在在不在屏幕上」和「在不在前台」写进 `window.json`：前者决定用哪条打盹计时、以及要不要自动收起，后者只用来当作「有人动过」的信号（切到前台也是一次操作）；显示/收起这些变化同样算一次操作。
+桌宠把「DSH 现在在不在屏幕上」和「在不在前台」（前台是不是 DSH 自己那一侧：它的主窗口、它的对话框，或桌宠）写进 `window.json`；前者决定用哪条打盹计时，后者决定要不要自动收起，两者变化本身也算一次操作。
 
 每套表情都是四帧循环。
 
@@ -91,11 +91,11 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **为什么必须是独立进程。** 桌面壳没有向插件开放任何窗口能力：`apps/desktop` 里没有 `Tray`，主窗口的 `BrowserWindow` 也没有 `transparent`/`alwaysOnTop`/`skipTaskbar`；`apps/desktop/src/ipc.ts` 的通道表里没有最小化/隐藏/恢复，`preload-app.ts` 只暴露 `dshDesktop`（浏览器视图与更新）、`dshPlatform`（仅用量/充值内嵌页）、目录选择、宿主路径与语言。渲染进程是 `sandbox: true` + `contextIsolation: true`，`window.open` 一律被拒。更关键的是插件的宿主代码跑在 `ELECTRON_RUN_AS_NODE=1` 的 Node 子进程里（`apps/desktop/src/host-process.ts` + `node-environment.ts`），那里 `require('electron')` 只能拿到二进制路径。窗口一旦隐藏，窗口内的 DOM 也不再绘制。所以「收起 DSH 后桌宠还在」只能靠插件自己起一个进程。
 
-**宿主半边。** `index.js` 每 `pollMs` 采样一次：用 `ctx.get('agents')` 看是否有 agent `running` 或 inbox 里有下一轮/下一步，用 `ctx.get('jobs')` 看是否有 `running`/`stopping` 的 job（判据与 `apps/desktop-host/src/update-tasks.ts` 一致）。状态机是纯函数 `sampleState`，`tests/smoke.mjs` 直接压它；它接收「有没有活」「最近一次操作」「现在该用哪个打盹计时器」三个输入——计时器由桌宠报告的窗口可见性决定（收起后用短的那条）。另一个纯函数 `shouldTuck` 决定「该不该收起 DSH」，它只看桌宠报来的「窗口还在不在屏幕上」、活动时钟走了多久和 `autoHide`/`autoHideSeconds`，**没有「有没有任务在跑」这个输入**，也没有「在不在前台」这个条件（挡在别的窗口后面一样照收），所以任务在跑也照收；采样结果写进 `$DSH_HOME/little-icon/state.json` 时把它的结果作为 `tuck` 一起发布。`tuck` 是一条命令而不是状态：桌宠收好后写回的 `dshVisible:false` 让宿主下一拍就把它关掉，期间重复发出的同一个请求也因为桌宠那边幂等而无害。内容变化才写盘，另外每 4 秒补写一次心跳，桌宠据此判断宿主是否还活着。配置里的 `translucent` 与 `idleOpacity` 在这里合并成一个 `opacity` 字段，桌宠不需要知道这个开关。桌宠由 `child_process.spawn` 拉起（`powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File pet/pet.ps1`），参数里带素材目录、状态与位置文件、以及要控制的窗口进程号；`ctx.effect` 的清理函数会结束它，DSH 不会留下孤儿窗口。桌面壳里宿主的父进程就是 Electron 主进程，所以这个进程号直接取自 `process.ppid`；网页版没有可控制的窗口，传 0。菜单命令走另一条路：桌宠把选择写进 `command.json`，宿主每拍读一次（`at` 严格递增才算新命令，所以上一轮留下的记录不会被重放），再经 `GET /api/little-icon/commands` 这条 SSE 流推给页面；流过与活动上报同样的 `connection.requestRejection` 检查，只回事件流本身（`text/event-stream`，先写一帧注释让订阅立刻成立），并在客户端断开或插件销毁时从订阅集合里摘掉、`end()` 掉。页面不在线时的命令直接丢掉——执行它的是页面，没有页面就没有可执行的对象。
+**宿主半边。** `index.js` 每 `pollMs` 采样一次：用 `ctx.get('agents')` 看是否有 agent `running` 或 inbox 里有下一轮/下一步，用 `ctx.get('jobs')` 看是否有 `running`/`stopping` 的 job（判据与 `apps/desktop-host/src/update-tasks.ts` 一致）。状态机是纯函数 `sampleState`，`tests/smoke.mjs` 直接压它；它接收「有没有活」「最近一次操作」「现在该用哪个打盹计时器」三个输入——计时器由桌宠报告的窗口可见性决定（收起后用短的那条）。另一个纯函数 `shouldTuck` 决定「该不该收起 DSH」，它只看桌宠报来的窗口事实——窗口还在不在屏幕上、前台是不是别人、DSH 是什么时候转到后台的——再加上 `autoHide`/`autoHideSeconds`：**DSH 在前台时直接返回 false**（永不自动收起），**没有「有没有任务在跑」这个输入**（所以在后台时任务照跑、窗口照收）；采样结果写进 `$DSH_HOME/little-icon/state.json` 时把它的结果作为 `tuck` 一起发布。`tuck` 是一条命令而不是状态：桌宠收好后写回的 `dshVisible:false` 让宿主下一拍就把它关掉，期间重复发出的同一个请求也因为桌宠那边幂等而无害。内容变化才写盘，另外每 4 秒补写一次心跳，桌宠据此判断宿主是否还活着。配置里的 `translucent` 与 `idleOpacity` 在这里合并成一个 `opacity` 字段，桌宠不需要知道这个开关。桌宠由 `child_process.spawn` 拉起（`powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File pet/pet.ps1`），参数里带素材目录、状态与位置文件、以及要控制的窗口进程号；`ctx.effect` 的清理函数会结束它，DSH 不会留下孤儿窗口。桌面壳里宿主的父进程就是 Electron 主进程，所以这个进程号直接取自 `process.ppid`；网页版没有可控制的窗口，传 0。菜单命令走另一条路：桌宠把选择写进 `command.json`，宿主每拍读一次（`at` 严格递增才算新命令，所以上一轮留下的记录不会被重放），再经 `GET /api/little-icon/commands` 这条 SSE 流推给页面；流过与活动上报同样的 `connection.requestRejection` 检查，只回事件流本身（`text/event-stream`，先写一帧注释让订阅立刻成立），并在客户端断开或插件销毁时从订阅集合里摘掉、`end()` 掉。页面不在线时的命令直接丢掉——执行它的是页面，没有页面就没有可执行的对象。
 
-**「操作」这个信号从哪来。** 宿主只看得到 agent 和 job，「没人动过」和「没有任务在跑」是两回事——没有输入信号的话，人一直在用 DSH，桌宠照样会睡。所以浏览器半边在 `pointerdown`/`pointermove`/`wheel`/`keydown` 上打点，节流到 15 秒一次，`POST /api/little-icon/activity`（同源路由，按仓库惯例先过 `connection.requestRejection`，非 POST 回 405）；宿主再和 `position.json` 的修改时间取最大值——拖动桌宠、托盘里「回到右下角」同样算操作。收起 DSH 之后页面收不到任何输入（这正是想要的），所以改由桌宠每秒把自己看到的窗口状态写进 `window.json`（在不在屏幕上、在不在前台），宿主在两种计时器之间切换、并据此决定要不要自动收起，同时把「显示/收起/切到前台」这些变化本身也算作一次操作——切到前台会重新开始计那 20 秒，免得你刚切过去它就消失。于是打盹只在真的一段时间没人碰过任何东西之后才出现，而任务开始本身也算操作。
+**「操作」这个信号从哪来。** 宿主只看得到 agent 和 job，「没人动过」和「没有任务在跑」是两回事——没有输入信号的话，人一直在用 DSH，桌宠照样会睡。所以浏览器半边在 `pointerdown`/`pointermove`/`wheel`/`keydown` 上打点，节流到 15 秒一次，`POST /api/little-icon/activity`（同源路由，按仓库惯例先过 `connection.requestRejection`，非 POST 回 405）；宿主再和 `position.json` 的修改时间取最大值——拖动桌宠、托盘里「回到右下角」同样算操作。收起 DSH 之后页面收不到任何输入（这正是想要的），所以改由桌宠每秒把自己看到的窗口状态写进 `window.json`（在不在屏幕上、前台是不是 DSH 这一侧），宿主据此在两种打盹计时器之间切换、以及决定要不要自动收起；「显示/收起/切到前台」这些变化本身也算一次操作（所以收起之后短的那条打盹计时立刻开始走）。于是打盹只在真的一段时间没人碰过任何东西之后才出现，而任务开始本身也算操作。
 
-**桌宠进程。** `pet/pet.ps1` 是 WPF 无边框透明置顶窗口（`WindowStyle=None` + `AllowsTransparency` + `Topmost` + `ShowActivated=false`，不抢焦点）。脚本开头先把进程声明为 DPI 感知（`SetProcessDpiAwarenessContext` 逐级回退）：PowerShell 没有 DPI 清单，非感知进程里的分层窗口会被系统按虚拟化尺寸渲染再拉伸，桌宠会画成 2×2 平铺且比设定尺寸大。随后用 `WindowInteropHelper.EnsureHandle()` 拿到句柄补上 `WS_EX_TOOLWINDOW`——WPF 的 `ShowInTaskbar=false` 并不会真的加上这个样式，否则任务栏和 Alt+Tab 里会多一项。定时器每 200 毫秒按状态文件的修改时间决定是否重读，套用表情、尺寸、不透明度、点击行为与置顶；帧动画按 `frameMs` 轮播，帧数由脚本自己数素材文件（多数表情 4 帧、`干活中` 6 帧）。拖动用 `DragMove()`。激活桌宠窗口的那次按下会被 WPF 报告两次（一次随激活、一次是普通鼠标消息），而前一次还起不了拖动，所以按下只做记录，松开时才判定是点击还是拖动：否则第一次点击会刚把 DSH 收起又立刻放回来，只想拖桌宠时也会把 DSH 收起。窗口位置存在 `position.json`，启动时读回并夹进屏幕范围。右键菜单（`New-PetMenu`）与托盘菜单是同一份定义的两个实例，都由 WinForms 的 `ContextMenuStrip` 画：桌面端第一项是**对话**，它把 `{"command":"chat","at":…}` 写进 `command.json`（宿主负责转交），其余各项直接作用在本进程；网页版没有可控制系统窗口，菜单里就不放「收起/显示 DSH」。标签都从 `pet/labels.json` 按 UTF-8 读，读不到用脚本内的英文兜底，脚本本身保持纯 ASCII。
+**桌宠进程。** `pet/pet.ps1` 是 WPF 无边框透明置顶窗口（`WindowStyle=None` + `AllowsTransparency` + `Topmost` + `ShowActivated=false`，不抢焦点）。脚本开头先把进程声明为 DPI 感知（`SetProcessDpiAwarenessContext` 逐级回退）：PowerShell 没有 DPI 清单，非感知进程里的分层窗口会被系统按虚拟化尺寸渲染再拉伸，桌宠会画成 2×2 平铺且比设定尺寸大。随后用 `WindowInteropHelper.EnsureHandle()` 拿到句柄补上 `WS_EX_TOOLWINDOW`——WPF 的 `ShowInTaskbar=false` 并不会真的加上这个样式，否则任务栏和 Alt+Tab 里会多一项。定时器每 200 毫秒按状态文件的修改时间决定是否重读，套用表情、尺寸、不透明度、点击行为与置顶；帧动画按 `frameMs` 轮播，帧数由脚本自己数素材文件（多数表情 4 帧、`干活中` 6 帧）。拖动用 `DragMove()`。激活桌宠窗口的那次按下会被 WPF 报告两次（一次随激活、一次是普通鼠标消息），而前一次还起不了拖动，所以按下只做记录，松开时才判定是点击还是拖动：否则第一次点击会刚把 DSH 收起又立刻放回来，只想拖桌宠时也会把 DSH 收起。窗口位置存在 `position.json`，启动时读回并夹进屏幕范围。右键菜单（`New-PetMenu`）与托盘菜单是同一份定义的两个实例，都由 WinForms 的 `ContextMenuStrip` 画：桌面端第一项是**对话**，它先调 `Show-DshWindow` 把 DSH 恢复并置顶（收起/最小化时 `SW_RESTORE`，只是被盖住时 `SetForegroundWindow`），再把 `{"command":"chat","at":…}` 写进 `command.json` 交给宿主转交；其余各项直接作用在本进程。网页版没有可控制系统窗口，菜单里就不放「收起/显示 DSH」。它每秒上报的「前台」指的是**前面是不是 DSH 这一侧**：DSH 自己进程里的窗口（含对话框、更新提示）与桌宠自己的窗口都算，只有第三方应用跑到前面才算「不在前台」——所以拖动桌宠不会被当成你跑去用别的应用。标签都从 `pet/labels.json` 按 UTF-8 读，读不到用脚本内的英文兜底，脚本本身保持纯 ASCII。
 
 **几何单位。** 位置与夹取一律用 WPF 自己的 `SystemParameters.WorkArea` / `VirtualScreen*`，它们和 `Window.Left/Top` 同为设备无关单位；WinForms 的 `Screen`/`SystemInformation` 给的是物理像素，在 150% 缩放之类的情况下混用会把桌宠推到屏幕外（右下角被乘 1.5 倍）。`tests/smoke.mjs --pet` 会用 DPI 感知的探针量出窗口矩形，断言它确实落在屏幕内。
 
@@ -120,7 +120,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **「收起」不是真正的系统托盘。** 桌面壳没有 `Tray`，托盘图标是桌宠进程自己用 `NotifyIcon` 建的；收起动作是 `SW_HIDE`，DSH 窗口从屏幕和任务栏一起消失，但不会在托盘区留下 DSH 自己的图标。DSH 若被别的方式退出，桌宠最多 45 秒后（或发现宿主进程消失时）自行退出。
 
-**内嵌浏览器每次重启都要重新登录。** 菜单里的**对话**打开的是 DSH 的右侧 Browser 标签，那个内嵌会话是**进程级**的（`apps/desktop/src/browser-guests.ts` 用 `dsh-sidebar-browser-<uuid>` 这个名字建分区，不带 `persist:` 前缀），所以 Cookie 与 Web storage 不跨 DSH 重启；重启后要重新登录一次 chat.deepseek.com。官方设置里的用量内嵌页没有这个问题，因为它用的是另一条路：`apps/desktop/src/platform-view.ts` 自己注入账号 Cookie，但那条路只接受 `/usage` 与 `/top_up` 两个地址，插件够不到。要让这个登录留下来，只能改上游的 `apps/desktop/src/browser-guests.ts`（分区名加 `persist:`）——那超出 `_mytools/` 的范围，需要单独同意。
+**内嵌浏览器不会自动登录。** 菜单里的**对话**打开的是 DSH 的右侧 Browser 标签，它的存储分区是**持久**的（本副本对上游的唯一一处改动：`apps/desktop/src/browser-guests.ts` 用 `persist:dsh-sidebar-browser-<工作区标识的摘要>`，改动、重建与恢复步骤见 [UPSTREAM.md](UPSTREAM.md)），所以在那里登录过一次 chat.deepseek.com 之后，重启 DSH 仍然保持登录——但**不会**用 DSH 自己的账号自动登录：DSH 手里的凭据是 `platform.deepseek.com` 那一份（`platform-view.ts` 只对那个 origin 注入 Cookie，官方用量页跑的就是这条路），而 chat.deepseek.com 是另一套 Web 会话；插件也塞不进 Cookie——宿主半边没有 Electron API，浏览器半边是 sandbox，那个分区归 `apps/desktop` 管。另外 DeepSeek 自己会对嵌入式环境提示「使用环境异常」，那是服务端判断，插件这一层改不掉。
 
 **网页版可能没有 Browser 标签。** 右侧 Browser 类型在 Web profile 默认关闭，没有右侧栏的构建连 `ctx.sidebarRight` 都没有；这时**对话**这一项点了没有反应（页面只记一条 `console.warn`）。桌面端装了自带 Browser 标签，所以正常可用。
 

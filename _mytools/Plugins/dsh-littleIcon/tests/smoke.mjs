@@ -59,7 +59,7 @@ const DEFAULTS = {
   topmost: true,
   clickAction: 'toggle',
   autoHide: true,
-  autoHideSeconds: 20,
+  autoHideSeconds: 0,
 }
 
 const start = 1_000_000
@@ -104,26 +104,25 @@ const moved = asleep + 500 + 20_000
 assert.equal(sampleState(false, moved, timeline, DEFAULTS, moved + 200), 'idle')
 assert.equal(sampleState(true, moved, timeline, DEFAULTS, moved + 1000), 'alert')
 
-// Tucking DSH away follows the same activity clock as sleep, on its own, much
-// shorter timer. Which window is in front does not matter — a DSH window behind
-// another one is exactly what there is to tidy away — and a running task is
-// deliberately not an input at all: the decision sees what the pet reported about
-// the window and when the user last touched anything, and only the pet can hide a
-// window.
-const untouched = moved + 200
-const inFront = { visible: true, foreground: true }
-assert.equal(shouldTuck(inFront, untouched, DEFAULTS, untouched + 19_999), false)
-assert.equal(shouldTuck(inFront, untouched, DEFAULTS, untouched + 20_000), true, 'the default stretch tucks DSH away')
-assert.equal(shouldTuck({ visible: true, foreground: false }, untouched, DEFAULTS, untouched + 20_000), true,
-  'a window behind another one is tucked away just the same')
-assert.equal(shouldTuck({ visible: false, foreground: true }, untouched, DEFAULTS, untouched + 60_000), false,
+// Tucking DSH away follows what is in front rather than the activity clock: DSH
+// itself in front is never tucked away, and another application in front is what
+// asks for the tuck after the configured stretch — zero by default, so it lands on
+// the next sample. Only the pet can hide a window, so the decision stays a fact.
+const behindAt = moved + 200
+const behind = { visible: true, foreground: false, behindSince: behindAt }
+const inFront = { visible: true, foreground: true, behindSince: undefined }
+assert.equal(shouldTuck(inFront, DEFAULTS, behindAt + 3_600_000), false,
+  'DSH in front is never tucked away, however long nothing is touched')
+assert.equal(shouldTuck(behind, DEFAULTS, behindAt), true, 'with no delay it goes on the sample it went behind')
+assert.equal(shouldTuck({ visible: false, foreground: false, behindSince: behindAt }, DEFAULTS, behindAt + 1000), false,
   'a hidden DSH has nothing to tuck')
-assert.equal(shouldTuck({ visible: false, foreground: false }, untouched, DEFAULTS, untouched + 60_000), false,
-  'a minimized DSH has nothing to tuck either')
-assert.equal(shouldTuck(inFront, untouched, { ...DEFAULTS, autoHide: false }, untouched + 60_000), false,
+assert.equal(shouldTuck({ visible: true, foreground: false, behindSince: undefined }, DEFAULTS, behindAt + 1000), false,
+  'a window that never went behind has no tuck clock')
+assert.equal(shouldTuck(behind, { ...DEFAULTS, autoHide: false }, behindAt + 60_000), false,
   'the switch turns the tuck off')
-assert.equal(shouldTuck(inFront, untouched, { ...DEFAULTS, autoHideSeconds: 90 }, untouched + 60_000), false,
-  'the configured stretch is what counts')
+assert.equal(shouldTuck(behind, { ...DEFAULTS, autoHideSeconds: 30 }, behindAt + 29_999), false)
+assert.equal(shouldTuck(behind, { ...DEFAULTS, autoHideSeconds: 30 }, behindAt + 30_000), true,
+  'a configured stretch counts from going behind, not from the last input')
 
 // Every state the host can publish has frames on disk, and the generator's
 // frames.json agrees with the files: the art decides the count per state (the
@@ -384,7 +383,7 @@ assert.ok(tuckRow !== undefined, 'the auto-tuck switch is missing')
 assert.equal(tuckRow.props.control.props.checked, true, 'the auto-tuck switch is on by default')
 const tuckSecondsRow = elements.find(node => node.props?.label === t('autoHideSeconds'))
 assert.ok(tuckSecondsRow !== undefined, 'the auto-tuck delay is missing')
-assert.equal(tuckSecondsRow.props.control.props.value, 20, 'the auto-tuck delay starts at 20 seconds')
+assert.equal(tuckSecondsRow.props.control.props.value, 0, 'DSH is tucked away as soon as it goes behind by default')
 const noTuck = flatten(render({ autoHide: false }))
 assert.equal(noTuck.find(node => node.props?.label === t('autoHideSeconds')).props.disabled, true,
   'the auto-tuck delay must be disabled while the switch is off')
@@ -476,10 +475,10 @@ if (process.argv.includes('--pet')) {
     // that the write-rate window below stays inside one steady state.
     sleepAfterSeconds: ref(6),
     sleepWhenHiddenSeconds: ref(2),
-    // Long enough that the write-rate window below still sees one steady state,
-    // short enough that the auto-tuck lands inside this run.
+    // The plugin default: DSH is tucked away the moment another application is in
+    // front, which is also what makes the assertion below deterministic.
     autoHide: ref(true),
-    autoHideSeconds: ref(5),
+    autoHideSeconds: ref(0),
     topmost: ref(true),
     clickAction: ref('toggle'),
   }
@@ -672,17 +671,18 @@ $found
     assert.equal(readState(), 'alert', 'a task start should play the startle frames')
     await new Promise((resolve) => setTimeout(resolve, 1500))
     assert.equal(readState(), 'working', 'the pet should keep working after the startle')
-    // The auto-tuck neither spares a running task nor spares a window that is
-    // covered: DSH is on screen, behind whatever else is in front, and nothing has
-    // been touched since the report above, so the host asks the pet to hide it
-    // while the task keeps running.
+    // The auto-tuck follows what is in front: DSH in front is never tucked away,
+    // and going behind an application is what asks for the tuck — with no delay,
+    // on the next sample, and without sparing the running task.
+    const readTuck = () => JSON.parse(readFileSync(statePath, 'utf8')).tuck
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+    assert.equal(readTuck(), false, 'DSH in front must never be tucked away')
     writeFileSync(windowPath, '{"dshVisible":true,"dshForeground":false}\n', 'utf8')
     const untilTuck = Date.now() + 10_000
-    const readTuck = () => JSON.parse(readFileSync(statePath, 'utf8')).tuck
     while (readTuck() !== true && Date.now() < untilTuck) {
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
-    assert.equal(readTuck(), true, 'an untouched window behind another one must be tucked away')
+    assert.equal(readTuck(), true, 'going behind another application must ask for the tuck')
     assert.equal(readState(), 'working', 'the tuck must not wait for the running task to finish')
     agents.running = false
     const untilHappy = Date.now() + 3000

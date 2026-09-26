@@ -13,9 +13,9 @@
     tuck request, which the host raises once the user leaves DSH untouched for the
     configured stretch, and which hides the window exactly like a click does. A
     right-click on the pet and the tray icon show the same menu; an entry the page
-    carries out (the DeepSeek chat site opens in DSH itself) is written to
-    command.json beside the state file for the host to relay, and the rest act on
-    this process at once.
+    carries out (the DeepSeek chat site opens in DSH itself) brings DSH back on
+    screen first and is written to command.json beside the state file for the host
+    to relay, and the rest act on this process at once.
 
     The target window is located through DshPid (the host's parent, i.e. the
     Electron main process): Process.MainWindowHandle first, then an enumeration
@@ -405,9 +405,14 @@ function Get-DshShown {
 }
 
 function Get-DshForeground {
-    $handle = Find-DshWindow
+    # What the host acts on is "somebody else is in front", so a window of DSH's
+    # own process (a dialog, the update prompt) and this pet's own window still
+    # count as DSH being what the user is looking at.
+    $handle = [DshPet.Win32]::GetForegroundWindow()
     if ($handle -eq [IntPtr]::Zero) { return $false }
-    return ([DshPet.Win32]::GetForegroundWindow() -eq $handle)
+    $owner = 0
+    [void][DshPet.Win32]::GetWindowThreadProcessId($handle, [ref]$owner)
+    return ($owner -eq $SCRIPT:DshPid -or $owner -eq $PID)
 }
 
 function Update-MenuLabels {
@@ -443,6 +448,16 @@ function Set-DshWindowShown([bool]$Shown) {
 
 function Switch-DshWindow {
     Set-DshWindowShown (-not (Get-DshShown))
+}
+
+function Show-DshWindow {
+    # Asking for something the page carries out means wanting to look at it, so DSH
+    # comes back first when it is tucked away or minimized, and is raised when it
+    # was merely behind another window - opening the tab is useless otherwise.
+    if ($SCRIPT:DshPid -le 0) { return }
+    Set-DshWindowShown $true
+    $handle = Find-DshWindow
+    if ($handle -ne [IntPtr]::Zero) { [void][DshPet.Win32]::SetForegroundWindow($handle) }
 }
 
 function Save-WindowState {
@@ -497,7 +512,14 @@ function New-PetMenu {
     # Commands the page carries out come first, window actions after them.
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $chatItem = $menu.Items.Add($SCRIPT:Labels.Chat)
-    $chatItem.add_Click({ try { Send-MenuCommand 'chat' } catch { Write-Log $_.Exception.Message } })
+    $chatItem.add_Click({
+        try {
+            # The page opens the site in its own Browser tab, so DSH has to be on
+            # screen first: a tab opened in a hidden window is a tab nobody sees.
+            Show-DshWindow
+            Send-MenuCommand 'chat'
+        } catch { Write-Log $_.Exception.Message }
+    })
     # Without a DSH window to control (the web profile), the toggle would be a
     # dead entry, so the menu keeps only the page command, position and quit.
     if ($SCRIPT:DshPid -gt 0) {

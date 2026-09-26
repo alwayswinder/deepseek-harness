@@ -9,8 +9,10 @@
     heartbeat) and applies the expression animation, window size, opacity, and
     click behaviour from it. Dragging stores the window position in PositionFile.
     A press that did not move the window counts as a click: user32 ShowWindow
-    tucks the DSH window away or brings it back. The tray icon offers the same
-    action plus a position reset and a quit entry.
+    tucks the DSH window away or brings it back. The state file also carries a
+    tuck request, which the host raises once the user leaves DSH untouched for the
+    configured stretch, and which hides the window exactly like a click does. The
+    tray icon offers the same action plus a position reset and a quit entry.
 
     The target window is located through DshPid (the host's parent, i.e. the
     Electron main process): Process.MainWindowHandle first, then an enumeration
@@ -77,10 +79,12 @@ $SCRIPT:AssetDir = (Resolve-Path -LiteralPath $AssetDir).Path
 $SCRIPT:StateFile = [System.IO.Path]::GetFullPath($StateFile)
 $SCRIPT:PositionFile = [System.IO.Path]::GetFullPath($PositionFile)
 # Next to the state file, like the position: this pet is the process that tucks
-# DSH away, so it is the one that knows whether the window is on screen, and the
-# host needs that to pick the tucked sleep timer.
+# DSH away, so it is the one that knows whether the window is on screen and
+# whether it is the window in front. The host needs both - the first picks the
+# tucked sleep timer, the second decides whether an idle DSH should be tucked.
 $SCRIPT:WindowFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'window.json'
 $SCRIPT:WindowVisible = $null
+$SCRIPT:WindowForeground = $null
 $SCRIPT:DshPid = $DshPid
 
 function Read-Utf8Text([string]$Path) {
@@ -236,6 +240,7 @@ if (-not ('DshPet.Win32' -as [type])) {
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindow(System.IntPtr hWnd);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hWnd);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsIconic(System.IntPtr hWnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow();
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, System.IntPtr extra);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(System.IntPtr hWnd, out uint pid);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetWindowTextLength(System.IntPtr hWnd);
@@ -343,6 +348,10 @@ function Apply-State($State) {
     if ($null -ne $State.size) { Set-PetSize ([int]$State.size) }
     if ($null -ne $State.topmost) { $window.Topmost = [bool]$State.topmost }
     if ($null -ne $State.state) { Set-Expression ([string]$State.state) }
+    # The host asks for a tuck once the user has left DSH untouched long enough;
+    # the request says nothing about the current window state, so it only ever
+    # hides, and hiding an already hidden window is a no-op.
+    if ($null -ne $State.tuck -and [bool]$State.tuck) { Set-DshWindowShown $false }
     Update-PetOpacity
 }
 
@@ -386,26 +395,41 @@ function Get-DshShown {
     return ([DshPet.Win32]::IsWindowVisible($handle) -and -not [DshPet.Win32]::IsIconic($handle))
 }
 
+function Get-DshForeground {
+    $handle = Find-DshWindow
+    if ($handle -eq [IntPtr]::Zero) { return $false }
+    return ([DshPet.Win32]::GetForegroundWindow() -eq $handle)
+}
+
 function Update-TrayMenu {
     if ($null -eq $SCRIPT:Notify -or $null -eq $SCRIPT:ToggleItem) { return }
     if (Get-DshShown) { $SCRIPT:ToggleItem.Text = $SCRIPT:Labels.ToggleShown }
     else { $SCRIPT:ToggleItem.Text = $SCRIPT:Labels.ToggleHidden }
 }
 
-function Switch-DshWindow {
+function Set-DshWindowShown([bool]$Shown) {
     if ($SCRIPT:DshPid -le 0) { return }
     $handle = Find-DshWindow
     if ($handle -eq [IntPtr]::Zero) {
-        Write-Log 'DSH window not found; ignoring this click'
+        Write-Log 'DSH window not found; ignoring this window command'
         return
     }
-    if (Get-DshShown) { [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwHide) }
-    else {
+    # Already where it is wanted: a repeated request must not undo anything. The
+    # host rewrites its state file and the timer re-reads it, so the auto-tuck
+    # request arrives more than once.
+    if ($Shown -eq (Get-DshShown)) { return }
+    if ($Shown) {
         [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwRestore)
         [void][DshPet.Win32]::SetForegroundWindow($handle)
+    } else {
+        [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwHide)
     }
     Update-TrayMenu
     Save-WindowState
+}
+
+function Switch-DshWindow {
+    Set-DshWindowShown (-not (Get-DshShown))
 }
 
 function Save-WindowState {
@@ -413,9 +437,11 @@ function Save-WindowState {
     # guess would override the host's own view.
     if ($SCRIPT:DshPid -le 0) { return }
     $visible = Get-DshShown
-    if ($null -ne $SCRIPT:WindowVisible -and $SCRIPT:WindowVisible -eq $visible) { return }
+    $foreground = Get-DshForeground
+    if ($visible -eq $SCRIPT:WindowVisible -and $foreground -eq $SCRIPT:WindowForeground) { return }
     $SCRIPT:WindowVisible = $visible
-    Write-Json $SCRIPT:WindowFile ([ordered]@{ dshVisible = $visible })
+    $SCRIPT:WindowForeground = $foreground
+    Write-Json $SCRIPT:WindowFile ([ordered]@{ dshVisible = $visible; dshForeground = $foreground })
 }
 
 function Invoke-PetClick {

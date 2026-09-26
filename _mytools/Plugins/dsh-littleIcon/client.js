@@ -50,6 +50,8 @@ window.__ModuleLoader__.load({
       boredMs: 5000,
       sleepAfterSeconds: 600,
       sleepWhenHiddenSeconds: 20,
+      autoHide: true,
+      autoHideSeconds: 20,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -62,6 +64,7 @@ window.__ModuleLoader__.load({
     const BORED_MS = { min: 500, max: 20000, step: 500 }
     const SLEEP_SECONDS = { min: 30, max: 86400, step: 30 }
     const HIDDEN_SECONDS = { min: 2, max: 600, step: 2 }
+    const AUTO_HIDE_SECONDS = { min: 5, max: 600, step: 5 }
 
     /** How long a slider drag settles before its writes are merged into one. */
     const WRITE_DELAY_MS = 250
@@ -84,6 +87,9 @@ window.__ModuleLoader__.load({
       clickMinimize: '只最小化 DSH',
       clickNone: '不动作',
       clickHint: '单击（没有拖动的那一次按下）执行的动作。',
+      autoHide: '没操作时自动收起 DSH',
+      autoHideHint: 'DSH 还在屏幕上（没被收起、没最小化）时，这么久没有任何操作（鼠标、键盘、拖动桌宠）就自动把它收起来；挡在别的窗口后面也算，任务还在跑也照收。',
+      autoHideSeconds: '无操作多久自动收起',
       pace: '表情节奏',
       paceHint: '每帧停留的毫秒数。',
       advanced: '更多',
@@ -127,6 +133,9 @@ window.__ModuleLoader__.load({
       clickMinimize: 'Minimize DSH only',
       clickNone: 'Do nothing',
       clickHint: 'What a click performs — a press that did not move the window.',
+      autoHide: 'Tuck DSH away when idle',
+      autoHideHint: 'While DSH is still on screen — not tucked away, not minimized — this long without any activity (pointer, keyboard, dragging the pet) tucks it away. Sitting behind another window counts, and so does a running task.',
+      autoHideSeconds: 'Tuck away after',
       pace: 'Animation pace',
       paceHint: 'Milliseconds each frame stays on screen.',
       advanced: 'More',
@@ -263,6 +272,19 @@ window.__ModuleLoader__.load({
           h('option', { value: 'toggle' }, t('clickToggle')),
           h('option', { value: 'minimize' }, t('clickMinimize')),
           h('option', { value: 'none' }, t('clickNone'))),
+        }),
+        h(Row, {
+          label: t('autoHide'), text: t('autoHideHint'), inline: true, disabled: !editable,
+          control: h('input', toggle('autoHide')),
+        }),
+        h(Row, {
+          label: t('autoHideSeconds'), value: t('seconds', { value: draft.autoHideSeconds }),
+          disabled: !editable || draft.autoHide !== true,
+          control: h('input', {
+            min: AUTO_HIDE_SECONDS.min, max: AUTO_HIDE_SECONDS.max, step: AUTO_HIDE_SECONDS.step,
+            ...slider('autoHideSeconds'),
+            disabled: !editable || draft.autoHide !== true,
+          }),
         }),
         h(Row, {
           label: t('pace'), value: t('milliseconds', { value: draft.frameMs }), text: t('paceHint'), disabled: !editable,

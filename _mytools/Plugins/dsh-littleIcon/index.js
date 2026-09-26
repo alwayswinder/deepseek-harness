@@ -7,6 +7,12 @@
  * dragging, click-to-tuck the DSH window, and its own tray menu. Because the pet
  * owns its window, it stays on the desktop while the DSH window is hidden.
  *
+ * Either side can tuck DSH away: the pet on a click, and this half by asking for
+ * one in the state file once DSH has been left untouched, still on screen, for
+ * the configured stretch. Only the pet touches the window; the host owns the
+ * activity clock, because the page reports its input to the host rather than to
+ * the pet.
+ *
  * Click-to-tuck needs Win32: the desktop shell exposes no window control to
  * plugins (no tray in `apps/desktop`, no minimize/hide channel in its preload),
  * and this half runs in the `ELECTRON_RUN_AS_NODE` child process, where Electron
@@ -62,6 +68,10 @@ export const Config = z.object({
   sleepAfterSeconds: z.number().step(1).min(5).max(86400).default(600).volatile(),
   /** Sleep timer while DSH is tucked away, where dragging the pet is the only activity. */
   sleepWhenHiddenSeconds: z.number().step(1).min(2).max(3600).default(20).volatile(),
+  /** Whether the pet tucks DSH away on its own while it is on screen and untouched. */
+  autoHide: z.boolean().default(true).volatile(),
+  /** Seconds of that stillness before the tuck; a running task does not postpone it. */
+  autoHideSeconds: z.number().step(1).min(5).max(3600).default(20).volatile(),
   /** Whether the pet stays above other windows. */
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
@@ -220,6 +230,23 @@ function isBusy(ctx) {
 }
 
 /**
+ * Whether the pet should tuck DSH away now: the window is on screen and the user
+ * has not touched anything for the configured stretch. Being covered by another
+ * window is no protection — that window is exactly the one worth tidying away —
+ * and neither is a running task: tucking DSH away while work continues is the
+ * point of the setting. The pet executes the tuck, because it owns the window.
+ * @param dshWindow - what the pet last reported about the window: `visible` and `foreground`.
+ * @param activityAt - latest user activity, in milliseconds.
+ * @param config - resolved config values.
+ * @param now - sample time in milliseconds.
+ * @returns whether to ask the pet to tuck DSH away.
+ */
+function shouldTuck(dshWindow, activityAt, config, now) {
+  return dshWindow.visible && config.autoHide
+    && (now - activityAt) / 1000 >= config.autoHideSeconds
+}
+
+/**
  * Launch the pet process.
  * @param script - absolute `pet.ps1` path.
  * @param assets - absolute directory holding one folder per state.
@@ -252,7 +279,10 @@ export function apply(ctx, config) {
   mkdirSync(dataDir, { recursive: true })
   const stateFile = join(dataDir, 'state.json')
   const positionFile = join(dataDir, 'position.json')
-  /** Written by the pet: whether DSH is on screen, which picks the sleep timer. */
+  /**
+   * Written by the pet: whether DSH is on screen, which picks the sleep timer,
+   * and whether it is the window in front, whose changes count as activity.
+   */
   const windowFile = join(dataDir, 'window.json')
   const writer = new StateFileWriter(stateFile, 4000)
   const script = fileURLToPath(new URL('./pet/pet.ps1', import.meta.url))
@@ -272,6 +302,8 @@ export function apply(ctx, config) {
   let reportedActivityAt = Date.now()
   /** Last window visibility the pet reported; assumed visible until it says so. */
   let dshVisible = true
+  /** Last window foreground the pet reported; a change there counts as activity. */
+  let dshForeground = false
   let child
   let timer
   let disposed = false
@@ -296,6 +328,8 @@ export function apply(ctx, config) {
     boredMs: config.boredMs.get(),
     sleepAfterSeconds: config.sleepAfterSeconds.get(),
     sleepWhenHiddenSeconds: config.sleepWhenHiddenSeconds.get(),
+    autoHide: config.autoHide.get(),
+    autoHideSeconds: config.autoHideSeconds.get(),
     topmost: config.topmost.get(),
     clickAction: config.clickAction.get(),
   })
@@ -317,33 +351,40 @@ export function apply(ctx, config) {
   }
 
   /**
-   * Whether DSH is on screen, as the pet last reported it. Showing or hiding the
-   * window is a deliberate act, so a change also counts as activity — it wakes
-   * the pet when DSH comes back and restarts the tucked timer when it goes away.
+   * What the pet last reported about the DSH window: whether it is on screen and
+   * whether it is the window in front. Showing, hiding, and bringing it forward
+   * are all deliberate acts, so either change counts as activity — it wakes the
+   * pet when DSH comes back, restarts the tucked timer when it goes away, and
+   * gives the auto-tuck clock a fresh start when DSH is brought forward.
    * @param now - sample time in milliseconds.
-   * @returns whether DSH is on screen.
+   * @returns the known window facts; a field the report leaves out keeps its last value.
    */
-  const readDshVisible = (now) => {
+  const readDshWindow = (now) => {
     try {
-      const reported = JSON.parse(readFileSync(windowFile, 'utf8')).dshVisible
-      if (typeof reported === 'boolean' && reported !== dshVisible) {
-        dshVisible = reported
+      const reported = JSON.parse(readFileSync(windowFile, 'utf8'))
+      if (typeof reported.dshVisible === 'boolean' && reported.dshVisible !== dshVisible) {
+        dshVisible = reported.dshVisible
+        reportedActivityAt = now
+      }
+      if (typeof reported.dshForeground === 'boolean' && reported.dshForeground !== dshForeground) {
+        dshForeground = reported.dshForeground
         reportedActivityAt = now
       }
     } catch {
-      // No report yet, or a half-written one: keep the last known value.
+      // No report yet, or a half-written one: keep the last known values.
     }
-    return dshVisible
+    return { visible: dshVisible, foreground: dshForeground }
   }
 
   const publish = () => {
     const now = Date.now()
     const current = values()
-    const visible = readDshVisible(now)
+    const dshWindow = readDshWindow(now)
     // Tucked away, the only activity left is dragging the pet, so the pet sleeps
     // on the much shorter timer the settings card exposes.
-    const config = visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
-    const state = sampleState(isBusy(ctx), activityAt(), timeline, config, now)
+    const config = dshWindow.visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
+    const activity = activityAt()
+    const state = sampleState(isBusy(ctx), activity, timeline, config, now)
     writer.write({
       state,
       size: current.size,
@@ -353,6 +394,9 @@ export function apply(ctx, config) {
       frameMs: current.frameMs,
       topmost: current.topmost,
       clickAction: current.clickAction,
+      // A command rather than a fact: the pet hides the window it owns, and the
+      // visibility it then reports turns this back off.
+      tuck: shouldTuck(dshWindow, activity, current, now),
       updatedAt: now,
     })
   }
@@ -459,4 +503,4 @@ export function apply(ctx, config) {
 }
 
 /** Re-exported for the keyless smoke test. */
-export const internals = { sampleState, createTimeline, isBusy, resolveDshHome, STATES, ACTIVITY_PATH }
+export const internals = { sampleState, createTimeline, isBusy, shouldTuck, resolveDshHome, STATES, ACTIVITY_PATH }

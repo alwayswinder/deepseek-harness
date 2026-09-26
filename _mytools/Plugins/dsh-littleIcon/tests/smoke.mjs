@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
-const { sampleState, createTimeline, isBusy, STATES, ACTIVITY_PATH } = internals
+const { sampleState, createTimeline, isBusy, shouldTuck, STATES, ACTIVITY_PATH } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -58,6 +58,8 @@ const DEFAULTS = {
   sleepAfterSeconds: 600,
   topmost: true,
   clickAction: 'toggle',
+  autoHide: true,
+  autoHideSeconds: 20,
 }
 
 const start = 1_000_000
@@ -101,6 +103,27 @@ assert.equal(sampleState(false, asleep + 500, timeline, tucked, asleep + 500 + 2
 const moved = asleep + 500 + 20_000
 assert.equal(sampleState(false, moved, timeline, DEFAULTS, moved + 200), 'idle')
 assert.equal(sampleState(true, moved, timeline, DEFAULTS, moved + 1000), 'alert')
+
+// Tucking DSH away follows the same activity clock as sleep, on its own, much
+// shorter timer. Which window is in front does not matter — a DSH window behind
+// another one is exactly what there is to tidy away — and a running task is
+// deliberately not an input at all: the decision sees what the pet reported about
+// the window and when the user last touched anything, and only the pet can hide a
+// window.
+const untouched = moved + 200
+const inFront = { visible: true, foreground: true }
+assert.equal(shouldTuck(inFront, untouched, DEFAULTS, untouched + 19_999), false)
+assert.equal(shouldTuck(inFront, untouched, DEFAULTS, untouched + 20_000), true, 'the default stretch tucks DSH away')
+assert.equal(shouldTuck({ visible: true, foreground: false }, untouched, DEFAULTS, untouched + 20_000), true,
+  'a window behind another one is tucked away just the same')
+assert.equal(shouldTuck({ visible: false, foreground: true }, untouched, DEFAULTS, untouched + 60_000), false,
+  'a hidden DSH has nothing to tuck')
+assert.equal(shouldTuck({ visible: false, foreground: false }, untouched, DEFAULTS, untouched + 60_000), false,
+  'a minimized DSH has nothing to tuck either')
+assert.equal(shouldTuck(inFront, untouched, { ...DEFAULTS, autoHide: false }, untouched + 60_000), false,
+  'the switch turns the tuck off')
+assert.equal(shouldTuck(inFront, untouched, { ...DEFAULTS, autoHideSeconds: 90 }, untouched + 60_000), false,
+  'the configured stretch is what counts')
 
 // Every state the host can publish has frames on disk, and the generator's
 // frames.json agrees with the files: the art decides the count per state (the
@@ -303,11 +326,24 @@ const offElements = flatten(render({ translucent: false }))
 const offSlider = offElements.find(node => node.type === 'input' && node.props.type === 'range' && node.props.min === 0.15)
 assert.equal(offSlider.props.disabled, true, 'the degree slider must be disabled while translucency is off')
 
+// The auto-tuck switch starts on, and its delay is editable only while it is.
+const tuckRow = elements.find(node => node.props?.label === t('autoHide'))
+assert.ok(tuckRow !== undefined, 'the auto-tuck switch is missing')
+assert.equal(tuckRow.props.control.props.checked, true, 'the auto-tuck switch is on by default')
+const tuckSecondsRow = elements.find(node => node.props?.label === t('autoHideSeconds'))
+assert.ok(tuckSecondsRow !== undefined, 'the auto-tuck delay is missing')
+assert.equal(tuckSecondsRow.props.control.props.value, 20, 'the auto-tuck delay starts at 20 seconds')
+const noTuck = flatten(render({ autoHide: false }))
+assert.equal(noTuck.find(node => node.props?.label === t('autoHideSeconds')).props.disabled, true,
+  'the auto-tuck delay must be disabled while the switch is off')
+
 // Controls start from the accepted Host section, not from the defaults.
-const stored = flatten(render({ size: 240, translucent: false, clickAction: 'minimize' }))
+const stored = flatten(render({ size: 240, translucent: false, clickAction: 'minimize', autoHideSeconds: 90 }))
 const storedSlider = stored.find(node => node.type === 'input' && node.props.type === 'range' && node.props.min === 96)
 assert.equal(storedSlider.props.value, 240, 'the card must show the stored size')
 assert.equal(stored.find(node => node.type === 'select').props.value, 'minimize', 'the card must show the stored click action')
+assert.equal(stored.find(node => node.props?.label === t('autoHideSeconds')).props.control.props.value, 90,
+  'the card must show the stored auto-tuck delay')
 
 // A switch writes at once; a drag merges into one write. Both reach the form
 // with the revision it was read at.
@@ -380,6 +416,10 @@ if (process.argv.includes('--pet')) {
     // that the write-rate window below stays inside one steady state.
     sleepAfterSeconds: ref(6),
     sleepWhenHiddenSeconds: ref(2),
+    // Long enough that the write-rate window below still sees one steady state,
+    // short enough that the auto-tuck lands inside this run.
+    autoHide: ref(true),
+    autoHideSeconds: ref(5),
     topmost: ref(true),
     clickAction: ref('toggle'),
   }
@@ -456,6 +496,7 @@ $found
     assert.equal(first.state, 'idle')
     assert.equal(first.size, 180)
     assert.equal(first.clickAction, 'toggle')
+    assert.equal(first.tuck, false, 'a freshly started host must not ask for a tuck')
     // The custom card owns the fields, so the schema-derived automatic page must
     // be switched off or the row would show both.
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
@@ -514,17 +555,18 @@ $found
     routes[0].handler({ method: 'GET' }, refused)
     assert.equal(refused.code, 405, 'the activity route only accepts POST')
 
-    // The pet reports whether DSH is on screen; tucked away, the much shorter
-    // timer applies, and showing DSH again counts as activity and wakes it.
-    // (The test's pet has no window to control, so it writes no report itself.)
+    // The pet reports whether DSH is on screen and whether it is in front;
+    // tucked away, the much shorter sleep timer applies, and showing DSH again
+    // counts as activity and wakes it. (The test's pet has no window to control,
+    // so it writes no report itself.)
     const windowPath = join(home, 'little-icon', 'window.json')
-    writeFileSync(windowPath, '{"dshVisible":false}\n', 'utf8')
+    writeFileSync(windowPath, '{"dshVisible":false,"dshForeground":false}\n', 'utf8')
     const untilTucked = Date.now() + 6000
     while (readState() !== 'sleep' && Date.now() < untilTucked) {
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
     assert.equal(readState(), 'sleep', 'a tucked DSH should put the pet to sleep on the short timer')
-    writeFileSync(windowPath, '{"dshVisible":true}\n', 'utf8')
+    writeFileSync(windowPath, '{"dshVisible":true,"dshForeground":true}\n', 'utf8')
     await new Promise((resolve) => setTimeout(resolve, 1000))
     assert.equal(readState(), 'idle', 'showing DSH again should wake the pet')
 
@@ -538,6 +580,18 @@ $found
     assert.equal(readState(), 'alert', 'a task start should play the startle frames')
     await new Promise((resolve) => setTimeout(resolve, 1500))
     assert.equal(readState(), 'working', 'the pet should keep working after the startle')
+    // The auto-tuck neither spares a running task nor spares a window that is
+    // covered: DSH is on screen, behind whatever else is in front, and nothing has
+    // been touched since the report above, so the host asks the pet to hide it
+    // while the task keeps running.
+    writeFileSync(windowPath, '{"dshVisible":true,"dshForeground":false}\n', 'utf8')
+    const untilTuck = Date.now() + 10_000
+    const readTuck = () => JSON.parse(readFileSync(statePath, 'utf8')).tuck
+    while (readTuck() !== true && Date.now() < untilTuck) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    assert.equal(readTuck(), true, 'an untouched window behind another one must be tucked away')
+    assert.equal(readState(), 'working', 'the tuck must not wait for the running task to finish')
     agents.running = false
     const untilHappy = Date.now() + 3000
     while (readState() !== 'happy' && Date.now() < untilHappy) {
@@ -563,6 +617,18 @@ $found
     await new Promise((resolve) => setTimeout(resolve, 2500))
     assert.equal(countPetProcesses(), 1, 'enabling the pet did not start it again')
     assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).size, 200)
+
+    // The switch stops the request without touching anything else.
+    config.autoHide.set(false)
+    volatileUpdate()
+    assert.equal(readTuck(), false, 'the auto-tuck switch must stop the request')
+    config.autoHide.set(true)
+    volatileUpdate()
+    const untilBack = Date.now() + 10_000
+    while (readTuck() !== true && Date.now() < untilBack) {
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+    assert.equal(readTuck(), true, 'turning the switch back on must resume the request')
 
     // Disposal kills the process so DSH never leaves an orphan pet behind.
     for (const disposer of disposers.splice(0)) disposer()

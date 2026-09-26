@@ -1,5 +1,5 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from './ipc.ts'
@@ -11,7 +11,22 @@ interface GuestLease {
   guest?: WebContents
 }
 
-/** Owns workspace storage partitions independently from individual tab guests. */
+/**
+ * The persistent partition holding one workspace's Sidebar storage. The workspace
+ * identity is a key rather than a path — `cwd:D:\project` and `session:<id>` — and
+ * can carry characters a directory name cannot, so the partition is named after a
+ * digest of it. The name is stable, which is what lets a site signed into in the
+ * Sidebar stay signed in across application restarts; Electron keeps the directory
+ * under the application's user data and the uninstaller removes it.
+ * @param workspace - workspace identity received over IPC.
+ * @returns the `persist:` partition name for that workspace.
+ */
+function browserPartition(workspace: string): string {
+  const digest = createHash('sha256').update(workspace).digest('hex')
+  return `persist:dsh-sidebar-browser-${digest.slice(0, 32)}`
+}
+
+/** Owns each workspace's storage partition independently from individual tab guests. */
 export class DesktopBrowserGuests {
   private readonly partitions = new Map<string, string>()
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
@@ -20,7 +35,8 @@ export class DesktopBrowserGuests {
   constructor(private readonly hostUrl: () => string | undefined) {}
 
   /**
-   * Reserve one guest in a workspace's process-lifetime partition.
+   * Reserve one guest in its workspace's partition, created on first use. The
+   * storage outlives the tab, the window, and the application.
    * @param owner - authenticated primary application WebContents.
    * @param workspace - workspace identity received over IPC.
    * @returns opaque lease and the partition approved for it.
@@ -31,7 +47,7 @@ export class DesktopBrowserGuests {
     }
     let partition = this.partitions.get(workspace)
     if (partition === undefined) {
-      partition = `dsh-sidebar-browser-${randomUUID()}`
+      partition = browserPartition(workspace)
       this.configureSession(session.fromPartition(partition))
       this.partitions.set(workspace, partition)
     }
@@ -41,7 +57,8 @@ export class DesktopBrowserGuests {
   }
 
   /**
-   * Release only a lease issued to this application window; workspace storage survives.
+   * Release only a lease issued to this application window; workspace storage
+   * survives for the next tab, window, and application run.
    * @param owner - authenticated IPC sender.
    * @param id - lease received over IPC.
    */

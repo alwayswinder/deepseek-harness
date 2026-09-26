@@ -45,7 +45,7 @@
 | --- | --- | --- |
 | `appearance-plus` | 插件页增加五套护眼配色、背景图片编辑器，以及空闲锁屏壁纸：无操作满设定秒数后整屏换成锁屏图；桌面端连系统标题栏和三个窗口按钮一起清掉，窗口状态不变。 | web、desktop |
 | `deepseek-usage` | 设置页的用量/余额卡片；**对话输入框上方那条汇总**（余额、今日消费 —— 现在最前面还有一个不标单位的持仓盈亏数字）。 | web、desktop |
-| `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，点一下收起/恢复 DSH 主窗口，带托盘菜单。 | desktop（web 可装，但那里不控制窗口） |
+| `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，单击收起/恢复 DSH 主窗口；右键与托盘菜单第一项「对话」在 DSH 自己的右侧 Browser 标签里开 chat.deepseek.com，没操作满设定秒数自动收起 DSH。 | desktop（web 可装，但那里不控制窗口） |
 | `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时。 | desktop |
 | `dsh-pocket` | 手机扫码访问电脑上的 DSH：设置页「手机访问」，局域网二维码（代理监听 3081）+ cloudflared 公网隧道，WebSocket 透传实时同屏。第三方插件（作者 shaobeichen，GPL-2.0）。 | desktop |
 
@@ -77,6 +77,6 @@
 
 ## 约定
 
-- 只在本目录内改动；`packages/`、`apps/`、`scripts/`、`docs/`、`snapshots/` 是上游文件，保持原样。
+- 只在本目录内改动；`packages/`、`apps/`、`scripts/`、`docs/`、`snapshots/` 是上游文件，保持原样。**目前只有一处例外**：为让侧栏内嵌浏览器保住登录，改过 `apps/desktop/src/browser-guests.ts`（另加一个测试文件）并同步了 `packages/client/ui-sidebar-browser` 的文档与类型 JSDoc；改动清单、重建命令与「合并上游后怎么恢复」见 [Plugins/dsh-littleIcon/UPSTREAM.md](Plugins/dsh-littleIcon/UPSTREAM.md)。
 - 新增脚本：路径从自身位置推导，不写盘符/用户名；`.bat` 保持 CRLF。
 - 不把凭证（`$DSH_HOME\.credentials.yaml`）和持仓数据提交进仓库 —— 这个 fork 是公开的。

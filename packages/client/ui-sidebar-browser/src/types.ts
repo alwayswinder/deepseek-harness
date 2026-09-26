@@ -4,7 +4,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 /** Main-issued identity of one guest reservation. */
 export type DesktopBrowserLeaseId = Branded<'DesktopBrowserLeaseId'>
 
-/** A guest's approved, process-local storage partition. */
+/** A guest's approved partition, which holds one workspace's storage across restarts. */
 export interface DesktopBrowserReservation {
   readonly lease: DesktopBrowserLeaseId
   readonly partition: string

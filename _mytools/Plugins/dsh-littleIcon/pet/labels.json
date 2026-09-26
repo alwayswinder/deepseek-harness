@@ -4,5 +4,6 @@
   "ToggleShown": "收起 DSH",
   "ToggleHidden": "显示 DSH",
   "Reset": "回到右下角",
-  "Quit": "退出桌宠"
+  "QuitDsh": "退出 DSH",
+  "QuitDshConfirm": "退出 DSH？正在运行的任务会被中断。"
 }

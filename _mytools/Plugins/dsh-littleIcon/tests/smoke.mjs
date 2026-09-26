@@ -178,9 +178,13 @@ assert.equal(firstNonAscii, -1, `pet/pet.ps1 must stay ASCII; found ${JSON.strin
 
 const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8'))
 assert.equal(labels.ToggleShown, '收起 DSH')
-for (const key of ['TrayTip', 'ToggleShown', 'ToggleHidden', 'Reset', 'Quit']) {
+assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
+for (const key of ['TrayTip', 'Chat', 'ToggleShown', 'ToggleHidden', 'Reset', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
+// The pet has no quit entry of its own any more: the plugin's enable switch owns
+// its lifetime, and the freed entry ends DSH instead.
+assert.equal(labels.Quit, undefined, 'the pet must not offer to quit itself')
 
 // ---- pet script -------------------------------------------------------------
 

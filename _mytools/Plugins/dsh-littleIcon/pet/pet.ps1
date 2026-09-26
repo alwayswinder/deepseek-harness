@@ -100,12 +100,13 @@ function Read-Utf8Text([string]$Path) {
 
 function Get-Labels {
     $fallback = [ordered]@{
-        TrayTip      = 'DSH pet'
-        Chat         = 'Chat'
-        ToggleShown  = 'Tuck DSH away'
-        ToggleHidden = 'Show DSH'
-        Reset        = 'Move to corner'
-        Quit         = 'Quit pet'
+        TrayTip        = 'DSH pet'
+        Chat           = 'Chat'
+        ToggleShown    = 'Tuck DSH away'
+        ToggleHidden   = 'Show DSH'
+        Reset          = 'Move to corner'
+        QuitDsh        = 'Quit DSH'
+        QuitDshConfirm = 'Quit DSH? A running task will be interrupted.'
     }
     $path = Join-Path $SCRIPT:ScriptDir 'labels.json'
     if (-not (Test-Path -LiteralPath $path)) { return $fallback }
@@ -222,7 +223,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.Quit)"
+    Write-Output "labels: $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     exit 0
@@ -246,6 +247,7 @@ if (-not ('DshPet.Win32' -as [type])) {
     Add-Type -Namespace DshPet -Name Win32 -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr hWnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool PostMessage(System.IntPtr hWnd, uint msg, System.IntPtr wParam, System.IntPtr lParam);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindow(System.IntPtr hWnd);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsWindowVisible(System.IntPtr hWnd);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool IsIconic(System.IntPtr hWnd);
@@ -460,6 +462,14 @@ function Show-DshWindow {
     if ($handle -ne [IntPtr]::Zero) { [void][DshPet.Win32]::SetForegroundWindow($handle) }
 }
 
+function Stop-DshWindow {
+    # Ending the app is the app's own decision, so ask the way its title bar does:
+    # WM_CLOSE on the window DSH owns, which runs its normal shutdown.
+    $handle = Find-DshWindow
+    if ($handle -eq [IntPtr]::Zero) { return }
+    [void][DshPet.Win32]::PostMessage($handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+}
+
 function Save-WindowState {
     # Without a DSH window to control there is nothing to report, and writing a
     # guess would override the host's own view.
@@ -520,8 +530,9 @@ function New-PetMenu {
             Send-MenuCommand 'chat'
         } catch { Write-Log $_.Exception.Message }
     })
-    # Without a DSH window to control (the web profile), the toggle would be a
-    # dead entry, so the menu keeps only the page command, position and quit.
+    # Without a DSH window to control (the web profile) the window entries would be
+    # dead, so the menu keeps only the page command and the position. The pet never
+    # offers to quit itself: the plugin's own switch owns its lifetime.
     if ($SCRIPT:DshPid -gt 0) {
         $toggleItem = $menu.Items.Add($SCRIPT:Labels.ToggleShown)
         $toggleItem.add_Click({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
@@ -529,9 +540,20 @@ function New-PetMenu {
     }
     $resetItem = $menu.Items.Add($SCRIPT:Labels.Reset)
     $resetItem.add_Click({ try { Set-DefaultPosition; Save-Position } catch { Write-Log $_.Exception.Message } })
-    [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    $quitItem = $menu.Items.Add($SCRIPT:Labels.Quit)
-    $quitItem.add_Click({ try { Exit-Pet } catch { Write-Log $_.Exception.Message } })
+    if ($SCRIPT:DshPid -gt 0) {
+        [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        $quitItem = $menu.Items.Add($SCRIPT:Labels.QuitDsh)
+        $quitItem.add_Click({
+            try {
+                # Closing DSH interrupts whatever is running, so the entry asks first;
+                # the message box's own buttons are localized by the system.
+                $answer = [System.Windows.MessageBox]::Show($SCRIPT:Window, $SCRIPT:Labels.QuitDshConfirm,
+                    $SCRIPT:Labels.TrayTip, [System.Windows.MessageBoxButton]::YesNo,
+                    [System.Windows.MessageBoxImage]::Question)
+                if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { Stop-DshWindow }
+            } catch { Write-Log $_.Exception.Message }
+        })
+    }
     return $menu
 }
 

@@ -135,6 +135,10 @@ $SCRIPT:FrameCount = 4
 $SCRIPT:FrameMs = 600
 $SCRIPT:IdleOpacity = 0.45
 $SCRIPT:Hovered = $false
+$SCRIPT:Pressed = $false
+$SCRIPT:PendingClick = $false
+$SCRIPT:PressX = 0
+$SCRIPT:PressY = 0
 $SCRIPT:ClickAction = 'toggle'
 $SCRIPT:LastFrameAt = 0
 $SCRIPT:StateStamp = [DateTime]::MinValue
@@ -470,20 +474,39 @@ $window.Add_MouseEnter({ try { $SCRIPT:Hovered = $true; Update-PetOpacity } catc
 $window.Add_MouseLeave({ try { $SCRIPT:Hovered = $false; Update-PetOpacity } catch { } })
 $window.Add_MouseLeftButtonDown({
     try {
-        $beforeX = $window.Left
-        $beforeY = $window.Top
+        # The press that activates the pet window reaches this handler twice: WPF
+        # reports it once while the activation is processed and again as the
+        # ordinary mouse message. Only one report of a physical press may act, or
+        # a toggle would run twice and put DSH straight back.
+        $repeat = $SCRIPT:Pressed
+        $SCRIPT:Pressed = $true
+        $SCRIPT:PressX = $window.Left
+        $SCRIPT:PressY = $window.Top
         $dragged = $false
         try {
             # DragMove blocks until the button is released; a position that did
             # not move is a click rather than a drag.
             $window.DragMove()
-            $dragged = [Math]::Abs($window.Left - $beforeX) -ge 2 -or [Math]::Abs($window.Top - $beforeY) -ge 2
+            $dragged = [Math]::Abs($window.Left - $SCRIPT:PressX) -ge 2 -or [Math]::Abs($window.Top - $SCRIPT:PressY) -ge 2
         } catch {
-            # A click fast enough to release the button before DragMove runs
-            # throws; that is still a click, never a drag.
-            $dragged = $false
+            # DragMove could not run: the button was released before it started,
+            # or this is the activation report of a press whose own mouse message
+            # is still to come. Whether that press is a click or a drag is only
+            # known at the release, so the release decides.
+            $SCRIPT:PendingClick = $true
         }
-        if ($dragged) { Save-Position } else { Invoke-PetClick }
+        if ($dragged) { Save-Position } elseif (-not $repeat -and -not $SCRIPT:PendingClick) { Invoke-PetClick }
+    } catch {
+        Write-Log "click failed: $($_.Exception.Message)"
+    }
+})
+$window.Add_MouseLeftButtonUp({
+    try {
+        $SCRIPT:Pressed = $false
+        if (-not $SCRIPT:PendingClick) { return }
+        $SCRIPT:PendingClick = $false
+        if ([Math]::Abs($window.Left - $SCRIPT:PressX) -ge 2 -or [Math]::Abs($window.Top - $SCRIPT:PressY) -ge 2) { Save-Position }
+        else { Invoke-PetClick }
     } catch {
         Write-Log "click failed: $($_.Exception.Message)"
     }

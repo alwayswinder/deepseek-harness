@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
-const { sampleState, createTimeline, isBusy, shouldTuck, STATES, ACTIVITY_PATH } = internals
+const { sampleState, createTimeline, isBusy, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -206,6 +206,17 @@ globalThis.fetch = (url, init) => {
   pings.push({ url, method: init?.method })
   return Promise.resolve({ ok: true })
 }
+/** Event streams the page opens; the test dispatches the Host's frames itself. */
+const eventSources = []
+globalThis.EventSource = class {
+  constructor(url) {
+    this.url = url
+    this.closed = false
+    eventSources.push(this)
+  }
+
+  close() { this.closed = true }
+}
 const reactStub = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
   useState: (initial) => [initial, () => {}],
@@ -246,8 +257,16 @@ const form = {
 }
 const registrations = []
 const dictionaries = new Map()
+const clientDisposers = []
+/** The two optional services the menu commands reach for, plus the calls they make. */
+const openedTabs = []
+const clientServices = {
+  sidebarRight: { openTab: (kind, options) => { openedTabs.push({ kind, options }) } },
+  sidebarRightTabs: { get: (kind) => (kind === 'browser' ? { id: 'browser' } : undefined) },
+}
 clientPlugin.apply({
-  effect: (factory) => { factory() },
+  effect: (factory) => { clientDisposers.push(factory()) },
+  get: (name) => clientServices[name],
   locale: { register: (ns, dict) => { dictionaries.set(ns, dict) } },
   configForms: { get: () => form },
   slots: {
@@ -269,6 +288,39 @@ assert.equal(documentListeners.has('visibilitychange'), true)
 assert.deepEqual(pings[0], { url: ACTIVITY_PATH, method: 'POST' }, 'the page reports activity when it loads')
 windowListeners.get('pointermove')()
 assert.equal(pings.length, 1, 'activity pings must be throttled')
+
+// The pet's menu is drawn by another process, so its commands arrive here on a
+// Host-held event stream and this half performs them: "chat" opens the DeepSeek
+// chat site in DSH's own Browser tab, never in the system browser.
+assert.equal(eventSources.length, 1, 'the page must listen for menu commands')
+assert.equal(eventSources[0].url, COMMANDS_PATH)
+const [commands] = eventSources
+const warned = []
+const realWarn = console.warn
+console.warn = (...args) => { warned.push(args.join(' ')) }
+try {
+  commands.onmessage({ data: '{"command":"chat"}' })
+  assert.equal(openedTabs.length, 1, 'the chat command must open one tab')
+  assert.deepEqual(openedTabs[0], { kind: 'browser', options: { params: { url: 'https://chat.deepseek.com' } } })
+  // Unknown or malformed frames are ignored rather than thrown at the user.
+  commands.onmessage({ data: '{"command":"nonsense"}' })
+  commands.onmessage({ data: 'not json' })
+  assert.equal(openedTabs.length, 1, 'only known commands open anything')
+  // A Web profile may leave the Browser tab disabled and a build without the right
+  // Sidebar provides no service at all: the command must then do nothing instead
+  // of failing at the click, and the card must still have been registered.
+  clientServices.sidebarRightTabs.get = () => undefined
+  commands.onmessage({ data: '{"command":"chat"}' })
+  assert.equal(openedTabs.length, 1, 'without a Browser tab type nothing may open')
+  clientServices.sidebarRightTabs.get = (kind) => (kind === 'browser' ? { id: 'browser' } : undefined)
+  clientServices.sidebarRight = undefined
+  commands.onmessage({ data: '{"command":"chat"}' })
+  assert.equal(openedTabs.length, 1, 'without the Sidebar service nothing may open')
+} finally {
+  console.warn = realWarn
+  clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
+}
+assert.equal(warned.length, 3, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 const dictionary = dictionaries.get('little-icon')
 assert.ok(dictionary?.zh !== undefined && dictionary?.en !== undefined, 'missing locale dictionaries')
@@ -355,6 +407,11 @@ await new Promise((resolve) => setTimeout(resolve, 400))
 assert.equal(form.writes.length, 2, 'a slider drag must merge into one write')
 assert.deepEqual(form.writes[1].ops, [{ op: 'set', path: ['size'], value: 208 }])
 
+// Registrations are effects: disposing the plugin's contributions closes the
+// stream it opened, so a reloaded page never leaves a listener on the Host.
+for (const dispose of clientDisposers) { if (typeof dispose === 'function') dispose() }
+assert.equal(commands.closed, true, 'disposal must close the command stream')
+
 console.log('little-icon smoke: browser half ok')
 
 // ---- host half, end to end (opt-in: it shows a real pet window) -------------
@@ -373,6 +430,9 @@ if (process.argv.includes('--pet')) {
   // this test's, not a second pet somebody's plugin started.
   mkdirSync(join(home, 'little-icon'), { recursive: true })
   writeFileSync(join(home, 'little-icon', 'position.json'), '{"x":0,"y":0}\n', 'utf8')
+  // A menu command the pet wrote before this host started: the relay must treat
+  // it as history rather than open a tab the user asked for in a past run.
+  writeFileSync(join(home, 'little-icon', 'command.json'), '{"command":"chat","at":1}\n', 'utf8')
   const disposers = []
   const handlers = new Map()
   const logged = []
@@ -501,8 +561,40 @@ $found
     // be switched off or the row would show both.
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
     // The page reports input here; without it the pet could only see agents and
-    // jobs, and it would sleep while the person is using DSH.
-    assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`), [`exact ${ACTIVITY_PATH}`])
+    // jobs, and it would sleep while the person is using DSH. The second route is
+    // the stream the pet's menu commands come back on.
+    assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
+      [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`])
+
+    // The pet's right-click menu is drawn in another process, so the host relays
+    // what it chooses: the page holds one stream open and receives a frame per
+    // command. A command from before this host started is history, not a request.
+    const commandsRoute = routes.find((route) => route.path === COMMANDS_PATH)
+    const stream = {
+      status: 0,
+      headers: {},
+      frames: [],
+      writableEnded: false,
+      destroyed: false,
+      writeHead(code, headers) { this.status = code; this.headers = headers ?? {} },
+      write(chunk) { this.frames.push(chunk) },
+      end() { this.writableEnded = true },
+      on() {},
+    }
+    commandsRoute.handler({ method: 'GET', on: () => {} }, stream)
+    assert.equal(stream.status, 200, 'the command stream must open')
+    assert.equal(stream.headers['content-type'], 'text/event-stream')
+    assert.equal(stream.frames.length, 1, 'the stream opens with its comment frame')
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    assert.equal(stream.frames.length, 1, 'a command from before this host started must not be replayed')
+    writeFileSync(join(home, 'little-icon', 'command.json'),
+      `${JSON.stringify({ command: 'chat', at: Date.now() })}\n`, 'utf8')
+    const untilDelivered = Date.now() + 5000
+    while (stream.frames.length < 2 && Date.now() < untilDelivered) {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(stream.frames.length, 2, 'a menu command must reach the open stream')
+    assert.match(stream.frames[1], /^data: \{"command":"chat"\}\n\n$/)
 
     // An unchanged state must not rewrite the file on every poll (300ms here):
     // only the 4s heartbeat refreshes it, so 2.5s of sampling sees at most one
@@ -630,8 +722,10 @@ $found
     }
     assert.equal(readTuck(), true, 'turning the switch back on must resume the request')
 
-    // Disposal kills the process so DSH never leaves an orphan pet behind.
+    // Disposal kills the process so DSH never leaves an orphan pet behind, and
+    // ends the command stream so no page is left listening to a plugin that is gone.
     for (const disposer of disposers.splice(0)) disposer()
+    assert.equal(stream.writableEnded, true, 'disposal must end the command stream')
     await new Promise((resolve) => setTimeout(resolve, 2500))
     assert.equal(countPetProcesses(), 0, 'disposal left a pet process running')
     const problems = logged.filter((line) => line.includes('pet:') || line.includes('missing'))

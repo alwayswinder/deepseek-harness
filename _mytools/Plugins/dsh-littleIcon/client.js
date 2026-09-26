@@ -8,6 +8,13 @@
  * writes through the settings form, so a change reaches the pet without
  * restarting anything: the Host republishes the state file and the pet applies
  * it within a second.
+ *
+ * It also carries the two directions that have nothing to do with settings. The
+ * page reports its own input, so the pet can tell "nobody is there" from "no task
+ * is running". And it performs the pet's menu commands: the pet window belongs to
+ * another process, so a choice made there reaches the page through the Host, and
+ * "chat" opens the DeepSeek chat site in DSH's own Browser tab rather than the
+ * system browser.
  */
 
 window.__ModuleLoader__.load({
@@ -27,6 +34,15 @@ window.__ModuleLoader__.load({
 
     /** The Host route that records "the person is still doing something". */
     const ACTIVITY_PATH = '/api/little-icon/activity'
+
+    /** The Host route the pet's menu commands arrive on, as Server-Sent Events. */
+    const COMMANDS_PATH = '/api/little-icon/commands'
+
+    /** The DeepSeek chat site the pet's "chat" entry opens inside DSH. */
+    const CHAT_URL = 'https://chat.deepseek.com'
+
+    /** The right-Sidebar page type that shows an HTTP(S) site inside DSH. */
+    const BROWSER_TAB = 'browser'
 
     /** At most one activity ping per window; the Host only needs coarse recency. */
     const ACTIVITY_PING_MS = 15_000
@@ -371,6 +387,50 @@ window.__ModuleLoader__.load({
           for (const name of ACTIVITY_EVENTS) window.removeEventListener(name, ping, { capture: true })
           document.removeEventListener('visibilitychange', onVisibility)
         }, 'little-icon: activity reporting')
+
+        /**
+         * Carry out one menu command the pet reported. The pet window belongs to
+         * another process, so the page is what acts on a choice made there.
+         */
+        const runMenuCommand = {
+          chat: () => {
+            // The Browser tab is a shipped type a Web profile may leave disabled,
+            // and a build without the right Sidebar provides no service at all, so
+            // both are looked up instead of injected: this plugin must load and
+            // render its settings card either way.
+            const sidebar = ctx.get('sidebarRight')
+            if (sidebar === undefined || ctx.get('sidebarRightTabs')?.get(BROWSER_TAB) === undefined) {
+              console.warn('little-icon: this DSH build has no in-app Browser tab to open %s in', CHAT_URL)
+              return
+            }
+            // "In DSH" is the requirement: the chat site opens beside the
+            // conversation, in the same surface DSH's own chat links use, never in
+            // the system browser.
+            sidebar.openTab(BROWSER_TAB, { params: { url: CHAT_URL } })
+          },
+        }
+
+        // The Host holds this stream open and relays the pet's menu commands on it.
+        const commands = new EventSource(COMMANDS_PATH)
+        commands.onmessage = (event) => {
+          let command
+          try {
+            command = JSON.parse(event.data).command
+          } catch {
+            return
+          }
+          const run = runMenuCommand[command]
+          if (run === undefined) {
+            console.warn('little-icon: unknown menu command "%s"', command)
+            return
+          }
+          try {
+            run()
+          } catch (error) {
+            console.warn('little-icon: menu command "%s" failed', command, error)
+          }
+        }
+        ctx.effect(() => () => { commands.close() }, 'little-icon: menu commands')
 
         // The Host document stays the single owner of every value; this half
         // mirrors the accepted section into a snapshot the card renders.

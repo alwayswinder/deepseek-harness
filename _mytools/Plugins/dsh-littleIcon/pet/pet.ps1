@@ -11,8 +11,11 @@
     A press that did not move the window counts as a click: user32 ShowWindow
     tucks the DSH window away or brings it back. The state file also carries a
     tuck request, which the host raises once the user leaves DSH untouched for the
-    configured stretch, and which hides the window exactly like a click does. The
-    tray icon offers the same action plus a position reset and a quit entry.
+    configured stretch, and which hides the window exactly like a click does. A
+    right-click on the pet and the tray icon show the same menu; an entry the page
+    carries out (the DeepSeek chat site opens in DSH itself) is written to
+    command.json beside the state file for the host to relay, and the rest act on
+    this process at once.
 
     The target window is located through DshPid (the host's parent, i.e. the
     Electron main process): Process.MainWindowHandle first, then an enumeration
@@ -83,6 +86,10 @@ $SCRIPT:PositionFile = [System.IO.Path]::GetFullPath($PositionFile)
 # whether it is the window in front. The host needs both - the first picks the
 # tucked sleep timer, the second decides whether an idle DSH should be tucked.
 $SCRIPT:WindowFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'window.json'
+# Where a menu entry chosen on the pet is handed to the host, which alone can
+# reach the page: the pet cannot touch the DSH window's content, and the page
+# cannot see this window's menu.
+$SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'command.json'
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
 $SCRIPT:DshPid = $DshPid
@@ -94,6 +101,7 @@ function Read-Utf8Text([string]$Path) {
 function Get-Labels {
     $fallback = [ordered]@{
         TrayTip      = 'DSH pet'
+        Chat         = 'Chat'
         ToggleShown  = 'Tuck DSH away'
         ToggleHidden = 'Show DSH'
         Reset        = 'Move to corner'
@@ -149,7 +157,8 @@ $SCRIPT:StateStamp = [DateTime]::MinValue
 $SCRIPT:Ticks = 0
 $SCRIPT:TrayIcon = $null
 $SCRIPT:Notify = $null
-$SCRIPT:ToggleItem = $null
+$SCRIPT:PetMenu = $null
+$SCRIPT:ToggleItems = @()
 $SCRIPT:Exiting = $false
 
 function Write-Log([string]$Message) {
@@ -401,10 +410,14 @@ function Get-DshForeground {
     return ([DshPet.Win32]::GetForegroundWindow() -eq $handle)
 }
 
-function Update-TrayMenu {
-    if ($null -eq $SCRIPT:Notify -or $null -eq $SCRIPT:ToggleItem) { return }
-    if (Get-DshShown) { $SCRIPT:ToggleItem.Text = $SCRIPT:Labels.ToggleShown }
-    else { $SCRIPT:ToggleItem.Text = $SCRIPT:Labels.ToggleHidden }
+function Update-MenuLabels {
+    # Every menu carrying the toggle shows the state it will produce, not the one
+    # it was built with.
+    foreach ($item in $SCRIPT:ToggleItems) {
+        if ($null -eq $item) { continue }
+        if (Get-DshShown) { $item.Text = $SCRIPT:Labels.ToggleShown }
+        else { $item.Text = $SCRIPT:Labels.ToggleHidden }
+    }
 }
 
 function Set-DshWindowShown([bool]$Shown) {
@@ -424,7 +437,7 @@ function Set-DshWindowShown([bool]$Shown) {
     } else {
         [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwHide)
     }
-    Update-TrayMenu
+    Update-MenuLabels
     Save-WindowState
 }
 
@@ -456,14 +469,48 @@ function Invoke-PetClick {
     }
 }
 
-# ---- tray -------------------------------------------------------------------
+# ---- tray and menu ----------------------------------------------------------
 function Exit-Pet {
     if ($SCRIPT:Exiting) { return }
     $SCRIPT:Exiting = $true
     Save-Position
     try { if ($null -ne $SCRIPT:Notify) { $SCRIPT:Notify.Visible = $false; $SCRIPT:Notify.Dispose() } } catch { }
     try { if ($null -ne $SCRIPT:TrayIcon) { $SCRIPT:TrayIcon.Dispose() } } catch { }
+    try {
+        if ($null -ne $SCRIPT:PetMenu) { $SCRIPT:PetMenu.Dispose() }
+        $SCRIPT:PetMenu = $null
+    } catch { }
     try { $app.Shutdown() } catch { }
+}
+
+function Send-MenuCommand([string]$Command) {
+    # The host watches this file the way this pet watches the state file, and the
+    # timestamp is what tells a fresh choice from the one it already forwarded.
+    Write-Json $SCRIPT:CommandFile ([ordered]@{
+        command = $Command
+        at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    })
+}
+
+function New-PetMenu {
+    # One definition, two ways in: the tray icon and a right-click on the pet.
+    # Commands the page carries out come first, window actions after them.
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $chatItem = $menu.Items.Add($SCRIPT:Labels.Chat)
+    $chatItem.add_Click({ try { Send-MenuCommand 'chat' } catch { Write-Log $_.Exception.Message } })
+    # Without a DSH window to control (the web profile), the toggle would be a
+    # dead entry, so the menu keeps only the page command, position and quit.
+    if ($SCRIPT:DshPid -gt 0) {
+        $toggleItem = $menu.Items.Add($SCRIPT:Labels.ToggleShown)
+        $toggleItem.add_Click({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
+        $SCRIPT:ToggleItems += $toggleItem
+    }
+    $resetItem = $menu.Items.Add($SCRIPT:Labels.Reset)
+    $resetItem.add_Click({ try { Set-DefaultPosition; Save-Position } catch { Write-Log $_.Exception.Message } })
+    [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    $quitItem = $menu.Items.Add($SCRIPT:Labels.Quit)
+    $quitItem.add_Click({ try { Exit-Pet } catch { Write-Log $_.Exception.Message } })
+    return $menu
 }
 
 function Initialize-Tray {
@@ -478,20 +525,10 @@ function Initialize-Tray {
     $SCRIPT:Notify = New-Object System.Windows.Forms.NotifyIcon
     if ($null -ne $SCRIPT:TrayIcon) { $SCRIPT:Notify.Icon = $SCRIPT:TrayIcon }
     $SCRIPT:Notify.Text = $SCRIPT:Labels.TrayTip
-    $menu = New-Object System.Windows.Forms.ContextMenuStrip
-    # Without a DSH window to control (the web profile), the toggle would be a
-    # dead entry, so the menu keeps only position reset and quit.
+    $SCRIPT:Notify.ContextMenuStrip = New-PetMenu
     if ($SCRIPT:DshPid -gt 0) {
-        $SCRIPT:ToggleItem = $menu.Items.Add($SCRIPT:Labels.ToggleShown)
-        $SCRIPT:ToggleItem.add_Click({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
         $SCRIPT:Notify.add_MouseDoubleClick({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
     }
-    $resetItem = $menu.Items.Add($SCRIPT:Labels.Reset)
-    $resetItem.add_Click({ try { Set-DefaultPosition; Save-Position } catch { Write-Log $_.Exception.Message } })
-    [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    $quitItem = $menu.Items.Add($SCRIPT:Labels.Quit)
-    $quitItem.add_Click({ try { Exit-Pet } catch { Write-Log $_.Exception.Message } })
-    $SCRIPT:Notify.ContextMenuStrip = $menu
     $SCRIPT:Notify.Visible = $true
 }
 
@@ -524,6 +561,15 @@ $window.Add_MouseLeftButtonDown({
         if ($dragged) { Save-Position } elseif (-not $repeat -and -not $SCRIPT:PendingClick) { Invoke-PetClick }
     } catch {
         Write-Log "click failed: $($_.Exception.Message)"
+    }
+})
+$window.Add_MouseRightButtonUp({
+    try {
+        # The same menu the tray icon shows, at the pointer: a right-click on the
+        # pet is the discoverable way in, the tray the durable one.
+        if ($null -ne $SCRIPT:PetMenu) { [void]$SCRIPT:PetMenu.Show([System.Windows.Forms.Cursor]::Position) }
+    } catch {
+        Write-Log "menu failed: $($_.Exception.Message)"
     }
 })
 $window.Add_MouseLeftButtonUp({
@@ -565,7 +611,7 @@ $timer.Add_Tick({
             if ($item.LastWriteTime -ne $SCRIPT:StateStamp) {
                 $SCRIPT:StateStamp = $item.LastWriteTime
                 Apply-State (Read-Json $SCRIPT:StateFile)
-                Update-TrayMenu
+                Update-MenuLabels
             }
         } catch { }
 
@@ -596,12 +642,13 @@ $timer.Add_Tick({
 })
 
 try { Initialize-Tray } catch { Write-Log "tray unavailable: $($_.Exception.Message)" }
+try { $SCRIPT:PetMenu = New-PetMenu } catch { Write-Log "pet menu unavailable: $($_.Exception.Message)" }
 
 # Apply the state first (it fixes the window size), then place the window and
 # clamp it onto a screen.
 Apply-State (Read-Json $SCRIPT:StateFile)
 Restore-Position
-Update-TrayMenu
+Update-MenuLabels
 Save-WindowState
 
 # WPF's ShowInTaskbar=false does not put WS_EX_TOOLWINDOW on the real handle, so

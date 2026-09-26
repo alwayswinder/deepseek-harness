@@ -43,6 +43,14 @@ const STATES = ['idle', 'working', 'bored', 'sleep', 'happy', 'alert']
  */
 const ACTIVITY_PATH = '/api/little-icon/activity'
 
+/**
+ * Same-origin route carrying the pet's menu commands to the page as Server-Sent
+ * Events. The menu is drawn by the pet process and the page performs what it
+ * chooses, so the Host relays: it owns the file both sides agree on, and it is
+ * the only process that can serve the page.
+ */
+const COMMANDS_PATH = '/api/little-icon/commands'
+
 /** Volatile fields apply to the running plugin without remounting it. */
 export const Config = z.object({
   enabled: z.boolean().default(true).volatile(),
@@ -247,6 +255,23 @@ function shouldTuck(dshWindow, activityAt, config, now) {
 }
 
 /**
+ * Read the menu command the pet last wrote.
+ * @param path - absolute command file path.
+ * @returns that command and its timestamp, or undefined when there is nothing
+ *   readable: no choice yet, or a half-written file.
+ */
+function readCommand(path) {
+  try {
+    const reported = JSON.parse(readFileSync(path, 'utf8'))
+    if (typeof reported.at !== 'number' || typeof reported.command !== 'string') return undefined
+    return { command: reported.command, at: reported.at }
+  } catch {
+    // No command yet, or a half-written one.
+    return undefined
+  }
+}
+
+/**
  * Launch the pet process.
  * @param script - absolute `pet.ps1` path.
  * @param assets - absolute directory holding one folder per state.
@@ -284,6 +309,8 @@ export function apply(ctx, config) {
    * and whether it is the window in front, whose changes count as activity.
    */
   const windowFile = join(dataDir, 'window.json')
+  /** Written by the pet when a menu entry is chosen; read here and relayed to the page. */
+  const commandFile = join(dataDir, 'command.json')
   const writer = new StateFileWriter(stateFile, 4000)
   const script = fileURLToPath(new URL('./pet/pet.ps1', import.meta.url))
   const assets = fileURLToPath(new URL('./assets', import.meta.url))
@@ -304,6 +331,10 @@ export function apply(ctx, config) {
   let dshVisible = true
   /** Last window foreground the pet reported; a change there counts as activity. */
   let dshForeground = false
+  /** Timestamp of the last menu command already sent to the page; older ones are history. */
+  let lastCommandAt = readCommand(commandFile)?.at ?? 0
+  /** Open command streams, one per DSH window that is listening. */
+  const commandStreams = new Set()
   let child
   let timer
   let disposed = false
@@ -401,6 +432,36 @@ export function apply(ctx, config) {
     })
   }
 
+  /**
+   * Send one menu command to every listening page. Nothing is queued: a command
+   * chosen while no page listens is dropped, because the page is what performs it.
+   * @param command - the menu entry's id, as the pet reported it.
+   */
+  const publishCommand = (command) => {
+    const frame = `data: ${JSON.stringify({ command })}\n\n`
+    for (const stream of commandStreams) {
+      if (stream.writableEnded || stream.destroyed) {
+        commandStreams.delete(stream)
+        continue
+      }
+      stream.write(frame)
+    }
+  }
+
+  /** Relay a menu command the pet wrote since the last tick, if there is one. */
+  const forwardCommand = () => {
+    const pressed = readCommand(commandFile)
+    if (pressed === undefined || pressed.at <= lastCommandAt) return
+    lastCommandAt = pressed.at
+    publishCommand(pressed.command)
+  }
+
+  /** One sampling tick: publish the pet's state, then relay any menu command. */
+  const sample = () => {
+    publish()
+    forwardCommand()
+  }
+
   // The page pings this on pointer and keyboard activity; without it the pet
   // could only tell "no task is running", which is not the same as "nobody is
   // there", and it would fall asleep while the person is working in DSH.
@@ -426,6 +487,42 @@ export function apply(ctx, config) {
         res.end()
       },
     }), `little-icon: POST ${ACTIVITY_PATH}`)
+  })
+
+  // One event stream per DSH window, held open until that window goes away; the
+  // pet cannot reach the page and the page cannot see the pet's menu, so the
+  // host is the only path between them.
+  ctx.inject(['webServer'], (webCtx) => {
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: COMMANDS_PATH,
+      handler: (req, res) => {
+        const connection = ctx.get('connection')
+        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end()
+          return
+        }
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        })
+        // A comment frame opens the stream now, so a page that subscribes sees it
+        // live rather than when the first command arrives.
+        res.write(': little-icon menu commands\n\n')
+        commandStreams.add(res)
+        const forget = () => { commandStreams.delete(res) }
+        req.on('close', forget)
+        res.on('error', forget)
+      },
+    }), `little-icon: GET ${COMMANDS_PATH}`)
   })
 
   const startPet = () => {
@@ -467,7 +564,7 @@ export function apply(ctx, config) {
 
   const schedule = () => {
     clearInterval(timer)
-    timer = setInterval(publish, config.pollMs.get())
+    timer = setInterval(sample, config.pollMs.get())
     timer.unref?.()
   }
 
@@ -494,6 +591,10 @@ export function apply(ctx, config) {
     disposed = true
     clearInterval(timer)
     stopPet()
+    // End every open stream, so a page is not left waiting on a plugin that is
+    // no longer there to send anything.
+    for (const stream of commandStreams) stream.end()
+    commandStreams.clear()
   }, 'little-icon: pet lifetime')
 
   publish()
@@ -503,4 +604,4 @@ export function apply(ctx, config) {
 }
 
 /** Re-exported for the keyless smoke test. */
-export const internals = { sampleState, createTimeline, isBusy, shouldTuck, resolveDshHome, STATES, ACTIVITY_PATH }
+export const internals = { sampleState, createTimeline, isBusy, shouldTuck, resolveDshHome, STATES, ACTIVITY_PATH, COMMANDS_PATH }

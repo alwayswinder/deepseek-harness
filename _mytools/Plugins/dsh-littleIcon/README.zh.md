@@ -114,7 +114,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **编码。** `pet.ps1` 保持纯 ASCII：Windows PowerShell 5.1 在没有 BOM 时按 ANSI 解码 `.ps1`，UTF-8 的中文会变乱码，甚至可能吞掉引号破坏语法。中文托盘文案放在 `pet/labels.json`，脚本按 UTF-8 读它；读不到就用英文兜底。`tests/smoke.mjs` 会断言脚本里没有非 ASCII 字符。
 
-**素材。** `assets/<state>/1.png … N.png` 由 `tools/build-assets.py` 从 `IconImage/transparent/*.png` 生成。每张源图是若干角色排在一张 2048×2048 上的精灵表，但排版不统一：多数表情是 2×2 共 4 个，`干活中` 是 3 列 2 行共 6 个，`打盹` 两行之间只有 14 像素空隙。脚本因此不假设网格，而是按透明投影找角色：行投影里找空行分带（空行不足 8 像素不算分隔；过矮的段并入相邻角色，免得把 Zzz 气泡、齿轮当成角色），再在每条带内按列投影分人物段（列投影低于峰值 12% 算人物之间的浅谷），段内按实际不透明像素收紧包围盒。所有角色按自上而下、自左而右成帧，底部居中放进统一画布，并按所有表情里最大的角色算一个全局缩放，因此同一表情内不跳帧、表情之间角色大小一致。帧数由版面决定并写进 `assets/frames.json`，桌宠自己数文件而不是读固定值——换素材不必改代码。`assets/tray.ico` 是给托盘用的多尺寸图标。
+**素材。** `assets/<state>/1.png … N.png` 由 `tools/build-assets.py` 从一个表情一张精灵表切出来，切好的成品就是仓库里唯一的素材副本（约 24 MB 的源表删掉了，要重切得先按开发备注从 git 历史取回）。每张源图是若干角色排在一张 2048×2048 上的精灵表，但排版不统一：多数表情是 2×2 共 4 个，`干活中` 是 3 列 2 行共 6 个，`打盹` 两行之间只有 14 像素空隙。脚本因此不假设网格，而是按透明投影找角色：行投影里找空行分带（空行不足 8 像素不算分隔；过矮的段并入相邻角色，免得把 Zzz 气泡、齿轮当成角色），再在每条带内按列投影分人物段（列投影低于峰值 12% 算人物之间的浅谷），段内按实际不透明像素收紧包围盒。所有角色按自上而下、自左而右成帧，底部居中放进统一画布，并按所有表情里最大的角色算一个全局缩放，因此同一表情内不跳帧、表情之间角色大小一致。帧数由版面决定并写进 `assets/frames.json`，桌宠自己数文件而不是读固定值——换素材不必改代码。`assets/tray.ico` 是给托盘用的多尺寸图标。
 
 </details>
 
@@ -155,6 +155,8 @@ python tools/build-assets.py          # 重新生成 assets/（用 DSH 自带 Py
 node tests/smoke.mjs                  # 状态机、素材、pet.ps1 -SelfTest（不显示窗口）
 node tests/smoke.mjs --pet            # 额外跑 apply() 生命周期：起桌宠、量窗口是否在屏幕内、切状态、清理
 ```
+
+重切素材要先取回源精灵表：它们不在仓库里了（`git log --diff-filter=D --oneline -- _mytools/Plugins/dsh-littleIcon/IconImage` 找出删除那次提交，再用 `git checkout <那次提交>^ -- _mytools/Plugins/dsh-littleIcon/IconImage` 取回），或者把别处的表用 `--source` 指给脚本。默认的 `--source` 就是取回后的路径。
 
 `--pet` 会在桌面上**真显示一只桌宠窗口**（左上角、约 25 秒，用的是自己的临时 `$DSH_HOME`，所以能和正在使用的那只并存），运行时也会打印一行说明。它故意放在左上角而不是默认的右下角：万一你看到一只陌生的桌宠，那就是这个测试的，而不是插件多起了一只。
 

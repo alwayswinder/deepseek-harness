@@ -1,4 +1,4 @@
-"""从 IconImage/transparent 的精灵表切出桌宠用的逐帧 PNG。
+"""从精灵表切出桌宠用的逐帧 PNG（源表目录见 --source）。
 
 源图是同一张 2048x2048 上排布多个角色的精灵表，但排版并不统一：多数表情是 2x2 共
 4 个角色，`干活中` 是 3 列 2 行共 6 个。因此脚本不假设四宫格，而是按透明投影自动
@@ -15,6 +15,9 @@
 
 用法（用 DSH 自带 Python，已含 Pillow）：
     python tools/build-assets.py
+
+源精灵表已从仓库删除（见 README 的开发备注），默认的 --source 只在按那条说明取回后才存在；
+表放在别处时用 --source 指过去。
 """
 
 from __future__ import annotations

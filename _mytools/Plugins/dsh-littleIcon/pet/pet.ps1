@@ -13,7 +13,7 @@
     tuck request, which the host raises once the user leaves DSH untouched for the
     configured stretch, and which hides the window exactly like a click does. A
     right-click on the pet and the tray icon show the same menu; an entry the page
-    carries out (the DeepSeek chat site opens in DSH itself) brings DSH back on
+    carries out (the chat site, or the plugin's own Git page) brings DSH back on
     screen first and is written to command.json beside the state file for the host
     to relay, and the rest act on this process at once.
 
@@ -102,6 +102,7 @@ function Get-Labels {
     $fallback = [ordered]@{
         TrayTip        = 'DSH pet'
         Chat           = 'Chat'
+        Git            = 'Git changes'
         ToggleShown    = 'Tuck DSH away'
         ToggleHidden   = 'Show DSH'
         Reset          = 'Move to corner'
@@ -223,7 +224,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     exit 0
@@ -528,6 +529,16 @@ function New-PetMenu {
             # screen first: a tab opened in a hidden window is a tab nobody sees.
             Show-DshWindow
             Send-MenuCommand 'chat'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    # The Git page is the plugin's own tab type, so unlike Chat it needs nothing
+    # shipped besides the right Sidebar; the page reads the repository of whatever
+    # Session is in front. Showing DSH first is the same requirement.
+    $gitItem = $menu.Items.Add($SCRIPT:Labels.Git)
+    $gitItem.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'git'
         } catch { Write-Log $_.Exception.Message }
     })
     # Without a DSH window to control (the web profile) the window entries would be

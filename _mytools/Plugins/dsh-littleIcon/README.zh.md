@@ -1,5 +1,5 @@
 ---
-description: "DSH 桌宠：一个独立于 DSH 窗口的像素小挂件，悬浮置顶、可拖动、按 agent 状态换表情，点击收起/恢复 DSH 主窗口，并带托盘菜单。"
+description: "DSH 桌宠：一个独立于 DSH 窗口的像素小挂件，悬浮置顶、可拖动、按 agent 状态换表情，点击收起/恢复 DSH 主窗口，右键菜单还能在 DSH 里开 chat 与只读的 Git 改动页。"
 kind: "package-bundle"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## Summary
 
-桌宠是**独立于 DSH 窗口的进程**（PowerShell + WPF），不是画在窗口里的浮层：它有自己的无边框、透明、置顶小窗，所以 DSH 最小化或被收起后它依然留在桌面上。宿主半边（`index.js`）采样 agent 状态写进状态文件，桌宠读它切换表情动画；点击桌宠用 user32 的 `ShowWindow` 把 DSH 主窗口收起或恢复，托盘图标提供同样的动作、归位与退出。插件不改变对话、模型请求或会话日志。
+桌宠是**独立于 DSH 窗口的进程**（PowerShell + WPF），不是画在窗口里的浮层：它有自己的无边框、透明、置顶小窗，所以 DSH 最小化或被收起后它依然留在桌面上。宿主半边（`index.js`）采样 agent 状态写进状态文件，桌宠读它切换表情动画；点击桌宠用 user32 的 `ShowWindow` 把 DSH 主窗口收起或恢复，托盘图标提供同样的动作、归位与退出。右键菜单前两项由页面执行：**对话**在 DSH 内嵌浏览器里开 chat.deepseek.com，**Git 改动**在右侧栏开一页只读的仓库视图——左边是当前会话工作目录里未提交的改动，右边是最近十次提交。插件不改变对话、模型请求或会话日志。
 
 ## Table of Contents
 
@@ -42,9 +42,18 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 控件即时写回 profile 配置（`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 里那一行 `little-icon`），不需要重启：宿主半改配置会重新发布状态文件，桌宠一秒内套用。把**启用桌宠**关掉再打开也能立刻结束/重新拉起桌宠进程。这张卡片由插件的浏览器半边（`client.js`）提供，所以重启后不会再出现第二份自动生成的表单。
 
-**交互。** 桌宠默认贴在主屏右下角，闲置时按上面的设置半透明，鼠标移上去变清晰。按住左键拖动会移动位置（松开即记住，下次启动还原，并夹在当前虚拟屏幕内）。**单击**（没有拖动的那一次按下）执行配置里的 `clickAction`：`toggle`（默认）在 DSH 显示时把它收起、再点恢复并置顶；`minimize` 只最小化；`none` 什么也不做。托盘图标右键提供同样的菜单（「对话」「收起/显示 DSH」「回到右下角」「退出 DSH」），双击托盘图标等同单击桌宠。除了你点它，桌宠还会在 DSH 被晾到后台的时候自己动手：见下面「切到别的应用就收起」。
+**交互。** 桌宠默认贴在主屏右下角，闲置时按上面的设置半透明，鼠标移上去变清晰。按住左键拖动会移动位置（松开即记住，下次启动还原，并夹在当前虚拟屏幕内）。**单击**（没有拖动的那一次按下）执行配置里的 `clickAction`：`toggle`（默认）在 DSH 显示时把它收起、再点恢复并置顶；`minimize` 只最小化；`none` 什么也不做。托盘图标右键提供同样的菜单（「对话」「Git 改动」「收起/显示 DSH」「回到右下角」「退出 DSH」），双击托盘图标等同单击桌宠。除了你点它，桌宠还会在 DSH 被晾到后台的时候自己动手：见下面「切到别的应用就收起」。
 
-**右键菜单。** **右键点桌宠**会弹出和托盘图标一样的菜单，第一项是**对话**：它先把 DSH 放回屏幕并置顶（收起、最小化、或只是被别的窗口盖住都算），再在 DSH 自己的**右侧 Browser 标签**里打开 <https://chat.deepseek.com>，不经过系统浏览器——这和 DSH 处理对话里 chat 链接（链接偏好选「应用内 Sidebar」时）用的是同一个内嵌页面。先放回窗口是必须的：标签页开在一个看不见的窗口里等于没开。菜单里其余几项作用在窗口上：**收起/显示 DSH**、**回到右下角**，最后一项是**退出 DSH**——它会先弹一个确认框（退出会打断正在跑的任务），确认后给 DSH 主窗口发 `WM_CLOSE`，也就是点它标题栏关闭按钮的同一条路，DSH 走正常收尾退出。菜单项由桌宠进程画，动作由页面执行，两边通过宿主转交；页面那边没有 Browser 标签可用（比如网页版默认关掉了它）时，这一项只会记一条警告，不会报错。**桌宠自己不在菜单里退出**：它的生死只由设置里的「启用桌宠」控制，否则菜单里的退出会绕过那个开关。
+**右键菜单。** **右键点桌宠**会弹出和托盘图标一样的菜单，前两项由页面执行，其余作用在窗口上。第一项是**对话**：它先把 DSH 放回屏幕并置顶（收起、最小化、或只是被别的窗口盖住都算），再在 DSH 自己的**右侧 Browser 标签**里打开 <https://chat.deepseek.com>，不经过系统浏览器——这和 DSH 处理对话里 chat 链接（链接偏好选「应用内 Sidebar」时）用的是同一个内嵌页面。第二项是 **Git 改动**：同样先把 DSH 放回屏幕，然后在右侧栏打开插件自己的 **Git 页**（见下），左边是当前会话工作目录里**未提交的改动**（含新增、未跟踪的文件），右边是**最近十次提交**。先放回窗口是必须的：标签页开在一个看不见的窗口里等于没开。窗口那几项是**收起/显示 DSH**、**回到右下角**，最后一项是**退出 DSH**——它会先弹一个确认框（退出会打断正在跑的任务），确认后给 DSH 主窗口发 `WM_CLOSE`，也就是点它标题栏关闭按钮的同一条路，DSH 走正常收尾退出。菜单项由桌宠进程画，动作由页面执行，两边通过宿主转交；页面那边没有 Browser 标签可用（比如网页版默认关掉了它）时，**对话**只会记一条警告，不会报错——**Git 改动**不依赖任何自带标签页，只要有右侧栏就能开。**桌宠自己不在菜单里退出**：它的生死只由设置里的「启用桌宠」控制，否则菜单里的退出会绕过那个开关。
+
+**Git 页。** 菜单里的 **Git 改动**在右侧栏开一页，分成左右两栏，各自滚动：
+
+- **左栏「未提交的改动」**：`git status --porcelain` 的全部条目——已暂存、未暂存、以及**未跟踪的新文件**（`-uall`，所以新目录里的文件会逐个列出，不会被折叠成目录名）。每行是状态词（新增 / 修改 / 删除 / 重命名 / 复制 / 冲突 / 类型变更）、路径，已进索引的那几行还带一个「已暂存」标记；
+- **右栏「最近提交」**：最近 `10` 条提交，每条三行——**提交信息**（换行显示完整标题，不再被截断）、**短哈希**、作者 · 本地时间。
+
+顶部一行是仓库根目录、当前分支、**刷新**按钮和**提交并推送**按钮。这一页自己只读：它从不直接动 Git（没有暂存、提交、推送、撤销），点文件也不做任何事。仓库由**当前会话的工作目录**决定，不是某个配置项——在哪个项目里对话，就看哪个项目的改动；所以从子目录开的会话照样显示整个仓库。工作目录不是 Git 仓库、目录已经不在、机器上没有 `git`，各自显示一句说明，此时**提交并推送**置灰；空仓库（还没有第一次提交）是正常状态，两栏都显示「（还）没有」。
+
+**「提交并推送」按钮。** 它做的不是 Git 操作，而是**替你说话**：把「提交并推送」作为一条**真正的用户消息**发进当前对话——和你在输入框里手打这五个字再回车走的是同一条宿主通道（`ctx.conversation.send`，排队的一轮）。所以这条消息会出现在对话里、进会话记录、模型看得见；agent 正在跑就排到下一轮，空闲时立刻开始这一轮，然后它用自己惯常的工具去 `git add/commit/push`，提交信息按仓库的约定写。按钮点完就地变成「已发送」（本轮正在跑时是「已排队」），发不出去时就在下面显示原因（这个会话当前没有输入通道，或者宿主拒绝了这次发送）。**没有二次确认**：点一下就等于你要求了这件事。
 
 **配置字段。** 插件页的控件写的都是这些字段，全部即时生效（宿主改配置会重发状态文件并重排定时器，桌宠读状态文件，都不需要重启）：
 
@@ -87,15 +96,17 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 <details>
 <summary>实现细节——点击展开</summary>
 
-**浏览器半边。** `client.js` 做三件事。一是把手写设置卡片注册进 `plugins.bundle.config`（插件页给「某个 bundle 自己的配置」留的位置），键是包名 `@local/dsh-little-icon`——卡片就画在插件列表里那张卡片的详情页上，比藏在 `little-icon` 行页面里少一次点击。卡片不直接读配置：`ctx.configForms.get('little-icon')` 拿到该行的表单，订阅它、把接受的 section 折进一个快照 store，再经注册的 `inject` 面（`hooks.petSettings` 钩子 + `write` 回调）交给组件；值的唯一拥有者仍是宿主 schema。滑块拖动时先本地回显、停手 250 毫秒合并成一次写入，开关与下拉立即写。宿主侧因此调用 `settings.configure({ auto: false })`，避免同一批字段出现第二份自动生成的英文表单。二是活动上报（上面那段）。三是执行桌宠的右键菜单命令：它 `new EventSource('/api/little-icon/commands')` 订阅宿主那条流，收到 `chat` 就调用 `ctx.sidebarRight.openTab('browser', { params: { url: 'https://chat.deepseek.com' } })`——右侧 Browser 标签是 DSH 给插件打开站点的唯一入口，`ui-chat` 处理对话里的链接用的也是它。`sidebarRight` 与 `sidebarRightTabs` 都用 `ctx.get` 现取而不是声明注入（Web profile 可能没启用 browser 类型，没有右侧栏的构建连服务都没有），取不到就只记一条 `console.warn`：这张设置卡片在任何 profile 都得照常加载。文案都走 `ctx.locale` 字典（中英各一份）；`tests/smoke.mjs` 会断言两边键一致、页面用到的键都存在，驱动一次开关写入与一次拖动合并，断言活动上报确实注册了那四个监听器且被节流，并驱动一次 `chat` 命令（含没有 Browser 标签、没有 Sidebar 服务两种取不到的情况）与一次注销后的 `EventSource.close()`。
+**浏览器半边。** `client.js` 做四件事。一是把手写设置卡片注册进 `plugins.bundle.config`（插件页给「某个 bundle 自己的配置」留的位置），键是包名 `@local/dsh-little-icon`——卡片就画在插件列表里那张卡片的详情页上，比藏在 `little-icon` 行页面里少一次点击。卡片不直接读配置：`ctx.configForms.get('little-icon')` 拿到该行的表单，订阅它、把接受的 section 折进一个快照 store，再经注册的 `inject` 面（`hooks.petSettings` 钩子 + `write` 回调）交给组件；值的唯一拥有者仍是宿主 schema。滑块拖动时先本地回显、停手 250 毫秒合并成一次写入，开关与下拉立即写。宿主侧因此调用 `settings.configure({ auto: false })`，避免同一批字段出现第二份自动生成的英文表单。二是活动上报（上面那段）。三是执行桌宠的右键菜单命令：它 `new EventSource('/api/little-icon/commands')` 订阅宿主那条流，收到 `chat` 就调用 `ctx.sidebarRight.openTab('browser', { params: { url: 'https://chat.deepseek.com' } })`——右侧 Browser 标签是 DSH 给插件打开站点的唯一入口，`ui-chat` 处理对话里的链接用的也是它。`sidebarRight` 与 `sidebarRightTabs` 都用 `ctx.get` 现取而不是声明注入（Web profile 可能没启用 browser 类型，没有右侧栏的构建连服务都没有），取不到就只记一条 `console.warn`：这张设置卡片在任何 profile 都得照常加载。四是 **Git 页**：`git` 命令调用 `openTab('little-icon-git')`，而这个页类型正是插件自己按右侧栏的两段式注册进去的——`ctx.sidebarRightTabs.register({ id, kind, title })` 提供「这个类型是什么」，再往 keyed 槽 `sidebar.right.pane.tab` 注册键为同一个 `id` 的组件提供页面主体。注册表本来就允许仓库外的插件注册类型，所以这一页既不依赖 Browser 标签，也不依赖任何自带查看器；整段挂在 `ctx.inject(['sidebarRightTabs', 'slots'], …)` 上，没有右侧栏的构建根本不会执行，设置卡片照常存在。组件里不读文件：`inject` 面给出一个 `load(cwd, signal)`，它 `fetch` 宿主的 Git 路由，`useSessions` 提供当前会话的工作目录，`useTabInfo` 提供这次导航的 `revision`——所以再点一次菜单（同一个标签页被重新导航）就会重新拉一次，和「刷新」按钮走的是同一条路。同一个面里的 `sendPrompt(text)` 就是**提交并推送**按钮调用的东西：它借当前会话自己的作用域拿到 `ctx.conversation.send`——也就是输入框用的那条 admission，不是另开一条私路；会话没被保留时取不到作用域，就回 `no-channel`。文案都走 `ctx.locale` 字典（中英各一份）；`tests/smoke.mjs` 会断言两边键一致、页面用到的键都存在，驱动一次开关写入与一次拖动合并，断言活动上报确实注册了那四个监听器且被节流，并驱动一次 `chat` 命令（含没有 Browser 标签、没有 Sidebar 服务两种取不到的情况）、一次 `git` 命令与一次注销后的 `EventSource.close()`，再拿造好的仓库状态渲染一次 Git 页，断言两栏、状态词、暂存标记、分支、四种「读不到」的说明都在，并点一次**提交并推送**验证那句话原样进了会话、以及三种发不出去的情况。
 
 **为什么必须是独立进程。** 桌面壳没有向插件开放任何窗口能力：`apps/desktop` 里没有 `Tray`，主窗口的 `BrowserWindow` 也没有 `transparent`/`alwaysOnTop`/`skipTaskbar`；`apps/desktop/src/ipc.ts` 的通道表里没有最小化/隐藏/恢复，`preload-app.ts` 只暴露 `dshDesktop`（浏览器视图与更新）、`dshPlatform`（仅用量/充值内嵌页）、目录选择、宿主路径与语言。渲染进程是 `sandbox: true` + `contextIsolation: true`，`window.open` 一律被拒。更关键的是插件的宿主代码跑在 `ELECTRON_RUN_AS_NODE=1` 的 Node 子进程里（`apps/desktop/src/host-process.ts` + `node-environment.ts`），那里 `require('electron')` 只能拿到二进制路径。窗口一旦隐藏，窗口内的 DOM 也不再绘制。所以「收起 DSH 后桌宠还在」只能靠插件自己起一个进程。
 
 **宿主半边。** `index.js` 每 `pollMs` 采样一次：用 `ctx.get('agents')` 看是否有 agent `running` 或 inbox 里有下一轮/下一步，用 `ctx.get('jobs')` 看是否有 `running`/`stopping` 的 job（判据与 `apps/desktop-host/src/update-tasks.ts` 一致），再减去**正在等用户回答**的 agent：宿主在 `user-questions/request` 与 `approval/request` 两条 waterfall 上用 `prepend` 挂了观察者（自己照常 `next()` 委派，返回原 promise），请求挂起期间把该 agent 从忙碌里排除、并作为 `waiting` 交给状态机（于是桌宠举着 `alert` 而不是 `working`），回答落定即恢复——这样「模型在等你选」既不会被当成「还在干活」，也不会被漏看。状态机是纯函数 `sampleState`，`tests/smoke.mjs` 直接压它；它接收「有没有活」「最近一次操作」「现在该用哪个打盹计时器」三个输入——计时器由桌宠报告的窗口可见性决定（收起后用短的那条）。另一个纯函数 `shouldTuck` 决定「该不该收起 DSH」，它只看桌宠报来的窗口事实——窗口还在不在屏幕上、前台是不是别人、DSH 是什么时候转到后台的——再加上 `autoHide`/`autoHideSeconds`：**DSH 在前台时直接返回 false**（永不自动收起），**没有「有没有任务在跑」这个输入**（所以在后台时任务照跑、窗口照收）；采样结果写进 `$DSH_HOME/little-icon/state.json` 时把它的结果作为 `tuck` 一起发布。`tuck` 是一条命令而不是状态：桌宠收好后写回的 `dshVisible:false` 让宿主下一拍就把它关掉，期间重复发出的同一个请求也因为桌宠那边幂等而无害。内容变化才写盘，另外每 4 秒补写一次心跳，桌宠据此判断宿主是否还活着。配置里的 `translucent` 与 `idleOpacity` 在这里合并成一个 `opacity` 字段，桌宠不需要知道这个开关。桌宠由 `child_process.spawn` 拉起（`powershell.exe -NoProfile -NonInteractive -STA -ExecutionPolicy Bypass -File pet/pet.ps1`），参数里带素材目录、状态与位置文件、以及要控制的窗口进程号；`ctx.effect` 的清理函数会结束它，DSH 不会留下孤儿窗口。桌面壳里宿主的父进程就是 Electron 主进程，所以这个进程号直接取自 `process.ppid`；网页版没有可控制的窗口，传 0。菜单命令走另一条路：桌宠把选择写进 `command.json`，宿主每拍读一次（`at` 严格递增才算新命令，所以上一轮留下的记录不会被重放），再经 `GET /api/little-icon/commands` 这条 SSE 流推给页面；流过与活动上报同样的 `connection.requestRejection` 检查，只回事件流本身（`text/event-stream`，先写一帧注释让订阅立刻成立），并在客户端断开或插件销毁时从订阅集合里摘掉、`end()` 掉。页面不在线时的命令直接丢掉——执行它的是页面，没有页面就没有可执行的对象。
 
+**Git 路由。** Git 页要的仓库事实都在磁盘上，页面既没有文件系统也没有进程，所以由宿主去问 Git：`GET /api/little-icon/git?cwd=<会话工作目录>` 回一个 JSON。先 `statSync` 确认目录还在（**不能**靠 `execFile` 的 `ENOENT` 判断：目录不在和 `git` 不在可执行路径里，Node 报的是同一个错，而这两件事对用户的意思完全不同），再 `git rev-parse --show-toplevel` 定仓库根——由目录找仓库，而不是反过来，所以从子目录开的会话照样看到整个仓库。随后并发跑三条只读命令：`branch --show-current`（游离 HEAD 时为空，页面就不显示分支）、`status --porcelain=v1 -z --untracked-files=all`，以及取最近十条的 `log`，格式用 `0x1f` 分隔字段。两条输出都按 `-z` 解析：记录之间是 NUL（提交标题里的任何标点都不会撞上分隔符），而重命名/复制把**源路径**放在下一条记录里，所以解析要手动跨一格。仓库还没有第一次提交时 `git log` 会报错，那是正常状态，回空列表而不是失败。路由只接受 GET，永远回 200 JSON：目录不在、不是仓库、没有 git、命令失败，分别是 `no-dir` / `not-a-repo` / `no-git` / `failed` 四个 `reason`，由页面翻译成人话——**机器可读的原因，不是本地化文案**，页面才知道该用哪种语言。
+
 **「操作」这个信号从哪来。** 宿主只看得到 agent 和 job，「没人动过」和「没有任务在跑」是两回事——没有输入信号的话，人一直在用 DSH，桌宠照样会睡。所以浏览器半边在 `pointerdown`/`pointermove`/`wheel`/`keydown` 上打点，节流到 15 秒一次，`POST /api/little-icon/activity`（同源路由，按仓库惯例先过 `connection.requestRejection`，非 POST 回 405）；宿主再和 `position.json` 的修改时间取最大值——拖动桌宠、托盘里「回到右下角」同样算操作。收起 DSH 之后页面收不到任何输入（这正是想要的），所以改由桌宠每秒把自己看到的窗口状态写进 `window.json`（在不在屏幕上、前台是不是 DSH 这一侧），宿主据此在两种打盹计时器之间切换、以及决定要不要自动收起；「显示/收起/切到前台」这些变化本身也算一次操作（所以收起之后短的那条打盹计时立刻开始走）。于是打盹只在真的一段时间没人碰过任何东西之后才出现，而任务开始本身也算操作。
 
-**桌宠进程。** `pet/pet.ps1` 是 WPF 无边框透明置顶窗口（`WindowStyle=None` + `AllowsTransparency` + `Topmost` + `ShowActivated=false`，不抢焦点）。脚本开头先把进程声明为 DPI 感知（`SetProcessDpiAwarenessContext` 逐级回退）：PowerShell 没有 DPI 清单，非感知进程里的分层窗口会被系统按虚拟化尺寸渲染再拉伸，桌宠会画成 2×2 平铺且比设定尺寸大。随后用 `WindowInteropHelper.EnsureHandle()` 拿到句柄补上 `WS_EX_TOOLWINDOW`——WPF 的 `ShowInTaskbar=false` 并不会真的加上这个样式，否则任务栏和 Alt+Tab 里会多一项。定时器每 200 毫秒按状态文件的修改时间决定是否重读，套用表情、尺寸、不透明度、点击行为与置顶；帧动画按 `frameMs` 轮播，帧数由脚本自己数素材文件（多数表情 4 帧、`干活中` 6 帧）。拖动用 `DragMove()`。激活桌宠窗口的那次按下会被 WPF 报告两次（一次随激活、一次是普通鼠标消息），而前一次还起不了拖动，所以按下只做记录，松开时才判定是点击还是拖动：否则第一次点击会刚把 DSH 收起又立刻放回来，只想拖桌宠时也会把 DSH 收起。窗口位置存在 `position.json`，启动时读回并夹进屏幕范围。右键菜单（`New-PetMenu`）与托盘菜单是同一份定义的两个实例，都由 WinForms 的 `ContextMenuStrip` 画：桌面端第一项是**对话**，它先调 `Show-DshWindow` 把 DSH 恢复并置顶（收起/最小化时 `SW_RESTORE`，只是被盖住时 `SetForegroundWindow`），再把 `{"command":"chat","at":…}` 写进 `command.json` 交给宿主转交；其余各项直接作用在本进程。网页版没有可控制系统窗口，菜单里就不放「收起/显示 DSH」。它每秒上报的「前台」指的是**前面是不是 DSH 这一侧**：DSH 自己进程里的窗口（含对话框、更新提示）与桌宠自己的窗口都算，只有第三方应用跑到前面才算「不在前台」——所以拖动桌宠不会被当成你跑去用别的应用。标签都从 `pet/labels.json` 按 UTF-8 读，读不到用脚本内的英文兜底，脚本本身保持纯 ASCII。
+**桌宠进程。** `pet/pet.ps1` 是 WPF 无边框透明置顶窗口（`WindowStyle=None` + `AllowsTransparency` + `Topmost` + `ShowActivated=false`，不抢焦点）。脚本开头先把进程声明为 DPI 感知（`SetProcessDpiAwarenessContext` 逐级回退）：PowerShell 没有 DPI 清单，非感知进程里的分层窗口会被系统按虚拟化尺寸渲染再拉伸，桌宠会画成 2×2 平铺且比设定尺寸大。随后用 `WindowInteropHelper.EnsureHandle()` 拿到句柄补上 `WS_EX_TOOLWINDOW`——WPF 的 `ShowInTaskbar=false` 并不会真的加上这个样式，否则任务栏和 Alt+Tab 里会多一项。定时器每 200 毫秒按状态文件的修改时间决定是否重读，套用表情、尺寸、不透明度、点击行为与置顶；帧动画按 `frameMs` 轮播，帧数由脚本自己数素材文件（多数表情 4 帧、`干活中` 6 帧）。拖动用 `DragMove()`。激活桌宠窗口的那次按下会被 WPF 报告两次（一次随激活、一次是普通鼠标消息），而前一次还起不了拖动，所以按下只做记录，松开时才判定是点击还是拖动：否则第一次点击会刚把 DSH 收起又立刻放回来，只想拖桌宠时也会把 DSH 收起。窗口位置存在 `position.json`，启动时读回并夹进屏幕范围。右键菜单（`New-PetMenu`）与托盘菜单是同一份定义的两个实例，都由 WinForms 的 `ContextMenuStrip` 画：桌面端前两项是**对话**与 **Git 改动**，它们先调 `Show-DshWindow` 把 DSH 恢复并置顶（收起/最小化时 `SW_RESTORE`，只是被盖住时 `SetForegroundWindow`），再把 `{"command":"chat","at":…}` / `{"command":"git","at":…}` 写进 `command.json` 交给宿主转交；其余各项直接作用在本进程。网页版没有可控制系统窗口，菜单里就不放「收起/显示 DSH」。它每秒上报的「前台」指的是**前面是不是 DSH 这一侧**：DSH 自己进程里的窗口（含对话框、更新提示）与桌宠自己的窗口都算，只有第三方应用跑到前面才算「不在前台」——所以拖动桌宠不会被当成你跑去用别的应用。标签都从 `pet/labels.json` 按 UTF-8 读，读不到用脚本内的英文兜底，脚本本身保持纯 ASCII。
 
 **几何单位。** 位置与夹取一律用 WPF 自己的 `SystemParameters.WorkArea` / `VirtualScreen*`，它们和 `Window.Left/Top` 同为设备无关单位；WinForms 的 `Screen`/`SystemInformation` 给的是物理像素，在 150% 缩放之类的情况下混用会把桌宠推到屏幕外（右下角被乘 1.5 倍）。`tests/smoke.mjs --pet` 会用 DPI 感知的探针量出窗口矩形，断言它确实落在屏幕内。
 
@@ -122,7 +133,9 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **内嵌浏览器不会自动登录。** 菜单里的**对话**打开的是 DSH 的右侧 Browser 标签，它的存储分区是**持久**的（本副本对上游的唯一一处改动：`apps/desktop/src/browser-guests.ts` 用 `persist:dsh-sidebar-browser-<工作区标识的摘要>`，改动、重建与恢复步骤见 [UPSTREAM.md](UPSTREAM.md)），所以在那里登录过一次 chat.deepseek.com 之后，重启 DSH 仍然保持登录——但**不会**用 DSH 自己的账号自动登录：DSH 手里的凭据是 `platform.deepseek.com` 那一份（`platform-view.ts` 只对那个 origin 注入 Cookie，官方用量页跑的就是这条路），而 chat.deepseek.com 是另一套 Web 会话；插件也塞不进 Cookie——宿主半边没有 Electron API，浏览器半边是 sandbox，那个分区归 `apps/desktop` 管。另外 DeepSeek 自己会对嵌入式环境提示「使用环境异常」，那是服务端判断，插件这一层改不掉。
 
-**网页版可能没有 Browser 标签。** 右侧 Browser 类型在 Web profile 默认关闭，没有右侧栏的构建连 `ctx.sidebarRight` 都没有；这时**对话**这一项点了没有反应（页面只记一条 `console.warn`）。桌面端装了自带 Browser 标签，所以正常可用。
+**网页版可能没有 Browser 标签。** 右侧 Browser 类型在 Web profile 默认关闭，没有右侧栏的构建连 `ctx.sidebarRight` 都没有；这时**对话**这一项点了没有反应（页面只记一条 `console.warn`）。桌面端装了自带 Browser 标签，所以正常可用。**Git 改动**不受这一条影响：那一页的类型是插件自己注册的，只要右侧栏在（Web profile 也有 `ui-sidebar-right`）就能开。
+
+**Git 页只读，而且只看工作目录。** 页面自己不执行任何 Git 写操作，点文件也不做任何事；唯一的动作是**提交并推送**按钮，而它做的是把一句话发进对话、交给模型去执行（见上）。仓库由当前会话的工作目录决定，所以它显示的是那个项目的仓库，而不是 DSH 自己的。工作目录不在仓库里、目录消失、机器上没有 `git`，各显示一句说明。
 
 **活动只来自 DSH 页面和桌宠本身。** 上报来自 DSH 页面的输入事件，所以 DSH 被收起、最小化或被别的程序盖住时没有输入：收起状态按 `sleepWhenHiddenSeconds` 打盹（默认 20 秒，只有拖动桌宠能续命），这正是想要的；在别的程序里操作不会让它醒着，只有回到 DSH 打字点鼠标、拖动桌宠，或者把 DSH 放回来才会。
 
@@ -132,7 +145,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 **动画只有四帧。** 素材决定了表情切换是 4 帧循环；更细的动作（敲键盘、Zzz 气泡）需要重做素材并放进对应的状态目录。
 
-**网页版是二等公民。** 那里没有可控制的 DSH 窗口，所以托盘菜单只留**对话**与**回到右下角**（没有「收起/显示 DSH」，也没有「退出 DSH」——没有可控制的窗口），单击桌宠不做任何事；窗口、表情、拖动等行为与桌面端一致。
+**网页版是二等公民。** 那里没有可控制的 DSH 窗口，所以托盘菜单只留**对话**、**Git 改动**与**回到右下角**（没有「收起/显示 DSH」，也没有「退出 DSH」——没有可控制的窗口），单击桌宠不做任何事；窗口、表情、拖动等行为与桌面端一致。**Git 改动**在网页版一样能用。
 
 <a id="dev-note"></a>
 ### 开发备注

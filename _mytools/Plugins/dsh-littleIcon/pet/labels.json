@@ -1,6 +1,7 @@
 {
   "TrayTip": "DSH 桌宠",
   "Chat": "对话",
+  "Git": "Git 改动",
   "ToggleShown": "收起 DSH",
   "ToggleHidden": "显示 DSH",
   "Reset": "回到右下角",

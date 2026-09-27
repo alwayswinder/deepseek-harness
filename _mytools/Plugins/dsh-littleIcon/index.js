@@ -21,9 +21,14 @@
  *
  * State and window position live under `$DSH_HOME/little-icon/`, so they stay
  * per machine and never sync with the repository.
+ *
+ * The menu's Git entry needs repository facts the page cannot read: this half
+ * runs `git` itself and serves the result on a same-origin route, because the
+ * browser half has no filesystem and no process to run. The directory is the one
+ * the asking Session works in, so the page sends it with the request.
  */
 
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
@@ -50,6 +55,31 @@ const ACTIVITY_PATH = '/api/little-icon/activity'
  * the only process that can serve the page.
  */
 const COMMANDS_PATH = '/api/little-icon/commands'
+
+/**
+ * Same-origin route the page reads the workspace's Git state from. The Git page
+ * lives in the page, which cannot spawn a process, so the Host runs the commands
+ * and answers with JSON.
+ */
+const GIT_PATH = '/api/little-icon/git'
+
+/** The Git executable; a machine without one on PATH is reported, not guessed at. */
+const GIT_EXECUTABLE = 'git'
+
+/** Longest a single Git command may run before it is killed. */
+const GIT_TIMEOUT_MS = 10_000
+
+/** Ceiling on one command's output; a larger status or log is an error, not a pause. */
+const GIT_MAX_BUFFER = 8 * 1024 * 1024
+
+/** How many commits the history column shows. */
+const GIT_LOG_LIMIT = 10
+
+/**
+ * Field separator inside one `git log` record. `-z` separates records with NUL,
+ * so the two never collide however a subject is punctuated.
+ */
+const GIT_FIELD = '\u001f'
 
 /** Volatile fields apply to the running plugin without remounting it. */
 export const Config = z.object({
@@ -278,6 +308,130 @@ function readCommand(path) {
   } catch {
     // No command yet, or a half-written one.
     return undefined
+  }
+}
+
+/**
+ * Run one Git command in a directory.
+ * @param cwd - directory the command runs in.
+ * @param args - Git arguments, without the executable.
+ * @returns whether it succeeded, its output, an explanation when it did not, and
+ *   whether the executable itself was absent; a spawn failure arrives here rather
+ *   than as a rejection.
+ */
+function execGit(cwd, args) {
+  return new Promise((resolve) => {
+    execFile(GIT_EXECUTABLE, args, {
+      cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER, windowsHide: true, encoding: 'utf8',
+    }, (error, stdout, stderr) => {
+      if (error === null) {
+        resolve({ ok: true, stdout })
+        return
+      }
+      const reported = (stderr ?? '').trim()
+      resolve({
+        ok: false,
+        stdout: stdout ?? '',
+        // A spawn failure and an exceeded output cap write no stderr, and the
+        // error's own message is then the only explanation there is to show.
+        message: reported === '' ? error.message : reported,
+        missing: error.code === 'ENOENT',
+      })
+    })
+  })
+}
+
+/**
+ * Parse `git status --porcelain=v1 -z --untracked-files=all`.
+ *
+ * Each record is `XY <path>` followed by NUL, and a rename or copy carries its
+ * source path as the next record, so the walk advances by hand. An untracked
+ * file is `??`, which is what "new" means here; `--untracked-files=all` lists the
+ * files inside a new directory instead of collapsing them into the directory.
+ * @param raw - the command's output.
+ * @returns one entry per changed path, in Git's own order.
+ */
+function parseGitStatus(raw) {
+  const records = raw.split('\0')
+  const entries = []
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]
+    if (record.length < 4) continue
+    const status = record.slice(0, 2)
+    const path = record.slice(3)
+    const source = status.includes('R') || status.includes('C') ? records[index + 1] : undefined
+    if (source !== undefined) index += 1
+    entries.push({ path, status, ...source === undefined || source === '' ? {} : { from: source } })
+  }
+  return entries
+}
+
+/**
+ * Parse `git log -z --pretty=format:<hash><field>…`.
+ * @param raw - the command's output.
+ * @returns one entry per commit, newest first as Git emitted them.
+ */
+function parseGitLog(raw) {
+  const commits = []
+  for (const record of raw.split('\0')) {
+    if (record === '') continue
+    const [hash, short, author, date, subject] = record.split(GIT_FIELD)
+    if (hash === undefined || short === undefined) continue
+    commits.push({ hash, short, author: author ?? '', date: date ?? '', subject: subject ?? '' })
+  }
+  return commits
+}
+
+/**
+ * Whether a path is an existing directory.
+ * @param path - absolute path to test.
+ * @returns whether it is a directory right now.
+ */
+function isDirectory(path) {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    // Missing, unreadable, or replaced by a file: either way not a directory.
+    return false
+  }
+}
+
+/**
+ * Read the Git state of one directory.
+ *
+ * The directory identifies the repository rather than the other way round: the
+ * page sends the workspace its Session works in and Git resolves the root from
+ * there, so a Session started in a subdirectory still reports its whole
+ * repository. A directory outside every repository is a normal answer, not a
+ * failure, and so is a repository whose first commit has not been made yet.
+ * @param cwd - directory to inspect.
+ * @returns `{ ok: true, root, branch, changes, commits }`, or `{ ok: false }` with
+ *   a `reason` of `no-dir`, `no-git`, `not-a-repo`, or `failed` plus the command's
+ *   message.
+ */
+async function readGitRepository(cwd) {
+  // Checked here rather than inferred from a spawn failure: a missing directory
+  // and a missing `git` both fail to spawn with ENOENT, and the page says
+  // different things about them.
+  if (!isDirectory(cwd)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(cwd, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  const root = top.stdout.trim()
+  const [branch, status, log] = await Promise.all([
+    execGit(root, ['branch', '--show-current']),
+    execGit(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+    execGit(root, ['log', '-z', '-n', String(GIT_LOG_LIMIT),
+      `--pretty=format:%H${GIT_FIELD}%h${GIT_FIELD}%an${GIT_FIELD}%aI${GIT_FIELD}%s`]),
+  ])
+  if (!status.ok) return { ok: false, reason: 'failed', message: status.message }
+  return {
+    ok: true,
+    root,
+    // A detached HEAD has no branch name; the column then shows the commit alone.
+    branch: branch.ok ? branch.stdout.trim() : '',
+    changes: parseGitStatus(status.stdout),
+    // `git log` fails while the repository has no commit to walk from.
+    commits: log.ok ? parseGitLog(log.stdout) : [],
   }
 }
 
@@ -571,6 +725,66 @@ export function apply(ctx, config) {
     }), `little-icon: GET ${COMMANDS_PATH}`)
   })
 
+  /**
+   * Answer one Git read for the page.
+   *
+   * The directory arrives with the request because the page is what knows which
+   * Session it belongs to. It is the same directory the person already handed
+   * this agent to work in, and the route answers only reads, so no path a page
+   * can name gives it anything the Session itself could not do.
+   * @param req - the request; `cwd` names the directory to inspect.
+   * @param res - the response, always JSON and always 200: a missing repository
+   *   is an answer the page renders, not a transport failure.
+   */
+  const answerGit = (req, res) => {
+    const send = (payload) => {
+      const body = JSON.stringify(payload)
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body),
+        'cache-control': 'no-store',
+      })
+      res.end(body)
+    }
+    const cwd = new URL(req.url ?? '', 'http://localhost').searchParams.get('cwd') ?? ''
+    if (cwd === '') {
+      send({ ok: false, reason: 'no-cwd' })
+      return
+    }
+    void readGitRepository(cwd).then(
+      (result) => { send(result) },
+      (error) => {
+        // execGit settles every spawn failure, so this arm is a defect in the
+        // reader rather than a repository problem.
+        ctx.logger.warn('little-icon: git read failed: %s', String(error))
+        send({ ok: false, reason: 'failed', message: String(error) })
+      })
+  }
+
+  // The Git page is drawn from this route: the page has no filesystem and no
+  // process of its own, so the Host is the only half that can ask Git anything.
+  ctx.inject(['webServer'], (webCtx) => {
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_PATH,
+      handler: (req, res) => {
+        const connection = ctx.get('connection')
+        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end()
+          return
+        }
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        answerGit(req, res)
+      },
+    }), `little-icon: GET ${GIT_PATH}`)
+  })
+
   const startPet = () => {
     if (child !== undefined || disposed) return
     if (process.platform !== 'win32') {
@@ -650,4 +864,18 @@ export function apply(ctx, config) {
 }
 
 /** Re-exported for the keyless smoke test. */
-export const internals = { sampleState, createTimeline, sampleWork, shouldTuck, resolveDshHome, STATES, ACTIVITY_PATH, COMMANDS_PATH }
+export const internals = {
+  sampleState,
+  createTimeline,
+  sampleWork,
+  shouldTuck,
+  resolveDshHome,
+  readGitRepository,
+  parseGitStatus,
+  parseGitLog,
+  STATES,
+  ACTIVITY_PATH,
+  COMMANDS_PATH,
+  GIT_PATH,
+  GIT_LOG_LIMIT,
+}

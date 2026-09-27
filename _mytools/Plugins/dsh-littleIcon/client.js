@@ -14,7 +14,13 @@
  * is running". And it performs the pet's menu commands: the pet window belongs to
  * another process, so a choice made there reaches the page through the Host, and
  * "chat" opens the DeepSeek chat site in DSH's own Browser tab rather than the
- * system browser.
+ * system browser, while "git" opens this plugin's own Git page beside the
+ * conversation.
+ *
+ * The Git page is a tab type this plugin registers itself: the right Sidebar's
+ * registry is the extension point for exactly that, so the page needs neither the
+ * product's Browser tab nor any other shipped viewer. It draws what the Host's
+ * Git route answers for the Session's working directory, and it only ever reads.
  */
 
 window.__ModuleLoader__.load({
@@ -43,6 +49,25 @@ window.__ModuleLoader__.load({
 
     /** The right-Sidebar page type that shows an HTTP(S) site inside DSH. */
     const BROWSER_TAB = 'browser'
+
+    /** The right-Sidebar page type the pet's "git" entry opens. */
+    const GIT_KIND = 'little-icon-git'
+
+    /**
+     * That type's implementation identity: the key its definition registers
+     * under, and the key its body registers under in `sidebar.right.pane.tab`.
+     */
+    const GIT_TYPE_ID = '@local/dsh-little-icon/git'
+
+    /** The Host route the Git page reads the Session's repository from. */
+    const GIT_PATH = '/api/little-icon/git'
+
+    /**
+     * What the Git page's button says into the conversation. The message is a
+     * real user turn, admitted exactly as the composer admits one, so the agent
+     * reads it as an instruction and commits and pushes with its own tools.
+     */
+    const COMMIT_AND_PUSH_PROMPT = '提交并推送'
 
     /** At most one activity ping per window; the Host only needs coarse recency. */
     const ACTIVITY_PING_MS = 15_000
@@ -126,6 +151,35 @@ window.__ModuleLoader__.load({
       unavailable: '当前连接不保存设置，改不了。',
       saved: '已保存',
       failed: '保存失败，已回到上次的值。',
+      gitTab: 'Git 改动',
+      gitChanges: '未提交的改动',
+      gitCommits: '最近提交',
+      gitRefresh: '刷新',
+      gitLoading: '读取中…',
+      gitStaged: '已暂存',
+      gitBranch: '分支 {name}',
+      gitEmptyChanges: '没有未提交的改动。',
+      gitEmptyCommits: '还没有提交记录。',
+      gitNoCwd: '这个会话还没有工作目录，读不到 Git 状态。',
+      gitNoDir: '工作目录已经不在，读不到 Git 状态。',
+      gitNoGit: '找不到 git 命令，确认它在 PATH 里再刷新。',
+      gitNotARepo: '工作目录不在 Git 仓库里。',
+      gitFailed: '读取失败：{message}',
+      gitUntracked: '新增',
+      gitModified: '修改',
+      gitAdded: '新增',
+      gitDeleted: '删除',
+      gitRenamed: '重命名',
+      gitCopied: '复制',
+      gitConflicted: '冲突',
+      gitTypeChanged: '类型变更',
+      gitUnknown: '变更',
+      gitCommitAndPush: '提交并推送',
+      gitSending: '发送中…',
+      gitSent: '已发送',
+      gitQueued: '已排队',
+      gitSendNoChannel: '这个会话当前没有输入通道，这句话发不出去。',
+      gitSendFailed: '发送失败：{message}',
     }
 
     const en = {
@@ -170,6 +224,35 @@ window.__ModuleLoader__.load({
       unavailable: 'This connection keeps no settings, so they cannot be changed.',
       saved: 'Saved',
       failed: 'Save failed; the previous value is back.',
+      gitTab: 'Git changes',
+      gitChanges: 'Uncommitted changes',
+      gitCommits: 'Recent commits',
+      gitRefresh: 'Refresh',
+      gitLoading: 'Reading…',
+      gitStaged: 'staged',
+      gitBranch: 'branch {name}',
+      gitEmptyChanges: 'No uncommitted changes.',
+      gitEmptyCommits: 'No commits yet.',
+      gitNoCwd: 'This session has no working directory yet, so there is no Git state to read.',
+      gitNoDir: 'The working directory is gone, so there is no Git state to read.',
+      gitNoGit: 'The git command was not found; make sure it is on PATH and refresh.',
+      gitNotARepo: 'The working directory is not inside a Git repository.',
+      gitFailed: 'Could not read the repository: {message}',
+      gitUntracked: 'new',
+      gitModified: 'modified',
+      gitAdded: 'added',
+      gitDeleted: 'deleted',
+      gitRenamed: 'renamed',
+      gitCopied: 'copied',
+      gitConflicted: 'conflicted',
+      gitTypeChanged: 'type changed',
+      gitUnknown: 'changed',
+      gitCommitAndPush: 'Commit and push',
+      gitSending: 'Sending…',
+      gitSent: 'Sent',
+      gitQueued: 'Queued',
+      gitSendNoChannel: 'This session has no input channel right now, so the message cannot be sent.',
+      gitSendFailed: 'Could not send: {message}',
     }
 
     /** Insert the card stylesheet once per document. */
@@ -192,6 +275,49 @@ window.__ModuleLoader__.load({
         '.dli-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary);}',
         '.dli-grid{display:flex;flex-direction:column;gap:14px;padding-top:12px;}',
         '.dli-status{font-size:11px;color:var(--dsw-alias-label-secondary);min-height:16px;}',
+        '.dli-git{display:flex;flex:1 1 auto;flex-direction:column;gap:8px;height:100%;min-height:0;',
+        'color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;}',
+        '.dli-git-bar{display:flex;flex:0 0 auto;align-items:center;gap:8px;min-height:28px;}',
+        '.dli-git-route{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;',
+        'color:var(--dsw-alias-label-secondary);font-size:11px;}',
+        '.dli-git-branch{flex:0 0 auto;font-size:11px;padding:1px 8px;border-radius:999px;',
+        'background:rgba(127,127,127,.14);}',
+        '.dli-git-refresh{flex:0 0 auto;margin-left:auto;font:inherit;color:inherit;cursor:pointer;',
+        'background:transparent;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:2px 10px;}',
+        '.dli-git-refresh:disabled{opacity:.5;cursor:default;}',
+        '.dli-git-send{flex:0 0 auto;font:inherit;color:inherit;cursor:pointer;padding:2px 12px;',
+        'background:rgba(127,127,127,.18);border:1px solid rgba(127,127,127,.4);border-radius:6px;}',
+        '.dli-git-send:disabled{opacity:.5;cursor:default;}',
+        '.dli-git-send[data-sent="true"]{color:#3fb950;border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.12);}',
+        '.dli-git-cols{display:flex;flex:1 1 auto;flex-wrap:wrap;gap:12px;min-height:0;}',
+        // Two columns side by side, stacked once the pane is too narrow to hold
+        // both: a fixed split would leave one of them unreadable in a small pane.
+        '.dli-git-col{display:flex;flex:1 1 220px;flex-direction:column;min-width:0;min-height:0;',
+        'border:1px solid rgba(127,127,127,.25);border-radius:8px;overflow:hidden;}',
+        '.dli-git-head{display:flex;align-items:center;gap:8px;padding:6px 10px;',
+        'border-bottom:0.5px solid rgba(127,127,127,.25);}',
+        '.dli-git-title{font-weight:600;}',
+        '.dli-git-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;}',
+        '.dli-git-list{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 0;}',
+        '.dli-git-row{display:flex;align-items:center;gap:6px;padding:2px 10px;}',
+        '.dli-git-badge{flex:0 0 auto;font-size:11px;padding:0 5px;border-radius:4px;',
+        'color:var(--dsw-alias-label-secondary);background:rgba(127,127,127,.16);}',
+        '.dli-git-badge-new{color:#3fb950;}',
+        '.dli-git-badge-modified{color:#d29922;}',
+        '.dli-git-badge-deleted{color:#f85149;}',
+        '.dli-git-badge-moved{color:#58a6ff;}',
+        '.dli-git-badge-conflict{color:#f85149;}',
+        '.dli-git-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}',
+        '.dli-git-staged{flex:0 0 auto;margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);}',
+        '.dli-git-commit{display:flex;flex-direction:column;gap:2px;padding:5px 10px;}',
+        '.dli-git-commit+.dli-git-commit{border-top:0.5px solid rgba(127,127,127,.18);}',
+        // The message wraps rather than trailing off: it leads the row, and the
+        // column is too narrow to show a full subject on one line.
+        '.dli-git-subject{overflow-wrap:anywhere;}',
+        '.dli-git-hash{font-size:11px;color:var(--dsw-alias-label-secondary);',
+        'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}',
+        '.dli-git-byline{color:var(--dsw-alias-label-secondary);font-size:11px;}',
+        '.dli-git-note{margin:0;padding:8px 10px;color:var(--dsw-alias-label-secondary);}',
       ].join('')
       document.head.appendChild(style)
     }
@@ -347,6 +473,188 @@ window.__ModuleLoader__.load({
             : t('unavailable')))
     }
 
+    // ---- git page -----------------------------------------------------------
+
+    /** Porcelain letters as copy keys; the untracked pair is not one of them. */
+    const CHANGE_COPY = {
+      M: 'gitModified',
+      A: 'gitAdded',
+      D: 'gitDeleted',
+      R: 'gitRenamed',
+      C: 'gitCopied',
+      U: 'gitConflicted',
+      T: 'gitTypeChanged',
+    }
+
+    /** The same letters as badge colors. */
+    const CHANGE_TONE = { M: 'modified', A: 'new', D: 'deleted', R: 'moved', C: 'moved', U: 'conflict' }
+
+    /**
+     * Read one `git status --porcelain` pair as what a row shows.
+     * @param t - namespace-bound translate.
+     * @param status - the two letters Git reported.
+     * @returns the label, the badge color, and whether the change is staged.
+     */
+    function describeChange(t, status) {
+      // `??` is not two statuses but one statement about the path: Git has never
+      // been told about it, which is what "new file" means in this list.
+      if (status === '??') return { label: t('gitUntracked'), tone: 'new', staged: false }
+      const staged = status[0] !== ' ' && status[0] !== '?'
+      const letter = staged ? status[0] : status[1]
+      const copy = CHANGE_COPY[letter]
+      return {
+        label: copy === undefined ? t('gitUnknown') : t(copy),
+        tone: CHANGE_TONE[letter] ?? 'other',
+        staged,
+      }
+    }
+
+    /**
+     * Why a read produced no repository, in words.
+     * @param t - namespace-bound translate.
+     * @param result - the Host's refusal.
+     * @returns the line to show in place of the two columns.
+     */
+    function gitReason(t, result) {
+      switch (result.reason) {
+        case 'no-cwd': return t('gitNoCwd')
+        case 'no-dir': return t('gitNoDir')
+        case 'no-git': return t('gitNoGit')
+        case 'not-a-repo': return t('gitNotARepo')
+        default: return t('gitFailed', { message: result.message ?? '' })
+      }
+    }
+
+    /**
+     * A commit's date as this machine writes dates; the Host sends ISO 8601.
+     * @param iso - the author date as Git reported it.
+     * @returns the date to show, or the raw value when it cannot be parsed.
+     */
+    function formatCommitDate(iso) {
+      const at = new Date(iso)
+      return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
+    }
+
+    /**
+     * The Git page: the Session's working directory, its uncommitted changes on
+     * the left, and its last commits on the right.
+     *
+     * Read-only by design: nothing here stages, commits, or pushes. The working
+     * directory comes from the Session rather than from a setting, so the page
+     * follows whichever project the conversation is in, and the pet's menu
+     * re-opening the tab is a new navigation revision — which is what refreshes it.
+     * @param props - slot props plus the injected `load` callback.
+     * @returns the two columns, or the line explaining why there are none.
+     */
+    function GitPanel(props) {
+      const { t, sessionId } = props
+      const cwd = props.useSessions((sessions) => sessions.byId[sessionId]?.cwd)
+      // Read at render time and closed over by the click: a message sent while a
+      // turn is already running joins the queue behind it rather than starting one.
+      const running = props.useSessions((sessions) => sessions.byId[sessionId]?.running === true)
+      const { tab } = props.useTabInfo()
+      const [state, setState] = React.useState({ phase: 'loading' })
+      const [attempt, setAttempt] = React.useState(0)
+      const [send, setSend] = React.useState({ phase: 'idle' })
+
+      // Three things move this read: the Session's working directory, the refresh
+      // button's `attempt`, and the tab's navigation revision — choosing the pet's
+      // menu entry again reopens this same tab, which is what makes that refresh too.
+      React.useEffect(() => {
+        if (cwd === undefined || cwd === '') {
+          setState({ phase: 'settled', result: { ok: false, reason: 'no-cwd' } })
+          return undefined
+        }
+        const controller = new AbortController()
+        setState({ phase: 'loading' })
+        props.load(cwd, controller.signal).then(
+          (result) => { if (!controller.signal.aborted) setState({ phase: 'settled', result }) },
+          (error) => { if (!controller.signal.aborted) setState({ phase: 'failed', error }) })
+        return () => { controller.abort() }
+      }, [cwd, tab.navigation.revision, attempt])
+
+      const reload = () => { setAttempt((value) => value + 1) }
+      const result = state.phase === 'settled' ? state.result : undefined
+      const loaded = result?.ok === true ? result : undefined
+      const note = (text) => h('p', { className: 'dli-git-note' }, text)
+
+      /**
+       * Put the instruction in the conversation. The Host admits it as an ordinary
+       * user turn, so the agent reads it beside the rest of the conversation and
+       * performs it with its own tools; the page only reports what came back.
+       */
+      const submit = () => {
+        if (send.phase === 'sending') return
+        setSend({ phase: 'sending' })
+        void props.sendPrompt(COMMIT_AND_PUSH_PROMPT).then((outcome) => {
+          setSend(outcome.ok
+            ? { phase: 'sent', queued: running }
+            : { phase: 'failed', reason: outcome.reason, message: outcome.message })
+        })
+      }
+      const sendLabel = () => {
+        switch (send.phase) {
+          case 'sending': return t('gitSending')
+          case 'sent': return send.queued ? t('gitQueued') : t('gitSent')
+          default: return t('gitCommitAndPush')
+        }
+      }
+      const bar = h('div', { className: 'dli-git-bar' },
+        h('span', { className: 'dli-git-route', title: loaded?.root ?? cwd ?? '' }, loaded?.root ?? cwd ?? ''),
+        loaded === undefined || loaded.branch === ''
+          ? null
+          : h('span', { className: 'dli-git-branch' }, t('gitBranch', { name: loaded.branch })),
+        h('button', {
+          type: 'button', className: 'dli-git-refresh', onClick: reload, disabled: state.phase === 'loading',
+        }, t('gitRefresh')),
+        h('button', {
+          type: 'button', className: 'dli-git-send', onClick: submit,
+          // Nothing to say about a directory whose state could not be read.
+          disabled: loaded === undefined || send.phase === 'sending',
+          'data-sent': send.phase === 'sent' ? 'true' : undefined,
+        }, sendLabel()))
+      const sendNote = send.phase !== 'failed' ? null
+        : note(send.reason === 'no-channel'
+          ? t('gitSendNoChannel')
+          : t('gitSendFailed', { message: send.message }))
+
+      const column = (title, count, rows) => h('section', { className: 'dli-git-col' },
+        h('div', { className: 'dli-git-head' },
+          h('span', { className: 'dli-git-title' }, title),
+          h('span', { className: 'dli-git-count' }, String(count))),
+        h('div', { className: 'dli-git-list' }, rows))
+
+      const body = () => {
+        if (state.phase === 'failed') {
+          return note(t('gitFailed', { message: String(state.error?.message ?? state.error) }))
+        }
+        if (result === undefined) return note(t('gitLoading'))
+        if (loaded === undefined) return note(gitReason(t, result))
+        const changes = loaded.changes.map((change, index) => {
+          const view = describeChange(t, change.status)
+          return h('div', { className: 'dli-git-row', key: `${index}:${change.path}` },
+            h('span', { className: `dli-git-badge dli-git-badge-${view.tone}` }, view.label),
+            h('span', { className: 'dli-git-path', title: change.path }, change.path),
+            view.staged ? h('span', { className: 'dli-git-staged' }, t('gitStaged')) : null)
+        })
+        const commits = loaded.commits.map((commit) => h('div', {
+          className: 'dli-git-commit', key: commit.hash,
+        },
+        // The message leads and wraps: it is what the reader scans for, while the
+        // hash under it is a reference to copy rather than the headline.
+        h('div', { className: 'dli-git-subject', title: commit.subject }, commit.subject),
+        h('div', { className: 'dli-git-hash' }, commit.short),
+        h('div', { className: 'dli-git-byline' }, `${commit.author} · ${formatCommitDate(commit.date)}`)))
+        return h('div', { className: 'dli-git-cols' },
+          column(t('gitChanges'), changes.length,
+            changes.length === 0 ? note(t('gitEmptyChanges')) : changes),
+          column(t('gitCommits'), commits.length,
+            commits.length === 0 ? note(t('gitEmptyCommits')) : commits))
+      }
+
+      return h('div', { className: 'dli-git' }, bar, sendNote, body())
+    }
+
     // ---- plugin -------------------------------------------------------------
 
     const plugin = {
@@ -358,6 +666,9 @@ window.__ModuleLoader__.load({
           injectStyles()
           return () => {}
         }, 'little-icon: stylesheet')
+        // The tab type names itself when it is opened, outside any render, so the
+        // definition needs its own binding of this namespace.
+        const t = ctx.locale.bind(NS)
 
         // The pet sleeps only when nobody is doing anything, and the Host sees
         // agents and jobs rather than input, so the page reports its own use.
@@ -398,6 +709,16 @@ window.__ModuleLoader__.load({
             // the system browser.
             sidebar.openTab(BROWSER_TAB, { params: { url: CHAT_URL } })
           },
+          git: () => {
+            // Nothing shipped is needed here: the page type is this plugin's own,
+            // so the only thing that can be missing is the right Sidebar itself.
+            const sidebar = ctx.get('sidebarRight')
+            if (sidebar === undefined || ctx.get('sidebarRightTabs')?.get(GIT_KIND) === undefined) {
+              console.warn('little-icon: this DSH build has no right Sidebar to open the Git page in')
+              return
+            }
+            sidebar.openTab(GIT_KIND)
+          },
         }
 
         // The Host holds this stream open and relays the pet's menu commands on it.
@@ -421,6 +742,61 @@ window.__ModuleLoader__.load({
           }
         }
         ctx.effect(() => () => { commands.close() }, 'little-icon: menu commands')
+
+        // The Git page, in the two stages the right Sidebar's registry defines: the
+        // type, then its body under the type's own id. The registry waits for the
+        // service, so a build with the Sidebar present gets both whenever the
+        // Sidebar's own plugin happens to load, and a build without one simply
+        // never runs this — the settings card above still loads there.
+        ctx.inject(['sidebarRightTabs', 'slots'], (scope) => {
+          scope.effect(() => scope.sidebarRightTabs.register({
+            id: GIT_TYPE_ID,
+            kind: GIT_KIND,
+            title: () => t('gitTab'),
+          }), 'little-icon: git tab type')
+          scope.effect(() => scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({
+            name: 'sidebar.right.pane.tab',
+            key: GIT_TYPE_ID,
+            locale: NS,
+            // The component reaches no service itself: one callback reads the
+            // repository, the other puts a message in the conversation, and both
+            // are bound to the Session this tab belongs to.
+            inject: (sessionId) => ({
+              load: async (cwd, signal) => {
+                const response = await fetch(`${GIT_PATH}?cwd=${encodeURIComponent(cwd)}`, { signal })
+                if (!response.ok) throw new Error(`little-icon: the Git route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Send one user message into this Session.
+               *
+               * `ctx.conversation.send` is the composer's own admission — the text
+               * becomes an ordinary user turn in the session log, which is what
+               * makes the agent read it as an instruction and act on it with its
+               * own tools. The Session's scope is borrowed rather than opened: a
+               * Session nobody holds has no conversation to put anything in.
+               * @param text - the message to send, verbatim.
+               * @returns `{ ok: true }`, or `{ ok: false }` with `no-channel` when
+               *   this Session has no live conversation and `failed` with the
+               *   admission's own message.
+               */
+              sendPrompt: async (text) => {
+                const conversation = ctx.get('sessions')?.scope(sessionId)?.get('conversation')
+                if (conversation === undefined) return { ok: false, reason: 'no-channel' }
+                try {
+                  await conversation.send(text)
+                  return { ok: true }
+                } catch (error) {
+                  return {
+                    ok: false,
+                    reason: 'failed',
+                    message: error instanceof Error ? error.message : String(error),
+                  }
+                }
+              },
+            }),
+          }, GitPanel)), 'little-icon: git tab body')
+        })
 
         // The Host document stays the single owner of every value; this half
         // mirrors the accepted section into a snapshot the card renders.

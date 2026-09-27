@@ -18,7 +18,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
-const { sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH } = internals
+const {
+  sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
+  GIT_PATH, GIT_LOG_LIMIT, parseGitStatus, parseGitLog, readGitRepository,
+} = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -179,7 +182,7 @@ assert.equal(firstNonAscii, -1, `pet/pet.ps1 must stay ASCII; found ${JSON.strin
 const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8'))
 assert.equal(labels.ToggleShown, '收起 DSH')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
-for (const key of ['TrayTip', 'Chat', 'ToggleShown', 'ToggleHidden', 'Reset', 'QuitDsh', 'QuitDshConfirm']) {
+for (const key of ['TrayTip', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Reset', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
@@ -208,8 +211,91 @@ if (process.platform === 'win32') {
   // The self test prints the labels it loaded from labels.json, so this proves
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /收起 DSH/)
+  assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')
+}
+
+// ---- git readers ------------------------------------------------------------
+
+// Real `git status --porcelain=v1 -z` output, one record per shape the list must
+// survive: an unstaged edit, a staged add, an unstaged delete, an untracked file,
+// and a rename, whose source path rides in the record after its own.
+const STATUS_FIXTURE = [
+  ' M kept.txt',
+  'A  staged new file.txt',
+  ' D gone.txt',
+  '?? untracked.txt',
+  'R  moved-new.txt',
+  'moved-old.txt',
+  '',
+].join('\0')
+assert.deepEqual(parseGitStatus(STATUS_FIXTURE), [
+  { path: 'kept.txt', status: ' M' },
+  { path: 'staged new file.txt', status: 'A ' },
+  { path: 'gone.txt', status: ' D' },
+  { path: 'untracked.txt', status: '??' },
+  { path: 'moved-new.txt', status: 'R ', from: 'moved-old.txt' },
+])
+assert.deepEqual(parseGitStatus(''), [], 'an empty status is no changes, not one entry')
+// A path keeps its own leading space: trimming it would misname the file.
+assert.deepEqual(parseGitStatus(' M  spaced name.txt\0'), [{ path: ' spaced name.txt', status: ' M' }])
+
+const FIELD = '\u001f'
+const LOG_FIXTURE = [
+  `abc${FIELD}abc1234${FIELD}Ada${FIELD}2026-01-02T03:04:05+08:00${FIELD}first subject`,
+  `def${FIELD}def5678${FIELD}Bob${FIELD}2026-01-01T00:00:00+00:00${FIELD}second subject`,
+  '',
+].join('\0')
+assert.deepEqual(parseGitLog(LOG_FIXTURE), [
+  { hash: 'abc', short: 'abc1234', author: 'Ada', date: '2026-01-02T03:04:05+08:00', subject: 'first subject' },
+  { hash: 'def', short: 'def5678', author: 'Bob', date: '2026-01-01T00:00:00+00:00', subject: 'second subject' },
+])
+assert.deepEqual(parseGitLog(''), [])
+
+// A path that is not a directory and a directory outside every repository are
+// different answers: the page says different things about them. Both are cheap,
+// so they run even without git.
+const missingDir = await readGitRepository(join(tmpdir(), 'little-icon-no-such-directory'))
+assert.deepEqual(missingDir, { ok: false, reason: 'no-dir' })
+
+if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
+  const repo = mkdtempSync(join(tmpdir(), 'little-icon-repo-'))
+  const git = (...args) => spawnSync('git', args, { cwd: repo, encoding: 'utf8' })
+  try {
+    git('init', '-q')
+    git('config', 'user.email', 'smoke@example.test')
+    git('config', 'user.name', 'smoke')
+    writeFileSync(join(repo, 'kept.txt'), 'one\n')
+    git('add', '.')
+    git('commit', '-q', '-m', 'first commit')
+    writeFileSync(join(repo, 'kept.txt'), 'two\n')
+    writeFileSync(join(repo, 'untracked.txt'), 'new\n')
+    const read = await readGitRepository(repo)
+    assert.equal(read.ok, true)
+    assert.equal(read.branch, git('branch', '--show-current').stdout.trim())
+    assert.deepEqual(read.changes.map(change => [change.status, change.path]),
+      [[' M', 'kept.txt'], ['??', 'untracked.txt']])
+    assert.deepEqual(read.commits.map(commit => commit.subject), ['first commit'])
+    assert.match(read.commits[0].hash, /^[0-9a-f]{40}$/)
+    // A repository whose first commit has not been made yet answers with no
+    // commits rather than failing: `git log` errors there.
+    const empty = mkdtempSync(join(tmpdir(), 'little-icon-unborn-'))
+    try {
+      spawnSync('git', ['init', '-q'], { cwd: empty })
+      const unborn = await readGitRepository(empty)
+      assert.equal(unborn.ok, true, `an unborn HEAD is still a repository: ${JSON.stringify(unborn)}`)
+      assert.deepEqual(unborn.commits, [])
+      assert.equal(unborn.branch !== '', true, 'the branch is known before the first commit')
+    } finally {
+      rmSync(empty, { recursive: true, force: true })
+    }
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
+  console.log('little-icon smoke: git readers ok')
+} else {
+  console.log('skipping the real-repository read: no git on PATH')
 }
 
 // ---- browser half -----------------------------------------------------------
@@ -234,7 +320,7 @@ globalThis.document = {
 }
 globalThis.fetch = (url, init) => {
   pings.push({ url, method: init?.method })
-  return Promise.resolve({ ok: true })
+  return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, root: '/repo', branch: 'main', changes: [], commits: [] }) })
 }
 /** Event streams the page opens; the test dispatches the Host's frames itself. */
 const eventSources = []
@@ -249,7 +335,9 @@ globalThis.EventSource = class {
 }
 const reactStub = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
-  useState: (initial) => [initial, () => {}],
+  // A component under test may seed the state its load effect would set; with
+  // nothing seeded, `useState` returns its initial value as React does.
+  useState: (initial) => [seeded.length > 0 ? seeded.shift() : initial, () => {}],
   useEffect: () => {},
 }
 const requireStub = (specifier) => {
@@ -288,24 +376,49 @@ const form = {
 const registrations = []
 const dictionaries = new Map()
 const clientDisposers = []
+/** One render's seeded component state, consumed by that render's next `useState`. */
+const seeded = []
 /** The two optional services the menu commands reach for, plus the calls they make. */
 const openedTabs = []
+/** Tab types the page registers with the right Sidebar's registry. */
+const registeredTypes = []
 const clientServices = {
   sidebarRight: { openTab: (kind, options) => { openedTabs.push({ kind, options }) } },
-  sidebarRightTabs: { get: (kind) => (kind === 'browser' ? { id: 'browser' } : undefined) },
+  sidebarRightTabs: {
+    register: (definition) => { registeredTypes.push(definition); return () => {} },
+    get: (kind) => registeredTypes.find(definition => definition.kind === kind)
+      ?? (kind === 'browser' ? { id: 'browser' } : undefined),
+  },
 }
-clientPlugin.apply({
+/** The plugin's context; `inject` hands the same services to an optional dependency's scope. */
+const clientCtx = {
   effect: (factory) => { clientDisposers.push(factory()) },
   get: (name) => clientServices[name],
-  locale: { register: (ns, dict) => { dictionaries.set(ns, dict) } },
+  inject: (_names, callback) => { callback(clientCtx) },
+  locale: { register: (ns, dict) => { dictionaries.set(ns, dict) }, bind: (ns) => (key, params) => {
+    // The real binding reads the language in force at call time; the test runs in
+    // Chinese, which is also how the copy assertions below read it.
+    const text = dictionaries.get(ns).zh[key]
+    assert.ok(typeof text === 'string', `the page asked for missing copy: ${key}`)
+    return params === undefined ? text : text.replace(/\{(\w+)\}/g, (_, name) => String(params[name]))
+  } },
   configForms: { get: () => form },
   slots: {
     inject: (_key, callback) => callback(),
     register: (options, component) => { registrations.push({ options, component }); return () => {} },
   },
-})
-assert.equal(registrations.length, 1, 'the browser half must register exactly one card')
-const [registration] = registrations
+  // Cordis exposes an injected service as a property of the scope it injected
+  // into; the plugin reads the tab registry that way.
+  sidebarRightTabs: clientServices.sidebarRightTabs,
+}
+clientPlugin.apply(clientCtx)
+// The plugin registers the settings card and, once the right Sidebar's registry
+// is there, the Git page's body; the Git type itself is registered on that
+// registry rather than through a slot.
+assert.equal(registrations.length, 2, 'the browser half must register the card and the Git body')
+const [registration] = registrations.filter(entry => entry.options.name === 'plugins.bundle.config')
+const [gitBody] = registrations.filter(entry => entry.options.name === 'sidebar.right.pane.tab')
+assert.ok(registration !== undefined && gitBody !== undefined, 'both registrations must be present')
 // The card belongs on the bundle's own page: the Plugins list is where a person
 // looks, and the row page behind it is one click too deep.
 assert.equal(registration.options.name, 'plugins.bundle.config')
@@ -321,7 +434,8 @@ assert.equal(pings.length, 1, 'activity pings must be throttled')
 
 // The pet's menu is drawn by another process, so its commands arrive here on a
 // Host-held event stream and this half performs them: "chat" opens the DeepSeek
-// chat site in DSH's own Browser tab, never in the system browser.
+// chat site in DSH's own Browser tab, never in the system browser, and "git"
+// opens this plugin's own Git page beside the conversation.
 assert.equal(eventSources.length, 1, 'the page must listen for menu commands')
 assert.equal(eventSources[0].url, COMMANDS_PATH)
 const [commands] = eventSources
@@ -332,25 +446,74 @@ try {
   commands.onmessage({ data: '{"command":"chat"}' })
   assert.equal(openedTabs.length, 1, 'the chat command must open one tab')
   assert.deepEqual(openedTabs[0], { kind: 'browser', options: { params: { url: 'https://chat.deepseek.com' } } })
+  commands.onmessage({ data: '{"command":"git"}' })
+  assert.equal(openedTabs.length, 2, 'the git command must open one tab')
+  assert.deepEqual(openedTabs[1], { kind: 'little-icon-git', options: undefined },
+    'the Git page is page content of this plugin, opened by kind alone')
   // Unknown or malformed frames are ignored rather than thrown at the user.
   commands.onmessage({ data: '{"command":"nonsense"}' })
   commands.onmessage({ data: 'not json' })
-  assert.equal(openedTabs.length, 1, 'only known commands open anything')
+  assert.equal(openedTabs.length, 2, 'only known commands open anything')
   // A Web profile may leave the Browser tab disabled and a build without the right
   // Sidebar provides no service at all: the command must then do nothing instead
   // of failing at the click, and the card must still have been registered.
   clientServices.sidebarRightTabs.get = () => undefined
   commands.onmessage({ data: '{"command":"chat"}' })
-  assert.equal(openedTabs.length, 1, 'without a Browser tab type nothing may open')
-  clientServices.sidebarRightTabs.get = (kind) => (kind === 'browser' ? { id: 'browser' } : undefined)
+  commands.onmessage({ data: '{"command":"git"}' })
+  assert.equal(openedTabs.length, 2, 'without a registered type nothing may open')
+  clientServices.sidebarRightTabs.get = (kind) => registeredTypes.find(definition => definition.kind === kind)
+    ?? (kind === 'browser' ? { id: 'browser' } : undefined)
   clientServices.sidebarRight = undefined
   commands.onmessage({ data: '{"command":"chat"}' })
-  assert.equal(openedTabs.length, 1, 'without the Sidebar service nothing may open')
+  commands.onmessage({ data: '{"command":"git"}' })
+  assert.equal(openedTabs.length, 2, 'without the Sidebar service nothing may open')
 } finally {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
-assert.equal(warned.length, 3, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// One unknown command, then the two refusals above in each of their two forms.
+assert.equal(warned.length, 5, `a command that cannot run must say so: ${warned.join(' | ')}`)
+
+// The Git page is a tab type of this plugin's own: the right Sidebar's registry
+// carries the type, and its keyed seat carries the body that reads the Host.
+assert.equal(registeredTypes.length, 1, 'the page must register exactly one tab type')
+const [gitType] = registeredTypes
+assert.equal(gitType.id, '@local/dsh-little-icon/git')
+assert.equal(gitType.kind, 'little-icon-git')
+assert.equal(gitType.title(), 'Git 改动', 'the chip reads the current language')
+assert.equal(gitBody.options.key, gitType.id, 'the body registers under the type implementation id')
+assert.equal(gitBody.options.locale, 'little-icon')
+
+// The body never reads during render: it asks the Host for one directory and gets
+// one JSON object, which is what the injected `load` is. The inject face is built
+// for one Session, which is the one its `sendPrompt` addresses.
+const gitFace = gitBody.options.inject('session')
+const loaded = await gitFace.load('D:\\work\\proj', undefined)
+assert.deepEqual(pings.at(-1), { url: `${GIT_PATH}?cwd=D%3A%5Cwork%5Cproj`, method: undefined },
+  'the directory travels as a query parameter, escaped')
+assert.equal(loaded.ok, true)
+const answerFetch = globalThis.fetch
+globalThis.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+await assert.rejects(() => gitFace.load('/repo', undefined), /answered 500/)
+globalThis.fetch = answerFetch
+
+// The button's message is a real user turn: the page goes through the Session's
+// own conversation face — the admission the composer uses — and reports what the
+// Host said about it.
+const sent = []
+const reachable = (conversation) => ({
+  scope: (id) => (id === 'session' ? { get: (name) => (name === 'conversation' ? conversation : undefined) } : undefined),
+})
+clientServices.sessions = reachable({ send: async (text) => { sent.push(text) } })
+assert.deepEqual(await gitFace.sendPrompt('提交并推送'), { ok: true })
+assert.deepEqual(sent, ['提交并推送'], 'the message reaches the conversation verbatim')
+// A Session nobody holds has no conversation to put anything in, and an admission
+// the Host refuses reports its own message rather than throwing at the button.
+clientServices.sessions = { scope: () => undefined }
+assert.deepEqual(await gitFace.sendPrompt('提交并推送'), { ok: false, reason: 'no-channel' })
+clientServices.sessions = reachable({ send: async () => { throw new Error('inbox full') } })
+assert.deepEqual(await gitFace.sendPrompt('提交并推送'), { ok: false, reason: 'failed', message: 'inbox full' })
+clientServices.sessions = reachable({ send: async (text) => { sent.push(text) } })
 
 const dictionary = dictionaries.get('little-icon')
 assert.ok(dictionary?.zh !== undefined && dictionary?.en !== undefined, 'missing locale dictionaries')
@@ -436,6 +599,100 @@ face.write({ size: 208 }, false)
 await new Promise((resolve) => setTimeout(resolve, 400))
 assert.equal(form.writes.length, 2, 'a slider drag must merge into one write')
 assert.deepEqual(form.writes[1].ops, [{ op: 'set', path: ['size'], value: 208 }])
+
+// The Git page draws two columns from one Host answer. The load effect normally
+// sets that answer; the test seeds it instead, so only the render is under test.
+/** Every string a stub tree shows, including control props such as `title`. */
+const strings = (node, found = []) => {
+  if (typeof node === 'string') { found.push(node); return found }
+  if (Array.isArray(node)) { for (const child of node) strings(child, found); return found }
+  if (node === null || typeof node !== 'object') return found
+  for (const value of Object.values(node.props ?? {})) strings(value, found)
+  strings(node.children, found)
+  return found
+}
+const gitProps = {
+  t,
+  sessionId: 'session',
+  useSessions: (select) => select({ byId: { session: { cwd: '/repo' } } }),
+  useTabInfo: () => ({ tab: { navigation: { revision: 1 } } }),
+  load: () => Promise.resolve({}),
+  sendPrompt: gitFace.sendPrompt,
+}
+/** One render's seeded component state, consumed by the next `useState` call. */
+const gitRender = () => {
+  const view = gitBody.component(gitProps)
+  const nodes = strings(view)
+  return { view, nodes, section: flatten(view).filter(node => node.type === 'section').length }
+}
+
+seeded.push({ phase: 'settled', result: {
+  ok: true,
+  root: '/repo',
+  branch: 'main',
+  changes: [
+    { path: 'src/a.ts', status: ' M' },
+    { path: 'src/b.ts', status: 'A ' },
+    { path: 'new file.txt', status: '??' },
+    { path: 'src/old.ts', status: 'R ', from: 'src/older.ts' },
+  ],
+  commits: [{ hash: 'abc', short: 'abc1234', author: 'Ada', date: '2026-01-02T03:04:05+08:00', subject: 'first subject' }],
+} })
+const populated = gitRender()
+assert.equal(populated.section, 2, 'the page is one column of changes beside one column of commits')
+for (const text of [t('gitChanges'), t('gitCommits'), t('gitBranch', { name: 'main' }), t('gitRefresh'),
+  t('gitModified'), t('gitAdded'), t('gitUntracked'), t('gitRenamed'), t('gitStaged'),
+  'src/a.ts', 'new file.txt', 'abc1234', 'first subject']) {
+  assert.ok(populated.nodes.includes(text), `the Git page must show ${text}`)
+}
+assert.equal(populated.nodes.filter(text => text === t('gitStaged')).length, 2,
+  'the staged add and the staged rename carry the marker; the unstaged edit and the untracked file do not')
+
+// One commit reads top to bottom: the message, the number it names, then who
+// wrote it and when. The message leads because it is what the reader scans for.
+const commit = flatten(populated.view).find(node => node.props?.className === 'dli-git-commit')
+assert.deepEqual(commit.children.map(line => line.props.className),
+  ['dli-git-subject', 'dli-git-hash', 'dli-git-byline'])
+assert.equal(commit.children[0].children[0], 'first subject')
+assert.equal(commit.children[1].children[0], 'abc1234')
+assert.equal(commit.children[2].children[0], `Ada · ${new Date('2026-01-02T03:04:05+08:00').toLocaleString()}`)
+
+// The page carries the one action that writes something: it puts "commit and
+// push" in the conversation and lets the agent do it. Clicking sends that text
+// through the same face the composer uses — nothing in the page touches Git.
+const sendButton = flatten(populated.view).find(node => node.props?.className === 'dli-git-send')
+assert.equal(sendButton.children[0], t('gitCommitAndPush'), 'the button names what it sends')
+assert.notEqual(sendButton.props.disabled, true, 'a readable repository offers the button')
+sent.length = 0
+sendButton.props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+assert.deepEqual(sent, ['提交并推送'], 'clicking the button sends the instruction into the conversation')
+
+// Each refusal has its own line, and the page names no repository in any of them.
+for (const [reason, copy] of [['not-a-repo', t('gitNotARepo')], ['no-git', t('gitNoGit')],
+  ['no-dir', t('gitNoDir')], ['no-cwd', t('gitNoCwd')]]) {
+  seeded.push({ phase: 'settled', result: { ok: false, reason } })
+  const refused = gitRender()
+  assert.equal(refused.section, 0, `${reason} must show no columns`)
+  assert.ok(refused.nodes.includes(copy), `${reason} must explain itself`)
+  assert.equal(flatten(refused.view).find(node => node.props?.className === 'dli-git-send').props.disabled, true,
+    `${reason} must not offer to commit and push`)
+}
+// An empty repository is a normal answer: two columns, both saying they are empty.
+seeded.push({ phase: 'settled', result: { ok: true, root: '/repo', branch: '', changes: [], commits: [] } })
+const empty = gitRender()
+assert.equal(empty.section, 2)
+assert.ok(empty.nodes.includes(t('gitEmptyChanges')) && empty.nodes.includes(t('gitEmptyCommits')))
+
+// A transport failure is the page's own, not the repository's.
+seeded.push({ phase: 'failed', error: new Error('offline') })
+assert.ok(gitRender().nodes.includes(t('gitFailed', { message: 'offline' })))
+// Nothing seeded is the state a freshly opened tab starts in, where the button
+// has no repository to speak about yet.
+const loading = gitRender()
+assert.ok(loading.nodes.includes(t('gitLoading')))
+assert.equal(flatten(loading.view).find(node => node.props?.className === 'dli-git-send').props.disabled, true,
+  'a read still in flight must not offer to commit and push')
 
 // Registrations are effects: disposing the plugin's contributions closes the
 // stream it opened, so a reloaded page never leaves a listener on the Host.
@@ -591,9 +848,48 @@ $found
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
     // The page reports input here; without it the pet could only see agents and
     // jobs, and it would sleep while the person is using DSH. The second route is
-    // the stream the pet's menu commands come back on.
+    // the stream the pet's menu commands come back on, and the third is what the
+    // Git page reads a Session's repository through.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
-      [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`])
+      [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`])
+
+    // The Git route answers JSON for one directory and refuses everything else.
+    // The directory is checked here rather than inferred from a spawn failure, so
+    // a page that has not learned its Session's workspace is told that, not that
+    // git is missing.
+    const gitRoute = routes.find((route) => route.path === GIT_PATH)
+    const answered = () => {
+      const response = {
+        status: 0,
+        headers: {},
+        body: '',
+        writeHead(code, headers) { this.status = code; this.headers = headers ?? {} },
+        end(chunk) { this.body = chunk ?? '' },
+      }
+      return response
+    }
+    const askGit = async (method, url) => {
+      const response = answered()
+      gitRoute.handler({ method, url, on: () => {} }, response)
+      // The handler answers through a promise, so the body lands a tick later.
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      return {
+        status: response.status,
+        headers: response.headers,
+        body: response.body === '' ? undefined : JSON.parse(response.body),
+      }
+    }
+    assert.equal((await askGit('POST', GIT_PATH)).status, 405, 'the Git route is read-only')
+    const noCwd = await askGit('GET', GIT_PATH)
+    assert.equal(noCwd.status, 200)
+    assert.deepEqual(noCwd.body, { ok: false, reason: 'no-cwd' })
+    assert.equal(noCwd.headers['content-type'], 'application/json')
+    assert.equal(noCwd.headers['cache-control'], 'no-store', 'a stale repository listing must not be cached')
+    const missing = await askGit('GET', `${GIT_PATH}?cwd=${encodeURIComponent(join(home, 'gone'))}`)
+    assert.deepEqual(missing.body, { ok: false, reason: 'no-dir' })
+    const outside = await askGit('GET', `${GIT_PATH}?cwd=${encodeURIComponent(home)}`)
+    assert.deepEqual(outside.body, { ok: false, reason: 'not-a-repo' },
+      'a temporary DSH_HOME is not inside a repository either')
 
     // The pet's right-click menu is drawn in another process, so the host relays
     // what it chooses: the page holds one stream open and receives a frame per

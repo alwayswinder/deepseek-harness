@@ -15,7 +15,9 @@
     right-click on the pet and the tray icon show the same menu; an entry the page
     carries out (the chat site, or the plugin's own Git page) brings DSH back on
     screen first and is written to command.json beside the state file for the host
-    to relay, and the rest act on this process at once.
+    to relay, and the rest act on this process at once. Ending DSH is one of those:
+    the window's own close only hides it now, so that entry ends the process every
+    part of DSH runs under instead (see Stop-DshWindow).
 
     The target window is located through DshPid (the host's parent, i.e. the
     Electron main process): Process.MainWindowHandle first, then an enumeration
@@ -464,11 +466,22 @@ function Show-DshWindow {
 }
 
 function Stop-DshWindow {
-    # Ending the app is the app's own decision, so ask the way its title bar does:
-    # WM_CLOSE on the window DSH owns, which runs its normal shutdown.
-    $handle = Find-DshWindow
-    if ($handle -eq [IntPtr]::Zero) { return }
-    [void][DshPet.Win32]::PostMessage($handle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+    # Ending the app is no longer something its window does: the title-bar close now
+    # only hides the window while the application keeps running in the tray, so a
+    # WM_CLOSE would be read as "tuck DSH away". What ends it is the process that
+    # owns every part of it - the Electron main process, which is this process's
+    # parent's parent (the Host child runs under it). Ending that process makes the
+    # Host notice the closed channel and run its own shutdown (sessions flushed,
+    # agents stopped), and that shutdown unloads the plugin, whose cleanup ends this
+    # pet with it; the timer's host-liveness check is the fallback if it does not.
+    if ($SCRIPT:DshPid -le 0) { return }
+    try {
+        $dsh = Get-Process -Id $SCRIPT:DshPid -ErrorAction Stop
+        $dsh.Kill()
+        if (-not $dsh.WaitForExit(3000)) { Write-Log "DSH process $($SCRIPT:DshPid) did not exit within 3s" }
+    } catch {
+        Write-Log "ending DSH failed: $($_.Exception.Message)"
+    }
 }
 
 function Save-WindowState {

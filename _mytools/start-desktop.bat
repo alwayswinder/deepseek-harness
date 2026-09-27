@@ -87,22 +87,28 @@ exit /b 0
 echo [desktop] Electron is not installed at
 echo [desktop]   %DESKTOP_EXE%
 echo [desktop] Run build-desktop.bat (it installs dependencies) and try again.
-pause
+call :maybePause
 exit /b 1
 
 :missingBuild
 echo [desktop] Required startup file is missing:
 echo [desktop]   %MISSING_STARTUP_FILE%
 echo [desktop] Run build-desktop.bat and try again.
-pause
+call :maybePause
 exit /b 1
 
 :pluginFailure
 echo [desktop] Out-of-tree plugin setup failed. Fix the [plugins] error above.
-pause
+call :maybePause
 exit /b 1
 
 :launchFailure
 echo [desktop] The hidden launcher failed to start Electron.
-pause
+call :maybePause
 exit /b 1
+
+rem A hidden launcher (build\launch-desktop.vbs, behind the Start Menu shortcut)
+rem cannot press a key, so it sets DSH_NO_PAUSE and reads the log instead.
+:maybePause
+if not defined DSH_NO_PAUSE pause
+exit /b 0

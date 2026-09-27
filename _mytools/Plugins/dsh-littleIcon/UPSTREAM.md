@@ -24,7 +24,7 @@ function browserPartition(workspace: string): string {
 
 ## 重建与确认
 
-改的是 Electron 主进程，**只重启不生效**（`start-desktop.bat` 是 `--skip-build`）。只动了主进程时不必走 `build-desktop.bat` 的全量流程，重建这一个包就够：
+改的是 Electron 主进程，**只重启不生效**（`start-desktop.bat` 是 `--skip-build`）。只动了主进程时不必走 `build.bat` 的全量流程，重建这一个包就够：
 
 ```powershell
 pnpm --filter @deepseek-ai/dsh-desktop run build

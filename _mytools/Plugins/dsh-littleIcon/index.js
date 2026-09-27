@@ -140,20 +140,45 @@ function resolvePowershell() {
   return existsSync(bundled) ? bundled : 'powershell.exe'
 }
 
+// Windows refuses to replace a file another process has open at all — the share
+// mode does not matter — and the pet reads the state file every 200 ms, so one of
+// its reads can land inside this rename. Retry briefly instead of letting one
+// refused replacement end the host: this runs in a timer, and the harness exits
+// the whole process on an uncaught exception there.
+const REPLACE_ATTEMPTS = 5
+const REPLACE_RETRY_MS = 10
+// A file that stays locked would otherwise report at the sampling rate.
+const FAILURE_REPORT_MS = 30_000
+
+/**
+ * Wait without yielding. Node has no synchronous sleep, and no sampling tick may
+ * run between two attempts at replacing the same file.
+ * @param ms - milliseconds to block.
+ */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 /**
  * Write the state file only when it changes, plus one heartbeat rewrite per
- * interval so the pet can treat a stale file as a dead host.
+ * interval so the pet can treat a stale file as a dead host. A snapshot that
+ * cannot be placed leaves the previous one readable and reports the error: the
+ * caller is a timer, and throwing there takes DSH down with it.
  */
 class StateFileWriter {
   /**
    * @param path - absolute state file path.
    * @param heartbeatMs - longest interval without a write while content is unchanged.
+   * @param onFailure - receives the error of a write that could not be placed, at
+   * most once per 30 seconds while writes keep failing.
    */
-  constructor(path, heartbeatMs) {
+  constructor(path, heartbeatMs, onFailure) {
     this.path = path
     this.heartbeatMs = heartbeatMs
+    this.onFailure = onFailure
     this.lastStable = ''
     this.lastWrite = 0
+    this.lastFailureAt = 0
   }
 
   /**
@@ -169,11 +194,25 @@ class StateFileWriter {
     const now = Date.now()
     if (stableText === this.lastStable && now - this.lastWrite < this.heartbeatMs) return false
     const temporary = `${this.path}.tmp`
-    writeFileSync(temporary, `${JSON.stringify({ ...stable, updatedAt })}\n`, 'utf8')
-    renameSync(temporary, this.path)
-    this.lastStable = stableText
-    this.lastWrite = now
-    return true
+    const text = `${JSON.stringify({ ...stable, updatedAt })}\n`
+    let failure
+    for (let attempt = 1; attempt <= REPLACE_ATTEMPTS; attempt += 1) {
+      try {
+        writeFileSync(temporary, text, 'utf8')
+        renameSync(temporary, this.path)
+        this.lastStable = stableText
+        this.lastWrite = now
+        return true
+      } catch (error) {
+        failure = error
+        if (attempt < REPLACE_ATTEMPTS) sleepSync(REPLACE_RETRY_MS)
+      }
+    }
+    if (now - this.lastFailureAt >= FAILURE_REPORT_MS) {
+      this.lastFailureAt = now
+      this.onFailure(failure)
+    }
+    return false
   }
 }
 
@@ -475,7 +514,9 @@ export function apply(ctx, config) {
   const windowFile = join(dataDir, 'window.json')
   /** Written by the pet when a menu entry is chosen; read here and relayed to the page. */
   const commandFile = join(dataDir, 'command.json')
-  const writer = new StateFileWriter(stateFile, 4000)
+  const writer = new StateFileWriter(stateFile, 4000, (error) => {
+    ctx.logger.warn('little-icon: could not write %s: %s', stateFile, String(error))
+  })
   const script = fileURLToPath(new URL('./pet/pet.ps1', import.meta.url))
   const assets = fileURLToPath(new URL('./assets', import.meta.url))
 
@@ -656,10 +697,31 @@ export function apply(ctx, config) {
   ctx.on('user-questions/request', (request, next) => trackWaiting(request.agent, next()), { prepend: true })
   ctx.on('approval/request', (request, next) => trackWaiting(request.agent, next()), { prepend: true })
 
-  /** One sampling tick: publish the pet's state, then relay any menu command. */
+  /**
+   * Run one step that reads or writes the pet's files, reporting instead of
+   * letting the error out. The harness exits the whole host on an uncaught
+   * exception or rejection, and a pet file that cannot be written must not take
+   * DSH with it, whether the step came from the sampling timer or a settings
+   * change.
+   * @param what - short label naming the step in the log line.
+   * @param step - the step to run.
+   */
+  const guarded = (what, step) => {
+    try {
+      step()
+    } catch (error) {
+      ctx.logger.warn('little-icon: %s failed: %s', what, String(error))
+    }
+  }
+
+  /**
+   * One sampling tick: publish the pet's state, then relay any menu command.
+   */
   const sample = () => {
-    publish()
-    forwardCommand()
+    guarded('sampling tick', () => {
+      publish()
+      forwardCommand()
+    })
   }
 
   // The page pings this on pointer and keyboard activity; without it the pet
@@ -843,7 +905,7 @@ export function apply(ctx, config) {
     if (!enabled) stopPet()
     else if (!wasEnabled) startPet()
     wasEnabled = enabled
-    publish()
+    guarded('publish', publish)
     schedule()
   })
 
@@ -873,6 +935,7 @@ export const internals = {
   readGitRepository,
   parseGitStatus,
   parseGitLog,
+  StateFileWriter,
   STATES,
   ACTIVITY_PATH,
   COMMANDS_PATH,

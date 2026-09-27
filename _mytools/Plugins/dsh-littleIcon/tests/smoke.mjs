@@ -12,7 +12,7 @@
  */
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,7 +20,7 @@ import { join } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_LOG_LIMIT, parseGitStatus, parseGitLog, readGitRepository,
+  GIT_PATH, GIT_LOG_LIMIT, parseGitStatus, parseGitLog, readGitRepository, StateFileWriter,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -188,6 +188,46 @@ for (const key of ['TrayTip', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Res
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
 // its lifetime, and the freed entry ends DSH instead.
 assert.equal(labels.Quit, undefined, 'the pet must not offer to quit itself')
+
+// ---- state writer -----------------------------------------------------------
+
+// Windows refuses to replace a file another process holds open — the pet reads
+// state.json every 200 ms, so this happens for real. A write that cannot be placed
+// reports and keeps the last snapshot the pet can still read: it runs in the
+// sampling timer, and an uncaught exception there exits the whole DSH host.
+const writerDir = mkdtempSync(join(tmpdir(), 'little-icon-state-'))
+const stateFile = join(writerDir, 'state.json')
+const writeFailures = []
+const writer = new StateFileWriter(stateFile, 60_000, (error) => writeFailures.push(error))
+assert.equal(writer.write({ state: 'idle', updatedAt: 1 }), true, 'the first snapshot is written')
+assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).state, 'idle')
+assert.equal(writer.write({ state: 'idle', updatedAt: 2 }), false, 'unchanged content writes nothing')
+assert.equal(writer.write({ state: 'working', updatedAt: 3 }), true, 'changed content is written')
+
+if (process.platform === 'win32') {
+  // The obstruction the crash had: an open handle on the state file. Only Windows
+  // refuses the replacement, and that is the platform the pet runs on.
+  const holder = openSync(stateFile, 'r')
+  try {
+    const started = Date.now()
+    assert.equal(writer.write({ state: 'happy', updatedAt: 4 }), false, 'a refused write returns false')
+    // Attempts, not duration, are what matter; the floor only proves the retry loop
+    // ran instead of giving up on the first refusal.
+    assert.ok(Date.now() - started >= 40, 'the refused write retried before giving up')
+    assert.equal(writeFailures.length, 1, 'the refused write reports its error')
+    assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).state, 'working',
+      'the pet keeps reading the last snapshot that landed')
+    assert.equal(writer.write({ state: 'bored', updatedAt: 5 }), false, 'a repeated failure does not throw')
+    assert.equal(writeFailures.length, 1, 'a failing stretch reports once, not once per tick')
+  } finally {
+    closeSync(holder)
+  }
+  assert.equal(writer.write({ state: 'happy', updatedAt: 6 }), true, 'writing resumes once the file is free')
+  assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).state, 'happy')
+} else {
+  console.log('skipping the held-open state file case: only Windows refuses the replacement')
+}
+rmSync(writerDir, { recursive: true, force: true })
 
 // ---- pet script -------------------------------------------------------------
 

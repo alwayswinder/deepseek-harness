@@ -72,4 +72,4 @@ foreach ($target in $targets) {
 }
 
 Write-Host "[shortcut] icon: $icon"
-Write-Host '[shortcut] Remove them again with: _mytools\make-shortcut.bat --remove'
+Write-Host '[shortcut] Remove them again with: _mytools\build\make-shortcut.bat --remove'

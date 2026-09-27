@@ -26,7 +26,7 @@ if /i "%~1"=="--no-pause" set "DSH_NO_PAUSE=1"
 if /i "%~1"=="--help" goto :usage
 if /i "%~1"=="-h" goto :usage
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%build\install-shortcut.ps1" %INSTALL_ARGS%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install-shortcut.ps1" %INSTALL_ARGS%
 set "SHORTCUT_EXIT=%errorlevel%"
 if not "%SHORTCUT_EXIT%"=="0" echo [shortcut] Failed with exit code %SHORTCUT_EXIT%.
 if not defined DSH_NO_PAUSE pause

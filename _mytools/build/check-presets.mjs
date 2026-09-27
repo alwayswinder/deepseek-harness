@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path'
 const repositoryRoot = resolve(import.meta.dirname, '..', '..')
 const cli = join(repositoryRoot, 'apps', 'cli', 'lib', 'bin.js')
 if (!existsSync(cli)) {
-  console.error(`built DSH CLI is missing at ${cli}; run _mytools/build.bat first`)
+  console.error(`built DSH CLI is missing at ${cli}; run _mytools/build/build.bat first`)
   process.exit(2)
 }
 

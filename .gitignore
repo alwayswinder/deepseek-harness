@@ -46,5 +46,5 @@ apps/web/dist/
 worktrees/
 .agents/worktrees/
 .typert-*/
-_mytools/dsh-web.log
+_mytools/build/dsh-web*.log
 native/system/test/bin/

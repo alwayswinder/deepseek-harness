@@ -17,7 +17,7 @@ Implements milestones 1–3 of the PRD in this directory (`PRD.md`); milestone 4
 
 ## Installation
 
-`start-dsh.bat` registers this plugin into the web profile on every launch (see `_mytools/start-dsh.bat`), and `sync-plugins.bat` refreshes the profile's installed copy from this directory. After editing the plugin, restart `dsh web` for changes to take effect.
+`_mytools/build/start-dsh.bat` registers this plugin into the web profile on every launch (`build/sync-plugins.bat` refreshes the profile's installed copy from this directory). After editing the plugin, restart `dsh web` for changes to take effect.
 
 Manual equivalent:
 

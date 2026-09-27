@@ -60,7 +60,7 @@ Write-Host "[build] Result: $statePath"
 if ($LogPath -ne '' -and (Test-Path -LiteralPath $LogPath)) { Write-Host "[build] Log:    $LogPath" }
 
 if ($Restart -and $ok) {
-    $launcher = Join-Path $PSScriptRoot '..\start-desktop.bat'
+    $launcher = Join-Path $PSScriptRoot 'start-desktop.bat'
     if (Test-Path -LiteralPath $launcher) {
         Write-Host '[build] Starting the Desktop app on this build...'
         Start-Process -FilePath $launcher -WorkingDirectory (Split-Path -Parent $launcher) | Out-Null

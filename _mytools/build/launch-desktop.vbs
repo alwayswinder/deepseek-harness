@@ -12,13 +12,12 @@ Option Explicit
 Const LOG_NAME = "dsh-desktop-launch.log"
 Const TAIL_CHARS = 1200
 
-Dim shell, fso, here, repo, bat, logPath, command, code
+Dim shell, fso, here, bat, logPath, command, code
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 here = fso.GetParentFolderName(WScript.ScriptFullName)          ' _mytools\build
-repo = fso.GetParentFolderName(fso.GetParentFolderName(here))   ' repository root
-bat = fso.BuildPath(repo, "_mytools\start-desktop.bat")
+bat = fso.BuildPath(here, "start-desktop.bat")
 logPath = fso.BuildPath(shell.ExpandEnvironmentStrings("%TEMP%"), LOG_NAME)
 
 If Not fso.FileExists(bat) Then

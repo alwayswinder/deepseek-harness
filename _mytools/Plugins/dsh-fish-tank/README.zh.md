@@ -17,7 +17,7 @@ DSH（[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)）Web 
 
 ## 安装
 
-`start-dsh.bat` 每次启动都会把本插件注册进 web profile（见 `_mytools/start-dsh.bat`），`sync-plugins.bat` 会把 profile 内安装副本刷新为本目录的最新源码。改完插件需要重启 `dsh web` 才生效。
+`_mytools/build/start-dsh.bat` 每次启动都会把本插件注册进 web profile（`build/sync-plugins.bat` 会把 profile 内安装副本刷新为本目录的最新源码）。改完插件需要重启 `dsh web` 才生效。
 
 手动等价命令：
 

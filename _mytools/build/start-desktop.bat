@@ -22,7 +22,8 @@ exit /b %DSH_LAUNCH_EXIT%
 rem Launch the prepared Electron app directly and detach it from this window.
 rem This launcher checks only files required to start; deciding whether source
 rem changes need a rebuild belongs to the user.
-for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
+rem Resolve the repository root from this script's location (_mytools\build).
+for %%I in ("%~dp0..\..") do set "DSH_REPO=%%~fI"
 
 set "NODE_OPTIONS="
 set "ELECTRON_RUN_AS_NODE="
@@ -48,13 +49,13 @@ set "MISSING_STARTUP_FILE="
 rem The out-of-tree plugins the Desktop profile loads import
 rem @deepseek-ai/schemastery from their own directory; link the vendored copy
 rem so a plugin installed as a link into the profile can activate.
-call "%~dp0build\ensure-plugin-modules.bat"
+call "%~dp0ensure-plugin-modules.bat"
 if errorlevel 1 goto :pluginFailure
 
 rem The profile installs its JavaScript plugins as file: directory copies, which
 rem pnpm writes once and never reconciles against the source; refresh them so a
 rem pulled plugin change is what this launch loads.
-call "%~dp0build\sync-plugins.bat" desktop
+call "%~dp0sync-plugins.bat" desktop
 if errorlevel 1 goto :pluginFailure
 
 if not exist "%DESKTOP_EXE%" goto :missingElectron
@@ -78,7 +79,7 @@ rem log then; Electron still starts, so a second press focuses the open window.
 copy /y nul "%DESKTOP_LOG%" >nul 2>&1
 if errorlevel 1 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop-%RANDOM%.log"
 forfiles /p "%DESKTOP_DEVELOPMENT%" /m "desktop-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
-wscript.exe //nologo "%~dp0build\start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_DEVELOPMENT%\electron-user-data" "%DESKTOP_APP%"
+wscript.exe //nologo "%~dp0start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_DEVELOPMENT%\electron-user-data" "%DESKTOP_APP%"
 if errorlevel 1 goto :launchFailure
 echo [desktop] Launch requested. Log: %DESKTOP_LOG%
 exit /b 0

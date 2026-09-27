@@ -5,37 +5,39 @@
 
 ## 我该跑哪个
 
+脚本都在 `build\` 下（`_mytools` 根目录只剩 `Plugins\`、素材和这份说明）；下面的路径相对 `_mytools\`。
+
 | 场景 | 跑这个 |
 | --- | --- |
-| 新机器第一次用，或刚拉完上游 | `build.bat`（两端一次构建完） |
-| DSH 正开着，改的是宿主侧代码 | `build.bat quick`，然后重启应用 |
-| DSH 正开着，改的是客户端/Web 或刚合完上游 | `build.bat --detached --restart`（会关掉它，重建完自己回来） |
-| 日常启动网页版（默认 3080） | `start-dsh.bat` |
-| 日常启动桌面端 | 开始菜单/桌面上的「DeepSeek Harness」图标，或 `start-desktop.bat` |
-| 还没装那个图标（每台机器一次） | `make-shortcut.bat`；不想要了 `make-shortcut.bat --remove` |
-| 关掉网页版 | `stop-dsh.bat` |
+| 新机器第一次用，或刚拉完上游 | `build\build.bat`（两端一次构建完） |
+| DSH 正开着，改的是宿主侧代码 | `build\build.bat quick`，然后重启应用 |
+| DSH 正开着，改的是客户端/Web 或刚合完上游 | `build\build.bat --detached --restart`（会关掉它，重建完自己回来） |
+| 日常启动网页版（默认 3080） | `build\start-dsh.bat` |
+| 日常启动桌面端 | 开始菜单/桌面上的「DeepSeek Harness」图标，或 `build\start-desktop.bat` |
+| 还没装那个图标（每台机器一次） | `build\make-shortcut.bat`；不想要了 `build\make-shortcut.bat --remove` |
+| 关掉网页版 | `build\stop-dsh.bat` |
 | 持仓变了，更新对话上方那个数字 | 把账本导出的 `.xlsx` 拖到 [Plugins/dsh-ths-holdings/ths-export-positions.bat](Plugins/dsh-ths-holdings/ths-export-positions.bat) |
-| 合完上游，build 报奇怪的错 | `build.bat`（它会先跑 preflight 把常见问题指名）；还不行就 `build.bat repair` |
+| 合完上游，build 报奇怪的错 | `build\build.bat`（它会先跑 preflight 把常见问题指名）；还不行就 `build\build.bat repair` |
 
 ## 启动 / 构建 / 停止
 
 | 脚本 | 干什么 | 备注 |
 | --- | --- | --- |
-| `build.bat` | **两端的唯一构建入口**：清环境变量 → preflight → 树外插件两件套 → 依赖（`--frozen-lockfile` 顺便校验 lockfile 是否跟上游一致）→ 停本工作副本的 Electron → `clean` → `pnpm run build`（packages/CLI/Web）→ `build:desktop`（Electron 壳）→ `prepare-desktop.ts`（开发工程 + bundled runtime）→ 校验全部产物 → 写 revision → preset 体检。 | 拉完上游或改过 `packages\`、`apps\` 后跑一次。准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理；归档与 primary runtime 走 `.cache` 内容寻址缓存。 |
-| `build.bat web` | 只构建 Web/CLI 那一半：不停 Electron 之外与上面同步骤，不做 `build:desktop`、不准备 runtime。 | 纯网页版、或不想下载运行时的时候用，快很多。 |
-| `build.bat quick` | **不关 app 的宿主半边重建**：跳过 `clean` 与运行时准备，只跑 `build:lib:host` + `build:desktop`。 | **故意不碰 Web UI 与任何 `lib/client.js`**——运行中的宿主每 500ms 轮询这些 bundle（[packages/client/hmr](../packages/client/hmr/src/index.ts)）并让浏览器重载，就地重写会让浏览器 import 到半成品，页面白屏到刷新/重启为止（实测过）。宿主半边不写客户端 bundle，因此没有这个竞态；宿主代码是启动时读的，所以跑完仍需重启应用。**客户端/Web 的改动请走完整构建。** |
-| `build.bat repair` | 停 app → 删掉工作副本里的 `node_modules`（`apps\desktop` 那个留着，里面是 Electron 二进制）→ 重装 → 走完整两端流程。 | 大合并后依赖树乱掉时的钝器；慢，但常常比逐个查快。 |
-| `build.bat --detached [--restart]` | 用 WMI 把构建放到本进程树之外跑（父进程是 WmiPrvSE），全过程写日志，结束时写结果文件；`--restart` 会在成功后自动 `start-desktop.bat` 把 app 拉回来。 | 这是「让 DSH 自己重建自己」的正规路径：构建要关掉 app，而任何从 app 里起的 shell 都会跟着死。 |
-| `build-desktop.bat` | 兼容壳：转发到 `build.bat desktop`。 | 老快捷方式/笔记不用改。 |
-| `start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
-| `start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。 | 只在启动所需文件缺失或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。 |
-| `stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
+| `build\build.bat` | **两端的唯一构建入口**：清环境变量 → preflight → 树外插件两件套 → 依赖（`--frozen-lockfile` 顺便校验 lockfile 是否跟上游一致）→ 停本工作副本的 Electron → `clean` → `pnpm run build`（packages/CLI/Web）→ `build:desktop`（Electron 壳）→ `prepare-desktop.ts`（开发工程 + bundled runtime）→ 校验全部产物 → 写 revision → preset 体检。 | 拉完上游或改过 `packages\`、`apps\` 后跑一次。准备 runtime 会下载固定版本的 Node/Python（GitHub + PyPI），需要直连或代理；归档与 primary runtime 走 `.cache` 内容寻址缓存。 |
+| `build\build.bat web` | 只构建 Web/CLI 那一半：不停 Electron 之外与上面同步骤，不做 `build:desktop`、不准备 runtime。 | 纯网页版、或不想下载运行时的时候用，快很多。 |
+| `build\build.bat quick` | **不关 app 的宿主半边重建**：跳过 `clean` 与运行时准备，只跑 `build:lib:host` + `build:desktop`。 | **故意不碰 Web UI 与任何 `lib/client.js`**——运行中的宿主每 500ms 轮询这些 bundle（[packages/client/hmr](../packages/client/hmr/src/index.ts)）并让浏览器重载，就地重写会让浏览器 import 到半成品，页面白屏到刷新/重启为止（实测过）。宿主半边不写客户端 bundle，因此没有这个竞态；宿主代码是启动时读的，所以跑完仍需重启应用。**客户端/Web 的改动请走完整构建。** |
+| `build\build.bat repair` | 停 app → 删掉工作副本里的 `node_modules`（`apps\desktop` 那个留着，里面是 Electron 二进制）→ 重装 → 走完整两端流程。 | 大合并后依赖树乱掉时的钝器；慢，但常常比逐个查快。 |
+| `build\build.bat --detached [--restart]` | 用 WMI 把构建放到本进程树之外跑（父进程是 WmiPrvSE），全过程写日志，结束时写结果文件；`--restart` 会在成功后自动 `start-desktop.bat` 把 app 拉回来。 | 这是「让 DSH 自己重建自己」的正规路径：构建要关掉 app，而任何从 app 里起的 shell 都会跟着死。 |
+| `build\build-desktop.bat` | 兼容壳：转发到 `build.bat desktop`。 | 老快捷方式/笔记不用改。 |
+| `build\start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
+| `build\start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。 | 只在启动所需文件缺失或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。 |
+| `build\stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
 | `build\start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
-| `make-shortcut.bat` | 把「DeepSeek Harness」装进开始菜单（默认还有桌面）：带应用图标、点开不弹控制台、失败时弹一个带日志尾巴的对话框。`--start-menu-only` 只要开始菜单，`--remove` 删掉。 | 每台机器跑一次；重复跑就是刷新。见下面「像应用一样启动」。 |
+| `build\make-shortcut.bat` | 把「DeepSeek Harness」装进开始菜单（默认还有桌面）：带应用图标、点开不弹控制台、失败时弹一个带日志尾巴的对话框。`--start-menu-only` 只要开始菜单，`--remove` 删掉。 | 每台机器跑一次；重复跑就是刷新。见下面「像应用一样启动」。 |
 
 ### 像应用一样启动（图标 + 无控制台）
 
-`make-shortcut.bat` 建的快捷方式指向 [build\launch-desktop.vbs](build/launch-desktop.vbs)，而不是那个 `.bat`：
+`build\make-shortcut.bat` 建的快捷方式指向 [build\launch-desktop.vbs](build/launch-desktop.vbs)，而不是那个 `.bat`：
 
 ```
 快捷方式 → wscript.exe launch-desktop.vbs        （隐藏运行，设 DSH_NO_PAUSE=1）
@@ -43,7 +45,7 @@
         → start-dsh-service.vbs → electron.exe   （脱离控制台运行）
 ```
 
-所以点它没有黑框一闪；失败时 `launch-desktop.vbs` 会把 `%TEMP%\dsh-desktop-launch.log` 的尾巴弹成对话框（隐藏运行看不到控制台，错误必须自己冒出来）。`start-desktop.bat` 里四个 `pause` 都改成 `call :maybePause`，只有 `DSH_NO_PAUSE` 未定义时才真的等按键。
+所以点它没有黑框一闪；失败时 `launch-desktop.vbs` 会把 `%TEMP%\dsh-desktop-launch.log` 的尾巴弹成对话框（隐藏运行看不到控制台，错误必须自己冒出来）。`build\start-desktop.bat` 里四个 `pause` 都改成 `call :maybePause`，只有 `DSH_NO_PAUSE` 未定义时才真的等按键。
 
 图标由 [build\make-app-icon.mjs](build/make-app-icon.mjs) 从 **`apps\desktop\resources\icon-windows.svg`** 现场光栅化成 9 个尺寸（16…256）的 `.ico`，写到 `$DSH_HOME\build\dsh.ico`——不进仓库。**不用**已提交的 `resources\tray-windows.ico`：那是为 16px 托盘特意放大过鲸鱼的版本，放到 48px 以上会显得太满。
 
@@ -59,9 +61,9 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 完整构建的第一步是 `clean`，而 [scripts/clean.ts](../scripts/clean.ts) 会删 `apps\desktop\.desktop-build`——**那正是运行中的桌面端所在的地方**（主进程 `--user-data-dir` 和宿主进程的 `project\node_modules\@deepseek-ai\dsh-desktop-host\lib\index.js` 都在里面）。所以完整构建必须先停掉本工作副本的 Electron；而任何从 DSH 里起的 shell 都是它的后代，会跟着一起死。三条出路：
 
-1. **`build.bat quick`**：不关 app，只重建**宿主半边**（packages host 面、CLI、Electron 壳），跑完重启应用生效。日常改宿主侧代码用它就够。
-2. **`build.bat --detached --restart`**：完整构建，但用 WMI 起进程脱离这棵树，因此 app 关掉它还能继续；日志与结果落盘，成功后自己把 app 拉回来。会话是持久的，app 回来后同一个对话里读结果接着干。**上游合并、客户端/Web 改动都走这条。**
-3. **`build.bat repair`**：上面两条都不灵时的钝器。
+1. **`build\build.bat quick`**：不关 app，只重建**宿主半边**（packages host 面、CLI、Electron 壳），跑完重启应用生效。日常改宿主侧代码用它就够。
+2. **`build\build.bat --detached --restart`**：完整构建，但用 WMI 起进程脱离这棵树，因此 app 关掉它还能继续；日志与结果落盘，成功后自己把 app 拉回来。会话是持久的，app 回来后同一个对话里读结果接着干。**上游合并、客户端/Web 改动都走这条。**
+3. **`build\build.bat repair`**：上面两条都不灵时的钝器。
 
 **为什么不能在 app 开着的时候就地重建客户端那一半**：宿主里的 `packages/client/hmr` 每 500ms 轮询每个 `lib/client.js`，一变就把「重建了」推给浏览器去重新 import。就地重写这些文件时，浏览器会撞上写到一半的 bundle，整个客户端图起不来（表现就是窗口还在、内容全白），要刷新甚至重启才恢复。`quick` 因此刻意只做宿主半边；客户端那一半只在 app 已经关掉的完整构建里重写，没有这个竞态。构建记录（`.dsh-build\client-build-environment.json`）只有发布打包和 `test:web` 读，运行时不校验，但它会因此过期，下次完整构建重写。
 
@@ -73,7 +75,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 ### 完整构建失败、桌面端起不来了怎么办
 
-完整构建先 `clean`，产物（`apps\cli\lib`、`apps\web\dist`、`apps\desktop\lib`、`packages\*\lib`）会被删掉；如果构建没能跑完，桌面端就没有可启动的东西了，我也就没有运行环境可说话。这时用**不依赖本地产物的入口**回来：`start-dsh.bat` 在本地产物缺失时会依次退回全局 `dsh`、`npx --yes @deepseek-ai/dsh web`（见脚本里的 launch order），起一个网页版。会话存在 `$DSH_HOME\sessions\`（不分 profile），所以那个网页版里能看到同一个会话列表，把这段对话接着往下聊，我就能照 `$DSH_HOME\build\last-build.json` 与日志把它修好。
+完整构建先 `clean`，产物（`apps\cli\lib`、`apps\web\dist`、`apps\desktop\lib`、`packages\*\lib`）会被删掉；如果构建没能跑完，桌面端就没有可启动的东西了，我也就没有运行环境可说话。这时用**不依赖本地产物的入口**回来：`build\start-dsh.bat` 在本地产物缺失时会依次退回全局 `dsh`、`npx --yes @deepseek-ai/dsh web`（见脚本里的 launch order），起一个网页版。会话存在 `$DSH_HOME\sessions\`（不分 profile），所以那个网页版里能看到同一个会话列表，把这段对话接着往下聊，我就能照 `$DSH_HOME\build\last-build.json` 与日志把它修好。
 
 
 ## 插件支持脚本（工作副本级）
@@ -84,7 +86,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\ensure-plugin-builds.bat` | 每次都按插件自己的 lockfile 同步依赖，再重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），避免更新后沿用旧 `node_modules` 或 `lib\`。 |
 | `build\sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`、`dsh-fish-tank`、`dsh-littleIcon`）刷新成 `Plugins\` 里的最新源码，含插件自带的 `assets\`、`pet\`、`locale\` 目录；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
-`build\ensure-plugin-*.bat` 由 `build.bat`（任何模式）自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
+`build\ensure-plugin-*.bat` 由 `build\build.bat`（任何模式）自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
 
 完整构建在第一次使用新流程时会把旧的 `apps\desktop\.desktop-build\downloads` 内容迁移到 `.cache\desktop-downloads`。后续 `clean` 仍会删除编译产物和开发工程，但保留下载归档，以及按目标、Desktop 版本和 payload 摘要索引的 `.cache\desktop-primary-runtime`；归档只在锁定哈希变化时重新下载，primary runtime 只在目标、版本、解释器、wheel 或 pnpm 输入变化时重新展开。构建目录通过 junction 使用缓存的 primary runtime，Office skill 资产仍从当前源码刷新，所有 native-target 检查仍会执行。
 
@@ -119,17 +121,17 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 | 文件 | 说明 |
 | --- | --- |
-| `build\check-presets.mjs` | 让已构建的本地 CLI 组合 Web profile，再检查每个 `preset-*` 声明引用的插件包能否从该 profile 解析。用法 `node _mytools/build/check-presets.mjs`，退出码 1 表示有坏的。由 `build.bat`（web/desktop/repair，构建之后）自动调用，也可以单独跑。 |
-| `build\preflight.mjs` | 构建前的体检（上游合并最常踩的几件事）。由 `build.bat` 自动调用；`--root <路径>` 可以检查别的 checkout，方便自测。退出码 2 = 拦下。 |
-| `build\finish.ps1` | 记录一次构建的结果到 `$DSH_HOME\build\last-build.json`，`-Restart` 时在成功后拉起 `start-desktop.bat`。由 `build.bat` 在每条出口调用。 |
-| `build\detach.ps1` | 用 WMI 把构建放到本进程树之外（父进程 WmiPrvSE），日志默认落在 `$DSH_HOME\build\logs\build-<时间戳>.log`。由 `build.bat --detached` 调用。 |
+| `build\check-presets.mjs` | 让已构建的本地 CLI 组合 Web profile，再检查每个 `preset-*` 声明引用的插件包能否从该 profile 解析。用法 `node _mytools/build/check-presets.mjs`，退出码 1 表示有坏的。由 `build\build.bat`（web/desktop/repair，构建之后）自动调用，也可以单独跑。 |
+| `build\preflight.mjs` | 构建前的体检（上游合并最常踩的几件事）。由 `build\build.bat` 自动调用；`--root <路径>` 可以检查别的 checkout，方便自测。退出码 2 = 拦下。 |
+| `build\finish.ps1` | 记录一次构建的结果到 `$DSH_HOME\build\last-build.json`，`-Restart` 时在成功后拉起 `build\start-desktop.bat`。由 `build\build.bat` 在每条出口调用。 |
+| `build\detach.ps1` | 用 WMI 把构建放到本进程树之外（父进程 WmiPrvSE），日志默认落在 `$DSH_HOME\build\logs\build-<时间戳>.log`。由 `build\build.bat --detached` 调用。 |
 | `build\resolve-dsh-home.ps1` | 按 harness 的规则解析 `$DSH_HOME`（空白=未设置、展开开头的 `~`、转绝对路径），供上面几个 PS1 共用。 |
-| `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `start-desktop.bat`，失败时弹带日志尾巴的对话框。 |
-| `build\install-shortcut.ps1` | 建/删那两个快捷方式；`make-shortcut.bat` 的实体。 |
+| `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `build\start-desktop.bat`，失败时弹带日志尾巴的对话框。 |
+| `build\install-shortcut.ps1` | 建/删那两个快捷方式；`build\make-shortcut.bat` 的实体。 |
 | `build\make-app-icon.mjs` | 从 `apps\desktop\resources\icon-windows.svg` 光栅化 9 个尺寸的 `.ico` 到 `$DSH_HOME\build\dsh.ico`。 |
-| `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build.bat`（desktop/repair）调用。 |
+| `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build\build.bat`（desktop/repair）调用。 |
 | `.gitattributes` | 固定 `*.bat` 以 CRLF 检出（cmd 按 CRLF 解析）。 |
-| `dsh-web.log` | `start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
+| `build\dsh-web.log` | `build\start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
 | `ai-game\` | 个人东西（ATB 回合制战斗 demo，纯 HTML/CSS/JS），与 DSH 运行无关。 |
 | `bg\` | 背景图素材。 |
 

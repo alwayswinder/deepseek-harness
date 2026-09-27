@@ -14,7 +14,7 @@
 - 解析 `$DSH_HOME` 时与 harness 的 `resolveDshHome` 保持一致：空白视为未设置、展开开头的 `~`、结果转为绝对路径。
 - Windows 批处理保持 CRLF 换行（`_mytools/.gitattributes` 已固定 `*.bat text eol=crlf`）；`echo` 里带括号的文字不要直接写进 `( ... )` 块，cmd 会把括号当成块边界并报错。
 - 依赖与路径按机器无关的方式声明（如 `file:<仓库>/...`），不要把某台机器的安装路径写进配置；`$DSH_HOME` 下的凭据、本地账本等按机器独立，文档里要写明，避免误以为会跟着同步。
-- 树外插件放 `_mytools/Plugins/`，由 `_mytools/start-dsh.bat` 注册并把最新源码同步进 profile 副本；改完插件必须重启 `dsh web` 才生效。
+- 树外插件放 `_mytools/Plugins/`，由 `_mytools/build/start-dsh.bat` 注册并把最新源码同步进 profile 副本；改完插件必须重启 `dsh web` 才生效。所有启动/构建脚本都在 `_mytools/build/` 下。
 
 ## 改动边界
 

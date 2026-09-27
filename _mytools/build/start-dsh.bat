@@ -10,7 +10,9 @@ if not defined DSH_HOME_DIR set "DSH_HOME_DIR=%USERPROFILE%\.dsh"
 if "%DSH_HOME_DIR:~0,1%"=="~" set "DSH_HOME_DIR=%USERPROFILE%%DSH_HOME_DIR:~1%"
 for %%I in ("%DSH_HOME_DIR%") do set "DSH_HOME=%%~fI"
 
-cd /d "%~dp0"
+rem This script lives in _mytools\build; run from the repository root, which is
+rem where the built CLI resolves its own relative paths.
+cd /d "%~dp0..\.."
 
 rem Logitech G HUB starts this batch with stdout and stderr already closed, and
 rem cmd.exe terminates on the first console write while both are unusable (a G4
@@ -52,7 +54,7 @@ rem The status window may be closed after the service starts.
 rem The current launch log is dsh-web.log next to this script; when a running
 rem service still holds that file, the launch uses dsh-web-<random>.log instead.
 rem Use stop-dsh.bat [port] to stop the service.
-rem This script must remain in a direct child folder of the repository root.
+rem This script lives in _mytools\build inside the repository.
 rem ============================================================
 
 rem Remove injected launch variables that can interfere with the pnpm shim.
@@ -67,8 +69,8 @@ rem ...\node_modules\npm\bin\npm-prefix.js / npx-cli.js in dsh-web.log.
 rem Registry etc. still comes from the user .npmrc, so this is safe to clear.
 for /f "delims==" %%V in ('set ^| findstr /b /i "NPM_ npm_config_ npm_execpath npm_command npm_lifecycle_ npm_package_json npm_node_execpath"') do set "%%V="
 
-rem Resolve the repository root from this script's location.
-for %%I in ("%~dp0..") do set "DSH_REPO=%%~fI"
+rem Resolve the repository root from this script's location (_mytools\build).
+for %%I in ("%~dp0..\..") do set "DSH_REPO=%%~fI"
 set "DSH_LOG=%~dp0dsh-web.log"
 set "DSH_PORT=3080"
 if not "%~1"=="" set "DSH_PORT=%~1"
@@ -87,7 +89,7 @@ set "DSH_LOCAL_PLUGINS=deepseek-usage dsh-fish-tank dsh-littleIcon"
 
 rem The out-of-tree plugins import @deepseek-ai/schemastery from their own
 rem directory; link the vendored copy so a profile can load them on this machine.
-call "%~dp0build\ensure-plugin-modules.bat"
+call "%~dp0ensure-plugin-modules.bat"
 if errorlevel 1 goto :pluginFailure
 
 rem The launching cmd.exe holds the log file open for the whole life of the service
@@ -133,7 +135,7 @@ call :ensureLocalPlugins local
 if errorlevel 1 goto :pluginFailure
 echo.
 echo [dsh] Starting the service in the background (no browser)...
-wscript "%~dp0build\start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%NODE_CMD%" "apps\cli\lib\bin.js" %DSH_WEB_ARGS%
+wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%NODE_CMD%" "apps\cli\lib\bin.js" %DSH_WEB_ARGS%
 if errorlevel 1 goto :launchFailure
 echo.
 echo [dsh] Launch requested. This window can now be closed.
@@ -153,7 +155,7 @@ if exist "%APPDATA%\npm\dsh.cmd" (
     if errorlevel 1 goto :pluginFailure
     echo.
     echo [dsh] Starting the service in the background ^(no browser^)...
-    wscript "%~dp0build\start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%APPDATA%\npm\dsh.cmd" %DSH_WEB_ARGS%
+    wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "%APPDATA%\npm\dsh.cmd" %DSH_WEB_ARGS%
     if errorlevel 1 goto :launchFailure
     echo.
     echo [dsh] Launch requested. This window can now be closed.
@@ -166,7 +168,7 @@ call :ensureLocalPlugins npx
 if errorlevel 1 goto :pluginFailure
 echo.
 echo [dsh] Starting the service in the background (no browser)...
-wscript "%~dp0build\start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "npx.cmd" --yes @deepseek-ai/dsh %DSH_WEB_ARGS%
+wscript "%~dp0start-dsh-service.vbs" "%DSH_LOG%" "%DSH_REPO%" "npx.cmd" --yes @deepseek-ai/dsh %DSH_WEB_ARGS%
 if errorlevel 1 goto :launchFailure
 echo.
 echo [dsh] Launch requested. This window can now be closed. Log: %DSH_LOG%
@@ -247,8 +249,8 @@ set "PLUGIN_ANY_FAILED="
 if "%PLUGIN_MODE%"=="local" goto :pluginsLocal
 if "%PLUGIN_MODE%"=="global" goto :pluginsRegister
 echo [dsh] WARNING: cannot auto-register the plugins while launching through npx. Run this once in a terminal:
-for %%P in (%DSH_LOCAL_PLUGINS%) do echo [dsh]   dsh plugin --profile web add file:%~dp0Plugins\%%P
-call "%~dp0build\sync-plugins.bat" web
+for %%P in (%DSH_LOCAL_PLUGINS%) do echo [dsh]   dsh plugin --profile web add file:%~dp0..\Plugins\%%P
+call "%~dp0sync-plugins.bat" web
 exit /b %errorlevel%
 
 :pluginsLocal
@@ -260,14 +262,14 @@ goto :pluginsRegister
 
 :pluginsNoPnpm
 echo [dsh] WARNING: pnpm was not found; skipping the plugin registration.
-call "%~dp0build\sync-plugins.bat" web
+call "%~dp0sync-plugins.bat" web
 exit /b %errorlevel%
 
 :pluginsRegister
 if "%PLUGIN_MODE%"=="local" pushd "%DSH_REPO%"
 for %%P in (%DSH_LOCAL_PLUGINS%) do call :registerOnePlugin %%P
 if "%PLUGIN_MODE%"=="local" popd
-call "%~dp0build\sync-plugins.bat" web
+call "%~dp0sync-plugins.bat" web
 if errorlevel 1 set "PLUGIN_ANY_FAILED=1"
 if not defined PLUGIN_ANY_FAILED goto :pluginsEnabled
 echo [dsh] WARNING: one or more plugin registrations failed; web will start without those.
@@ -283,7 +285,7 @@ rem %1 = directory name under Plugins\. Warns and records failure when the
 rem source is missing; a nonzero add exit records failure too.
 rem ============================================================
 :registerOnePlugin
-set "PLUGIN_DIR=%~dp0Plugins\%~1"
+set "PLUGIN_DIR=%~dp0..\Plugins\%~1"
 set "PLUGIN_URL=file:%PLUGIN_DIR:\=/%"
 if not exist "%PLUGIN_DIR%\package.json" (
     echo [dsh] WARNING: plugin source missing at %PLUGIN_DIR%; web will start without it.

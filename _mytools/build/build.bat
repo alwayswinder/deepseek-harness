@@ -34,7 +34,7 @@ rem a running page breaks it - which means a client or Web change needs a full
 rem build, and a restart (or Electron, or the bundled runtime changing) needs one
 rem too.
 rem
-rem This script must remain in a direct child folder of the repository root.
+rem This script lives in _mytools\build, so the repository root is two levels up.
 rem ============================================================
 
 rem ---- arguments --------------------------------------------------------------
@@ -78,7 +78,7 @@ set "CLAUDE_SESSION_ID="
 rem Clear stale npm/npx injects inherited from a parent npm process.
 for /f "delims==" %%V in ('set ^| findstr /b /i "NPM_ npm_config_ npm_execpath npm_command npm_lifecycle_ npm_package_json npm_node_execpath"') do set "%%V="
 
-for %%I in ("%SCRIPT_DIR%..") do set "DSH_REPO=%%~fI"
+for %%I in ("%SCRIPT_DIR%..\..") do set "DSH_REPO=%%~fI"
 if not exist "%DSH_REPO%\package.json" goto :missingRepo
 cd /d "%DSH_REPO%" || goto :finishUnexpected
 
@@ -96,7 +96,7 @@ rem Cheap checks for what an upstream merge breaks most often, run before
 rem anything is deleted or stopped. It is a warning-free no-op on a healthy tree.
 call :findNode
 if defined NODE_CMD (
-    "%NODE_CMD%" "%SCRIPT_DIR%build\preflight.mjs" --mode %MODE%
+    "%NODE_CMD%" "%SCRIPT_DIR%preflight.mjs" --mode %MODE%
     if errorlevel 2 goto :finishPreflight
     if errorlevel 1 echo [build] preflight could not run; continuing without it.
 ) else (
@@ -106,14 +106,14 @@ if defined NODE_CMD (
 rem ---- out-of-tree plugins ----------------------------------------------------
 rem The plugins under _mytools\Plugins need their peer links and their own builds.
 rem Both steps are idempotent and run in every mode.
-call "%SCRIPT_DIR%build\ensure-plugin-modules.bat"
+call "%SCRIPT_DIR%ensure-plugin-modules.bat"
 if errorlevel 1 goto :finishPlugins
 
 call :findPnpm
 if not defined PNPM_CMD goto :missingPnpm
 echo [build] pnpm command: %PNPM_CMD%
 
-call "%SCRIPT_DIR%build\ensure-plugin-builds.bat" "%PNPM_CMD%"
+call "%SCRIPT_DIR%ensure-plugin-builds.bat" "%PNPM_CMD%"
 if errorlevel 1 goto :finishPlugins
 
 rem ---- mode: repair -----------------------------------------------------------
@@ -208,7 +208,7 @@ if /i "%TARGET%"=="desktop" (
     if errorlevel 1 goto :finishDesktopShell
 
     echo [build] Preparing the development project and bundled runtime...
-    call "%PNPM_CMD%" exec tsx "%SCRIPT_DIR%build\prepare-desktop.ts"
+    call "%PNPM_CMD%" exec tsx "%SCRIPT_DIR%prepare-desktop.ts"
     if errorlevel 1 goto :finishPrepare
 
     rem start-desktop.bat loads these directly; a successful root command must not
@@ -230,7 +230,7 @@ if errorlevel 1 goto :finishRevision
 rem The composed Web profile is what start-dsh.bat boots; a preset naming a package
 rem the merge removed fails there, not here.
 if defined NODE_CMD (
-    "%NODE_CMD%" "%SCRIPT_DIR%build\check-presets.mjs"
+    "%NODE_CMD%" "%SCRIPT_DIR%check-presets.mjs"
     if errorlevel 2 echo [build] Skipped the preset check: the built CLI is missing.
     if errorlevel 1 goto :finishPresets
 )
@@ -252,7 +252,7 @@ rem Launch the build outside this process tree; the detached child runs this sam
 rem script and writes its outcome where a later reader can find it.
 :detach
 echo [build] Detaching the %MODE% build...
-set "DETACH_ARGS=-NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%build\detach.ps1" -Script "%SCRIPT_PATH%" -Mode %MODE%"
+set "DETACH_ARGS=-NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%detach.ps1" -Script "%SCRIPT_PATH%" -Mode %MODE%"
 if defined LOG_PATH set "DETACH_ARGS=%DETACH_ARGS% -Log "%LOG_PATH%""
 if defined RESTART set "DETACH_ARGS=%DETACH_ARGS% -Restart"
 powershell.exe %DETACH_ARGS%
@@ -288,7 +288,7 @@ call :finishImpl %1 %2
 exit /b %2
 
 :finishImpl
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%build\finish.ps1" -Mode "%MODE%" -Step "%~1" -ExitCode %~2 -LogPath "%LOG_PATH%"%RESTART_ARG%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%finish.ps1" -Mode "%MODE%" -Step "%~1" -ExitCode %~2 -LogPath "%LOG_PATH%"%RESTART_ARG%
 echo.
 if not defined NOPAUSE pause
 exit /b %~2
@@ -412,7 +412,7 @@ exit /b 1
 
 :missingRepo
 echo [build] Cannot find package.json relative to this script.
-echo [build] Keep this file directly under the repository's _mytools folder.
+echo [build] Keep this file in the repository's _mytools\build folder.
 call :finish repository 1
 exit /b 1
 

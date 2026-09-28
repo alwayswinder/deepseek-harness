@@ -23,13 +23,16 @@
  * per machine and never sync with the repository.
  *
  * The menu's Git entry needs repository facts the page cannot read: this half
- * runs `git` itself and serves the result on a same-origin route, because the
+ * runs `git` itself and serves the result on same-origin routes, because the
  * browser half has no filesystem and no process to run. The directory is the one
- * the asking Session works in, so the page sends it with the request.
+ * the asking Session works in, so the page sends it with the request, and the
+ * detail behind one row is a route of its own — one file's diff, or one
+ * commit's files — because each asks a different question about a different
+ * pair of Git objects.
  */
 
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -63,6 +66,21 @@ const COMMANDS_PATH = '/api/little-icon/commands'
  */
 const GIT_PATH = '/api/little-icon/git'
 
+/**
+ * Same-origin route the page reads one changed file's diff from. It is a route
+ * of its own rather than a parameter of the listing: the listing answers with
+ * every path at once, while a diff names one repository root and one path and
+ * compares them against whichever side of the index holds the change.
+ */
+const GIT_DIFF_PATH = '/api/little-icon/git/diff'
+
+/**
+ * Same-origin route the page reads one commit's changed files from, for the
+ * commit a row in the history column was double-clicked on. Like the diff route
+ * it names one repository root and one thing inside it.
+ */
+const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
+
 /** The Git executable; a machine without one on PATH is reported, not guessed at. */
 const GIT_EXECUTABLE = 'git'
 
@@ -71,6 +89,30 @@ const GIT_TIMEOUT_MS = 10_000
 
 /** Ceiling on one command's output; a larger status or log is an error, not a pause. */
 const GIT_MAX_BUFFER = 8 * 1024 * 1024
+
+/**
+ * Longest diff the route sends. A one-file diff of a generated file or a
+ * lockfile can be tens of megabytes, which the page would have to lay out line
+ * by line; past this the answer is cut and says so.
+ */
+const GIT_DIFF_MAX_CHARS = 200_000
+
+/** The empty file an untracked path is diffed against: `--no-index` needs two files. */
+const GIT_NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null'
+
+/**
+ * Flags every `git diff` here carries, right after the subcommand: the page
+ * shows the text as it arrives, so a configured color or external diff driver
+ * would put escape codes or another program's output in it.
+ */
+const GIT_DIFF_FLAGS = ['--no-color', '--no-ext-diff']
+
+/**
+ * How long the pet gets to answer a quit request before it is ended. Its own
+ * timer reads the request within one 200 ms tick; the deadline only has to beat a
+ * pet that cannot answer at all, and every millisecond of it delays a restart.
+ */
+const PET_QUIT_GRACE_MS = 1_000
 
 /** How many commits the history column shows. */
 const GIT_LOG_LIMIT = 10
@@ -475,6 +517,182 @@ async function readGitRepository(cwd) {
 }
 
 /**
+ * Read one changed file's diff.
+ *
+ * Which comparison shows the change depends on where the path stands, which is
+ * what its own porcelain letters say: a path Git has never been told about has
+ * nothing to compare against, so it is diffed against the null device, while a
+ * staged change, an unstaged one, or both get one block per side. `HEAD` is
+ * never named as the other side of the comparison: a repository whose first
+ * commit has not been made yet has no such revision, and `--cached` already
+ * compares the index against the empty tree there.
+ * @param root - the repository root, which the page takes from the listing: a
+ *   path is relative to the root, not to the Session's own directory.
+ * @param path - the changed path, relative to the root.
+ * @returns `{ ok: true, text, truncated }`, or `{ ok: false }` with the same
+ *   `reason` values the listing answers with plus the command's message.
+ */
+async function readGitDiff(root, path) {
+  // Checked and resolved exactly as the listing does it, so a page that names
+  // something other than a repository gets the same explanations here.
+  if (!isDirectory(root)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(root, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  // A pathspec that names this one path whatever glob characters its name holds;
+  // `--no-index` takes plain filenames instead, so only the tracked diffs use it.
+  const named = `:(literal)${path}`
+  const status = await execGit(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', named])
+  if (!status.ok) return { ok: false, reason: 'failed', message: status.message }
+  const [entry] = parseGitStatus(status.stdout)
+  // A path Git has nothing to report about has no diff either; that is an empty
+  // answer, not a failure. It is also what a refresh sees once the change was
+  // committed while the page was open.
+  if (entry === undefined) return { ok: true, text: '', truncated: false }
+  /** One read-only `git diff`, with the flags every diff here carries. */
+  const runDiff = (args) => execGit(root, ['diff', ...GIT_DIFF_FLAGS, ...args])
+  const blocks = []
+  if (entry.status === '??') {
+    // `--no-index` exits 1 when the two files differ, which is the answer here
+    // rather than a failure, and it still writes the diff to stdout.
+    const added = await runDiff(['--no-index', '--', GIT_NULL_DEVICE, path])
+    if (!added.ok && added.stdout === '') return { ok: false, reason: 'failed', message: added.message }
+    blocks.push(added.stdout)
+  } else {
+    // The index letter is the staged side, the worktree letter the unstaged one;
+    // a space means that side holds nothing, so its command is not run at all.
+    if (entry.status[0] !== ' ') {
+      const staged = await runDiff(['--cached', '--', named])
+      if (!staged.ok) return { ok: false, reason: 'failed', message: staged.message }
+      blocks.push(staged.stdout)
+    }
+    if (entry.status[1] !== ' ') {
+      const worktree = await runDiff(['--', named])
+      if (!worktree.ok) return { ok: false, reason: 'failed', message: worktree.message }
+      blocks.push(worktree.stdout)
+    }
+  }
+  const text = blocks.join('')
+  return text.length <= GIT_DIFF_MAX_CHARS
+    ? { ok: true, text, truncated: false }
+    : { ok: true, text: text.slice(0, GIT_DIFF_MAX_CHARS), truncated: true }
+}
+
+/**
+ * Parse `git diff-tree --name-status -z` records.
+ *
+ * Each record is the status, then one path — or two, source before destination,
+ * when rename detection matched a move.
+ * @param raw - the command's output.
+ * @returns one entry per changed path, in Git's own order, with `from` on a
+ *   rename or copy.
+ */
+function parseGitCommitFiles(raw) {
+  const records = raw.split('\0')
+  const files = []
+  for (let index = 0; index < records.length; index += 1) {
+    const status = records[index]
+    // The output ends with a NUL, so the last record is empty.
+    if (status === '') continue
+    const path = records[index + 1]
+    if (path === undefined) break
+    // A rename or copy is the one status that names two paths, and the source
+    // comes first; its score rides along in the status (`R100`).
+    if (status[0] === 'R' || status[0] === 'C') {
+      const moved = records[index + 2]
+      if (moved === undefined) break
+      files.push({ status, path: moved, from: path })
+      index += 2
+      continue
+    }
+    files.push({ status, path })
+    index += 1
+  }
+  return files
+}
+
+/**
+ * Read the files one commit touched.
+ *
+ * A commit has no working tree to compare against, so its changed paths come
+ * from `diff-tree`, which lists the two tree-ish it is given. The page sends the
+ * hash the history column already showed, and the parents are asked for rather
+ * than assumed: the first commit has none, so the empty tree is the other side,
+ * and a merge commit diffs against its first parent — `diff-tree` lists nothing
+ * at all for a merge given only its own hash.
+ * @param root - the repository root, which the page takes from the listing.
+ * @param hash - the commit to list.
+ * @returns `{ ok: true, files }`, or `{ ok: false }` with the listing's own
+ *   `reason` values plus the command's message.
+ */
+async function readGitCommit(root, hash) {
+  if (!isDirectory(root)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(root, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  const lineage = await execGit(root, ['rev-list', '--parents', '-n', '1', hash])
+  if (!lineage.ok) return { ok: false, reason: 'failed', message: lineage.message }
+  const [commit, ...parents] = lineage.stdout.trim().split(/\s+/)
+  // A hash the listing gave resolves, so this is the empty answer rather than a
+  // refusal: nothing is known to have changed.
+  if (commit === undefined || commit === '') return { ok: true, files: [] }
+  const listed = await execGit(root, ['diff-tree', '--no-commit-id', '--name-status', '-r', '-z', '-M',
+    ...parents.length === 0 ? ['--root', commit] : [parents[0], commit]])
+  if (!listed.ok) return { ok: false, reason: 'failed', message: listed.message }
+  return { ok: true, files: parseGitCommitFiles(listed.stdout) }
+}
+
+/**
+ * Answer one Git read as JSON.
+ *
+ * Every Git route here is a read a page asked for, so they share one frame: the
+ * same-origin guard the harness's other routes use, GET only, and a JSON body
+ * that is always 200 — a directory outside every repository is an answer the
+ * page renders, not a transport failure.
+ * @param ctx - host context, for the connection guard and the logger.
+ * @param req - the request.
+ * @param res - the response.
+ * @param read - produces the payload for one request's query parameters.
+ */
+function serveGitRead(ctx, req, res, read) {
+  const connection = ctx.get('connection')
+  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+  if (rejection !== undefined) {
+    res.writeHead(rejection)
+    res.end()
+    return
+  }
+  if (req.method !== 'GET') {
+    res.writeHead(405)
+    res.end()
+    return
+  }
+  const query = new URL(req.url ?? '', 'http://localhost').searchParams
+  void read(query).then(
+    (payload) => { sendJson(res, payload) },
+    (error) => {
+      // execGit settles every spawn failure, so this arm is a defect in a reader
+      // rather than a repository problem.
+      ctx.logger.warn('little-icon: git read failed: %s', String(error))
+      sendJson(res, { ok: false, reason: 'failed', message: String(error) })
+    })
+}
+
+/**
+ * Write one JSON payload, uncached: the page re-reads on refresh and on opening
+ * a diff, and a cached answer would show a repository that has already moved.
+ * @param res - the response.
+ * @param payload - the JSON-serializable body.
+ */
+function sendJson(res, payload) {
+  const body = JSON.stringify(payload)
+  res.writeHead(200, {
+    'content-type': 'application/json',
+    'content-length': Buffer.byteLength(body),
+    'cache-control': 'no-store',
+  })
+  res.end(body)
+}
+
+/**
  * Launch the pet process.
  * @param script - absolute `pet.ps1` path.
  * @param assets - absolute directory holding one folder per state.
@@ -514,6 +732,12 @@ export function apply(ctx, config) {
   const windowFile = join(dataDir, 'window.json')
   /** Written by the pet when a menu entry is chosen; read here and relayed to the page. */
   const commandFile = join(dataDir, 'command.json')
+  /**
+   * Written here to ask the pet to quit rather than killing it: the tray icon
+   * belongs to the pet process, and a process killed outright leaves its icon
+   * behind as a ghost until the shell notices — one dead icon per restart.
+   */
+  const quitFile = join(dataDir, 'quit')
   const writer = new StateFileWriter(stateFile, 4000, (error) => {
     ctx.logger.warn('little-icon: could not write %s: %s', stateFile, String(error))
   })
@@ -787,64 +1011,47 @@ export function apply(ctx, config) {
     }), `little-icon: GET ${COMMANDS_PATH}`)
   })
 
-  /**
-   * Answer one Git read for the page.
-   *
-   * The directory arrives with the request because the page is what knows which
-   * Session it belongs to. It is the same directory the person already handed
-   * this agent to work in, and the route answers only reads, so no path a page
-   * can name gives it anything the Session itself could not do.
-   * @param req - the request; `cwd` names the directory to inspect.
-   * @param res - the response, always JSON and always 200: a missing repository
-   *   is an answer the page renders, not a transport failure.
-   */
-  const answerGit = (req, res) => {
-    const send = (payload) => {
-      const body = JSON.stringify(payload)
-      res.writeHead(200, {
-        'content-type': 'application/json',
-        'content-length': Buffer.byteLength(body),
-        'cache-control': 'no-store',
-      })
-      res.end(body)
-    }
-    const cwd = new URL(req.url ?? '', 'http://localhost').searchParams.get('cwd') ?? ''
-    if (cwd === '') {
-      send({ ok: false, reason: 'no-cwd' })
-      return
-    }
-    void readGitRepository(cwd).then(
-      (result) => { send(result) },
-      (error) => {
-        // execGit settles every spawn failure, so this arm is a defect in the
-        // reader rather than a repository problem.
-        ctx.logger.warn('little-icon: git read failed: %s', String(error))
-        send({ ok: false, reason: 'failed', message: String(error) })
-      })
-  }
-
-  // The Git page is drawn from this route: the page has no filesystem and no
+  // The Git pages are drawn from these routes: the page has no filesystem and no
   // process of its own, so the Host is the only half that can ask Git anything.
+  // The directory arrives with the listing request because the page is what knows
+  // which Session it belongs to — the same directory the person already handed
+  // this agent to work in — and the route answers only reads, so no path a page
+  // can name gives it anything the Session itself could not do.
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
       path: GIT_PATH,
       handler: (req, res) => {
-        const connection = ctx.get('connection')
-        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-        if (rejection !== undefined) {
-          res.writeHead(rejection)
-          res.end()
-          return
-        }
-        if (req.method !== 'GET') {
-          res.writeHead(405)
-          res.end()
-          return
-        }
-        answerGit(req, res)
+        serveGitRead(ctx, req, res, (query) => {
+          const cwd = query.get('cwd') ?? ''
+          // Checked here rather than inferred from a spawn failure, so a page that
+          // has not learned its Session's workspace is told that, not that git is
+          // missing.
+          if (cwd === '') return Promise.resolve({ ok: false, reason: 'no-cwd' })
+          return readGitRepository(cwd)
+        })
       },
     }), `little-icon: GET ${GIT_PATH}`)
+    // One file's diff, for the file a row in that listing was double-clicked on.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_DIFF_PATH,
+      handler: (req, res) => {
+        serveGitRead(ctx, req, res, (query) => readGitDiff(
+          query.get('root') ?? '', query.get('path') ?? '',
+        ))
+      },
+    }), `little-icon: GET ${GIT_DIFF_PATH}`)
+    // One commit's changed files, for the commit a history row was double-clicked on.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_COMMIT_PATH,
+      handler: (req, res) => {
+        serveGitRead(ctx, req, res, (query) => readGitCommit(
+          query.get('root') ?? '', query.get('hash') ?? '',
+        ))
+      },
+    }), `little-icon: GET ${GIT_COMMIT_PATH}`)
   })
 
   const startPet = () => {
@@ -856,6 +1063,13 @@ export function apply(ctx, config) {
     if (!existsSync(script)) {
       ctx.logger.warn('little-icon: pet script missing at %s', script)
       return
+    }
+    // A request left over from a host that died mid-teardown belongs to no pet;
+    // leaving it would end the next one the moment it starts.
+    try {
+      rmSync(quitFile, { force: true })
+    } catch (error) {
+      ctx.logger.warn('little-icon: could not clear %s: %s', quitFile, String(error))
     }
     try {
       child = spawnPet(script, assets, stateFile, positionFile, dshPid)
@@ -881,7 +1095,21 @@ export function apply(ctx, config) {
   const stopPet = () => {
     const running = child
     child = undefined
-    running?.kill()
+    if (running === undefined) return
+    // Ask first, kill as the fallback: only the pet can take its tray icon away,
+    // and a killed pet leaves that icon behind in the tray until the shell
+    // notices, which is one ghost per restart. It reads the request on its next
+    // tick, so the kill is a deadline rather than the usual end.
+    try {
+      writeFileSync(quitFile, '')
+    } catch (error) {
+      ctx.logger.warn('little-icon: could not ask the pet to quit: %s', String(error))
+    }
+    const deadline = setTimeout(() => {
+      ctx.logger.warn('little-icon: the pet did not answer the quit request; ending it')
+      running.kill()
+    }, PET_QUIT_GRACE_MS)
+    running.once('exit', () => { clearTimeout(deadline) })
   }
 
   const schedule = () => {
@@ -933,12 +1161,18 @@ export const internals = {
   shouldTuck,
   resolveDshHome,
   readGitRepository,
+  readGitDiff,
+  readGitCommit,
   parseGitStatus,
+  parseGitCommitFiles,
   parseGitLog,
   StateFileWriter,
   STATES,
   ACTIVITY_PATH,
   COMMANDS_PATH,
   GIT_PATH,
+  GIT_DIFF_PATH,
+  GIT_COMMIT_PATH,
+  GIT_DIFF_MAX_CHARS,
   GIT_LOG_LIMIT,
 }

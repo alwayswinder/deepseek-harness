@@ -17,7 +17,9 @@
     screen first and is written to command.json beside the state file for the host
     to relay, and the rest act on this process at once. Ending DSH is one of those:
     the window's own close only hides it now, so that entry ends the process every
-    part of DSH runs under instead (see Stop-DshWindow).
+    part of DSH runs under instead (see Stop-DshWindow). Restarting is the same
+    ending plus a replacement, which a detached waiter starts once DSH is gone
+    because this pet does not outlive it (see Restart-DshWindow).
 
     The target window is located through DshPid (the host's parent, i.e. the
     Electron main process): Process.MainWindowHandle first, then an enumeration
@@ -92,6 +94,11 @@ $SCRIPT:WindowFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:State
 # reach the page: the pet cannot touch the DSH window's content, and the page
 # cannot see this window's menu.
 $SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'command.json'
+# The host's request for this pet to quit. It exists because the tray icon belongs
+# to this process: a pet that is killed outright leaves its icon in the tray as a
+# ghost until the shell notices, which is one dead icon per restart, so the host
+# asks instead and only kills a pet that does not answer.
+$SCRIPT:QuitFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quit'
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
 $SCRIPT:DshPid = $DshPid
@@ -102,14 +109,18 @@ function Read-Utf8Text([string]$Path) {
 
 function Get-Labels {
     $fallback = [ordered]@{
-        TrayTip        = 'DSH pet'
-        Chat           = 'Chat'
-        Git            = 'Git changes'
-        ToggleShown    = 'Tuck DSH away'
-        ToggleHidden   = 'Show DSH'
-        Reset          = 'Move to corner'
-        QuitDsh        = 'Quit DSH'
-        QuitDshConfirm = 'Quit DSH? A running task will be interrupted.'
+        TrayTip               = 'DSH pet'
+        Chat                  = 'Chat'
+        Git                   = 'Git changes'
+        ToggleShown           = 'Tuck DSH away'
+        ToggleHidden          = 'Show DSH'
+        Reset                 = 'Move to corner'
+        RestartDsh            = 'Restart DSH'
+        RestartDshConfirm     = 'Restart DSH? A running task will be interrupted.'
+        RestartDshUnavailable = 'Could not read how DSH was started, so it was left alone. Start it yourself.'
+        RestartDshFailed      = 'The restart could not be prepared, so DSH was left alone.'
+        QuitDsh               = 'Quit DSH'
+        QuitDshConfirm        = 'Quit DSH? A running task will be interrupted.'
     }
     $path = Join-Path $SCRIPT:ScriptDir 'labels.json'
     if (-not (Test-Path -LiteralPath $path)) { return $fallback }
@@ -148,6 +159,16 @@ $SCRIPT:LittleIconShowWindowMessage = 0x8001
 
 # GetWindowLong/SetWindowLong index for the extended window style.
 $SCRIPT:GwlExStyle = -20
+
+# How long the waiter waits after DSH is gone before the replacement starts. DSH
+# flushes its sessions and stops its agents while it shuts down; starting the next
+# instance on top of that would put two hosts on the same session store.
+$SCRIPT:RelaunchDelaySeconds = 4
+
+# The launcher's own command line, carried to the waiter in the environment
+# rather than spliced into a command line of our own: cmd expands this variable,
+# so nothing here has to quote or re-parse what DSH was started with.
+$SCRIPT:RelaunchVariable = 'DSH_RELAUNCH_CMD'
 
 $SCRIPT:Frames = @{}
 $SCRIPT:FrameCounts = @{}
@@ -228,14 +249,144 @@ function Get-FrameCount([string]$State) {
     return $count
 }
 
+# ---- restart ----------------------------------------------------------------
+function Get-DshLaunchCommand {
+    # A replacement has to start the way the running one did, and the only place
+    # that knows is the process itself: its command line is what its launcher
+    # wrote (start-dsh-service.vbs builds it). .NET's Process exposes no command
+    # line, so it comes from WMI; a machine where that fails leaves DSH running
+    # rather than ending it without a way back.
+    try {
+        $process = Get-CimInstance -ClassName Win32_Process -Filter "ProcessId=$SCRIPT:DshPid" -ErrorAction Stop
+        if ($null -eq $process) { return $null }
+        $command = [string]$process.CommandLine
+        if ([string]::IsNullOrWhiteSpace($command)) { return $null }
+        return $command.Trim()
+    } catch {
+        Write-Log "reading the DSH command line failed: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Get-RelaunchDirectory([string]$CommandLine) {
+    # The launcher's working directory anchors relative paths, and the one it
+    # passes is the application directory quoted in this command line (see
+    # start-dsh-service.vbs). The last quoted token that names a directory is
+    # therefore where the replacement starts; nothing found keeps this process's
+    # own directory, which is a real one either way.
+    $quoted = [regex]::Matches($CommandLine, '"([^"]+)"')
+    for ($index = $quoted.Count - 1; $index -ge 0; $index--) {
+        $candidate = $quoted[$index].Groups[1].Value
+        if (Test-Path -LiteralPath $candidate -PathType Container) { return $candidate }
+    }
+    return $null
+}
+
+function New-RelaunchScript([int]$WaitForPid, [string]$Directory, [int]$DelaySeconds) {
+    # The script the detached waiter runs. It holds no copy of the command line:
+    # cmd expands the variable this pet put in the environment, which is what
+    # keeps quoting and non-ASCII paths out of every layer between here and there.
+    $lines = @(
+        "while (Get-Process -Id $WaitForPid -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }",
+        "Start-Sleep -Seconds $DelaySeconds",
+        # This pet runs under the Host, which runs under Electron in Node mode, so
+        # the whole tree carries ELECTRON_RUN_AS_NODE=1; an Electron started with
+        # it boots as a plain Node process and dies on the app's first import
+        # instead of opening a window. It is dropped here, where the replacement's
+        # environment is decided, and nowhere earlier: the pet itself still needs
+        # the environment it was given.
+        "Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($Directory)) {
+        $lines += "Set-Location -LiteralPath '$($Directory.Replace("'", "''"))'"
+    }
+    $lines += "Start-Process -FilePath 'cmd.exe' -ArgumentList '/d','/s','/c','%$SCRIPT:RelaunchVariable%' -WindowStyle Hidden"
+    return ($lines -join "`r`n")
+}
+
+function Set-RelaunchCommand([string]$CommandLine) {
+    # The waiter's cmd expands this variable, which is what keeps the launcher's
+    # line out of any argument list of ours. It is set through .NET rather than
+    # `$env[$name]`: a computed name cannot index the provider-backed variable in
+    # Windows PowerShell ("Cannot index into a null array"), and that failure
+    # happens before anything is killed, so it looks exactly like the menu entry
+    # doing nothing at all.
+    [System.Environment]::SetEnvironmentVariable($SCRIPT:RelaunchVariable, $CommandLine)
+}
+
+function Start-RelaunchHelper([string]$CommandLine) {
+    # The waiter has to outlive this pet: ending DSH unloads the plugin, whose
+    # cleanup ends the pet, so nothing this process is still doing can start the
+    # replacement. It is started hidden and detached (Start-Process creates it
+    # outside this window, and a killed parent does not take its children with it
+    # on Windows), waits for DSH to go, and only then runs the launcher's line.
+    Set-RelaunchCommand $CommandLine
+    $script = New-RelaunchScript -WaitForPid $SCRIPT:DshPid `
+        -Directory (Get-RelaunchDirectory $CommandLine) -DelaySeconds $SCRIPT:RelaunchDelaySeconds
+    # -EncodedCommand carries the script as UTF-16 data, so the quotes, newlines
+    # and paths inside it never reach a command line parser.
+    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($script))
+    $shell = (Get-Process -Id $PID).Path
+    if ([string]::IsNullOrWhiteSpace($shell)) { $shell = 'powershell.exe' }
+    [void](Start-Process -FilePath $shell `
+        -ArgumentList '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', $encoded `
+        -WindowStyle Hidden)
+}
+
+# Report a restart that could not be prepared, in the same box the entry's own
+# confirmation uses: the person asked for something, and silence would read as a
+# dead menu entry rather than as "DSH was left alone".
+function Show-RestartFailure([string]$Detail) {
+    $text = $SCRIPT:Labels.RestartDshFailed
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) { $text = "$text`n`n$Detail" }
+    [void][System.Windows.MessageBox]::Show($SCRIPT:Window, $text,
+        $SCRIPT:Labels.TrayTip, [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
+function Restart-DshWindow {
+    # Ending DSH and having it come back. The waiter is armed first so a failure
+    # to arm it leaves the app running, and DSH is ended only once the way back
+    # exists.
+    if ($SCRIPT:DshPid -le 0) { return }
+    $command = Get-DshLaunchCommand
+    if ($null -eq $command) {
+        Show-RestartFailure $SCRIPT:Labels.RestartDshUnavailable
+        return
+    }
+    try {
+        Start-RelaunchHelper $command
+        Write-Log "restarting DSH after it exits: $command"
+    } catch {
+        Write-Log "arming the restart failed: $($_.Exception.Message)"
+        Show-RestartFailure $_.Exception.Message
+        return
+    }
+    Stop-DshWindow
+}
+
 # ---- self test --------------------------------------------------------------
 if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
+    # Restarting ends DSH, so no test may exercise it end to end; what is worth
+    # checking is the part a wrong edit would ruin silently - which directory the
+    # replacement starts in, and the script the waiter would run, down to the
+    # variable cmd is meant to expand.
+    $sample = '"{0}\System32\notepad.exe" "--flag=1" "{1}"' -f $env:SystemRoot, $SCRIPT:AssetDir
+    $directory = Get-RelaunchDirectory $sample
+    Write-Output "relaunch-dir: $(if ($null -eq $directory) { '(none)' } else { $directory })"
+    $plan = New-RelaunchScript -WaitForPid 4321 -Directory 'C:\somewhere' -DelaySeconds $SCRIPT:RelaunchDelaySeconds
+    Write-Output "relaunch-script: $($plan -replace "`r`n", ' >> ')"
+    # Arming is the step that decides whether the replacement finds the launcher's
+    # line at all, and it is the one Windows PowerShell broke silently; the value
+    # read back is what the waiter's cmd will expand.
+    Set-RelaunchCommand 'relaunch probe'
+    Write-Output "relaunch-variable: $([System.Environment]::GetEnvironmentVariable($SCRIPT:RelaunchVariable))"
     exit 0
 }
 
@@ -527,6 +678,9 @@ function Exit-Pet {
     if ($SCRIPT:Exiting) { return }
     $SCRIPT:Exiting = $true
     Save-Position
+    # The request answers itself: whatever is left of it belongs to no pet, and a
+    # marker nobody removes would end the next one the moment it starts.
+    try { if (Test-Path -LiteralPath $SCRIPT:QuitFile) { Remove-Item -LiteralPath $SCRIPT:QuitFile -Force } } catch { }
     try { if ($null -ne $SCRIPT:Notify) { $SCRIPT:Notify.Visible = $false; $SCRIPT:Notify.Dispose() } } catch { }
     try { if ($null -ne $SCRIPT:TrayIcon) { $SCRIPT:TrayIcon.Dispose() } } catch { }
     try {
@@ -580,6 +734,25 @@ function New-PetMenu {
     $resetItem.add_Click({ try { Set-DefaultPosition; Save-Position } catch { Write-Log $_.Exception.Message } })
     if ($SCRIPT:DshPid -gt 0) {
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        # Restarting is the entry edits to the plugin, and builds, are usually
+        # for, so it sits with ending DSH rather than with the window actions.
+        $restartItem = $menu.Items.Add($SCRIPT:Labels.RestartDsh)
+        $restartItem.add_Click({
+            try {
+                # Like ending DSH, a restart interrupts whatever is running, so the
+                # entry asks first; the message box's own buttons are localized by
+                # the system. A restart that cannot be prepared reports itself in
+                # its own box, because a menu entry that only wrote to the log
+                # reads as one that does nothing.
+                $answer = [System.Windows.MessageBox]::Show($SCRIPT:Window, $SCRIPT:Labels.RestartDshConfirm,
+                    $SCRIPT:Labels.TrayTip, [System.Windows.MessageBoxButton]::YesNo,
+                    [System.Windows.MessageBoxImage]::Question)
+                if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { Restart-DshWindow }
+            } catch {
+                Write-Log $_.Exception.Message
+                try { Show-RestartFailure $_.Exception.Message } catch { }
+            }
+        })
         $quitItem = $menu.Items.Add($SCRIPT:Labels.QuitDsh)
         $quitItem.add_Click({
             try {
@@ -685,6 +858,15 @@ $timer.Interval = [TimeSpan]::FromMilliseconds(200)
 $timer.Add_Tick({
     try {
         $SCRIPT:Ticks++
+
+        # The host asks before it goes, so this process can take its own tray icon
+        # away first (see $SCRIPT:QuitFile). Nothing is written here: a request the
+        # pet answered is not a problem the host has to hear about, and the host
+        # already knows it asked.
+        if (Test-Path -LiteralPath $SCRIPT:QuitFile) {
+            Exit-Pet
+            return
+        }
 
         # The host writes on change plus a heartbeat, so a newer timestamp means
         # new content to apply.

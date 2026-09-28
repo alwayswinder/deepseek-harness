@@ -20,7 +20,9 @@ import { join } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_LOG_LIMIT, parseGitStatus, parseGitLog, readGitRepository, StateFileWriter,
+  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
+  parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, readGitDiff, readGitCommit,
+  StateFileWriter,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -178,11 +180,18 @@ assert.ok(existsSync(join(root, 'pet', 'pet.ps1')), 'missing pet/pet.ps1')
 const petSource = readFileSync(join(root, 'pet', 'pet.ps1'), 'utf8')
 const firstNonAscii = [...petSource].findIndex((character) => character.codePointAt(0) > 127)
 assert.equal(firstNonAscii, -1, `pet/pet.ps1 must stay ASCII; found ${JSON.stringify(petSource.slice(firstNonAscii, firstNonAscii + 20))}`)
+// PowerShell takes the last definition and says nothing, so a helper edited into
+// the script twice would silently drop the first copy's behaviour.
+const petFunctions = [...petSource.matchAll(/^function ([\w-]+)/gm)].map((match) => match[1])
+assert.deepEqual(petFunctions.filter((name, index) => petFunctions.indexOf(name) !== index), [],
+  `pet/pet.ps1 defines a function twice: ${petFunctions.join(', ')}`)
 
 const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8'))
 assert.equal(labels.ToggleShown, '收起 DSH')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
-for (const key of ['TrayTip', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Reset', 'QuitDsh', 'QuitDshConfirm']) {
+assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
+for (const key of ['TrayTip', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh',
+  'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
@@ -252,6 +261,29 @@ if (process.platform === 'win32') {
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /收起 DSH/)
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
+  assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
+  // Restarting ends DSH, so the self test reports what it would run instead: the
+  // directory the replacement starts in is the application directory quoted in the
+  // launcher's command line, and the waiter waits for DSH, waits out its shutdown,
+  // and lets cmd expand the variable the command line travels in.
+  const relaunchDir = /relaunch-dir: (.*)/.exec(selfTest.stdout)
+  assert.ok(relaunchDir !== null, 'the self test must report the relaunch directory')
+  assert.equal(relaunchDir[1].trim(), join(root, 'assets'), 'the last quoted directory wins over the executable')
+  const relaunchScript = /relaunch-script: (.*)/.exec(selfTest.stdout)
+  assert.ok(relaunchScript !== null, 'the self test must report the waiter script')
+  assert.match(relaunchScript[1], /Get-Process -Id 4321/)
+  assert.match(relaunchScript[1], /Start-Sleep -Seconds 4/, 'the next instance must wait out the shutdown')
+  // Without this the replacement is an Electron that boots as Node, because this
+  // pet inherits ELECTRON_RUN_AS_NODE=1 from the Host it was started by.
+  assert.match(relaunchScript[1], /Remove-Item Env:ELECTRON_RUN_AS_NODE/)
+  assert.match(relaunchScript[1], /Set-Location -LiteralPath 'C:\\somewhere'/)
+  assert.match(relaunchScript[1], /'\/d','\/s','\/c','%DSH_RELAUNCH_CMD%'/, 'cmd expands the launcher line')
+  assert.match(relaunchScript[1], /-WindowStyle Hidden/)
+  // Arming is what broke silently in Windows PowerShell (`$env[$name]` cannot be
+  // assigned), and it happens before DSH is ended, so the self test reads back the
+  // value the waiter's cmd is meant to expand.
+  assert.match(selfTest.stdout, /relaunch-variable: relaunch probe/,
+    'the command the waiter expands must be readable back out of the environment')
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')
 }
@@ -298,6 +330,26 @@ assert.deepEqual(parseGitLog(''), [])
 // so they run even without git.
 const missingDir = await readGitRepository(join(tmpdir(), 'little-icon-no-such-directory'))
 assert.deepEqual(missingDir, { ok: false, reason: 'no-dir' })
+// The detail readers answer the same four reasons as the listing, so a page that
+// asks about a directory that is gone is told that rather than that Git failed.
+assert.deepEqual(await readGitDiff(join(tmpdir(), 'little-icon-no-such-directory'), 'a.txt'),
+  { ok: false, reason: 'no-dir' })
+assert.deepEqual(await readGitCommit(join(tmpdir(), 'little-icon-no-such-directory'), 'HEAD'),
+  { ok: false, reason: 'no-dir' })
+
+// `git diff-tree --name-status -z` records: the status, then the path, and for a
+// rename or copy two paths with the source first.
+const TREE_FIXTURE = ['M', 'kept.txt', 'A', 'staged.txt', 'D', 'gone.txt',
+  'R100', 'old.txt', 'new.txt', 'C075', 'copy-src.txt', 'copy-dst.txt', ''].join('\0')
+assert.deepEqual(parseGitCommitFiles(TREE_FIXTURE), [
+  { status: 'M', path: 'kept.txt' },
+  { status: 'A', path: 'staged.txt' },
+  { status: 'D', path: 'gone.txt' },
+  { status: 'R100', path: 'new.txt', from: 'old.txt' },
+  { status: 'C075', path: 'copy-dst.txt', from: 'copy-src.txt' },
+])
+// An empty commit wrote no records at all, which is no files rather than one.
+assert.deepEqual(parseGitCommitFiles(''), [])
 
 if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
   const repo = mkdtempSync(join(tmpdir(), 'little-icon-repo-'))
@@ -318,6 +370,101 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
       [[' M', 'kept.txt'], ['??', 'untracked.txt']])
     assert.deepEqual(read.commits.map(commit => commit.subject), ['first commit'])
     assert.match(read.commits[0].hash, /^[0-9a-f]{40}$/)
+
+    // One file's diff. The reader looks the path's own status up instead of
+    // trusting the caller, so an unstaged edit is compared against the index and
+    // an untracked file against the null device — `git diff` alone would show
+    // nothing for the file the person just added.
+    const edited = await readGitDiff(repo, 'kept.txt')
+    assert.equal(edited.ok, true, JSON.stringify(edited))
+    assert.match(edited.text, /^-one$/m)
+    assert.match(edited.text, /^\+two$/m)
+    assert.equal(edited.truncated, false)
+    const added = await readGitDiff(repo, 'untracked.txt')
+    assert.equal(added.ok, true, JSON.stringify(added))
+    assert.match(added.text, /^\+new$/m)
+    assert.match(added.text, /^--- \/dev\/null$/m)
+    // A staged change is compared against the index, which is also what works in
+    // a repository whose first commit has not been made yet: `HEAD` would not
+    // resolve there.
+    writeFileSync(join(repo, 'staged.txt'), 'staged\n')
+    git('add', 'staged.txt')
+    const staged = await readGitDiff(repo, 'staged.txt')
+    assert.equal(staged.ok, true, JSON.stringify(staged))
+    assert.match(staged.text, /^\+staged$/m)
+    // A path Git has nothing to report about is an empty diff, not a failure:
+    // that is also what a refresh sees once the change was committed.
+    assert.deepEqual(await readGitDiff(repo, 'committed-elsewhere.txt'),
+      { ok: true, text: '', truncated: false })
+
+    // A diff past the cap is cut and says so, rather than being laid out line by
+    // line in the page: one generated file can be tens of megabytes.
+    const wide = Array.from({ length: 5000 }, (_, index) => `line ${index} ${'x'.repeat(60)}`).join('\n')
+    writeFileSync(join(repo, 'wide.txt'), `${wide}\n`)
+    git('add', 'wide.txt')
+    git('commit', '-q', '-m', 'wide file')
+    writeFileSync(join(repo, 'wide.txt'), `${wide.replace(/x/g, 'y')}\n`)
+    const capped = await readGitDiff(repo, 'wide.txt')
+    assert.equal(capped.ok, true)
+    assert.equal(capped.truncated, true, 'a diff past the cap must be reported as cut')
+    assert.equal(capped.text.length, GIT_DIFF_MAX_CHARS)
+
+    // One commit's files. The reader asks Git for the commit's parents instead of
+    // assuming them: the first commit has none, and `diff-tree` lists nothing at
+    // all for it without `--root`.
+    const firstHash = git('rev-list', '--max-parents=0', 'HEAD').stdout.trim()
+    assert.deepEqual(await readGitCommit(repo, firstHash),
+      { ok: true, files: [{ status: 'A', path: 'kept.txt' }] }, 'the first commit is read against the empty tree')
+    // Everything staged at the time goes into that commit, so it lists both files.
+    assert.deepEqual(await readGitCommit(repo, git('rev-parse', 'HEAD').stdout.trim()),
+      { ok: true, files: [{ status: 'A', path: 'staged.txt' }, { status: 'A', path: 'wide.txt' }] })
+    // A commit Git does not have is the reader's failure, with Git's own words.
+    const unknownCommit = await readGitCommit(repo, 'deadbeef')
+    assert.equal(unknownCommit.ok, false)
+    assert.equal(unknownCommit.reason, 'failed')
+    assert.match(unknownCommit.message, /unknown revision|ambiguous argument/)
+    // A rename is one row carrying the path it came from; an empty commit has no
+    // files at all, which is an answer rather than a failure. The rename moves a
+    // file nothing else has touched, so Git scores it as one.
+    writeFileSync(join(repo, 'move-me.txt'), 'move\n')
+    git('add', 'move-me.txt')
+    git('commit', '-q', '-m', 'add move-me')
+    git('mv', 'move-me.txt', 'moved.txt')
+    git('commit', '-q', '-m', 'rename it')
+    assert.deepEqual(await readGitCommit(repo, git('rev-parse', 'HEAD').stdout.trim()),
+      { ok: true, files: [{ status: 'R100', path: 'moved.txt', from: 'move-me.txt' }] })
+    git('commit', '-q', '--allow-empty', '-m', 'nothing at all')
+    assert.deepEqual(await readGitCommit(repo, git('rev-parse', 'HEAD').stdout.trim()), { ok: true, files: [] })
+
+    // A merge commit is read against its first parent, because `diff-tree` given
+    // only the merge itself lists nothing — "the files this commit touched" for a
+    // merge is what it brought in. Its own repository keeps the working tree above
+    // out of the picture.
+    const forked = mkdtempSync(join(tmpdir(), 'little-icon-merge-'))
+    try {
+      const side = (...args) => spawnSync('git', args, { cwd: forked, encoding: 'utf8' })
+      side('init', '-q', '-b', 'main')
+      side('config', 'user.email', 'smoke@example.test')
+      side('config', 'user.name', 'smoke')
+      writeFileSync(join(forked, 'base.txt'), 'base\n')
+      side('add', '.')
+      side('commit', '-q', '-m', 'base')
+      side('checkout', '-q', '-b', 'side')
+      writeFileSync(join(forked, 'side.txt'), 'side\n')
+      side('add', 'side.txt')
+      side('commit', '-q', '-m', 'side work')
+      side('checkout', '-q', 'main')
+      writeFileSync(join(forked, 'main.txt'), 'main\n')
+      side('add', 'main.txt')
+      side('commit', '-q', '-m', 'main work')
+      side('merge', '-q', '--no-ff', 'side', '-m', 'merge side')
+      const merged = await readGitCommit(forked, side('rev-parse', 'HEAD').stdout.trim())
+      assert.deepEqual(merged, { ok: true, files: [{ status: 'A', path: 'side.txt' }] },
+        'a merge lists what it brought in, not nothing')
+    } finally {
+      rmSync(forked, { recursive: true, force: true })
+    }
+
     // A repository whose first commit has not been made yet answers with no
     // commits rather than failing: `git log` errors there.
     const empty = mkdtempSync(join(tmpdir(), 'little-icon-unborn-'))
@@ -327,6 +474,13 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
       assert.equal(unborn.ok, true, `an unborn HEAD is still a repository: ${JSON.stringify(unborn)}`)
       assert.deepEqual(unborn.commits, [])
       assert.equal(unborn.branch !== '', true, 'the branch is known before the first commit')
+      // The diff reader names no revision either, so a staged file in a repository
+      // without a first commit still has a diff to show.
+      writeFileSync(join(empty, 'first.txt'), 'first\n')
+      spawnSync('git', ['add', 'first.txt'], { cwd: empty })
+      const unbornDiff = await readGitDiff(empty, 'first.txt')
+      assert.equal(unbornDiff.ok, true, JSON.stringify(unbornDiff))
+      assert.match(unbornDiff.text, /^\+first$/m)
     } finally {
       rmSync(empty, { recursive: true, force: true })
     }
@@ -532,9 +686,20 @@ const loaded = await gitFace.load('D:\\work\\proj', undefined)
 assert.deepEqual(pings.at(-1), { url: `${GIT_PATH}?cwd=D%3A%5Cwork%5Cproj`, method: undefined },
   'the directory travels as a query parameter, escaped')
 assert.equal(loaded.ok, true)
+// The diff face names the repository root rather than the Session's directory,
+// because the path it carries is relative to that root; the commit face is the
+// same read for a history row, naming the hash instead of a path.
+await gitFace.loadDiff('/repo', 'src/a.ts', undefined)
+assert.deepEqual(pings.at(-1), { url: `${GIT_DIFF_PATH}?root=%2Frepo&path=src%2Fa.ts`, method: undefined },
+  'the diff read names the root and one path, both escaped')
+await gitFace.loadCommit('/repo', 'abc123', undefined)
+assert.deepEqual(pings.at(-1), { url: `${GIT_COMMIT_PATH}?root=%2Frepo&hash=abc123`, method: undefined },
+  'the commit read names the root and one hash, both escaped')
 const answerFetch = globalThis.fetch
 globalThis.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
 await assert.rejects(() => gitFace.load('/repo', undefined), /answered 500/)
+await assert.rejects(() => gitFace.loadDiff('/repo', 'a.txt', undefined), /answered 500/)
+await assert.rejects(() => gitFace.loadCommit('/repo', 'abc123', undefined), /answered 500/)
 globalThis.fetch = answerFetch
 
 // The button's message is a real user turn: the page goes through the Session's
@@ -657,6 +822,8 @@ const gitProps = {
   useSessions: (select) => select({ byId: { session: { cwd: '/repo' } } }),
   useTabInfo: () => ({ tab: { navigation: { revision: 1 } } }),
   load: () => Promise.resolve({}),
+  loadDiff: () => Promise.resolve({}),
+  loadCommit: () => Promise.resolve({}),
   sendPrompt: gitFace.sendPrompt,
 }
 /** One render's seeded component state, consumed by the next `useState` call. */
@@ -666,7 +833,8 @@ const gitRender = () => {
   return { view, nodes, section: flatten(view).filter(node => node.type === 'section').length }
 }
 
-seeded.push({ phase: 'settled', result: {
+/** The listing every seeded render below starts from. */
+const listing = {
   ok: true,
   root: '/repo',
   branch: 'main',
@@ -677,7 +845,8 @@ seeded.push({ phase: 'settled', result: {
     { path: 'src/old.ts', status: 'R ', from: 'src/older.ts' },
   ],
   commits: [{ hash: 'abc', short: 'abc1234', author: 'Ada', date: '2026-01-02T03:04:05+08:00', subject: 'first subject' }],
-} })
+}
+seeded.push({ phase: 'settled', result: listing })
 const populated = gitRender()
 assert.equal(populated.section, 2, 'the page is one column of changes beside one column of commits')
 for (const text of [t('gitChanges'), t('gitCommits'), t('gitBranch', { name: 'main' }), t('gitRefresh'),
@@ -688,6 +857,15 @@ for (const text of [t('gitChanges'), t('gitCommits'), t('gitBranch', { name: 'ma
 assert.equal(populated.nodes.filter(text => text === t('gitStaged')).length, 2,
   'the staged add and the staged rename carry the marker; the unstaged edit and the untracked file do not')
 
+// A changed file opens its own diff, which is the one thing on this page a click
+// does; the tooltip has to say so, since nothing about a row looks clickable.
+const changeRow = flatten(populated.view).find(node => node.props?.className === 'dli-git-row')
+assert.equal(typeof changeRow.props.onDoubleClick, 'function', 'a changed file opens its diff on a double-click')
+assert.equal(changeRow.props.title, `src/a.ts\n${t('gitDiffHint')}`,
+  'the row names the path it stands for and what a double-click does')
+assert.equal(flatten(populated.view).filter(node => node.props?.className === 'dli-git-row').length, 4,
+  'every changed file row opens a diff, not just the first')
+
 // One commit reads top to bottom: the message, the number it names, then who
 // wrote it and when. The message leads because it is what the reader scans for.
 const commit = flatten(populated.view).find(node => node.props?.className === 'dli-git-commit')
@@ -696,6 +874,10 @@ assert.deepEqual(commit.children.map(line => line.props.className),
 assert.equal(commit.children[0].children[0], 'first subject')
 assert.equal(commit.children[1].children[0], 'abc1234')
 assert.equal(commit.children[2].children[0], `Ada · ${new Date('2026-01-02T03:04:05+08:00').toLocaleString()}`)
+// A history row opens its own file list the same way a change row opens its diff.
+assert.equal(typeof commit.props.onDoubleClick, 'function', 'a commit opens its files on a double-click')
+assert.equal(commit.props.title, `first subject\n${t('gitCommitHint')}`,
+  'the row says what a double-click does, and keeps the subject as its tooltip')
 
 // The page carries the one action that writes something: it puts "commit and
 // push" in the conversation and lets the agent do it. Clicking sends that text
@@ -723,6 +905,107 @@ seeded.push({ phase: 'settled', result: { ok: true, root: '/repo', branch: '', c
 const empty = gitRender()
 assert.equal(empty.section, 2)
 assert.ok(empty.nodes.includes(t('gitEmptyChanges')) && empty.nodes.includes(t('gitEmptyCommits')))
+
+// One row's detail takes both columns' room: it is the same question about one
+// subject, and the back button is the only way between the two views.
+const openDetail = (state) => {
+  seeded.push({ phase: 'settled', result: listing }, 0, { phase: 'idle' }, state)
+  return gitRender()
+}
+const openDiff = (state) => openDetail({ kind: 'diff', ...state })
+const openCommit = (state) => openDetail({ kind: 'commit', commit: listing.commits[0], ...state })
+const diffing = openDiff({
+  phase: 'settled',
+  root: '/repo',
+  path: 'src/a.ts',
+  status: ' M',
+  result: {
+    ok: true,
+    text: 'diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new\n',
+    truncated: false,
+  },
+})
+assert.equal(diffing.section, 1, 'the diff replaces both columns rather than joining them')
+assert.ok(!diffing.nodes.includes(t('gitCommits')), 'the commit column is gone while a diff is open')
+assert.ok(!diffing.nodes.includes(t('gitChanges')), 'so is the change column')
+for (const text of ['src/a.ts', t('gitModified'), t('gitDiffBack'), '@@ -1 +1 @@', '-old', '+new']) {
+  assert.ok(diffing.nodes.includes(text), `the diff view must show ${text}`)
+}
+const backButton = flatten(diffing.view).find(node => node.props?.className === 'dli-git-detail-back')
+assert.equal(backButton.children[0], t('gitDiffBack'), 'the back button names itself')
+assert.equal(typeof backButton.props.onClick, 'function', 'and it is the way back to the listing')
+// Each line is colored by what it is; the two file headers start with the same
+// characters as an added and a removed line, so they are read as headers.
+const diffTextLines = (view) => flatten(view).filter(node => typeof node.props?.className === 'string'
+  && node.props.className.split(' ')[0] === 'dli-git-diff-line')
+const drawn = diffTextLines(diffing.view)
+assert.deepEqual(drawn.map(node => node.props.className.replace('dli-git-diff-line dli-git-diff-', '')),
+  ['meta', 'meta', 'meta', 'hunk', 'del', 'add'], 'every diff line carries its own tone')
+assert.deepEqual(drawn.map(node => node.children[0]),
+  ['diff --git a/src/a.ts b/src/a.ts', '--- a/src/a.ts', '+++ b/src/a.ts', '@@ -1 +1 @@', '-old', '+new'])
+
+// A file with nothing to show, a cut diff, and a read that failed each say so
+// where the diff would be; none of them falls back to the columns.
+const nothing = openDiff({ phase: 'settled', root: '/repo', path: 'src/a.ts', status: ' M',
+  result: { ok: true, text: '', truncated: false } })
+assert.ok(nothing.nodes.includes(t('gitDiffEmpty')), 'an empty diff explains itself')
+const cut = openDiff({ phase: 'settled', root: '/repo', path: 'src/a.ts', status: ' M',
+  result: { ok: true, text: '+new\n', truncated: true } })
+assert.ok(cut.nodes.includes(t('gitDiffTruncated')), 'a cut diff says it is cut')
+assert.deepEqual(diffTextLines(cut.view).map(node => node.children[0]), [t('gitDiffTruncated'), '+new'],
+  'the note is the first line of the diff it belongs to')
+const refusedDiff = openDiff({ phase: 'settled', root: '/repo', path: 'src/a.ts', status: ' M',
+  result: { ok: false, reason: 'no-git' } })
+assert.ok(refusedDiff.nodes.includes(t('gitNoGit')), 'a refused read reuses the listing explanations')
+const brokenDiff = openDiff({ phase: 'failed', path: 'src/a.ts', error: new Error('offline') })
+assert.ok(brokenDiff.nodes.includes(t('gitFailed', { message: 'offline' })))
+const readingDiff = openDiff({ phase: 'loading', path: 'src/a.ts' })
+assert.ok(readingDiff.nodes.includes(t('gitDiffLoading')))
+assert.equal(flatten(readingDiff.view).some(node => node.props?.className === 'dli-git-diff-body'), false,
+  'nothing is laid out before the diff arrives')
+
+// A commit's detail is its own file list: the message leads the header, the count
+// and the hash it names sit beside it, and each file is a row with the status
+// word the listing uses for the same letter.
+const commitFiles = [
+  { status: 'M', path: 'src/a.ts' },
+  { status: 'A', path: 'src/b.ts' },
+  { status: 'D', path: 'gone.ts' },
+  { status: 'R100', path: 'src/new.ts', from: 'src/old.ts' },
+]
+const files = openCommit({ phase: 'settled', root: '/repo', hash: 'abc', result: { ok: true, files: commitFiles } })
+assert.equal(files.section, 1, "the commit's files replace both columns")
+assert.ok(!files.nodes.includes(t('gitChanges')) && !files.nodes.includes(t('gitCommits')),
+  'neither column is left behind')
+for (const text of ['first subject', 'abc1234', t('gitCommitFiles', { count: 4 }),
+  t('gitModified'), t('gitAdded'), t('gitDeleted'), t('gitRenamed'),
+  'src/a.ts', 'src/b.ts', 'gone.ts', 'src/new.ts', '← src/old.ts']) {
+  assert.ok(files.nodes.includes(text), `the commit view must show ${text}`)
+}
+assert.equal(flatten(files.view).find(node => node.props?.className === 'dli-git-detail-back').children[0],
+  t('gitDiffBack'), 'the same back button returns from a commit')
+// A rename is one row rather than two: the path it has now, and the one it came from.
+const renamedRow = flatten(files.view).filter(node => node.props?.className === 'dli-git-row').at(-1)
+assert.deepEqual(renamedRow.children.map(child => child.props.className),
+  ['dli-git-badge dli-git-badge-moved', 'dli-git-path', 'dli-git-from'])
+assert.equal(renamedRow.children[2].children[0], '← src/old.ts')
+const commitRows = flatten(files.view).filter(node => node.props?.className === 'dli-git-row')
+assert.deepEqual(commitRows.map(row => row.children[1].children[0]), commitFiles.map(file => file.path),
+  'one row per file, in the order Git listed them')
+
+// A commit with no files, a merge read that failed, and the read still in flight
+// each say so in the commit's own place.
+const noFiles = openCommit({ phase: 'settled', root: '/repo', hash: 'abc', result: { ok: true, files: [] } })
+assert.ok(noFiles.nodes.includes(t('gitCommitEmpty')), 'a commit with no files says so')
+const refusedCommit = openCommit({ phase: 'settled', root: '/repo', hash: 'abc',
+  result: { ok: false, reason: 'not-a-repo' } })
+assert.ok(refusedCommit.nodes.includes(t('gitNotARepo')), 'a refused commit read reuses the listing explanations')
+const brokenCommit = openCommit({ phase: 'failed', hash: 'abc', error: new Error('offline') })
+assert.ok(brokenCommit.nodes.includes(t('gitFailed', { message: 'offline' })))
+const readingCommit = openCommit({ phase: 'loading', hash: 'abc' })
+assert.ok(readingCommit.nodes.includes(t('gitCommitLoading')))
+assert.ok(!readingCommit.nodes.includes(t('gitCommitFiles', { count: 0 })),
+  'no count is shown before the files arrive')
 
 // A transport failure is the page's own, not the repository's.
 seeded.push({ phase: 'failed', error: new Error('offline') })
@@ -875,7 +1158,12 @@ $found
   }
 
   try {
+    // A quit request left behind by a host that died mid-teardown belongs to no
+    // pet: starting one must clear it, or the new pet would quit on its first tick.
+    writeFileSync(join(home, 'little-icon', 'quit'), '')
     apply(context, config)
+    assert.equal(existsSync(join(home, 'little-icon', 'quit')), false,
+      'starting a pet must clear a stale quit request')
     const statePath = join(home, 'little-icon', 'state.json')
     assert.ok(existsSync(statePath), 'apply() did not publish a state file')
     const first = JSON.parse(readFileSync(statePath, 'utf8'))
@@ -888,16 +1176,19 @@ $found
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
     // The page reports input here; without it the pet could only see agents and
     // jobs, and it would sleep while the person is using DSH. The second route is
-    // the stream the pet's menu commands come back on, and the third is what the
-    // Git page reads a Session's repository through.
+    // the stream the pet's menu commands come back on, and the last three are what
+    // the Git page reads a Session's repository and the detail behind one row through.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
-      [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`])
+      [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
+        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`])
 
-    // The Git route answers JSON for one directory and refuses everything else.
+    // The Git routes answer JSON for one directory and refuse everything else.
     // The directory is checked here rather than inferred from a spawn failure, so
     // a page that has not learned its Session's workspace is told that, not that
     // git is missing.
     const gitRoute = routes.find((route) => route.path === GIT_PATH)
+    const diffRoute = routes.find((route) => route.path === GIT_DIFF_PATH)
+    const commitRoute = routes.find((route) => route.path === GIT_COMMIT_PATH)
     const answered = () => {
       const response = {
         status: 0,
@@ -908,9 +1199,9 @@ $found
       }
       return response
     }
-    const askGit = async (method, url) => {
+    const askGit = async (route, method, url) => {
       const response = answered()
-      gitRoute.handler({ method, url, on: () => {} }, response)
+      route.handler({ method, url, on: () => {} }, response)
       // The handler answers through a promise, so the body lands a tick later.
       await new Promise((resolve) => setTimeout(resolve, 200))
       return {
@@ -919,17 +1210,40 @@ $found
         body: response.body === '' ? undefined : JSON.parse(response.body),
       }
     }
-    assert.equal((await askGit('POST', GIT_PATH)).status, 405, 'the Git route is read-only')
-    const noCwd = await askGit('GET', GIT_PATH)
+    assert.equal((await askGit(gitRoute, 'POST', GIT_PATH)).status, 405, 'the Git route is read-only')
+    const noCwd = await askGit(gitRoute, 'GET', GIT_PATH)
     assert.equal(noCwd.status, 200)
     assert.deepEqual(noCwd.body, { ok: false, reason: 'no-cwd' })
     assert.equal(noCwd.headers['content-type'], 'application/json')
     assert.equal(noCwd.headers['cache-control'], 'no-store', 'a stale repository listing must not be cached')
-    const missing = await askGit('GET', `${GIT_PATH}?cwd=${encodeURIComponent(join(home, 'gone'))}`)
+    const missing = await askGit(gitRoute, 'GET', `${GIT_PATH}?cwd=${encodeURIComponent(join(home, 'gone'))}`)
     assert.deepEqual(missing.body, { ok: false, reason: 'no-dir' })
-    const outside = await askGit('GET', `${GIT_PATH}?cwd=${encodeURIComponent(home)}`)
+    const outside = await askGit(gitRoute, 'GET', `${GIT_PATH}?cwd=${encodeURIComponent(home)}`)
     assert.deepEqual(outside.body, { ok: false, reason: 'not-a-repo' },
       'a temporary DSH_HOME is not inside a repository either')
+
+    // The diff route is a read like the listing, and it answers the same reasons:
+    // the page names the root it just listed and one path inside it.
+    assert.equal((await askGit(diffRoute, 'POST', GIT_DIFF_PATH)).status, 405, 'the diff route is read-only')
+    const goneDiff = await askGit(diffRoute, 'GET',
+      `${GIT_DIFF_PATH}?root=${encodeURIComponent(join(home, 'gone'))}&path=a.txt`)
+    assert.deepEqual(goneDiff.body, { ok: false, reason: 'no-dir' })
+    const outsideDiff = await askGit(diffRoute, 'GET',
+      `${GIT_DIFF_PATH}?root=${encodeURIComponent(home)}&path=a.txt`)
+    assert.deepEqual(outsideDiff.body, { ok: false, reason: 'not-a-repo' },
+      'a directory outside every repository is the listing\'s own answer, not a bare failure')
+    assert.equal(outsideDiff.headers['cache-control'], 'no-store', 'a diff must not be cached either')
+
+    // The commit route is the same read shaped for a history row: a repository
+    // root and one hash, and the same explanations when either is wrong.
+    assert.equal((await askGit(commitRoute, 'POST', GIT_COMMIT_PATH)).status, 405,
+      'the commit route is read-only')
+    const goneCommit = await askGit(commitRoute, 'GET',
+      `${GIT_COMMIT_PATH}?root=${encodeURIComponent(join(home, 'gone'))}&hash=abc`)
+    assert.deepEqual(goneCommit.body, { ok: false, reason: 'no-dir' })
+    const outsideCommit = await askGit(commitRoute, 'GET',
+      `${GIT_COMMIT_PATH}?root=${encodeURIComponent(home)}&hash=abc`)
+    assert.deepEqual(outsideCommit.body, { ok: false, reason: 'not-a-repo' })
 
     // The pet's right-click menu is drawn in another process, so the host relays
     // what it chooses: the page holds one stream open and receives a frame per
@@ -1080,12 +1394,17 @@ $found
     assert.equal(readState(), 'idle', 'the pet should settle back to idle')
 
     // Disabling the pet ends its process; enabling it again starts a new one,
-    // while an unrelated settings write never resurrects a pet the user quit.
+    // while an unrelated settings write never resurrects a pet the user quit. The
+    // pet is asked to quit rather than killed, so it can take its own tray icon
+    // away: one killed pet is one ghost icon the shell leaves behind.
+    const quitPath = join(home, 'little-icon', 'quit')
     const volatileUpdate = handlers.get('loader/volatile-update')
     config.enabled.set(false)
     volatileUpdate()
+    assert.equal(existsSync(quitPath), true, 'disabling the pet must ask it to quit')
     await new Promise((resolve) => setTimeout(resolve, 1500))
     assert.equal(countPetProcesses(), 0, 'disabling the pet left its process running')
+    assert.equal(existsSync(quitPath), false, 'the pet must take the request with it as it goes')
     config.size.set(200)
     volatileUpdate()
     await new Promise((resolve) => setTimeout(resolve, 1200))

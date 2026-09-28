@@ -62,6 +62,12 @@ window.__ModuleLoader__.load({
     /** The Host route the Git page reads the Session's repository from. */
     const GIT_PATH = '/api/little-icon/git'
 
+    /** The Host route it reads one changed file's diff from, on a double-click. */
+    const GIT_DIFF_PATH = '/api/little-icon/git/diff'
+
+    /** The Host route it reads one commit's changed files from, the same way. */
+    const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
+
     /**
      * What the Git page's button says into the conversation. The message is a
      * real user turn, admitted exactly as the composer admits one, so the agent
@@ -180,6 +186,15 @@ window.__ModuleLoader__.load({
       gitQueued: '已排队',
       gitSendNoChannel: '这个会话当前没有输入通道，这句话发不出去。',
       gitSendFailed: '发送失败：{message}',
+      gitDiffHint: '双击查看改动详情',
+      gitDiffBack: '返回',
+      gitDiffLoading: '读取差异中…',
+      gitDiffEmpty: '这个文件没有可显示的差异。',
+      gitDiffTruncated: '差异太长，只显示开头一部分。',
+      gitCommitHint: '双击查看这次提交涉及的文件',
+      gitCommitLoading: '读取文件列表中…',
+      gitCommitFiles: '{count} 个文件',
+      gitCommitEmpty: '这次提交没有改动文件。',
     }
 
     const en = {
@@ -253,6 +268,15 @@ window.__ModuleLoader__.load({
       gitQueued: 'Queued',
       gitSendNoChannel: 'This session has no input channel right now, so the message cannot be sent.',
       gitSendFailed: 'Could not send: {message}',
+      gitDiffHint: 'Double-click to see the diff',
+      gitDiffBack: 'Back',
+      gitDiffLoading: 'Reading the diff…',
+      gitDiffEmpty: 'This file has no diff to show.',
+      gitDiffTruncated: 'The diff is long, so only its beginning is shown.',
+      gitCommitHint: 'Double-click to see the files this commit touched',
+      gitCommitLoading: 'Reading the file list…',
+      gitCommitFiles: '{count} files',
+      gitCommitEmpty: 'This commit changed no files.',
     }
 
     /** Insert the card stylesheet once per document. */
@@ -300,6 +324,7 @@ window.__ModuleLoader__.load({
         '.dli-git-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;}',
         '.dli-git-list{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 0;}',
         '.dli-git-row{display:flex;align-items:center;gap:6px;padding:2px 10px;}',
+        '.dli-git-row:hover{background:rgba(127,127,127,.10);}',
         '.dli-git-badge{flex:0 0 auto;font-size:11px;padding:0 5px;border-radius:4px;',
         'color:var(--dsw-alias-label-secondary);background:rgba(127,127,127,.16);}',
         '.dli-git-badge-new{color:#3fb950;}',
@@ -310,6 +335,7 @@ window.__ModuleLoader__.load({
         '.dli-git-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}',
         '.dli-git-staged{flex:0 0 auto;margin-left:auto;font-size:11px;color:var(--dsw-alias-label-secondary);}',
         '.dli-git-commit{display:flex;flex-direction:column;gap:2px;padding:5px 10px;}',
+        '.dli-git-commit:hover{background:rgba(127,127,127,.10);}',
         '.dli-git-commit+.dli-git-commit{border-top:0.5px solid rgba(127,127,127,.18);}',
         // The message wraps rather than trailing off: it leads the row, and the
         // column is too narrow to show a full subject on one line.
@@ -318,6 +344,33 @@ window.__ModuleLoader__.load({
         'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}',
         '.dli-git-byline{color:var(--dsw-alias-label-secondary);font-size:11px;}',
         '.dli-git-note{margin:0;padding:8px 10px;color:var(--dsw-alias-label-secondary);}',
+        // The detail behind a row takes the two columns' room: the question is
+        // the same one — what changed — asked about one path or one commit.
+        '.dli-git-detail{display:flex;flex:1 1 auto;flex-direction:column;gap:8px;min-height:0;}',
+        '.dli-git-detail-head{display:flex;flex:0 0 auto;align-items:center;gap:8px;min-height:28px;}',
+        '.dli-git-detail-back{flex:0 0 auto;font:inherit;color:inherit;cursor:pointer;padding:2px 10px;',
+        'background:transparent;border:1px solid rgba(127,127,127,.35);border-radius:6px;}',
+        '.dli-git-detail-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}',
+        '.dli-git-short{flex:0 0 auto;font-size:11px;padding:1px 8px;border-radius:999px;',
+        'background:rgba(127,127,127,.14);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}',
+        // One commit's files, as rows rather than diff text, so it scrolls in the
+        // page's own font; the diff below keeps its monospace instead.
+        '.dli-git-detail-body{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 0;',
+        'border:1px solid rgba(127,127,127,.25);border-radius:8px;}',
+        // A rename reads as the new path with where it came from beside it; the
+        // source may be long, so it gives way to the path before it is cut off.
+        '.dli-git-from{flex:0 1 auto;color:var(--dsw-alias-label-secondary);font-size:11px;',
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+        // The diff keeps its own line breaks and scrolls sideways rather than
+        // wrapping: a wrapped line no longer says what the file's lines are.
+        '.dli-git-diff-body{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 0;',
+        'border:1px solid rgba(127,127,127,.25);border-radius:8px;background:rgba(127,127,127,.06);',
+        'font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:18px;}',
+        '.dli-git-diff-line{white-space:pre;padding:0 10px;}',
+        '.dli-git-diff-add{color:#3fb950;background:rgba(63,185,80,.12);}',
+        '.dli-git-diff-del{color:#f85149;background:rgba(248,81,73,.12);}',
+        '.dli-git-diff-hunk{color:#58a6ff;}',
+        '.dli-git-diff-meta{color:var(--dsw-alias-label-secondary);}',
       ].join('')
       document.head.appendChild(style)
     }
@@ -510,6 +563,25 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Read one commit file's status as what a row shows.
+     *
+     * Unlike the listing's two porcelain letters this is one letter, and a rename
+     * or copy carries its similarity score in the same field (`R100`), which the
+     * badge drops: the row already shows the two paths.
+     * @param t - namespace-bound translate.
+     * @param status - the status `git diff-tree --name-status` reported.
+     * @returns the label and the badge color.
+     */
+    function describeCommitFile(t, status) {
+      const letter = status[0]
+      const copy = CHANGE_COPY[letter]
+      return {
+        label: copy === undefined ? t('gitUnknown') : t(copy),
+        tone: CHANGE_TONE[letter] ?? 'other',
+      }
+    }
+
+    /**
      * Why a read produced no repository, in words.
      * @param t - namespace-bound translate.
      * @param result - the Host's refusal.
@@ -535,16 +607,55 @@ window.__ModuleLoader__.load({
       return Number.isNaN(at.getTime()) ? iso : at.toLocaleString()
     }
 
+    /** The header lines `git diff` writes before the first hunk. */
+    const DIFF_HEADER_PREFIXES = [
+      'diff ', 'index ', 'new file ', 'deleted file ', 'old mode ', 'new mode ',
+      'similarity index ', 'rename ', 'copy ', 'Binary files ',
+    ]
+
+    /**
+     * What one diff line is, which is what colors it.
+     *
+     * The two file headers start with the same characters as an added and a
+     * removed line, so they are recognized first and shown as headers.
+     * @param line - one line of a unified diff.
+     * @returns the tone suffix of its class name.
+     */
+    function diffTone(line) {
+      if (line.startsWith('@@')) return 'hunk'
+      if (line.startsWith('+++') || line.startsWith('---')) return 'meta'
+      if (DIFF_HEADER_PREFIXES.some((prefix) => line.startsWith(prefix))) return 'meta'
+      if (line.startsWith('+')) return 'add'
+      if (line.startsWith('-')) return 'del'
+      return 'context'
+    }
+
+    /**
+     * Split a unified diff into the lines the page draws.
+     * @param text - the diff the Host sent.
+     * @returns one `{ text, tone }` per line, in order.
+     */
+    function diffLines(text) {
+      const body = text.endsWith('\n') ? text.slice(0, -1) : text
+      if (body === '') return []
+      return body.split('\n').map((line) => ({ text: line, tone: diffTone(line) }))
+    }
+
     /**
      * The Git page: the Session's working directory, its uncommitted changes on
-     * the left, and its last commits on the right.
+     * the left, and its last commits on the right. Double-clicking either kind of
+     * row replaces both columns with what that row is about — one file's diff, or
+     * one commit's changed files — and a back button returns.
      *
-     * Read-only by design: nothing here stages, commits, or pushes. The working
-     * directory comes from the Session rather than from a setting, so the page
-     * follows whichever project the conversation is in, and the pet's menu
-     * re-opening the tab is a new navigation revision — which is what refreshes it.
-     * @param props - slot props plus the injected `load` callback.
-     * @returns the two columns, or the line explaining why there are none.
+     * Read-only by design: nothing here stages, commits, or pushes, and every
+     * detail is a read like the listing. The working directory comes from the
+     * Session rather than from a setting, so the page follows whichever project
+     * the conversation is in, and the pet's menu re-opening the tab is a new
+     * navigation revision — which is what refreshes it.
+     * @param props - slot props plus the injected `load`, `loadDiff`, and
+     *   `loadCommit` callbacks.
+     * @returns the two columns, the open detail, or the line explaining why there
+     *   is neither.
      */
     function GitPanel(props) {
       const { t, sessionId } = props
@@ -556,6 +667,9 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState({ phase: 'loading' })
       const [attempt, setAttempt] = React.useState(0)
       const [send, setSend] = React.useState({ phase: 'idle' })
+      // What has taken the two columns' place: `undefined` is the listing, and
+      // anything else names one row's subject and how its read is going.
+      const [detail, setDetail] = React.useState(undefined)
 
       // Three things move this read: the Session's working directory, the refresh
       // button's `attempt`, and the tab's navigation revision — choosing the pet's
@@ -573,7 +687,37 @@ window.__ModuleLoader__.load({
         return () => { controller.abort() }
       }, [cwd, tab.navigation.revision, attempt])
 
-      const reload = () => { setAttempt((value) => value + 1) }
+      // The detail is read once, when a row is double-clicked or when the refresh
+      // button re-arms it: the row it belongs to is its identity, so an answer
+      // that arrives after another row was opened is dropped rather than shown.
+      React.useEffect(() => {
+        if (detail === undefined || detail.phase !== 'loading') return undefined
+        const controller = new AbortController()
+        /** Whether a later state is still the detail this read was started for. */
+        const mine = (current) => current !== undefined && current.kind === detail.kind
+          && (detail.kind === 'diff' ? current.path === detail.path : current.hash === detail.hash)
+        const settle = (patch) => {
+          if (controller.signal.aborted) return
+          setDetail((current) => (mine(current) ? { ...current, ...patch } : current))
+        }
+        const read = detail.kind === 'diff'
+          ? props.loadDiff(detail.root, detail.path, controller.signal)
+          : props.loadCommit(detail.root, detail.hash, controller.signal)
+        read.then(
+          (result) => { settle({ phase: 'settled', result }) },
+          (error) => { settle({ phase: 'failed', error }) })
+        return () => { controller.abort() }
+      }, [detail?.kind, detail?.path, detail?.hash, detail?.phase])
+
+      // A different working directory is a different repository: a detail that
+      // belonged to the last one says nothing about this one.
+      React.useEffect(() => { setDetail(undefined) }, [cwd])
+
+      const reload = () => {
+        // Refreshing re-reads what is on screen, which is the detail while one is open.
+        setDetail((current) => (current === undefined ? current : { ...current, phase: 'loading' }))
+        setAttempt((value) => value + 1)
+      }
       const result = state.phase === 'settled' ? state.result : undefined
       const loaded = result?.ok === true ? result : undefined
       const note = (text) => h('p', { className: 'dli-git-note' }, text)
@@ -624,7 +768,93 @@ window.__ModuleLoader__.load({
           h('span', { className: 'dli-git-count' }, String(count))),
         h('div', { className: 'dli-git-list' }, rows))
 
+      /**
+       * Open one changed file's diff, replacing the two columns.
+       * @param change - the row's own entry from the listing.
+       */
+      const openDiff = (change) => {
+        setDetail({ kind: 'diff', phase: 'loading', root: loaded?.root ?? '', path: change.path, status: change.status })
+      }
+
+      /**
+       * Open one commit's changed files, replacing the two columns.
+       * @param commit - the row's own entry from the listing.
+       */
+      const openCommit = (commit) => {
+        setDetail({ kind: 'commit', phase: 'loading', root: loaded?.root ?? '', hash: commit.hash, commit })
+      }
+
+      /** The open detail's header: the way back, then what it is about. */
+      const detailHead = () => {
+        const back = h('button', {
+          type: 'button', className: 'dli-git-detail-back', onClick: () => { setDetail(undefined) },
+        }, t('gitDiffBack'))
+        if (detail.kind === 'diff') {
+          const view = detail.status === undefined ? undefined : describeChange(t, detail.status)
+          return h('div', { className: 'dli-git-detail-head' },
+            back,
+            view === undefined ? null : h('span', { className: `dli-git-badge dli-git-badge-${view.tone}` }, view.label),
+            h('span', { className: 'dli-git-detail-title', title: detail.path }, detail.path))
+        }
+        // The commit's own words lead, as they do in the column this was opened
+        // from, with the count and the hash it names beside them.
+        const count = detail.phase === 'settled' && detail.result?.ok === true
+          ? h('span', { className: 'dli-git-count' }, t('gitCommitFiles', { count: detail.result.files.length }))
+          : null
+        return h('div', { className: 'dli-git-detail-head' },
+          back,
+          h('span', { className: 'dli-git-detail-title', title: detail.commit.subject }, detail.commit.subject),
+          count,
+          h('span', { className: 'dli-git-short' }, detail.commit.short))
+      }
+
+      /** One file the open commit touched. */
+      const commitFile = (file, index) => {
+        const view = describeCommitFile(t, file.status)
+        return h('div', { className: 'dli-git-row', key: `${index}:${file.path}` },
+          h('span', { className: `dli-git-badge dli-git-badge-${view.tone}` }, view.label),
+          h('span', { className: 'dli-git-path', title: file.path }, file.path),
+          // A rename is one row rather than two: the path it has now, and the one
+          // it came from beside it.
+          file.from === undefined
+            ? null
+            : h('span', { className: 'dli-git-from', title: file.from }, `← ${file.from}`))
+      }
+
+      /** What the open detail says: one file's diff text, or one commit's files. */
+      const detailContent = () => {
+        if (detail.phase === 'loading') {
+          return note(t(detail.kind === 'diff' ? 'gitDiffLoading' : 'gitCommitLoading'))
+        }
+        if (detail.phase === 'failed') {
+          return note(t('gitFailed', { message: String(detail.error?.message ?? detail.error) }))
+        }
+        const result = detail.result
+        if (result?.ok !== true) return note(gitReason(t, result ?? {}))
+        if (detail.kind === 'commit') {
+          return result.files.length === 0
+            ? note(t('gitCommitEmpty'))
+            : h('div', { className: 'dli-git-detail-body' }, result.files.map(commitFile))
+        }
+        const lines = diffLines(result.text)
+        if (lines.length === 0) return note(t('gitDiffEmpty'))
+        // The cut is a line of the diff like any other, so the reader sees why
+        // the text stops where it does.
+        const rows = result.truncated === true
+          ? [{ text: t('gitDiffTruncated'), tone: 'meta' }, ...lines]
+          : lines
+        return h('div', { className: 'dli-git-diff-body' },
+          rows.map((line, index) => h('div', {
+            className: `dli-git-diff-line dli-git-diff-${line.tone}`, key: index,
+          }, line.text)))
+      }
+
       const body = () => {
+        // The detail is the same question about one row, so it takes both
+        // columns' room rather than sitting beside them.
+        if (detail !== undefined) {
+          return h('section', { className: 'dli-git-detail' }, detailHead(), detailContent())
+        }
         if (state.phase === 'failed') {
           return note(t('gitFailed', { message: String(state.error?.message ?? state.error) }))
         }
@@ -632,17 +862,28 @@ window.__ModuleLoader__.load({
         if (loaded === undefined) return note(gitReason(t, result))
         const changes = loaded.changes.map((change, index) => {
           const view = describeChange(t, change.status)
-          return h('div', { className: 'dli-git-row', key: `${index}:${change.path}` },
-            h('span', { className: `dli-git-badge dli-git-badge-${view.tone}` }, view.label),
-            h('span', { className: 'dli-git-path', title: change.path }, change.path),
-            view.staged ? h('span', { className: 'dli-git-staged' }, t('gitStaged')) : null)
+          return h('div', {
+            className: 'dli-git-row',
+            key: `${index}:${change.path}`,
+            // The path stays in the tooltip because the column is narrow enough to
+            // shorten it; the second line says what a double-click does, which is
+            // the only thing on this page that is not visible at a glance.
+            title: `${change.path}\n${t('gitDiffHint')}`,
+            onDoubleClick: () => { openDiff(change) },
+          },
+          h('span', { className: `dli-git-badge dli-git-badge-${view.tone}` }, view.label),
+          h('span', { className: 'dli-git-path' }, change.path),
+          view.staged ? h('span', { className: 'dli-git-staged' }, t('gitStaged')) : null)
         })
         const commits = loaded.commits.map((commit) => h('div', {
-          className: 'dli-git-commit', key: commit.hash,
+          className: 'dli-git-commit',
+          key: commit.hash,
+          title: `${commit.subject}\n${t('gitCommitHint')}`,
+          onDoubleClick: () => { openCommit(commit) },
         },
         // The message leads and wraps: it is what the reader scans for, while the
         // hash under it is a reference to copy rather than the headline.
-        h('div', { className: 'dli-git-subject', title: commit.subject }, commit.subject),
+        h('div', { className: 'dli-git-subject' }, commit.subject),
         h('div', { className: 'dli-git-hash' }, commit.short),
         h('div', { className: 'dli-git-byline' }, `${commit.author} · ${formatCommitDate(commit.date)}`)))
         return h('div', { className: 'dli-git-cols' },
@@ -758,13 +999,47 @@ window.__ModuleLoader__.load({
             name: 'sidebar.right.pane.tab',
             key: GIT_TYPE_ID,
             locale: NS,
-            // The component reaches no service itself: one callback reads the
-            // repository, the other puts a message in the conversation, and both
-            // are bound to the Session this tab belongs to.
+            // The component reaches no service itself: these callbacks read the
+            // repository and one file's diff, put a message in the conversation,
+            // and all of them are bound to the Session this tab belongs to.
             inject: (sessionId) => ({
               load: async (cwd, signal) => {
                 const response = await fetch(`${GIT_PATH}?cwd=${encodeURIComponent(cwd)}`, { signal })
                 if (!response.ok) throw new Error(`little-icon: the Git route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Read one changed file's diff.
+               *
+               * The repository root travels rather than the Session's directory:
+               * the path the listing gave is relative to the root, so Git has to
+               * resolve it from there. Which comparison shows the change is the
+               * Host's decision — it looks the path's status up itself.
+               * @param root - the repository root from the listing.
+               * @param path - the changed path, relative to the root.
+               * @param signal - aborts the read when the page moves on.
+               * @returns the Host's diff answer.
+               */
+              loadDiff: async (root, path, signal) => {
+                const query = `root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+                const response = await fetch(`${GIT_DIFF_PATH}?${query}`, { signal })
+                if (!response.ok) throw new Error(`little-icon: the Git diff route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Read the files one commit touched.
+               *
+               * The Host asks Git for the commit's parents itself, so this only
+               * names the repository and the hash the history column showed.
+               * @param root - the repository root from the listing.
+               * @param hash - the commit's full hash, as the listing reported it.
+               * @param signal - aborts the read when the page moves on.
+               * @returns the Host's answer: one entry per changed path.
+               */
+              loadCommit: async (root, hash, signal) => {
+                const query = `root=${encodeURIComponent(root)}&hash=${encodeURIComponent(hash)}`
+                const response = await fetch(`${GIT_COMMIT_PATH}?${query}`, { signal })
+                if (!response.ok) throw new Error(`little-icon: the Git commit route answered ${response.status}`)
                 return response.json()
               },
               /**

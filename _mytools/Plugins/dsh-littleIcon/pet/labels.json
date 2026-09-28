@@ -5,6 +5,10 @@
   "ToggleShown": "收起 DSH",
   "ToggleHidden": "显示 DSH",
   "Reset": "回到右下角",
+  "RestartDsh": "重启 DSH",
+  "RestartDshConfirm": "重启 DSH？正在运行的任务会被中断。",
+  "RestartDshUnavailable": "读不到 DSH 的启动方式，这次没有重启；请手动启动。",
+  "RestartDshFailed": "重启没能准备好，DSH 没有被动过。",
   "QuitDsh": "退出 DSH",
   "QuitDshConfirm": "退出 DSH？正在运行的任务会被中断。"
 }

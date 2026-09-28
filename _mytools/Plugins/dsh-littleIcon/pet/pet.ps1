@@ -111,6 +111,10 @@ function Get-Labels {
         PetName               = 'DSH pet'
         Chat                  = 'Chat'
         Git                   = 'Git changes'
+        OpenCwd               = 'Open working directory'
+        OpenCwdNoCwd          = 'That session has no working directory yet, so there is no folder to open.'
+        OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
+        OpenCwdFailed         = 'The folder could not be opened.'
         ToggleShown           = 'Tuck DSH away'
         ToggleHidden          = 'Show DSH'
         Reset                 = 'Move to corner'
@@ -185,6 +189,10 @@ $SCRIPT:PressY = 0
 $SCRIPT:ClickAction = 'toggle'
 $SCRIPT:LastFrameAt = 0
 $SCRIPT:StateStamp = [DateTime]::MinValue
+# Failures the host already reported before this pet started are history: seeding
+# the clock here keeps a stale notice in the state file from opening a box at
+# every start.
+$SCRIPT:LastNoticeAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $SCRIPT:Ticks = 0
 $SCRIPT:PetMenu = $null
 $SCRIPT:ToggleItems = @()
@@ -341,6 +349,24 @@ function Show-RestartFailure([string]$Detail) {
         [System.Windows.MessageBoxImage]::Warning)
 }
 
+# The host reports an "open working directory" that ended without a window the
+# same way it reports anything else: in the state file. The person clicked here,
+# so the reason is said here - a menu entry that silently opened nothing reads as
+# a dead one. The reason is the host's word for it, and the label is this side's.
+function Get-OpenFailureText([string]$Reason) {
+    switch ($Reason) {
+        'no-cwd' { return $SCRIPT:Labels.OpenCwdNoCwd }
+        'no-dir' { return $SCRIPT:Labels.OpenCwdNoDir }
+        default { return $SCRIPT:Labels.OpenCwdFailed }
+    }
+}
+
+function Show-OpenFailure([string]$Reason) {
+    [void][System.Windows.MessageBox]::Show($SCRIPT:Window, (Get-OpenFailureText $Reason),
+        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
 function Restart-DshWindow {
     # Ending DSH and having it come back. The waiter is armed first so a failure
     # to arm it leaves the app running, and DSH is ended only once the way back
@@ -367,9 +393,14 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
+    # The host's reasons for an open that produced no window, in this side's
+    # words: a reason nobody mapped would otherwise reach the person as a box
+    # about the wrong thing.
+    $reasons = @('no-cwd', 'no-dir', 'unexpected') | ForEach-Object { Get-OpenFailureText $_ }
+    Write-Output "open-failure: $($reasons -join ' / ')"
     # Restarting ends DSH, so no test may exercise it end to end; what is worth
     # checking is the part a wrong edit would ruin silently - which directory the
     # replacement starts in, and the script the waiter would run, down to the
@@ -521,6 +552,16 @@ function Apply-State($State) {
     # the request says nothing about the current window state, so it only ever
     # hides, and hiding an already hidden window is a no-op.
     if ($null -ne $State.tuck -and [bool]$State.tuck) { Set-DshWindowShown $false }
+    # The host's answer to the last "open working directory" that opened nothing.
+    # The latest one stays in the file, so only a failure newer than the one this
+    # pet has already shown is news.
+    if ($null -ne $State.notice -and $null -ne $State.notice.at) {
+        $reported = [long]$State.notice.at
+        if ($reported -gt $SCRIPT:LastNoticeAt) {
+            $SCRIPT:LastNoticeAt = $reported
+            Show-OpenFailure ([string]$State.notice.reason)
+        }
+    }
     Update-PetOpacity
 }
 
@@ -716,6 +757,14 @@ function New-PetMenu {
             Show-DshWindow
             Send-MenuCommand 'git'
         } catch { Write-Log $_.Exception.Message }
+    })
+    # Opening the working directory is the page's move as well, for the opposite
+    # reason: the pet knows no Session's directory, and the page can name one but
+    # cannot open it. Nothing is raised first here - the folder window is what the
+    # person asked to see, and Explorer brings itself to the front.
+    $openItem = $menu.Items.Add($SCRIPT:Labels.OpenCwd)
+    $openItem.add_Click({
+        try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
     })
     # Without a DSH window to control (the web profile) the window entries would be
     # dead, so the menu keeps only the page command and the position. The pet never

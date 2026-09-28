@@ -30,6 +30,12 @@
  * detail behind one row is a route of its own — one file's diff, or one
  * commit's files — because each asks a different question about a different
  * pair of Git objects.
+ *
+ * Opening that same directory in the file manager is the mirror image: the page
+ * knows which directory it is and cannot open one, this half can open one and
+ * does not know which. The page names it on a route of its own, and the failure
+ * that follows comes back to the pet through the state file, because the pet is
+ * where the click happened.
  */
 
 import { execFile, spawn } from 'node:child_process'
@@ -81,6 +87,14 @@ const GIT_DIFF_PATH = '/api/little-icon/git/diff'
  * it names one repository root and one thing inside it.
  */
 const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
+
+/**
+ * Same-origin route that opens the Session's working directory in the system
+ * file manager. Neither half can do it alone: which directory the person is
+ * working in is the page's knowledge — it is the Session the main view holds —
+ * and starting a process is the Host's, so the page names the directory here.
+ */
+const OPEN_PATH = '/api/little-icon/open'
 
 /** The Git executable; a machine without one on PATH is reported, not guessed at. */
 const GIT_EXECUTABLE = 'git'
@@ -479,6 +493,31 @@ function isDirectory(path) {
 }
 
 /**
+ * Open one Session's working directory in the system file manager.
+ *
+ * The directory is checked here rather than left to the file manager: a Session
+ * whose directory has since been deleted is something the pet says out loud,
+ * where a shell asked for a path that is gone opens a different folder or a
+ * dialog of its own — neither of which reads as a refusal.
+ * @param cwd - the directory the page reported; empty when its Session has none.
+ * @param launch - starts the file manager on one existing directory, and is the
+ *   caller's because only it has a logger for the spawn failure that arrives
+ *   after this returns.
+ * @returns `{ ok: true, path }`, or `{ ok: false, reason }` with `no-cwd`,
+ *   `no-dir`, or `failed` plus the launcher's message.
+ */
+function openWorkingDirectory(cwd, launch) {
+  if (cwd === '') return { ok: false, reason: 'no-cwd' }
+  if (!isDirectory(cwd)) return { ok: false, reason: 'no-dir' }
+  try {
+    launch(cwd)
+    return { ok: true, path: cwd }
+  } catch (error) {
+    return { ok: false, reason: 'failed', message: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/**
  * Read the Git state of one directory.
  *
  * The directory identifies the repository rather than the other way round: the
@@ -768,6 +807,15 @@ export function apply(ctx, config) {
   let behindSince
   /** Timestamp of the last menu command already sent to the page; older ones are history. */
   let lastCommandAt = readCommand(commandFile)?.at ?? 0
+  /**
+   * The last request to open the working directory that ended without a window,
+   * as `{ at, reason }`, or undefined while every one of them opened one. It
+   * travels in the state file because the pet is the half with a place to say
+   * it: the click happens on the pet, and a menu entry that opened nothing must
+   * not read as one that did nothing. `at` is what tells a pet that has already
+   * shown this one from a fresh failure.
+   */
+  let openNotice
   /** Open command streams, one per DSH window that is listening. */
   const commandStreams = new Set()
   let child
@@ -865,6 +913,9 @@ export function apply(ctx, config) {
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),
+      // Absent until an open fails, and unchanged after that, so it costs one
+      // write rather than one per sample.
+      notice: openNotice,
       updatedAt: now,
     })
   }
@@ -1053,6 +1104,42 @@ export function apply(ctx, config) {
         ))
       },
     }), `little-icon: GET ${GIT_COMMIT_PATH}`)
+    // The one route here with a side effect outside the page: it opens the
+    // directory in the shell's own file manager. POST, so a page that re-reads
+    // its listing never opens a folder by itself.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: OPEN_PATH,
+      handler: (req, res) => {
+        const connection = ctx.get('connection')
+        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end()
+          return
+        }
+        if (req.method !== 'POST') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        const query = new URL(req.url ?? '', 'http://localhost').searchParams
+        const outcome = openWorkingDirectory(query.get('cwd') ?? '', (directory) => {
+          // explorer.exe is the shell itself, so the folder opens in the window
+          // the person already uses and an open Explorer is handed the path
+          // rather than a second one being started.
+          const child = spawn('explorer.exe', [directory], { detached: true, stdio: 'ignore' })
+          // A spawn failure arrives after this returns. Without a listener it is
+          // an unhandled `error` event, which takes the whole host down.
+          child.once('error', (error) => {
+            ctx.logger.warn('little-icon: could not open %s: %s', directory, String(error))
+          })
+          child.unref()
+        })
+        if (!outcome.ok) openNotice = { at: Date.now(), reason: outcome.reason }
+        sendJson(res, outcome)
+      },
+    }), `little-icon: POST ${OPEN_PATH}`)
   })
 
   const startPet = () => {
@@ -1161,6 +1248,7 @@ export const internals = {
   readGitRepository,
   readGitDiff,
   readGitCommit,
+  openWorkingDirectory,
   parseGitStatus,
   parseGitCommitFiles,
   parseGitLog,
@@ -1171,6 +1259,7 @@ export const internals = {
   GIT_PATH,
   GIT_DIFF_PATH,
   GIT_COMMIT_PATH,
+  OPEN_PATH,
   GIT_DIFF_MAX_CHARS,
   GIT_LOG_LIMIT,
 }

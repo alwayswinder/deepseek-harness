@@ -69,11 +69,20 @@ window.__ModuleLoader__.load({
     const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
 
     /**
-     * What the Git page's button says into the conversation. The message is a
-     * real user turn, admitted exactly as the composer admits one, so the agent
-     * reads it as an instruction and commits and pushes with its own tools.
+     * The Host route that opens a directory in the system file manager. Which
+     * directory is a Session detail this half alone knows, and opening one is
+     * something only the Host can do, so the menu's open command is this half
+     * naming the directory on that route.
      */
-    const COMMIT_AND_PUSH_PROMPT = '提交并推送'
+    const OPEN_PATH = '/api/little-icon/open'
+
+    /**
+     * What the Git page's button says into the conversation; the button itself
+     * keeps the short `gitCommitAndPush` label. The message is a real user turn,
+     * admitted exactly as the composer admits one, so the agent reads it as an
+     * instruction and commits and pushes with its own tools.
+     */
+    const COMMIT_AND_PUSH_PROMPT = '没问题就提交并推送吧！'
 
     /** At most one activity ping per window; the Host only needs coarse recency. */
     const ACTIVITY_PING_MS = 15_000
@@ -959,6 +968,20 @@ window.__ModuleLoader__.load({
               return
             }
             sidebar.openTab(GIT_KIND)
+          },
+          'open-cwd': () => {
+            // The directory is the one the main view holds, the same Session the
+            // shipped "open workspace" control reads, because a pet click says
+            // nothing about which Session is meant. The Host opens it and tells
+            // the pet when it could not; this half has nowhere to report that,
+            // and only names the directory the click is about.
+            const listed = ctx.get('sessions')?.list?.getSnapshot()?.byId
+            const current = Object.values(listed ?? {})
+              .find(row => (row.retainedBy?.mainView ?? 0) > 0)
+            void fetch(`${OPEN_PATH}?cwd=${encodeURIComponent(current?.cwd ?? '')}`, { method: 'POST' })
+              .catch((error) => {
+                console.warn('little-icon: the Host could not be asked to open the working directory', error)
+              })
           },
         }
 

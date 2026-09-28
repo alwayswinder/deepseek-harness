@@ -20,9 +20,9 @@ import { join } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
+  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, OPEN_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
   parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, readGitDiff, readGitCommit,
-  StateFileWriter,
+  openWorkingDirectory, StateFileWriter,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -189,8 +189,10 @@ const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8')
 assert.equal(labels.ToggleShown, '收起 DSH')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
-for (const key of ['PetName', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh',
-  'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
+assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
+for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
+  'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable',
+  'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
@@ -260,7 +262,13 @@ if (process.platform === 'win32') {
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /收起 DSH/)
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
+  assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
+  // A failed open is reported in the pet's own words, which only happens if the
+  // reason the host sends is one this mapping knows.
+  assert.ok(selfTest.stdout.includes(
+    `open-failure: ${labels.OpenCwdNoCwd} / ${labels.OpenCwdNoDir} / ${labels.OpenCwdFailed}`),
+  'every reason the host can report must have its own line in the pet')
   // Restarting ends DSH, so the self test reports what it would run instead: the
   // directory the replacement starts in is the application directory quoted in the
   // launcher's command line, and the waiter waits for DSH, waits out its shutdown,
@@ -349,6 +357,93 @@ assert.deepEqual(parseGitCommitFiles(TREE_FIXTURE), [
 ])
 // An empty commit wrote no records at all, which is no files rather than one.
 assert.deepEqual(parseGitCommitFiles(''), [])
+
+// ---- opening the working directory ------------------------------------------
+
+// The menu's open entry is the mirror of the Git reads: the page names one
+// directory and the Host hands it to the file manager. Which directory, and
+// whether there is still one to open, is decided before anything is started; the
+// file manager itself belongs to the caller, so the smoke test watches the
+// hand-off instead of putting an Explorer window on the desktop.
+const launched = []
+assert.deepEqual(openWorkingDirectory('', path => launched.push(path)),
+  { ok: false, reason: 'no-cwd' }, 'a Session with no directory has nothing to open')
+const goneDir = join(tmpdir(), 'little-icon-no-such-directory')
+assert.deepEqual(openWorkingDirectory(goneDir, path => launched.push(path)),
+  { ok: false, reason: 'no-dir' }, 'a directory that is gone is its own answer, not a shell dialog')
+const openDir = mkdtempSync(join(tmpdir(), 'little-icon-open-'))
+assert.deepEqual(openWorkingDirectory(openDir, path => launched.push(path)),
+  { ok: true, path: openDir }, 'an existing directory opens')
+assert.deepEqual(launched, [openDir], 'the directory the page named is the one handed over')
+assert.deepEqual(openWorkingDirectory(openDir, () => { throw new Error('no shell') }),
+  { ok: false, reason: 'failed', message: 'no shell' }, 'a file manager that will not start is reported')
+assert.deepEqual(launched, [openDir], 'a refused start hands over nothing')
+rmSync(openDir, { recursive: true, force: true })
+
+// The route around that reader, and the state it publishes for the pet. The pet
+// is switched off here, so this runs anywhere and leaves no folder window and no
+// message box on the desktop of whoever runs the suite — which is why the
+// `--pet` run below does not exercise this route at all.
+{
+  const home = mkdtempSync(join(tmpdir(), 'little-icon-open-host-'))
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  const disposers = []
+  const routes = []
+  const hostCtx = {
+    // No `agents`, no `jobs`, no `connection`: all three are optional to this half.
+    get: () => undefined,
+    logger: { info: () => {}, warn: () => {} },
+    on: () => () => {},
+    effect: (factory) => { disposers.push(factory()) },
+    inject: (_services, callback) => callback({
+      effect: (factory) => { disposers.push(factory()) },
+      settings: { configure: () => () => {} },
+      webServer: { register: (route) => { routes.push(route); return () => {} } },
+    }),
+  }
+  const fixed = (value) => ({ get: () => value })
+  const config = {
+    enabled: fixed(false), size: fixed(160), translucent: fixed(true), idleOpacity: fixed(0.5),
+    frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
+    boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
+    autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
+  }
+  try {
+    apply(hostCtx, config)
+    const route = routes.find((entry) => entry.path === OPEN_PATH)
+    assert.ok(route !== undefined, 'apply() must register the open route')
+    const ask = (method, url) => {
+      const response = { status: 0, body: '', writeHead(code) { this.status = code }, end(chunk) { this.body = chunk ?? '' } }
+      route.handler({ method, url, on: () => {} }, response)
+      return response
+    }
+    // Opening a folder is the one thing here with an effect outside the page, so
+    // it is the one surface a re-read must not reach.
+    assert.equal(ask('GET', OPEN_PATH).status, 405, 'opening a folder is a POST')
+    assert.deepEqual(JSON.parse(ask('POST', OPEN_PATH).body), { ok: false, reason: 'no-cwd' },
+      'a Session with no directory is answered, not attempted')
+    const goneDir = join(home, 'gone')
+    assert.deepEqual(JSON.parse(ask('POST', `${OPEN_PATH}?cwd=${encodeURIComponent(goneDir)}`).body),
+      { ok: false, reason: 'no-dir' }, 'a directory that is gone is answered too')
+    // The person clicked on the pet, so the pet is what says the folder did not
+    // open; the last failure rides in the state file with the timestamp that
+    // keeps a pet which already showed it from showing it again.
+    const statePath = join(home, 'little-icon', 'state.json')
+    const notice = () => JSON.parse(readFileSync(statePath, 'utf8')).notice
+    const untilNoticed = Date.now() + 4000
+    while (notice() === undefined && Date.now() < untilNoticed) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    assert.equal(notice()?.reason, 'no-dir', 'the failed open must reach the pet')
+    assert.ok(typeof notice()?.at === 'number', 'the pet tells a new failure from one it has shown')
+  } finally {
+    for (const disposer of disposers.splice(0)) disposer()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(home, { recursive: true, force: true })
+  }
+}
 
 if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
   const repo = mkdtempSync(join(tmpdir(), 'little-icon-repo-'))
@@ -667,6 +762,28 @@ try {
 // One unknown command, then the two refusals above in each of their two forms.
 assert.equal(warned.length, 5, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
+// "Open working directory" is the one command this half only names: the folder
+// belongs to the Session the main view holds — the same row the shipped
+// workspace control opens — and starting a file manager is the Host's, so the
+// page sends the directory and leaves the outcome to the pet, which is where the
+// click happened. Without a main-view Session there is no directory to send.
+const openedFor = (rows) => {
+  clientServices.sessions = { list: { getSnapshot: () => ({ byId: rows }) } }
+  const before = pings.length
+  commands.onmessage({ data: '{"command":"open-cwd"}' })
+  return pings[before]
+}
+assert.deepEqual(openedFor({ s1: { cwd: 'D:\\work\\proj', retainedBy: {} }, s2: { cwd: 'D:\\other', retainedBy: { mainView: 1 } } }),
+  { url: `${OPEN_PATH}?cwd=D%3A%5Cother`, method: 'POST' },
+  'the directory is the one the main view holds, escaped into the query')
+assert.deepEqual(openedFor({ s1: { cwd: 'D:\\work\\proj', retainedBy: {} } }),
+  { url: `${OPEN_PATH}?cwd=`, method: 'POST' },
+  'no main-view Session means no directory to open, which the Host answers')
+delete clientServices.sessions
+assert.deepEqual(openedFor({}), { url: `${OPEN_PATH}?cwd=`, method: 'POST' },
+  'a build without the sessions service still reaches the Host, which explains itself')
+delete clientServices.sessions
+
 // The Git page is a tab type of this plugin's own: the right Sidebar's registry
 // carries the type, and its keyed seat carries the body that reads the Host.
 assert.equal(registeredTypes.length, 1, 'the page must register exactly one tab type')
@@ -882,12 +999,12 @@ assert.equal(commit.props.title, `first subject\n${t('gitCommitHint')}`,
 // push" in the conversation and lets the agent do it. Clicking sends that text
 // through the same face the composer uses — nothing in the page touches Git.
 const sendButton = flatten(populated.view).find(node => node.props?.className === 'dli-git-send')
-assert.equal(sendButton.children[0], t('gitCommitAndPush'), 'the button names what it sends')
+assert.equal(sendButton.children[0], t('gitCommitAndPush'), 'the button keeps its short label')
 assert.notEqual(sendButton.props.disabled, true, 'a readable repository offers the button')
 sent.length = 0
 sendButton.props.onClick()
 await new Promise((resolve) => setTimeout(resolve, 0))
-assert.deepEqual(sent, ['提交并推送'], 'clicking the button sends the instruction into the conversation')
+assert.deepEqual(sent, ['没问题就提交并推送吧！'], 'clicking the button sends the instruction into the conversation')
 
 // Each refusal has its own line, and the page names no repository in any of them.
 for (const [reason, copy] of [['not-a-repo', t('gitNotARepo')], ['no-git', t('gitNoGit')],
@@ -1175,11 +1292,12 @@ $found
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
     // The page reports input here; without it the pet could only see agents and
     // jobs, and it would sleep while the person is using DSH. The second route is
-    // the stream the pet's menu commands come back on, and the last three are what
-    // the Git page reads a Session's repository and the detail behind one row through.
+    // the stream the pet's menu commands come back on, the next three are what
+    // the Git page reads a Session's repository and the detail behind one row
+    // through, and the last is the menu's open-directory entry.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
       [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
-        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`])
+        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${OPEN_PATH}`])
 
     // The Git routes answer JSON for one directory and refuse everything else.
     // The directory is checked here rather than inferred from a spawn failure, so

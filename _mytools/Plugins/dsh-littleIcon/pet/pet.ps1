@@ -139,6 +139,13 @@ $SCRIPT:SwHide = 0
 $SCRIPT:SwMinimize = 6
 $SCRIPT:SwRestore = 9
 
+# Custom window message the Electron main process listens for (its hook lives in
+# apps/desktop main.ts, tracked in UPSTREAM.md). Posting it after an external
+# restore asks Electron to run its own show(), which flips the page's hidden
+# visibilityState back to visible; without it a window hidden via the title-bar
+# X comes back showing a frozen frame. Must match main.ts's constant.
+$SCRIPT:LittleIconShowWindowMessage = 0x8001
+
 # GetWindowLong/SetWindowLong index for the extended window style.
 $SCRIPT:GwlExStyle = -20
 
@@ -444,6 +451,13 @@ function Set-DshWindowShown([bool]$Shown) {
     if ($Shown) {
         [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwRestore)
         [void][DshPet.Win32]::SetForegroundWindow($handle)
+        # Electron hid this window when its title-bar X was used, and throttles
+        # the renderer while hidden. ShowWindow above brings the OS window back,
+        # but Chromium keeps the page visibilityState hidden - the restored
+        # window shows a frozen frame. Tell the Electron main process, which
+        # listens for this message and re-runs its own show() to flip the page
+        # back to visible. Without it the window stays stuck after the X path.
+        [void][DshPet.Win32]::PostMessage($handle, $SCRIPT:LittleIconShowWindowMessage, [IntPtr]::Zero, [IntPtr]::Zero)
     } else {
         [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwHide)
     }

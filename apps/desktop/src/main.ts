@@ -61,6 +61,14 @@ let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => {}
 let shuttingDown = false
 /**
+ * Custom window message the little-icon pet posts after it has shown a hidden
+ * main window with user32 calls. Electron sees the OS window but keeps the page
+ * visibilityState hidden (the renderer stays throttled, the window looks
+ * frozen); the main process listens for this message and re-runs `show()`,
+ * which is what flips visibilityState back and unthrottles the page.
+ */
+const LITTLE_ICON_SHOW_WINDOW_MESSAGE = 0x8001
+/**
  * Set by quit entries that must not ask: crash recovery exit and restart, and the
  * development restart command. The installer handoff has its own before-quit branch.
  */
@@ -1035,6 +1043,17 @@ async function main(): Promise<void> {
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)
     window.on('focus', automaticCheck)
+    if (process.platform === 'win32') {
+      // The little-icon pet brings a hidden window back with user32 ShowWindow
+      // calls; Electron sees the OS window but keeps the page visibilityState
+      // hidden, so the renderer stays throttled and the window looks frozen.
+      // The pet posts this message after showing the window; running show()
+      // again (harmless when already visible) is what flips visibilityState
+      // back to visible and unthrottles the page.
+      window.hookWindowMessage(LITTLE_ICON_SHOW_WINDOW_MESSAGE, () => {
+        if (!window.isDestroyed()) window.show()
+      })
+    }
     // Closing hides: the page and the Host keep running, and the next show resumes the same document.
     window.on('close', (event) => {
       if (quitting || shellInstallerOwnsQuit || sessionEnding) return

@@ -35,6 +35,20 @@
 - 保留 Conventional Commits 的类型与范围前缀（如 `fix(_mytools/deepseek-usage): `），前缀之后用中文描述，例如 `fix(_mytools/deepseek-usage): 去掉对话条里重复的 token 数`。
 - 之前已推送的英文提交不追溯修改。
 
+## 「更新上游」自动更新 + 构建流程
+
+用户说一句「更新上游」（或类似意思），就按 `_mytools/build/update-and-build.bat` 这条链路自动跑，改动只落在 `_mytools/` 与 `$DSH_HOME`：
+
+1. **`--check` 预检**：确认 git、`deepseek-ai` remote、node/pnpm 可用，工作树干净、无进行中的 merge；有问题先停下汇报。
+2. **更新**：`git fetch deepseek-ai` → `git merge --no-edit deepseek-ai/master`。有冲突就 `git merge --abort` 停下，**逐条处理并汇报**，不硬解、不带着冲突去构建。
+3. **merge 后不自动 push**；只有用户额外说「推送」（或显式带 `--push` 跑脚本）才推 `origin master`。
+4. **preflight**：`node _mytools/build/preflight.mjs --mode desktop`，拦住上游合并最常见的坑（exit 2 时说明修复后再跑）。
+5. **写 resume-plan 契约**：`write-resume-plan.ps1` 把「仓库、revision、日志路径、预期产物清单、构建模式」写进 `$DSH_HOME\build\resume-plan.json`，给后续 turn 核验用。
+6. **构建**：`build.bat --detached --restart`。**完整构建必须停掉本副本的 Electron，而这个会话跑在 app 进程树里——所以 app 被停的瞬间，我这轮 turn 必然中断**（这不是失败，是机制）：detached 构建脱离进程树存活、完成后自动把 app 拉回来，会话持久化在 `$DSH_HOME\sessions`，回来后我读 `resume-plan.json` + `last-build.json` 继续收尾、汇报结果。
+7. **异常守卫**：启动后轮询日志与 `last-build.json`（detached 进程若像 2026-09-28 那样被 Ctrl+C / 0xC000013A 打断，要从日志定位并修复，不允许静默烂尾）。构建报错（锁文件漂移、上游删包、脚本改动等）都修到绿为止，再汇报。
+
+「更新」这个动作（fetch + merge，含 merge commit）在用户说「更新上游」时即视为已授权；「push」仍须单独明说。
+
 ## 不要做
 
 - 不要为了让检查通过而修改上游的测试、快照、脚本或文档。

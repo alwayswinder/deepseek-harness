@@ -10,6 +10,7 @@
 | 场景 | 跑这个 |
 | --- | --- |
 | 新机器第一次用，或刚拉完上游 | `build\build.bat`（两端一次构建完） |
+| 刚说完「更新上游」（让 AI 一条龙跑） | 直接说就行；手动跑 `build\update-and-build.bat` |
 | DSH 正开着，改的是宿主侧代码 | `build\build.bat quick`，然后重启应用 |
 | DSH 正开着，改的是客户端/Web 或刚合完上游 | `build\build.bat --detached --restart`（会关掉它，重建完自己回来） |
 | 日常启动网页版（默认 3080） | `build\start-dsh.bat` |
@@ -34,6 +35,7 @@
 | `build\stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
 | `build\start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
 | `build\make-shortcut.bat` | 把「DeepSeek Harness」装进开始菜单（默认还有桌面）：带应用图标、点开不弹控制台、失败时弹一个带日志尾巴的对话框。`--start-menu-only` 只要开始菜单，`--remove` 删掉。 | 每台机器跑一次；重复跑就是刷新。见下面「像应用一样启动」。 |
+| `build\update-and-build.bat` | **「更新上游」一条龙入口**：`--check` 预检 → `git fetch deepseek-ai` → `git merge --no-edit deepseek-ai/master`（冲突即 `--abort` 停下，exit 2）→ preflight（exit 2 时停下，exit 3）→ `write-resume-plan.ps1` 写契约 → `build.bat --detached --restart`。`--push` 才会在 merge 后推 `origin master`；`--check` 只查环境不做事；`--no-pause` 免按键。 | 说「更新上游」就按它跑（约定见仓库根 [AGENTS.local.md](../AGENTS.local.md) 的「更新上游」节）。**完整构建会停掉本副本的 Electron，而会话跑在 app 进程树里——被停瞬间当前 turn 中断是机制不是失败**；detached 构建活到完成、自动把 app 拉回来，回来后读 `resume-plan.json` + `last-build.json` 收尾。 |
 
 ### 像应用一样启动（图标 + 无控制台）
 
@@ -69,7 +71,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 ### 构建日志与结果
 
-每次都写 `$DSH_HOME\build\last-build.json`（模式、走到哪一步、退出码、revision、日志路径、时间）；`--detached` 还会把全过程写进 `$DSH_HOME\build\logs\build-<时间戳>.log`。**app 关着的时候构建失败，看这两个文件就知道发生了什么**，不用再靠人转述控制台。
+每次都写 `$DSH_HOME\build\last-build.json`（模式、走到哪一步、退出码、revision、日志路径、时间）；`--detached` 还会把全过程写进 `$DSH_HOME\build\logs\build-<时间戳>.log`。**app 关着的时候构建失败，看这两个文件就知道发生了什么**，不用再靠人转述控制台。「更新上游」那条链路（`update-and-build.bat`）还会在构建前多写一个 `$DSH_HOME\build\resume-plan.json`——任务契约（仓库、revision、日志路径、预期产物清单），app 回来后的下一轮 turn 照它核验"这场构建该有什么"，而不是只看结果状态。
 
 `build\preflight.mjs` 在任何破坏性动作之前跑，专门抓上游合并最常踩的几件事并指名修法：Node/pnpm 与 `engines` 不符、**tsconfig 引用的包在磁盘上不存在**（上游删包/改名的经典伤）、存在但没被任何编译面引用的包、树外插件的 peer 链接缺失。退出码 2 = 拦下（此时什么都还没动）。
 
@@ -124,6 +126,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\check-presets.mjs` | 让已构建的本地 CLI 组合 Web profile，再检查每个 `preset-*` 声明引用的插件包能否从该 profile 解析。用法 `node _mytools/build/check-presets.mjs`，退出码 1 表示有坏的。由 `build\build.bat`（web/desktop/repair，构建之后）自动调用，也可以单独跑。 |
 | `build\preflight.mjs` | 构建前的体检（上游合并最常踩的几件事）。由 `build\build.bat` 自动调用；`--root <路径>` 可以检查别的 checkout，方便自测。退出码 2 = 拦下。 |
 | `build\finish.ps1` | 记录一次构建的结果到 `$DSH_HOME\build\last-build.json`，`-Restart` 时在成功后拉起 `build\start-desktop.bat`。由 `build\build.bat` 在每条出口调用。 |
+| `build\write-resume-plan.ps1` | 把「更新上游」的**任务契约**写进 `$DSH_HOME\build\resume-plan.json`：仓库、revision、构建日志路径、预期产物清单。由 `build\update-and-build.bat` 在构建启动前调用；输出日志路径一行供调用方捕获。 |
 | `build\detach.ps1` | 用 WMI 把构建放到本进程树之外（父进程 WmiPrvSE），日志默认落在 `$DSH_HOME\build\logs\build-<时间戳>.log`。由 `build\build.bat --detached` 调用。 |
 | `build\resolve-dsh-home.ps1` | 按 harness 的规则解析 `$DSH_HOME`（空白=未设置、展开开头的 `~`、转绝对路径），供上面几个 PS1 共用。 |
 | `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `build\start-desktop.bat`，失败时弹带日志尾巴的对话框。 |

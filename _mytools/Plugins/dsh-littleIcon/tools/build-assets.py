@@ -11,7 +11,7 @@
 
 帧按底部居中放进统一画布，并按"所有表情里最大的角色"算一个全局缩放，因此同一表情
 内不跳帧、表情之间角色大小一致。输出 assets/<name>/1.png … N.png，N 由版面决定，
-同时写 assets/frames.json 记录每个表情的帧数；另有 assets/tray.ico。
+同时写 assets/frames.json 记录每个表情的帧数。
 
 用法（用 DSH 自带 Python，已含 Pillow）：
     python tools/build-assets.py
@@ -178,12 +178,6 @@ def main() -> None:
 
     # newline="\n" 让 Windows 上生成的文件也是 LF，git 不会报告行尾改写。
     (out / "frames.json").write_text(json.dumps(counts, indent=2) + "\n", encoding="utf-8", newline="\n")
-
-    # 托盘图标单独出一个多尺寸 .ico：PowerShell 用文件名构造 System.Drawing.Icon
-    # 没有重载歧义，比拿 HICON 句柄再转换可靠。
-    icon = Image.open(out / "idle" / "1.png")
-    icon.save(out / "tray.ico", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (256, 256)])
-    print("wrote tray.ico from idle/1.png")
 
     total = sum(os.path.getsize(out / name / f"{index + 1}.png")
                 for name, count in counts.items() for index in range(count))

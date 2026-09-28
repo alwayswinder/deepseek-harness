@@ -171,7 +171,6 @@ for (const state of STATES) {
   assert.ok(!existsSync(join(root, 'assets', state, `${count + 1}.png`)),
     `${state} has more frames on disk than frames.json records`)
 }
-assert.ok(existsSync(join(root, 'assets', 'tray.ico')), 'missing pet/assets/tray.ico')
 assert.ok(existsSync(join(root, 'pet', 'pet.ps1')), 'missing pet/pet.ps1')
 
 // The pet script stays ASCII: Windows PowerShell 5.1 decodes a .ps1 without a
@@ -190,7 +189,7 @@ const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8')
 assert.equal(labels.ToggleShown, '收起 DSH')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
-for (const key of ['TrayTip', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh',
+for (const key of ['PetName', 'Chat', 'Git', 'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh',
   'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
@@ -1395,8 +1394,8 @@ $found
 
     // Disabling the pet ends its process; enabling it again starts a new one,
     // while an unrelated settings write never resurrects a pet the user quit. The
-    // pet is asked to quit rather than killed, so it can take its own tray icon
-    // away: one killed pet is one ghost icon the shell leaves behind.
+    // pet is asked to quit rather than killed, so it stores its position and closes
+    // its window in order instead of dying mid-write.
     const quitPath = join(home, 'little-icon', 'quit')
     const volatileUpdate = handlers.get('loader/volatile-update')
     config.enabled.set(false)

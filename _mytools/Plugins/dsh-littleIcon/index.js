@@ -4,8 +4,8 @@
  * The pet is a separate process, not an overlay inside the DSH window: this half
  * samples the agent state and writes it to a state file, and `pet/pet.ps1`
  * (PowerShell + WPF) draws a frameless always-on-top window from it, handling
- * dragging, click-to-tuck the DSH window, and its own tray menu. Because the pet
- * owns its window, it stays on the desktop while the DSH window is hidden.
+ * dragging, click-to-tuck the DSH window, and its own right-click menu. Because
+ * the pet owns its window, it stays on the desktop while the DSH window is hidden.
  *
  * Either side can tuck DSH away: the pet on a click, and this half by asking for
  * one in the state file once DSH has been left untouched, still on screen, for
@@ -14,7 +14,8 @@
  * the pet.
  *
  * Click-to-tuck needs Win32: the desktop shell exposes no window control to
- * plugins (no tray in `apps/desktop`, no minimize/hide channel in its preload),
+ * plugins (no transparent/always-on-top window and no minimize/hide channel in
+ * its preload),
  * and this half runs in the `ELECTRON_RUN_AS_NODE` child process, where Electron
  * APIs are unavailable. The pet therefore calls `ShowWindow` on the window owned
  * by this process's parent — the Electron main process.
@@ -733,9 +734,9 @@ export function apply(ctx, config) {
   /** Written by the pet when a menu entry is chosen; read here and relayed to the page. */
   const commandFile = join(dataDir, 'command.json')
   /**
-   * Written here to ask the pet to quit rather than killing it: the tray icon
-   * belongs to the pet process, and a process killed outright leaves its icon
-   * behind as a ghost until the shell notices — one dead icon per restart.
+   * Written here to ask the pet to quit rather than killing it: the pet answers by
+   * storing its position and closing its own window, so a teardown never races the
+   * position file it is still writing.
    */
   const quitFile = join(dataDir, 'quit')
   const writer = new StateFileWriter(stateFile, 4000, (error) => {
@@ -801,7 +802,7 @@ export function apply(ctx, config) {
   /**
    * Latest activity from every source the pet must notice: page input reported
    * over the route, and the pet's own position file, which changes whenever the
-   * user drags it or asks the tray to move it home.
+   * user drags it or asks the menu to move it home.
    * @returns the newest activity timestamp.
    */
   const activityAt = () => {
@@ -1083,9 +1084,8 @@ export function apply(ctx, config) {
       const text = String(chunk).trim()
       if (text !== '') ctx.logger.warn('little-icon pet: %s', text)
     })
-    // A pet that exits — through its tray menu or by external kill — is not
-    // restarted: restarting would undo the user's own exit. The next DSH start
-    // brings it back.
+    // A pet that exits — asked to quit, or killed outright — is not restarted:
+    // restarting would undo the exit. The next DSH start brings it back.
     child.once('exit', (code) => {
       child = undefined
       if (!disposed) ctx.logger.info('little-icon: pet process exited with code %s', String(code))
@@ -1096,10 +1096,9 @@ export function apply(ctx, config) {
     const running = child
     child = undefined
     if (running === undefined) return
-    // Ask first, kill as the fallback: only the pet can take its tray icon away,
-    // and a killed pet leaves that icon behind in the tray until the shell
-    // notices, which is one ghost per restart. It reads the request on its next
-    // tick, so the kill is a deadline rather than the usual end.
+    // Ask first, kill as the fallback: the pet answers by storing its position and
+    // closing its own window. It reads the request on its next tick, so the kill is
+    // a deadline rather than the usual end.
     try {
       writeFileSync(quitFile, '')
     } catch (error) {
@@ -1124,9 +1123,8 @@ export function apply(ctx, config) {
     settingsCtx.effect(() => settingsCtx.settings.configure({ auto: false }, ctx.fiber))
   })
 
-  // A pet the user quit from its tray stays quit: only an explicit enable
-  // transition (or the next DSH start) brings it back, never an unrelated
-  // settings write.
+  // A pet that went away stays away: only an explicit enable transition (or the
+  // next DSH start) brings it back, never an unrelated settings write.
   let wasEnabled = false
   ctx.on('loader/volatile-update', () => {
     const enabled = values().enabled

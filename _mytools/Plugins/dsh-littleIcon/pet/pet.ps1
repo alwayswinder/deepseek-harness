@@ -12,7 +12,7 @@
     tucks the DSH window away or brings it back. The state file also carries a
     tuck request, which the host raises once the user leaves DSH untouched for the
     configured stretch, and which hides the window exactly like a click does. A
-    right-click on the pet and the tray icon show the same menu; an entry the page
+    right-click on the pet opens the menu; an entry the page
     carries out (the chat site, or the plugin's own Git page) brings DSH back on
     screen first and is written to command.json beside the state file for the host
     to relay, and the rest act on this process at once. Ending DSH is one of those:
@@ -27,12 +27,12 @@
     is cached, because MainWindowHandle reports 0 once the window is hidden.
 
     This script is deliberately ASCII-only so Windows PowerShell 5.1 decodes it
-    the same way whatever encoding an editor saves: the localized tray labels
+    the same way whatever encoding an editor saves: the localized menu labels
     live in labels.json and are read as UTF-8.
 
 .PARAMETER AssetDir
     Animation root: one subdirectory per state holding 1.png ... N.png, plus
-    tray.ico and labels.json.
+    labels.json.
 
 .PARAMETER StateFile
     The JSON state file the host writes.
@@ -94,10 +94,9 @@ $SCRIPT:WindowFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:State
 # reach the page: the pet cannot touch the DSH window's content, and the page
 # cannot see this window's menu.
 $SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'command.json'
-# The host's request for this pet to quit. It exists because the tray icon belongs
-# to this process: a pet that is killed outright leaves its icon in the tray as a
-# ghost until the shell notices, which is one dead icon per restart, so the host
-# asks instead and only kills a pet that does not answer.
+# The host's request for this pet to quit, written when the plugin is switched off
+# or DSH is shutting down. Answering it lets the pet store its position and close
+# its window in order; a pet that does not answer is killed as the fallback.
 $SCRIPT:QuitFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quit'
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
@@ -109,7 +108,7 @@ function Read-Utf8Text([string]$Path) {
 
 function Get-Labels {
     $fallback = [ordered]@{
-        TrayTip               = 'DSH pet'
+        PetName               = 'DSH pet'
         Chat                  = 'Chat'
         Git                   = 'Git changes'
         ToggleShown           = 'Tuck DSH away'
@@ -143,9 +142,9 @@ $SCRIPT:Labels = Get-Labels
 # IME helper windows carry titles too, so they are filtered by window class.
 $SCRIPT:HelperWindowClasses = @('IME', 'MSCTFIME UI', 'CandidateWindow', 'Mode Indicator', 'Default IME')
 
-# SW_HIDE removes the window from both the screen and the taskbar, which leaves
-# the pet and the tray as the way back; SW_MINIMIZE keeps the taskbar entry;
-# SW_RESTORE shows and activates.
+# SW_HIDE removes the window from both the screen and the taskbar; the way back is
+# the pet itself, or the tray icon DSH's own main process owns; SW_MINIMIZE keeps
+# the taskbar entry; SW_RESTORE shows and activates.
 $SCRIPT:SwHide = 0
 $SCRIPT:SwMinimize = 6
 $SCRIPT:SwRestore = 9
@@ -187,8 +186,6 @@ $SCRIPT:ClickAction = 'toggle'
 $SCRIPT:LastFrameAt = 0
 $SCRIPT:StateStamp = [DateTime]::MinValue
 $SCRIPT:Ticks = 0
-$SCRIPT:TrayIcon = $null
-$SCRIPT:Notify = $null
 $SCRIPT:PetMenu = $null
 $SCRIPT:ToggleItems = @()
 $SCRIPT:Exiting = $false
@@ -340,7 +337,7 @@ function Show-RestartFailure([string]$Detail) {
     $text = $SCRIPT:Labels.RestartDshFailed
     if (-not [string]::IsNullOrWhiteSpace($Detail)) { $text = "$text`n`n$Detail" }
     [void][System.Windows.MessageBox]::Show($SCRIPT:Window, $text,
-        $SCRIPT:Labels.TrayTip, [System.Windows.MessageBoxButton]::OK,
+        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
         [System.Windows.MessageBoxImage]::Warning)
 }
 
@@ -673,7 +670,7 @@ function Invoke-PetClick {
     }
 }
 
-# ---- tray and menu ----------------------------------------------------------
+# ---- menu -------------------------------------------------------------------
 function Exit-Pet {
     if ($SCRIPT:Exiting) { return }
     $SCRIPT:Exiting = $true
@@ -681,8 +678,6 @@ function Exit-Pet {
     # The request answers itself: whatever is left of it belongs to no pet, and a
     # marker nobody removes would end the next one the moment it starts.
     try { if (Test-Path -LiteralPath $SCRIPT:QuitFile) { Remove-Item -LiteralPath $SCRIPT:QuitFile -Force } } catch { }
-    try { if ($null -ne $SCRIPT:Notify) { $SCRIPT:Notify.Visible = $false; $SCRIPT:Notify.Dispose() } } catch { }
-    try { if ($null -ne $SCRIPT:TrayIcon) { $SCRIPT:TrayIcon.Dispose() } } catch { }
     try {
         if ($null -ne $SCRIPT:PetMenu) { $SCRIPT:PetMenu.Dispose() }
         $SCRIPT:PetMenu = $null
@@ -700,8 +695,8 @@ function Send-MenuCommand([string]$Command) {
 }
 
 function New-PetMenu {
-    # One definition, two ways in: the tray icon and a right-click on the pet.
-    # Commands the page carries out come first, window actions after them.
+    # The plugin's only menu surface: a right-click on the pet. Commands the page
+    # carries out come first, window actions after them.
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $chatItem = $menu.Items.Add($SCRIPT:Labels.Chat)
     $chatItem.add_Click({
@@ -745,7 +740,7 @@ function New-PetMenu {
                 # its own box, because a menu entry that only wrote to the log
                 # reads as one that does nothing.
                 $answer = [System.Windows.MessageBox]::Show($SCRIPT:Window, $SCRIPT:Labels.RestartDshConfirm,
-                    $SCRIPT:Labels.TrayTip, [System.Windows.MessageBoxButton]::YesNo,
+                    $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::YesNo,
                     [System.Windows.MessageBoxImage]::Question)
                 if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { Restart-DshWindow }
             } catch {
@@ -759,32 +754,13 @@ function New-PetMenu {
                 # Closing DSH interrupts whatever is running, so the entry asks first;
                 # the message box's own buttons are localized by the system.
                 $answer = [System.Windows.MessageBox]::Show($SCRIPT:Window, $SCRIPT:Labels.QuitDshConfirm,
-                    $SCRIPT:Labels.TrayTip, [System.Windows.MessageBoxButton]::YesNo,
+                    $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::YesNo,
                     [System.Windows.MessageBoxImage]::Question)
                 if ($answer -eq [System.Windows.MessageBoxResult]::Yes) { Stop-DshWindow }
             } catch { Write-Log $_.Exception.Message }
         })
     }
     return $menu
-}
-
-function Initialize-Tray {
-    # tray.ico is a multi-size icon built by tools/build-assets.py; constructing
-    # Icon from a file name avoids the overload ambiguity an HICON handle hits
-    # (PowerShell then picks the file-name overload and looks for that file).
-    $iconPath = Join-Path $SCRIPT:AssetDir 'tray.ico'
-    if (Test-Path -LiteralPath $iconPath) {
-        try { $SCRIPT:TrayIcon = New-Object System.Drawing.Icon($iconPath) }
-        catch { Write-Log "tray icon failed: $($_.Exception.Message)" }
-    }
-    $SCRIPT:Notify = New-Object System.Windows.Forms.NotifyIcon
-    if ($null -ne $SCRIPT:TrayIcon) { $SCRIPT:Notify.Icon = $SCRIPT:TrayIcon }
-    $SCRIPT:Notify.Text = $SCRIPT:Labels.TrayTip
-    $SCRIPT:Notify.ContextMenuStrip = New-PetMenu
-    if ($SCRIPT:DshPid -gt 0) {
-        $SCRIPT:Notify.add_MouseDoubleClick({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
-    }
-    $SCRIPT:Notify.Visible = $true
 }
 
 # ---- interaction ------------------------------------------------------------
@@ -820,8 +796,7 @@ $window.Add_MouseLeftButtonDown({
 })
 $window.Add_MouseRightButtonUp({
     try {
-        # The same menu the tray icon shows, at the pointer: a right-click on the
-        # pet is the discoverable way in, the tray the durable one.
+        # The menu the pet offers: a right-click is the only way in.
         if ($null -ne $SCRIPT:PetMenu) { [void]$SCRIPT:PetMenu.Show([System.Windows.Forms.Cursor]::Position) }
     } catch {
         Write-Log "menu failed: $($_.Exception.Message)"
@@ -859,9 +834,9 @@ $timer.Add_Tick({
     try {
         $SCRIPT:Ticks++
 
-        # The host asks before it goes, so this process can take its own tray icon
-        # away first (see $SCRIPT:QuitFile). Nothing is written here: a request the
-        # pet answered is not a problem the host has to hear about, and the host
+        # The host asks before it goes, so this process can store its position and
+        # close in order (see $SCRIPT:QuitFile). Nothing is written here: a request
+        # the pet answered is not a problem the host has to hear about, and the host
         # already knows it asked.
         if (Test-Path -LiteralPath $SCRIPT:QuitFile) {
             Exit-Pet
@@ -905,7 +880,6 @@ $timer.Add_Tick({
     }
 })
 
-try { Initialize-Tray } catch { Write-Log "tray unavailable: $($_.Exception.Message)" }
 try { $SCRIPT:PetMenu = New-PetMenu } catch { Write-Log "pet menu unavailable: $($_.Exception.Message)" }
 
 # Apply the state first (it fixes the window size), then place the window and
@@ -927,7 +901,7 @@ $window.Show()
 $timer.Start()
 $app.Run()
 
-# After Run() returns: Exit-Pet already disposed the tray; this is a backstop.
-try { if ($null -ne $SCRIPT:Notify) { $SCRIPT:Notify.Dispose() } } catch { }
+# After Run() returns: Exit-Pet already disposed the menu; this is a backstop.
+try { if ($null -ne $SCRIPT:PetMenu) { $SCRIPT:PetMenu.Dispose() } } catch { }
 try { $SCRIPT:Mutex.ReleaseMutex() } catch { }
 try { $SCRIPT:Mutex.Dispose() } catch { }

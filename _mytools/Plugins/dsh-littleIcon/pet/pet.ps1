@@ -330,8 +330,8 @@ function Get-Labels {
         OpenCwdFailed         = 'The folder could not be opened.'
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
-        ShotSaved             = 'Screenshot saved; its path is on the clipboard'
-        ShotSavedNoClipboard  = 'Screenshot saved, but its path could not be copied'
+        ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
+        ShotSavedNoClipboard  = 'Screenshot saved as a file, but it could not be copied to the clipboard'
         ShotFailed            = 'The screenshot could not be saved.'
         ToggleShown           = 'Tuck DSH away'
         ToggleHidden          = 'Show DSH'
@@ -628,22 +628,28 @@ function New-ShotPath {
     return (Join-Path $SCRIPT:ShotDir ('shot-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss-fff') + '.png'))
 }
 
-function Save-ScreenShot([System.Drawing.Rectangle]$Rectangle) {
-    # PNG rather than JPEG: a capture is read back, not photographed, and the
-    # encoder is built in, so the pet needs nothing installed beside it.
+function New-ScreenShotBitmap([System.Drawing.Rectangle]$Rectangle) {
+    # The caller owns the bitmap, because the same pixels go two ways: saved as a
+    # file and put on the clipboard.
     $bitmap = [System.Drawing.Bitmap]::new($Rectangle.Width, $Rectangle.Height)
     $graphics = $null
     try {
         $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
         $graphics.CopyFromScreen($Rectangle.Left, $Rectangle.Top, 0, 0,
             [System.Drawing.Size]::new($Rectangle.Width, $Rectangle.Height))
-        $path = New-ShotPath
-        $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
-        return $path
+        return $bitmap
+    } catch {
+        $bitmap.Dispose()
+        throw
     } finally {
         if ($null -ne $graphics) { $graphics.Dispose() }
-        $bitmap.Dispose()
     }
+}
+
+function Save-ShotBitmap($Bitmap, [string]$Path) {
+    # PNG rather than JPEG: a capture is read back, not photographed, and the
+    # encoder is built in, so the pet needs nothing installed beside it.
+    $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
 }
 
 # ---- self test --------------------------------------------------------------
@@ -683,8 +689,15 @@ if ($SelfTest) {
 
 if ($ShotProbe) {
     # The capture itself, taken for real: no sheet is drawn and nobody drags, so
-    # what is left to fail is the screen read, the encoder, and the directory.
-    $probePath = Save-ScreenShot ([System.Drawing.Rectangle]::new(0, 0, 320, 200))
+    # what is left to fail is the screen read, the encoder, and the directory. The
+    # clipboard is left alone here: a test must not take what somebody was holding.
+    $probeBitmap = New-ScreenShotBitmap ([System.Drawing.Rectangle]::new(0, 0, 320, 200))
+    try {
+        $probePath = New-ShotPath
+        Save-ShotBitmap $probeBitmap $probePath
+    } finally {
+        $probeBitmap.Dispose()
+    }
     Write-Output "shot-probe: $probePath"
     Write-Output "shot-probe-bytes: $((Get-Item -LiteralPath $probePath).Length)"
     exit 0
@@ -1036,21 +1049,51 @@ function Close-ShotOverlay {
     try { $form.Close() } catch { }
 }
 
-function Copy-ShotPath([string]$Path) {
+function Copy-ShotImage($Bitmap) {
+    # The clipboard carries the picture and nothing else: a target that takes an
+    # image - another chat window, a document, or DSH's own paste intake - receives
+    # the picture, and one that takes only text receives nothing rather than a path
+    # it would have to go and open. Where the file landed is what the notice above
+    # the pet says.
+    # Two image formats rather than one, because they are read by different halves
+    # of Windows: CF_BITMAP is what an ordinary application asks for (Paint, Word, a
+    # chat client), and CF_DIB is the one a browser reads - Chromium, which draws
+    # DSH's own window, looks for a DIB and ignores a bare bitmap handle.
     # Whatever else is running can hold the clipboard open for a moment, and the
     # capture is already on disk: a refusal costs one retry, and only the last one
-    # costs the convenience of pasting the path.
+    # costs the copy.
+    $dib = $null
     $lastError = ''
-    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+    try {
+        # The BMP encoder's output without its 14-byte file header is exactly a DIB.
+        $stream = New-Object System.IO.MemoryStream
+        $bytes = $null
         try {
-            [System.Windows.Forms.Clipboard]::SetText($Path)
-            return $true
-        } catch {
-            $lastError = $_.Exception.Message
-            Start-Sleep -Milliseconds 80
+            $Bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Bmp)
+            $bytes = $stream.ToArray()
+        } finally {
+            $stream.Dispose()
         }
+        $dib = [System.IO.MemoryStream]::new($bytes, 14, $bytes.Length - 14)
+        $data = New-Object System.Windows.Forms.DataObject
+        $data.SetImage($Bitmap)
+        $data.SetData([System.Windows.Forms.DataFormats]::Dib, $false, $dib)
+        for ($attempt = 0; $attempt -lt 5; $attempt++) {
+            try {
+                # copy: true renders both formats onto the clipboard through OLE, so
+                # the picture does not depend on handles this process is about to
+                # destroy.
+                [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+                return $true
+            } catch {
+                $lastError = $_.Exception.Message
+                Start-Sleep -Milliseconds 80
+            }
+        }
+    } finally {
+        if ($null -ne $dib) { $dib.Dispose() }
     }
-    Write-Log "copying the screenshot path failed: $lastError"
+    Write-Log "copying the screenshot to the clipboard failed: $lastError"
     return $false
 }
 
@@ -1138,9 +1181,16 @@ function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
     # The hidden window is gone once the system has composed a frame without it;
     # a sleeping dispatcher needs no repaint, so this is the wait that costs.
     Start-Sleep -Milliseconds 90
-    $path = Save-ScreenShot $shot
+    $bitmap = New-ScreenShotBitmap $shot
+    try {
+        $path = New-ShotPath
+        Save-ShotBitmap $bitmap $path
+        $copied = Copy-ShotImage $bitmap
+    } finally {
+        $bitmap.Dispose()
+    }
     Close-ShotOverlay
-    if (Copy-ShotPath $path) { Show-PetNotice $SCRIPT:Labels.ShotSaved $path }
+    if ($copied) { Show-PetNotice $SCRIPT:Labels.ShotSaved $path }
     else { Show-PetNotice $SCRIPT:Labels.ShotSavedNoClipboard $path }
 }
 

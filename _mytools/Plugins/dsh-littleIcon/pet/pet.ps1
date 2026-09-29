@@ -80,6 +80,200 @@ if (-not $dpiAware) { $dpiAware = [DshPet.Dpi]::SetProcessDPIAware() }
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml, System.Windows.Forms, System.Drawing
 
+if (-not ('DshPet.PetMenuRenderer' -as [type])) {
+    Add-Type -ReferencedAssemblies 'System.Windows.Forms.dll', 'System.Drawing.dll' -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace DshPet
+{
+    public sealed class PetMenuRenderer : ToolStripProfessionalRenderer
+    {
+        private static readonly Color Canvas = Color.FromArgb(252, 252, 253);
+        private static readonly Color Ink = Color.FromArgb(53, 59, 70);
+        private static readonly Color Hover = Color.FromArgb(242, 244, 247);
+        private static readonly Color Rule = Color.FromArgb(225, 228, 234);
+
+        public PetMenuRenderer() : base(new PetMenuColors())
+        {
+            RoundedEdges = false;
+        }
+
+        public static void ApplyRoundedRegion(ToolStrip strip)
+        {
+            if (strip.Width <= 0 || strip.Height <= 0) return;
+            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, strip.Width, strip.Height), 14))
+            {
+                Region previous = strip.Region;
+                strip.Region = new Region(path);
+                if (previous != null) previous.Dispose();
+            }
+        }
+
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), 14))
+            using (SolidBrush brush = new SolidBrush(Canvas))
+            {
+                e.Graphics.FillPath(brush, path);
+            }
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1), 14))
+            using (Pen pen = new Pen(Color.FromArgb(217, 221, 228), 1f))
+            {
+                e.Graphics.DrawPath(pen, path);
+            }
+        }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (!e.Item.Selected) return;
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle rectangle = new Rectangle(2, 2, e.Item.Width - 4, e.Item.Height - 4);
+            using (GraphicsPath path = RoundedPath(rectangle, 8))
+            using (SolidBrush brush = new SolidBrush(Hover))
+            {
+                e.Graphics.FillPath(brush, path);
+            }
+        }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            int y = e.Item.Height / 2;
+            using (Pen pen = new Pen(Rule, 1f))
+            {
+                e.Graphics.DrawLine(pen, 12, y, e.Item.Width - 12, y);
+            }
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            Rectangle textBounds = new Rectangle(46, 0, Math.Max(0, e.Item.Width - 58), e.Item.Height);
+            TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, textBounds, Ink,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping);
+            string icon = e.Item.Tag as string;
+            if (String.IsNullOrEmpty(icon)) return;
+
+            float scale = 1f;
+            int size = 19;
+            int left = 14;
+            Rectangle bounds = new Rectangle(left, (e.Item.Height - size) / 2, size, size);
+            DrawIcon(e.Graphics, icon, bounds, scale);
+        }
+
+        private static GraphicsPath RoundedPath(Rectangle rectangle, int radius)
+        {
+            GraphicsPath path = new GraphicsPath();
+            int diameter = Math.Min(radius * 2, Math.Min(rectangle.Width, rectangle.Height));
+            if (diameter <= 0)
+            {
+                path.AddRectangle(rectangle);
+                return path;
+            }
+            Rectangle arc = new Rectangle(rectangle.Location, new Size(diameter, diameter));
+            path.AddArc(arc, 180, 90);
+            arc.X = rectangle.Right - diameter;
+            path.AddArc(arc, 270, 90);
+            arc.Y = rectangle.Bottom - diameter;
+            path.AddArc(arc, 0, 90);
+            arc.X = rectangle.Left;
+            path.AddArc(arc, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        private static PointF P(Rectangle bounds, float x, float y)
+        {
+            return new PointF(bounds.Left + bounds.Width * x / 20f, bounds.Top + bounds.Height * y / 20f);
+        }
+
+        private static RectangleF R(Rectangle bounds, float x, float y, float width, float height)
+        {
+            PointF point = P(bounds, x, y);
+            return new RectangleF(point.X, point.Y, bounds.Width * width / 20f, bounds.Height * height / 20f);
+        }
+
+        private static void DrawIcon(Graphics graphics, string icon, Rectangle bounds, float scale)
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using (Pen pen = new Pen(Ink, Math.Max(1.4f, 1.55f * scale)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                switch (icon)
+                {
+                    case "chat":
+                        graphics.DrawEllipse(pen, R(bounds, 1.5f, 2f, 17f, 13f));
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 6f, 14f), P(bounds, 4f, 19f), P(bounds, 10f, 15f) });
+                        using (SolidBrush dot = new SolidBrush(Ink))
+                        {
+                            graphics.FillEllipse(dot, R(bounds, 6f, 8f, 1.5f, 1.5f));
+                            graphics.FillEllipse(dot, R(bounds, 9.5f, 8f, 1.5f, 1.5f));
+                            graphics.FillEllipse(dot, R(bounds, 13f, 8f, 1.5f, 1.5f));
+                        }
+                        break;
+                    case "git":
+                        graphics.DrawLine(pen, P(bounds, 5f, 5f), P(bounds, 5f, 15f));
+                        graphics.DrawBezier(pen, P(bounds, 5f, 8f), P(bounds, 6f, 8f), P(bounds, 10f, 10f), P(bounds, 15f, 10f));
+                        graphics.DrawEllipse(pen, R(bounds, 3f, 1f, 4f, 4f));
+                        graphics.DrawEllipse(pen, R(bounds, 3f, 15f, 4f, 4f));
+                        graphics.DrawEllipse(pen, R(bounds, 14f, 8f, 4f, 4f));
+                        break;
+                    case "folder":
+                        using (GraphicsPath folder = new GraphicsPath())
+                        {
+                            folder.AddLines(new PointF[] { P(bounds, 1f, 5f), P(bounds, 7f, 5f), P(bounds, 9f, 7f), P(bounds, 18f, 7f), P(bounds, 18f, 17f), P(bounds, 1f, 17f) });
+                            folder.CloseFigure();
+                            graphics.DrawPath(pen, folder);
+                        }
+                        graphics.DrawLine(pen, P(bounds, 1f, 8f), P(bounds, 18f, 8f));
+                        break;
+                    case "display":
+                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1f, 2f, 18f, 13f)));
+                        graphics.DrawLine(pen, P(bounds, 1f, 12f), P(bounds, 19f, 12f));
+                        graphics.DrawLine(pen, P(bounds, 8f, 18f), P(bounds, 12f, 18f));
+                        graphics.DrawLine(pen, P(bounds, 10f, 15f), P(bounds, 10f, 18f));
+                        break;
+                    case "corner":
+                        graphics.DrawLine(pen, P(bounds, 3f, 17f), P(bounds, 17f, 3f));
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 9f, 3f), P(bounds, 17f, 3f), P(bounds, 17f, 11f) });
+                        break;
+                    case "restart":
+                        graphics.DrawArc(pen, R(bounds, 2f, 2f, 16f, 16f), 36f, 286f);
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 12f, 1.8f), P(bounds, 17.5f, 3.5f), P(bounds, 16f, 8f) });
+                        break;
+                    case "power":
+                        graphics.DrawArc(pen, R(bounds, 2f, 3f, 16f, 16f), 45f, 270f);
+                        graphics.DrawLine(pen, P(bounds, 10f, 1f), P(bounds, 10f, 10f));
+                        break;
+                }
+            }
+        }
+
+        private sealed class PetMenuColors : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground { get { return Canvas; } }
+            public override Color MenuBorder { get { return Color.Transparent; } }
+            public override Color MenuItemBorder { get { return Color.Transparent; } }
+            public override Color MenuItemSelected { get { return Hover; } }
+            public override Color ImageMarginGradientBegin { get { return Canvas; } }
+            public override Color ImageMarginGradientMiddle { get { return Canvas; } }
+            public override Color ImageMarginGradientEnd { get { return Canvas; } }
+        }
+    }
+}
+'@
+}
+
 # ---- paths and labels -------------------------------------------------------
 $SCRIPT:ScriptDir = if ([string]::IsNullOrEmpty($PSScriptRoot)) { (Get-Location).Path } else { $PSScriptRoot }
 $SCRIPT:AssetDir = (Resolve-Path -LiteralPath $AssetDir).Path
@@ -735,11 +929,40 @@ function Send-MenuCommand([string]$Command) {
     })
 }
 
+function Add-PetMenuItem($Menu, [string]$Text, [string]$Icon) {
+    $item = New-Object System.Windows.Forms.ToolStripMenuItem
+    $item.Text = $Text
+    $item.Tag = $Icon
+    $item.AutoSize = $true
+    $item.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
+    $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    [void]$Menu.Items.Add($item)
+    return $item
+}
+
 function New-PetMenu {
     # The plugin's only menu surface: a right-click on the pet. Commands the page
     # carries out come first, window actions after them.
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
-    $chatItem = $menu.Items.Add($SCRIPT:Labels.Chat)
+    $menu.AutoSize = $true
+    $menu.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $menu.ForeColor = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    $menu.Padding = New-Object System.Windows.Forms.Padding(6, 6, 6, 6)
+    $menu.Margin = New-Object System.Windows.Forms.Padding(0)
+    $menu.MinimumSize = New-Object System.Drawing.Size(220, 0)
+    $menu.ShowImageMargin = $false
+    $menu.ShowCheckMargin = $false
+    $menu.DropShadowEnabled = $true
+    $menu.Renderer = New-Object DshPet.PetMenuRenderer
+    try {
+        $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10.5, [System.Drawing.FontStyle]::Regular,
+            [System.Drawing.GraphicsUnit]::Point)
+    } catch { }
+    $menu.add_Opened({
+        param($sender, $eventArgs)
+        try { [DshPet.PetMenuRenderer]::ApplyRoundedRegion($sender) } catch { Write-Log $_.Exception.Message }
+    })
+    $chatItem = Add-PetMenuItem $menu $SCRIPT:Labels.Chat 'chat'
     $chatItem.add_Click({
         try {
             # The page opens the site in its own Browser tab, so DSH has to be on
@@ -751,7 +974,7 @@ function New-PetMenu {
     # The Git page is the plugin's own tab type, so unlike Chat it needs nothing
     # shipped besides the right Sidebar; the page reads the repository of whatever
     # Session is in front. Showing DSH first is the same requirement.
-    $gitItem = $menu.Items.Add($SCRIPT:Labels.Git)
+    $gitItem = Add-PetMenuItem $menu $SCRIPT:Labels.Git 'git'
     $gitItem.add_Click({
         try {
             Show-DshWindow
@@ -762,7 +985,7 @@ function New-PetMenu {
     # reason: the pet knows no Session's directory, and the page can name one but
     # cannot open it. Nothing is raised first here - the folder window is what the
     # person asked to see, and Explorer brings itself to the front.
-    $openItem = $menu.Items.Add($SCRIPT:Labels.OpenCwd)
+    $openItem = Add-PetMenuItem $menu $SCRIPT:Labels.OpenCwd 'folder'
     $openItem.add_Click({
         try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
     })
@@ -770,17 +993,17 @@ function New-PetMenu {
     # dead, so the menu keeps only the page command and the position. The pet never
     # offers to quit itself: the plugin's own switch owns its lifetime.
     if ($SCRIPT:DshPid -gt 0) {
-        $toggleItem = $menu.Items.Add($SCRIPT:Labels.ToggleShown)
+        $toggleItem = Add-PetMenuItem $menu $SCRIPT:Labels.ToggleShown 'display'
         $toggleItem.add_Click({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
         $SCRIPT:ToggleItems += $toggleItem
     }
-    $resetItem = $menu.Items.Add($SCRIPT:Labels.Reset)
+    $resetItem = Add-PetMenuItem $menu $SCRIPT:Labels.Reset 'corner'
     $resetItem.add_Click({ try { Set-DefaultPosition; Save-Position } catch { Write-Log $_.Exception.Message } })
     if ($SCRIPT:DshPid -gt 0) {
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         # Restarting is the entry edits to the plugin, and builds, are usually
         # for, so it sits with ending DSH rather than with the window actions.
-        $restartItem = $menu.Items.Add($SCRIPT:Labels.RestartDsh)
+        $restartItem = Add-PetMenuItem $menu $SCRIPT:Labels.RestartDsh 'restart'
         $restartItem.add_Click({
             try {
                 # Like ending DSH, a restart interrupts whatever is running, so the
@@ -797,7 +1020,7 @@ function New-PetMenu {
                 try { Show-RestartFailure $_.Exception.Message } catch { }
             }
         })
-        $quitItem = $menu.Items.Add($SCRIPT:Labels.QuitDsh)
+        $quitItem = Add-PetMenuItem $menu $SCRIPT:Labels.QuitDsh 'power'
         $quitItem.add_Click({
             try {
                 # Closing DSH interrupts whatever is running, so the entry asks first;

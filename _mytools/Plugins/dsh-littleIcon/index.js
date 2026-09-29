@@ -88,6 +88,9 @@ const GIT_DIFF_PATH = '/api/little-icon/git/diff'
  */
 const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
 
+/** Same-origin POST route that fast-forwards the current branch from its upstream. */
+const GIT_PULL_PATH = '/api/little-icon/git/pull'
+
 /**
  * Same-origin route that opens the Session's working directory in the system
  * file manager. Neither half can do it alone: which directory the person is
@@ -101,6 +104,9 @@ const GIT_EXECUTABLE = 'git'
 
 /** Longest a single Git command may run before it is killed. */
 const GIT_TIMEOUT_MS = 10_000
+
+/** Default network deadline for a pull; deployments can override it in the plugin config. */
+const GIT_PULL_TIMEOUT_MS = 60_000
 
 /** Ceiling on one command's output; a larger status or log is an error, not a pause. */
 const GIT_MAX_BUFFER = 8 * 1024 * 1024
@@ -169,6 +175,8 @@ export const Config = z.object({
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
   clickAction: z.union(['toggle', 'minimize', 'none']).default('toggle').volatile(),
+  /** Milliseconds a Git pull may spend contacting and updating from its upstream. */
+  gitPullTimeoutMs: z.number().step(1000).min(1000).max(300000).default(GIT_PULL_TIMEOUT_MS).volatile(),
 })
 
 /**
@@ -411,14 +419,23 @@ function readCommand(path) {
  * Run one Git command in a directory.
  * @param cwd - directory the command runs in.
  * @param args - Git arguments, without the executable.
+ * @param timeoutMs - command deadline in milliseconds.
  * @returns whether it succeeded, its output, an explanation when it did not, and
  *   whether the executable itself was absent; a spawn failure arrives here rather
  *   than as a rejection.
  */
-function execGit(cwd, args) {
+function execGit(cwd, args, timeoutMs = GIT_TIMEOUT_MS) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key, value]) => (
+    value !== undefined && !/(?:KEY|SECRET|TOKEN|PASSWORD)/iu.test(key)
+  )))
+  // A pull has no terminal to answer a credential prompt. Refuse interactivity
+  // explicitly so authentication trouble returns through the page instead of
+  // leaving an invisible child until the deadline.
+  env.GIT_TERMINAL_PROMPT = '0'
+  env.GCM_INTERACTIVE = 'Never'
   return new Promise((resolve) => {
     execFile(GIT_EXECUTABLE, args, {
-      cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER, windowsHide: true, encoding: 'utf8',
+      cwd, timeout: timeoutMs, maxBuffer: GIT_MAX_BUFFER, windowsHide: true, encoding: 'utf8', env,
     }, (error, stdout, stderr) => {
       if (error === null) {
         resolve({ ok: true, stdout })
@@ -432,6 +449,7 @@ function execGit(cwd, args) {
         // error's own message is then the only explanation there is to show.
         message: reported === '' ? error.message : reported,
         missing: error.code === 'ENOENT',
+        timedOut: error.killed === true,
       })
     })
   })
@@ -553,6 +571,60 @@ async function readGitRepository(cwd) {
     changes: parseGitStatus(status.stdout),
     // `git log` fails while the repository has no commit to walk from.
     commits: log.ok ? parseGitLog(log.stdout) : [],
+  }
+}
+
+/** Pull operations already running for a repository root, shared by every open tab. */
+const gitPulls = new Map()
+
+/**
+ * Fast-forward one directory's current branch from its configured upstream.
+ *
+ * The operation refuses a detached HEAD and a branch without an upstream before
+ * it contacts a remote. `--ff-only` preserves local history: a diverged branch
+ * fails instead of creating a merge commit. Concurrent tabs join the same pull
+ * for one root so Git never competes with itself for repository locks.
+ * @param cwd - Session working directory inside the repository to update.
+ * @param timeoutMs - network and update deadline in milliseconds.
+ * @returns the refreshed repository listing plus `updated`, or `{ ok: false }`
+ *   with `no-dir`, `no-git`, `not-a-repo`, `detached-head`, `no-upstream`,
+ *   `timed-out`, or `failed`.
+ */
+async function pullGitRepository(cwd, timeoutMs = GIT_PULL_TIMEOUT_MS) {
+  if (!isDirectory(cwd)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(cwd, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  const root = top.stdout.trim()
+  const branch = await execGit(root, ['branch', '--show-current'])
+  if (!branch.ok) return { ok: false, reason: 'failed', message: branch.message }
+  if (branch.stdout.trim() === '') return { ok: false, reason: 'detached-head' }
+  const upstream = await execGit(root, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])
+  if (!upstream.ok) return { ok: false, reason: 'no-upstream' }
+
+  const running = gitPulls.get(root)
+  if (running !== undefined) return running
+  const operation = (async () => {
+    const before = await execGit(root, ['rev-parse', 'HEAD'])
+    if (!before.ok) return { ok: false, reason: 'failed', message: before.message }
+    const pulled = await execGit(root, [
+      '-c', 'merge.autoStash=false', '-c', 'rebase.autoStash=false',
+      'pull', '--ff-only',
+    ], timeoutMs)
+    if (!pulled.ok) {
+      return { ok: false, reason: pulled.timedOut ? 'timed-out' : 'failed', message: pulled.message }
+    }
+    const after = await execGit(root, ['rev-parse', 'HEAD'])
+    if (!after.ok) return { ok: false, reason: 'failed', message: after.message }
+    const listing = await readGitRepository(root)
+    return listing.ok
+      ? { ...listing, updated: before.stdout.trim() !== after.stdout.trim() }
+      : listing
+  })()
+  gitPulls.set(root, operation)
+  try {
+    return await operation
+  } finally {
+    if (gitPulls.get(root) === operation) gitPulls.delete(root)
   }
 }
 
@@ -712,6 +784,35 @@ function serveGitRead(ctx, req, res, read) {
       // execGit settles every spawn failure, so this arm is a defect in a reader
       // rather than a repository problem.
       ctx.logger.warn('little-icon: git read failed: %s', String(error))
+      sendJson(res, { ok: false, reason: 'failed', message: String(error) })
+    })
+}
+
+/**
+ * Run the Git page's explicit mutation and answer with its refreshed listing.
+ * @param ctx - host context providing connection authorization and logging.
+ * @param req - the request; only POST is accepted.
+ * @param res - the response.
+ * @param run - performs the mutation for the request's query parameters.
+ */
+function serveGitMutation(ctx, req, res, run) {
+  const connection = ctx.get('connection')
+  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+  if (rejection !== undefined) {
+    res.writeHead(rejection)
+    res.end()
+    return
+  }
+  if (req.method !== 'POST') {
+    res.writeHead(405)
+    res.end()
+    return
+  }
+  const query = new URL(req.url ?? '', 'http://localhost').searchParams
+  void run(query).then(
+    (payload) => { sendJson(res, payload) },
+    (error) => {
+      ctx.logger.warn('little-icon: git mutation failed: %s', String(error))
       sendJson(res, { ok: false, reason: 'failed', message: String(error) })
     })
 }
@@ -1068,7 +1169,8 @@ export function apply(ctx, config) {
   // The directory arrives with the listing request because the page is what knows
   // which Session it belongs to — the same directory the person already handed
   // this agent to work in — and the route answers only reads, so no path a page
-  // can name gives it anything the Session itself could not do.
+  // can name gives it anything the Session itself could not do. The pull route is
+  // the explicit exception to the reads: POST and fast-forward-only.
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
@@ -1104,6 +1206,17 @@ export function apply(ctx, config) {
         ))
       },
     }), `little-icon: GET ${GIT_COMMIT_PATH}`)
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_PULL_PATH,
+      handler: (req, res) => {
+        serveGitMutation(ctx, req, res, (query) => {
+          const cwd = query.get('cwd') ?? ''
+          if (cwd === '') return Promise.resolve({ ok: false, reason: 'no-cwd' })
+          return pullGitRepository(cwd, config.gitPullTimeoutMs.get())
+        })
+      },
+    }), `little-icon: POST ${GIT_PULL_PATH}`)
     // The one route here with a side effect outside the page: it opens the
     // directory in the shell's own file manager. POST, so a page that re-reads
     // its listing never opens a folder by itself.
@@ -1246,6 +1359,7 @@ export const internals = {
   shouldTuck,
   resolveDshHome,
   readGitRepository,
+  pullGitRepository,
   readGitDiff,
   readGitCommit,
   openWorkingDirectory,
@@ -1259,6 +1373,7 @@ export const internals = {
   GIT_PATH,
   GIT_DIFF_PATH,
   GIT_COMMIT_PATH,
+  GIT_PULL_PATH,
   OPEN_PATH,
   GIT_DIFF_MAX_CHARS,
   GIT_LOG_LIMIT,

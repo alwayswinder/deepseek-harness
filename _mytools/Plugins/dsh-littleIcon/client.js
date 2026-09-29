@@ -68,6 +68,9 @@ window.__ModuleLoader__.load({
     /** The Host route it reads one commit's changed files from, the same way. */
     const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
 
+    /** The Host route that fast-forwards the current branch from its upstream. */
+    const GIT_PULL_PATH = '/api/little-icon/git/pull'
+
     /**
      * The Host route that opens a directory in the system file manager. Which
      * directory is a Session detail this half alone knows, and opening one is
@@ -170,6 +173,14 @@ window.__ModuleLoader__.load({
       gitChanges: '未提交的改动',
       gitCommits: '最近提交',
       gitRefresh: '刷新',
+      gitPull: '拉取',
+      gitPulling: '拉取中…',
+      gitPulled: '已拉取',
+      gitUpToDate: '已是最新',
+      gitPullDetached: '当前处于 detached HEAD，无法拉取',
+      gitPullNoUpstream: '当前分支没有上游分支，无法拉取',
+      gitPullTimedOut: '拉取超时，请检查网络后重试',
+      gitPullFailed: '拉取失败：{message}',
       gitLoading: '读取中…',
       gitStaged: '已暂存',
       gitBranch: '分支 {name}',
@@ -252,6 +263,14 @@ window.__ModuleLoader__.load({
       gitChanges: 'Uncommitted changes',
       gitCommits: 'Recent commits',
       gitRefresh: 'Refresh',
+      gitPull: 'Pull',
+      gitPulling: 'Pulling…',
+      gitPulled: 'Pulled',
+      gitUpToDate: 'Up to date',
+      gitPullDetached: 'The repository is on a detached HEAD, so it cannot pull.',
+      gitPullNoUpstream: 'The current branch has no upstream to pull from.',
+      gitPullTimedOut: 'The pull timed out; check the network and try again.',
+      gitPullFailed: 'Could not pull: {message}',
       gitLoading: 'Reading…',
       gitStaged: 'staged',
       gitBranch: 'branch {name}',
@@ -315,9 +334,10 @@ window.__ModuleLoader__.load({
         'color:var(--dsw-alias-label-secondary);font-size:11px;}',
         '.dli-git-branch{flex:0 0 auto;font-size:11px;padding:1px 8px;border-radius:999px;',
         'background:rgba(127,127,127,.14);}',
-        '.dli-git-refresh{flex:0 0 auto;margin-left:auto;font:inherit;color:inherit;cursor:pointer;',
+        '.dli-git-refresh,.dli-git-pull{flex:0 0 auto;font:inherit;color:inherit;cursor:pointer;',
         'background:transparent;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:2px 10px;}',
-        '.dli-git-refresh:disabled{opacity:.5;cursor:default;}',
+        '.dli-git-refresh{margin-left:auto;}',
+        '.dli-git-refresh:disabled,.dli-git-pull:disabled{opacity:.5;cursor:default;}',
         '.dli-git-send{flex:0 0 auto;font:inherit;color:inherit;cursor:pointer;padding:2px 12px;',
         'background:rgba(127,127,127,.18);border:1px solid rgba(127,127,127,.4);border-radius:6px;}',
         '.dli-git-send:disabled{opacity:.5;cursor:default;}',
@@ -607,6 +627,25 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Why an explicit pull left the existing repository listing unchanged.
+     * @param t - namespace-bound translate.
+     * @param result - the Host's refusal.
+     * @returns the compact line shown below the toolbar.
+     */
+    function gitPullReason(t, result) {
+      switch (result.reason) {
+        case 'detached-head': return t('gitPullDetached')
+        case 'no-upstream': return t('gitPullNoUpstream')
+        case 'timed-out': return t('gitPullTimedOut')
+        case 'no-cwd':
+        case 'no-dir':
+        case 'no-git':
+        case 'not-a-repo': return gitReason(t, result)
+        default: return t('gitPullFailed', { message: result.message ?? '' })
+      }
+    }
+
+    /**
      * A commit's date as this machine writes dates; the Host sends ISO 8601.
      * @param iso - the author date as Git reported it.
      * @returns the date to show, or the raw value when it cannot be parsed.
@@ -656,12 +695,12 @@ window.__ModuleLoader__.load({
      * row replaces both columns with what that row is about — one file's diff, or
      * one commit's changed files — and a back button returns.
      *
-     * Read-only by design: nothing here stages, commits, or pushes, and every
-     * detail is a read like the listing. The working directory comes from the
-     * Session rather than from a setting, so the page follows whichever project
-     * the conversation is in, and the pet's menu re-opening the tab is a new
-     * navigation revision — which is what refreshes it.
-     * @param props - slot props plus the injected `load`, `loadDiff`, and
+     * The Pull button is the page's only direct Git mutation: the Host accepts it
+     * only as a fast-forward and returns the refreshed listing. Nothing here
+     * stages, commits, pushes, or discards work. The working directory comes from
+     * the Session rather than from a setting, so the page follows whichever
+     * project the conversation is in.
+     * @param props - slot props plus the injected `load`, `pull`, `loadDiff`, and
      *   `loadCommit` callbacks.
      * @returns the two columns, the open detail, or the line explaining why there
      *   is neither.
@@ -676,6 +715,8 @@ window.__ModuleLoader__.load({
       const [state, setState] = React.useState({ phase: 'loading' })
       const [attempt, setAttempt] = React.useState(0)
       const [send, setSend] = React.useState({ phase: 'idle' })
+      const [pull, setPull] = React.useState({ phase: 'idle' })
+      const pullController = React.useRef(undefined)
       // What has taken the two columns' place: `undefined` is the listing, and
       // anything else names one row's subject and how its read is going.
       const [detail, setDetail] = React.useState(undefined)
@@ -720,16 +761,54 @@ window.__ModuleLoader__.load({
 
       // A different working directory is a different repository: a detail that
       // belonged to the last one says nothing about this one.
-      React.useEffect(() => { setDetail(undefined) }, [cwd])
+      React.useEffect(() => {
+        pullController.current?.abort()
+        pullController.current = undefined
+        setPull({ phase: 'idle' })
+        setDetail(undefined)
+      }, [cwd])
+      React.useEffect(() => () => { pullController.current?.abort() }, [])
 
       const reload = () => {
         // Refreshing re-reads what is on screen, which is the detail while one is open.
+        setPull({ phase: 'idle' })
         setDetail((current) => (current === undefined ? current : { ...current, phase: 'loading' }))
         setAttempt((value) => value + 1)
       }
       const result = state.phase === 'settled' ? state.result : undefined
       const loaded = result?.ok === true ? result : undefined
       const note = (text) => h('p', { className: 'dli-git-note' }, text)
+
+      /** Fast-forward the current branch, then replace the listing with the Host's fresh answer. */
+      const pullLatest = () => {
+        if (loaded === undefined || pull.phase === 'pulling' || cwd === undefined || cwd === '') return
+        const controller = new AbortController()
+        pullController.current?.abort()
+        pullController.current = controller
+        setPull({ phase: 'pulling' })
+        void props.pull(cwd, controller.signal).then(
+          (outcome) => {
+            if (controller.signal.aborted) return
+            pullController.current = undefined
+            if (outcome.ok) {
+              setState({ phase: 'settled', result: outcome })
+              setDetail(undefined)
+              setPull({ phase: 'done', updated: outcome.updated === true })
+            } else {
+              setPull({ phase: 'failed', result: outcome })
+            }
+          },
+          (error) => {
+            if (controller.signal.aborted) return
+            pullController.current = undefined
+            setPull({ phase: 'failed', result: { reason: 'failed', message: String(error?.message ?? error) } })
+          })
+      }
+      const pullLabel = () => {
+        if (pull.phase === 'pulling') return t('gitPulling')
+        if (pull.phase === 'done') return t(pull.updated ? 'gitPulled' : 'gitUpToDate')
+        return t('gitPull')
+      }
 
       /**
        * Put the instruction in the conversation. The Host admits it as an ordinary
@@ -758,18 +837,24 @@ window.__ModuleLoader__.load({
           ? null
           : h('span', { className: 'dli-git-branch' }, t('gitBranch', { name: loaded.branch })),
         h('button', {
-          type: 'button', className: 'dli-git-refresh', onClick: reload, disabled: state.phase === 'loading',
+          type: 'button', className: 'dli-git-refresh', onClick: reload,
+          disabled: state.phase === 'loading' || pull.phase === 'pulling',
         }, t('gitRefresh')),
+        h('button', {
+          type: 'button', className: 'dli-git-pull', onClick: pullLatest,
+          disabled: loaded === undefined || state.phase === 'loading' || pull.phase === 'pulling',
+        }, pullLabel()),
         h('button', {
           type: 'button', className: 'dli-git-send', onClick: submit,
           // Nothing to say about a directory whose state could not be read.
-          disabled: loaded === undefined || send.phase === 'sending',
+          disabled: loaded === undefined || send.phase === 'sending' || pull.phase === 'pulling',
           'data-sent': send.phase === 'sent' ? 'true' : undefined,
         }, sendLabel()))
       const sendNote = send.phase !== 'failed' ? null
         : note(send.reason === 'no-channel'
           ? t('gitSendNoChannel')
           : t('gitSendFailed', { message: send.message }))
+      const pullNote = pull.phase === 'failed' ? note(gitPullReason(t, pull.result)) : null
 
       const column = (title, count, rows) => h('section', { className: 'dli-git-col' },
         h('div', { className: 'dli-git-head' },
@@ -902,7 +987,7 @@ window.__ModuleLoader__.load({
             commits.length === 0 ? note(t('gitEmptyCommits')) : commits))
       }
 
-      return h('div', { className: 'dli-git' }, bar, sendNote, body())
+      return h('div', { className: 'dli-git' }, bar, pullNote, sendNote, body())
     }
 
     // ---- plugin -------------------------------------------------------------
@@ -1023,12 +1108,25 @@ window.__ModuleLoader__.load({
             key: GIT_TYPE_ID,
             locale: NS,
             // The component reaches no service itself: these callbacks read the
-            // repository and one file's diff, put a message in the conversation,
-            // and all of them are bound to the Session this tab belongs to.
+            // repository, fast-forward it, read one detail, or put a message in
+            // the conversation; all are bound to the Session this tab belongs to.
             inject: (sessionId) => ({
               load: async (cwd, signal) => {
                 const response = await fetch(`${GIT_PATH}?cwd=${encodeURIComponent(cwd)}`, { signal })
                 if (!response.ok) throw new Error(`little-icon: the Git route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Fast-forward the Session's repository from its configured upstream.
+               * @param cwd - the Session's working directory.
+               * @param signal - aborts the page's wait when it closes or changes repository.
+               * @returns the refreshed listing plus whether HEAD moved.
+               */
+              pull: async (cwd, signal) => {
+                const response = await fetch(`${GIT_PULL_PATH}?cwd=${encodeURIComponent(cwd)}`, {
+                  method: 'POST', signal,
+                })
+                if (!response.ok) throw new Error(`little-icon: the Git pull route answered ${response.status}`)
                 return response.json()
               },
               /**

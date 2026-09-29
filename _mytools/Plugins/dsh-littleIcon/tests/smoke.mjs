@@ -20,8 +20,8 @@ import { join } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, OPEN_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
-  parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, readGitDiff, readGitCommit,
+  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_PULL_PATH, OPEN_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
+  parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, pullGitRepository, readGitDiff, readGitCommit,
   openWorkingDirectory, StateFileWriter,
 } = internals
 
@@ -408,6 +408,7 @@ rmSync(openDir, { recursive: true, force: true })
     frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
+    gitPullTimeoutMs: fixed(60_000),
   }
   try {
     apply(hostCtx, config)
@@ -581,6 +582,74 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
   } finally {
     rmSync(repo, { recursive: true, force: true })
   }
+
+  // A private file:// remote keeps the mutation test keyless and isolated from
+  // network state. Two simultaneous page requests join one fast-forward, then a
+  // second pull observes that the local branch is already current.
+  const pullWorld = mkdtempSync(join(tmpdir(), 'little-icon-pull-'))
+  try {
+    const remote = join(pullWorld, 'remote.git')
+    const upstream = join(pullWorld, 'upstream')
+    const local = join(pullWorld, 'local')
+    const run = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8' })
+    const must = (cwd, ...args) => {
+      const outcome = run(cwd, ...args)
+      assert.equal(outcome.status, 0, `git ${args.join(' ')} failed: ${outcome.stderr}`)
+      return outcome
+    }
+    must(pullWorld, 'init', '--bare', '-q', '--initial-branch=main', remote)
+    must(pullWorld, 'clone', '-q', remote, upstream)
+    must(upstream, 'config', 'user.email', 'smoke@example.test')
+    must(upstream, 'config', 'user.name', 'smoke')
+    writeFileSync(join(upstream, 'shared.txt'), 'one\n')
+    must(upstream, 'add', 'shared.txt')
+    must(upstream, 'commit', '-q', '-m', 'initial')
+    must(upstream, 'push', '-q', '-u', 'origin', 'main')
+    must(pullWorld, 'clone', '-q', remote, local)
+
+    writeFileSync(join(upstream, 'shared.txt'), 'two\n')
+    must(upstream, 'commit', '-q', '-am', 'remote update')
+    must(upstream, 'push', '-q')
+    const [first, joined] = await Promise.all([
+      pullGitRepository(local, 10_000),
+      pullGitRepository(local, 10_000),
+    ])
+    assert.equal(first.ok, true, JSON.stringify(first))
+    assert.equal(joined.ok, true, JSON.stringify(joined))
+    assert.equal(first.updated, true, 'the first pull must move HEAD to the remote commit')
+    assert.equal(readFileSync(join(local, 'shared.txt'), 'utf8').replaceAll('\r\n', '\n'), 'two\n',
+      'the working tree must receive the remote file')
+    assert.equal(must(local, 'rev-parse', 'HEAD').stdout.trim(), must(upstream, 'rev-parse', 'HEAD').stdout.trim())
+    const current = await pullGitRepository(local, 10_000)
+    assert.equal(current.ok, true, JSON.stringify(current))
+    assert.equal(current.updated, false, 'pulling an up-to-date branch must say HEAD did not move')
+
+    // `--ff-only` must leave both local history and the working tree alone once
+    // the two sides diverge; fetching the remote ref is allowed, merging is not.
+    must(local, 'config', 'user.email', 'smoke@example.test')
+    must(local, 'config', 'user.name', 'smoke')
+    writeFileSync(join(local, 'local.txt'), 'local\n')
+    must(local, 'add', 'local.txt')
+    must(local, 'commit', '-q', '-m', 'local update')
+    const localHead = must(local, 'rev-parse', 'HEAD').stdout.trim()
+    writeFileSync(join(upstream, 'remote.txt'), 'remote\n')
+    must(upstream, 'add', 'remote.txt')
+    must(upstream, 'commit', '-q', '-m', 'second remote update')
+    must(upstream, 'push', '-q')
+    const diverged = await pullGitRepository(local, 10_000)
+    assert.equal(diverged.ok, false)
+    assert.equal(diverged.reason, 'failed')
+    assert.equal(must(local, 'rev-parse', 'HEAD').stdout.trim(), localHead,
+      'a diverged pull must not create a merge commit')
+    assert.equal(existsSync(join(local, 'remote.txt')), false, 'a diverged pull must not update the working tree')
+
+    must(local, 'checkout', '-q', '-b', 'local-only')
+    assert.deepEqual(await pullGitRepository(local, 10_000), { ok: false, reason: 'no-upstream' })
+    must(local, 'checkout', '-q', '--detach', 'main')
+    assert.deepEqual(await pullGitRepository(local, 10_000), { ok: false, reason: 'detached-head' })
+  } finally {
+    rmSync(pullWorld, { recursive: true, force: true })
+  }
   console.log('little-icon smoke: git readers ok')
 } else {
   console.log('skipping the real-repository read: no git on PATH')
@@ -626,6 +695,7 @@ const reactStub = {
   // A component under test may seed the state its load effect would set; with
   // nothing seeded, `useState` returns its initial value as React does.
   useState: (initial) => [seeded.length > 0 ? seeded.shift() : initial, () => {}],
+  useRef: (initial) => ({ current: initial }),
   useEffect: () => {},
 }
 const requireStub = (specifier) => {
@@ -802,6 +872,10 @@ const loaded = await gitFace.load('D:\\work\\proj', undefined)
 assert.deepEqual(pings.at(-1), { url: `${GIT_PATH}?cwd=D%3A%5Cwork%5Cproj`, method: undefined },
   'the directory travels as a query parameter, escaped')
 assert.equal(loaded.ok, true)
+const pulled = await gitFace.pull('D:\\work\\proj', undefined)
+assert.deepEqual(pings.at(-1), { url: `${GIT_PULL_PATH}?cwd=D%3A%5Cwork%5Cproj`, method: 'POST' },
+  'pull is an explicit POST naming the Session directory')
+assert.equal(pulled.ok, true)
 // The diff face names the repository root rather than the Session's directory,
 // because the path it carries is relative to that root; the commit face is the
 // same read for a history row, naming the hash instead of a path.
@@ -816,6 +890,7 @@ globalThis.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => P
 await assert.rejects(() => gitFace.load('/repo', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadDiff('/repo', 'a.txt', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadCommit('/repo', 'abc123', undefined), /answered 500/)
+await assert.rejects(() => gitFace.pull('/repo', undefined), /answered 500/)
 globalThis.fetch = answerFetch
 
 // The button's message is a real user turn: the page goes through the Session's
@@ -938,10 +1013,12 @@ const gitProps = {
   useSessions: (select) => select({ byId: { session: { cwd: '/repo' } } }),
   useTabInfo: () => ({ tab: { navigation: { revision: 1 } } }),
   load: () => Promise.resolve({}),
+  pull: async (cwd) => { pullRequests.push(cwd); return { ...listing, updated: true } },
   loadDiff: () => Promise.resolve({}),
   loadCommit: () => Promise.resolve({}),
   sendPrompt: gitFace.sendPrompt,
 }
+const pullRequests = []
 /** One render's seeded component state, consumed by the next `useState` call. */
 const gitRender = () => {
   const view = gitBody.component(gitProps)
@@ -966,7 +1043,7 @@ seeded.push({ phase: 'settled', result: listing })
 const populated = gitRender()
 assert.equal(populated.section, 2, 'the page is one column of changes beside one column of commits')
 for (const text of [t('gitChanges'), t('gitCommits'), t('gitBranch', { name: 'main' }), t('gitRefresh'),
-  t('gitModified'), t('gitAdded'), t('gitUntracked'), t('gitRenamed'), t('gitStaged'),
+  t('gitPull'), t('gitModified'), t('gitAdded'), t('gitUntracked'), t('gitRenamed'), t('gitStaged'),
   'src/a.ts', 'new file.txt', 'abc1234', 'first subject']) {
   assert.ok(populated.nodes.includes(text), `the Git page must show ${text}`)
 }
@@ -1005,6 +1082,12 @@ sent.length = 0
 sendButton.props.onClick()
 await new Promise((resolve) => setTimeout(resolve, 0))
 assert.deepEqual(sent, ['没问题就提交并推送吧！'], 'clicking the button sends the instruction into the conversation')
+const pullButton = flatten(populated.view).find(node => node.props?.className === 'dli-git-pull')
+assert.equal(pullButton.children[0], t('gitPull'), 'the pull button names its direct Git action')
+assert.notEqual(pullButton.props.disabled, true, 'a readable repository can pull')
+pullButton.props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+assert.deepEqual(pullRequests, ['/repo'], 'pull uses the current Session repository')
 
 // Each refusal has its own line, and the page names no repository in any of them.
 for (const [reason, copy] of [['not-a-repo', t('gitNotARepo')], ['no-git', t('gitNoGit')],
@@ -1025,7 +1108,7 @@ assert.ok(empty.nodes.includes(t('gitEmptyChanges')) && empty.nodes.includes(t('
 // One row's detail takes both columns' room: it is the same question about one
 // subject, and the back button is the only way between the two views.
 const openDetail = (state) => {
-  seeded.push({ phase: 'settled', result: listing }, 0, { phase: 'idle' }, state)
+  seeded.push({ phase: 'settled', result: listing }, 0, { phase: 'idle' }, { phase: 'idle' }, state)
   return gitRender()
 }
 const openDiff = (state) => openDetail({ kind: 'diff', ...state })
@@ -1207,6 +1290,7 @@ if (process.argv.includes('--pet')) {
     autoHideSeconds: ref(0),
     topmost: ref(true),
     clickAction: ref('toggle'),
+    gitPullTimeoutMs: ref(60_000),
   }
 
   const countPetProcesses = () => {
@@ -1292,12 +1376,13 @@ $found
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
     // The page reports input here; without it the pet could only see agents and
     // jobs, and it would sleep while the person is using DSH. The second route is
-    // the stream the pet's menu commands come back on, the next three are what
-    // the Git page reads a Session's repository and the detail behind one row
-    // through, and the last is the menu's open-directory entry.
+    // the stream the pet's menu commands come back on, the next four are what
+    // the Git page reads and fast-forwards a Session's repository through, and
+    // the last is the menu's open-directory entry.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
       [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
-        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${OPEN_PATH}`])
+        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_PULL_PATH}`,
+        `exact ${OPEN_PATH}`])
 
     // The Git routes answer JSON for one directory and refuse everything else.
     // The directory is checked here rather than inferred from a spawn failure, so
@@ -1306,6 +1391,7 @@ $found
     const gitRoute = routes.find((route) => route.path === GIT_PATH)
     const diffRoute = routes.find((route) => route.path === GIT_DIFF_PATH)
     const commitRoute = routes.find((route) => route.path === GIT_COMMIT_PATH)
+    const pullRoute = routes.find((route) => route.path === GIT_PULL_PATH)
     const answered = () => {
       const response = {
         status: 0,
@@ -1319,8 +1405,14 @@ $found
     const askGit = async (route, method, url) => {
       const response = answered()
       route.handler({ method, url, on: () => {} }, response)
-      // The handler answers through a promise, so the body lands a tick later.
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      // Successful handlers answer through a promise. Wait for that observable
+      // response rather than assuming the machine will settle it within one
+      // fixed delay; method refusals need no body.
+      const deadline = Date.now() + 4000
+      while (response.status === 0 || (response.status === 200 && response.body === '')) {
+        if (Date.now() >= deadline) assert.fail(`${method} ${url} did not answer`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
       return {
         status: response.status,
         headers: response.headers,
@@ -1361,6 +1453,15 @@ $found
     const outsideCommit = await askGit(commitRoute, 'GET',
       `${GIT_COMMIT_PATH}?root=${encodeURIComponent(home)}&hash=abc`)
     assert.deepEqual(outsideCommit.body, { ok: false, reason: 'not-a-repo' })
+
+    // Pull is the one Git mutation: re-reads cannot trigger it, and an explicit
+    // POST without a Session directory is answered before Git is started.
+    assert.equal((await askGit(pullRoute, 'GET', GIT_PULL_PATH)).status, 405,
+      'the pull route must require POST')
+    const noPullCwd = await askGit(pullRoute, 'POST', GIT_PULL_PATH)
+    assert.equal(noPullCwd.status, 200)
+    assert.deepEqual(noPullCwd.body, { ok: false, reason: 'no-cwd' })
+    assert.equal(noPullCwd.headers['cache-control'], 'no-store', 'a pull result must not be cached')
 
     // The pet's right-click menu is drawn in another process, so the host relays
     // what it chooses: the page holds one stream open and receives a frame per

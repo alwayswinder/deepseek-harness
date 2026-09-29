@@ -7,6 +7,8 @@
   "OpenCwdNoDir": "工作目录已经不在，没有可以打开的文件夹。",
   "OpenCwdFailed": "没能打开文件夹。",
   "Settings": "设置",
+  "Games": "小游戏",
+  "Aquarium": "玻璃鱼缸",
   "Shot": "截图",
   "ShotHint": "拖动选择要截取的区域，Esc 取消。",
   "ShotSaved": "截图已复制到剪贴板，同时也存成了文件",

@@ -1124,6 +1124,18 @@ window.__ModuleLoader__.load({
             }
             navigation.openBundle(PACKAGE_NAME)
           },
+          aquarium: () => {
+            // The glass aquarium belongs to another plugin and is opened through
+            // the service that plugin provides, the same way the settings card
+            // reaches the Plugins page: the pet's menu only names the game, and a
+            // profile without that plugin says so instead of failing at the click.
+            const aquarium = ctx.get('aquarium3d')
+            if (aquarium === undefined) {
+              console.warn('little-icon: the aquarium plugin is not installed, so there is no tank to open')
+              return
+            }
+            aquarium.open()
+          },
         }
 
         // The Host holds this stream open and relays the pet's menu commands on it.

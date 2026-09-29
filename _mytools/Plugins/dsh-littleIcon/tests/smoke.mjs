@@ -190,12 +190,17 @@ assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
 assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
 assert.equal(labels.Settings, '设置', 'the menu entry that opens the plugin settings page')
+assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang under')
+assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens the aquarium')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
-  'Settings', 'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
+  'Settings', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
   'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
+// The mini-games submenu is drawn by the pet process, so the two halves only meet
+// on the command id: the pet must send the one the page carries out.
+assert.match(petSource, /Send-MenuCommand 'aquarium'/, 'the pet menu must send the aquarium command')
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
 // its lifetime, and the freed entry ends DSH instead.
 assert.equal(labels.Quit, undefined, 'the pet must not offer to quit itself')
@@ -287,6 +292,8 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
   assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
   assert.match(selfTest.stdout, /设置/, 'the self test must report the settings entry too')
+  assert.match(selfTest.stdout, /小游戏/, 'the self test must report the mini-games entry too')
+  assert.match(selfTest.stdout, /玻璃鱼缸/, 'the self test must report the aquarium entry too')
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
   // A capture lands beside the state file, in the harness home rather than the
@@ -904,13 +911,24 @@ try {
   clientServices.pluginNavigation = undefined
   commands.onmessage({ data: '{"command":"settings"}' })
   assert.deepEqual(openedBundles, [packageName], 'without the Plugins page nothing may be selected')
+  // "Aquarium" is the mini-games entry, and the tank belongs to another plugin:
+  // the menu names that plugin's service instead of reaching into its overlay, so
+  // a profile without it must say so rather than opening a blank screen.
+  const openedAquariums = []
+  clientServices.aquarium3d = { open: () => { openedAquariums.push('open') } }
+  commands.onmessage({ data: '{"command":"aquarium"}' })
+  assert.deepEqual(openedAquariums, ['open'], 'the aquarium command must open the other plugin\'s tank')
+  clientServices.aquarium3d = undefined
+  commands.onmessage({ data: '{"command":"aquarium"}' })
+  assert.deepEqual(openedAquariums, ['open'], 'without the aquarium plugin nothing may open')
 } finally {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
-// One unknown command, the two refusals above in each of their two forms, and the
-// settings entry with no Plugins page to reach.
-assert.equal(warned.length, 6, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// One unknown command, the two refusals above in each of their two forms, the
+// settings entry with no Plugins page to reach, and the aquarium entry with no
+// aquarium plugin installed.
+assert.equal(warned.length, 7, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // "Open working directory" is the one command this half only names: the folder
 // belongs to the Session the main view holds — the same row the shipped

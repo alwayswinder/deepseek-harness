@@ -252,6 +252,28 @@ namespace DshPet
                         graphics.DrawEllipse(pen, R(bounds, 7f, 9f, 6f, 6f));
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 6.5f, 6f), P(bounds, 7.5f, 3f), P(bounds, 12.5f, 3f), P(bounds, 13.5f, 6f) });
                         break;
+                    case "games":
+                        using (GraphicsPath pad = RoundedPath(Rectangle.Round(R(bounds, 1.2f, 6.2f, 17.6f, 9.4f)), 5))
+                        {
+                            graphics.DrawPath(pen, pad);
+                        }
+                        graphics.DrawLine(pen, P(bounds, 6.2f, 9.2f), P(bounds, 6.2f, 12.8f));
+                        graphics.DrawLine(pen, P(bounds, 4.4f, 11f), P(bounds, 8f, 11f));
+                        using (SolidBrush dot = new SolidBrush(Ink))
+                        {
+                            graphics.FillEllipse(dot, R(bounds, 12.6f, 9.4f, 2.2f, 2.2f));
+                            graphics.FillEllipse(dot, R(bounds, 15.2f, 11.8f, 2.2f, 2.2f));
+                        }
+                        break;
+                    case "aquarium":
+                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.6f, 4.4f, 16.8f, 11.8f)));
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 1.6f, 9.2f), P(bounds, 5.4f, 7.7f), P(bounds, 10f, 9.4f), P(bounds, 14.6f, 7.7f), P(bounds, 18.4f, 9.2f) });
+                        using (SolidBrush body = new SolidBrush(Ink))
+                        {
+                            graphics.FillEllipse(body, R(bounds, 6.2f, 11.6f, 4.4f, 2.8f));
+                        }
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 10.6f, 13f), P(bounds, 13.4f, 11.2f), P(bounds, 13.4f, 14.8f), P(bounds, 10.6f, 13f) });
+                        break;
                     case "gear":
                         graphics.DrawEllipse(pen, R(bounds, 4.6f, 4.6f, 10.8f, 10.8f));
                         PointF hub = P(bounds, 10f, 10f);
@@ -335,6 +357,8 @@ function Get-Labels {
         OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
         OpenCwdFailed         = 'The folder could not be opened.'
         Settings              = 'Settings'
+        Games                 = 'Mini games'
+        Aquarium              = 'Glass aquarium'
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
@@ -669,7 +693,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     # Where a capture lands, and what a backwards drag selects: both are built
@@ -1416,6 +1440,27 @@ function New-PetMenu {
     $openItem.add_Click({
         try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
     })
+    # The mini games live one level down: the entry itself opens nothing, so
+    # more of them can join without touching this menu's shape again. Its first
+    # child is the glass aquarium, which the page owns like the entries above,
+    # and therefore raises DSH for the same reason: a fullscreen overlay in a
+    # hidden window is an overlay nobody sees.
+    $gamesItem = Add-PetMenuItem $menu $SCRIPT:Labels.Games 'games'
+    $gamesItem.DropDown.ShowImageMargin = $false
+    $gamesItem.DropDown.BackColor = $menu.BackColor
+    $gamesItem.DropDown.ForeColor = $menu.ForeColor
+    $aquariumItem = New-Object System.Windows.Forms.ToolStripMenuItem
+    $aquariumItem.Text = $SCRIPT:Labels.Aquarium
+    $aquariumItem.Tag = 'aquarium'
+    $aquariumItem.AutoSize = $true
+    $aquariumItem.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $aquariumItem.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'aquarium'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    [void]$gamesItem.DropDownItems.Add($aquariumItem)
     # A capture belongs to this process rather than to the page: the pet is the half
     # that can draw over the whole desktop, and the file needs nothing of DSH. It
     # therefore raises no window either - the sheet covers whatever is there.

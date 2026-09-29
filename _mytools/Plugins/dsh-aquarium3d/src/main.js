@@ -16,11 +16,17 @@
  * world, layer 1 the water surface, layer 2 the glass.
  */
 import * as THREE from '../vendor/three.module.js'
-import { SAND_TOP, TANK, buildTank } from './tank.js'
+import { SAND_TOP, TANK, buildTank, terrainHeight } from './tank.js'
 import { HOOD_POINT, buildRoom } from './room.js'
 import { createWater } from './water.js'
 import { createGlass } from './glass.js'
 import { FX } from './fx.js'
+import { RippleField } from './ripples.js'
+import { School } from './fish.js'
+import { Particles } from './particles.js'
+import { Food } from './food.js'
+import { Post } from './post.js'
+import { createWaterBody } from './body.js'
 
 /** Resolution scale of the planar reflection target. */
 const REFL_SCALE = 0.5
@@ -68,6 +74,30 @@ class AquariumStage {
     this.elapsed = 0
     this.disposed = false
 
+    /**
+     * Every value the control panel can change. The stage owns these facts:
+     * the panel writes through `setSetting`, and nothing else writes them.
+     */
+    this.settings = {
+      hood: 1.0,
+      waterLevel: TANK.waterY,
+      wind: 0.45,
+      caustics: 1.0,
+      reflection: 1.0,
+      refraction: 1.0,
+      glassThickness: 0.045,
+      bubbles: 0.6,
+      post: true,
+      quality: 'high',
+      fishCount: 14,
+    }
+    /** Frames per second the adaptive step last measured, and its running average. */
+    this.frameRate = 60
+    this.autoQuality = true
+    this.running = true
+    this.frameCount = 0
+    this.frameSeconds = 0
+
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
@@ -91,7 +121,27 @@ class AquariumStage {
     this.scene.add(this.tank.group)
     this.water = createWater()
     this.scene.add(this.water.mesh)
+    this.body = createWaterBody({ waterY: TANK.waterY })
+    this.scene.add(this.body.group)
     this.glass = createGlass(this.tank.glass)
+    this.ripples = new RippleField()
+    FX.uRipTex.value = this.ripples.target.texture
+    this.particles = new Particles()
+    this.scene.add(this.particles.points)
+    this.food = new Food({
+      waterY: TANK.waterY,
+      terrainHeight,
+      bounds: { hx: TANK.hx, hz: TANK.hz },
+    })
+    this.scene.add(this.food.group)
+    this.food.onEat = (pellet) => this.particles.burst(pellet.x, pellet.y, pellet.z, 2)
+    this.school = new School({
+      count: this.settings.fishCount,
+      bounds: { hx: TANK.hx, hz: TANK.hz, sandY: SAND_TOP },
+      terrainHeight,
+      waterY: TANK.waterY,
+    })
+    this.scene.add(this.school.group)
 
     FX.uWaterY.value = TANK.waterY
     FX.uBedY.value = BED_Y
@@ -103,10 +153,19 @@ class AquariumStage {
     this.viewProjection = new THREE.Matrix4()
     this.blit = createBlit()
     this.debugBlit = createBlit(true)
+    this.post = new Post(this.renderer)
     this.reflReady = false
 
     this.orbit = { theta: 0.0, phi: 1.34, radius: 4.5, target: new THREE.Vector3(0, 0.22, 0) }
-    this.drag = { active: false, x: 0, y: 0 }
+    this.drag = { active: false, x: 0, y: 0, at: 0 }
+    /** Where the air stone sits, and the timers that feed the bubble streams. */
+    this.airStone = new THREE.Vector3(0.62, SAND_TOP + 0.10, -0.34)
+    this.bubbleAccum = 0
+    this.pearlTimer = 1.2
+    this.pearlSpots = [
+      new THREE.Vector3(-1.02, 0, -0.30), new THREE.Vector3(-0.62, 0, 0.34),
+      new THREE.Vector3(0.46, 0, -0.36), new THREE.Vector3(0.94, 0, 0.22),
+    ]
 
     this.targets = { refl: null, refr: null, glass: null }
     this.debugTarget = null
@@ -124,6 +183,9 @@ class AquariumStage {
       this.drag.active = true
       this.drag.x = event.clientX
       this.drag.y = event.clientY
+      this.drag.at = performance.now()
+      this.drag.fromX = event.clientX
+      this.drag.fromY = event.clientY
       try { this.canvas.setPointerCapture(event.pointerId) } catch { /* capture is an optimization only */ }
     }
     this.onPointerMove = (event) => {
@@ -136,7 +198,12 @@ class AquariumStage {
       this.orbit.phi = Math.min(1.60, Math.max(0.18, this.orbit.phi - dy * 1.9))
       this.applyOrbit()
     }
-    this.onPointerUp = () => { this.drag.active = false }
+    this.onPointerUp = (event) => {
+      this.drag.active = false
+      // A press that did not move is a click, and a click on the water feeds the fish.
+      const moved = Math.hypot(event.clientX - this.drag.fromX, event.clientY - this.drag.fromY)
+      if (performance.now() - this.drag.at < 350 && moved < 6) this.feedAt(event.clientX, event.clientY)
+    }
     this.onWheel = (event) => {
       event.preventDefault()
       this.orbit.radius = Math.min(12, Math.max(2.2, this.orbit.radius * (1 + Math.sign(event.deltaY) * 0.08)))
@@ -152,8 +219,46 @@ class AquariumStage {
     this.canvas.addEventListener('pointercancel', this.onPointerUp)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('webglcontextlost', this.onContextLost)
+    // A hidden tab is a machine nobody is looking at: stop the loop entirely and
+    // pick the clock up again on the way back.
+    this.onVisibility = () => {
+      if (document.visibilityState === 'hidden') this.pause()
+      else this.resume()
+    }
+    document.addEventListener('visibilitychange', this.onVisibility)
     this.resizeObserver = new ResizeObserver(() => { this.resize() })
     this.resizeObserver.observe(this.canvas)
+  }
+
+  /** Stop rendering (the stage stays alive and keeps its state). */
+  pause() {
+    if (!this.running) return
+    this.running = false
+    cancelAnimationFrame(this.animationFrame)
+  }
+
+  /** Start rendering again, without a jump in the clock. */
+  resume() {
+    if (this.running || this.disposed) return
+    this.running = true
+    this.clock.getDelta()
+    this.animationFrame = requestAnimationFrame(this.loop)
+  }
+
+  /**
+   * Drop one quality tier when the frames do not come fast enough. It only ever
+   * steps down: a machine that recovered does not get to oscillate, and the
+   * panel remains the one place that asks for more.
+   */
+  adaptQuality() {
+    if (!this.autoQuality) return
+    if (this.frameRate < 34 && this.settings.quality === 'high') {
+      this.settings.quality = 'medium'
+      this.applyQuality()
+    } else if (this.frameRate < 26 && this.settings.quality === 'medium') {
+      this.settings.quality = 'low'
+      this.applyQuality()
+    }
   }
 
   /** Place the camera on the orbit around the tank. */
@@ -166,6 +271,74 @@ class AquariumStage {
       target.z + Math.cos(theta) * sinPhi * radius,
     )
     this.camera.lookAt(target)
+  }
+
+  /**
+   * Feed the fish where the pointer hit the water, if it hit inside the tank.
+   * @param clientX - pointer X in client coordinates.
+   * @param clientY - pointer Y in client coordinates.
+   * @returns whether anything was dropped.
+   */
+  feedAt(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect()
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+      -((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+    )
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(ndc, this.camera)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.settings.waterLevel)
+    const hit = new THREE.Vector3()
+    if (raycaster.ray.intersectPlane(plane, hit) === null) return false
+    if (Math.abs(hit.x) > TANK.hx - 0.05 || Math.abs(hit.z) > TANK.hz - 0.05) return false
+    this.food.drop(hit.x, hit.z, 3)
+    this.particles.splash(hit.x, this.settings.waterLevel, hit.z, 0.6)
+    this.addRipple(hit.x, hit.z, 0.006, 'drop')
+    return true
+  }
+
+  /**
+   * Change one setting. The panel is the only caller; the stage owns the effects.
+   * @param key - the setting name.
+   * @param value - the new value.
+   */
+  setSetting(key, value) {
+    if (!(key in this.settings)) return
+    this.settings[key] = value
+    const water = this.water.material.uniforms
+    if (key === 'waterLevel') {
+      // The surface, the absorption plane, and the caustic surface all read this.
+      this.water.mesh.position.y = value
+      water.uWaterY.value = value
+      FX.uWaterY.value = value
+      this.body.uniforms.uWaterY.value = value
+      this.body.setWaterLevel(value)
+      this.school.waterY = value
+    }
+    if (key === 'wind') water.uWindSpeed.value = value
+    if (key === 'caustics') FX.uCauAmt.value = value
+    if (key === 'reflection') water.uReflStrength.value = 0.8 * value
+    if (key === 'refraction') water.uRefrAmt.value = value
+    if (key === 'hood') FX.uLampI.value = value
+    if (key === 'glassThickness') this.glass.material.uniforms.uThick.value = value
+    if (key === 'fishCount') this.school.setCount(Math.round(value))
+    if (key === 'post' || key === 'quality') this.applyQuality()
+  }
+
+  /**
+   * Push the quality tier onto the renderer: resolution scales, the post pass,
+   * and how much life the tank carries.
+   */
+  applyQuality() {
+    const tier = this.settings.quality
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, tier === 'low' ? 1 : tier === 'medium' ? 1.5 : 2))
+    this.resize()
+    this.post.setQuality(this.settings.post ? (tier === 'low' ? 'lite' : 'full') : 'off')
+    const target = tier === 'low' ? 8 : tier === 'medium' ? 11 : 14
+    if (this.settings.fishCount !== target) {
+      this.settings.fishCount = target
+      this.school.setCount(target)
+    }
   }
 
   /** Match every target to the current canvas size. */
@@ -190,10 +363,11 @@ class AquariumStage {
         },
       )
     }
-    this.targets.refl = scale(this.targets.refl, REFL_SCALE)
-    this.targets.refr = scale(this.targets.refr, REFR_SCALE)
-    this.targets.glass = scale(this.targets.glass, REFR_SCALE)
+    this.targets.refl = scale(this.targets.refl, this.settings.quality === 'low' ? 0.34 : REFL_SCALE)
+    this.targets.refr = scale(this.targets.refr, this.settings.quality === 'low' ? 0.45 : REFR_SCALE)
+    this.targets.glass = scale(this.targets.glass, this.settings.quality === 'low' ? 0.45 : REFR_SCALE)
     this.water.material.uniforms.uRes.value.set(this.targets.refr.width, this.targets.refr.height)
+    this.post.resize(buffer.x, buffer.y)
   }
 
   /** Mirror the camera across the water and render what sits above it. */
@@ -252,6 +426,52 @@ class AquariumStage {
     this.renderer.setRenderTarget(null)
   }
 
+  /**
+   * Air stone and plant pearls: the two places bubbles enter the water.
+   * @param dt - seconds since the last frame.
+   */
+  updateBubbles(dt) {
+    const rate = this.settings.bubbles * 16
+    this.bubbleAccum += dt * rate
+    let guard = 0
+    while (this.bubbleAccum >= 1 && guard++ < 4) {
+      this.bubbleAccum -= 1
+      this.particles.emit({
+        x: this.airStone.x + (Math.random() - 0.5) * 0.06,
+        y: this.airStone.y,
+        z: this.airStone.z + (Math.random() - 0.5) * 0.06,
+        vx: (Math.random() - 0.5) * 0.04,
+        vy: 0.05 + Math.random() * 0.05,
+        vz: (Math.random() - 0.5) * 0.04,
+        size: 0.008 + Math.random() * 0.014,
+        life: 3.0 + Math.random() * 1.6,
+        color: { r: 0.72, g: 0.9, b: 0.92 },
+        gravity: -1.05,
+      })
+    }
+    if (this.settings.bubbles <= 0.001) this.bubbleAccum = 0
+    // Plants release a thin string of oxygen every so often, from leaf height.
+    this.pearlTimer -= dt
+    if (this.pearlTimer > 0) return
+    this.pearlTimer = 0.7 + Math.random() * 1.1
+    const spot = this.pearlSpots[Math.floor(Math.random() * this.pearlSpots.length)]
+    const count = 3 + Math.floor(Math.random() * 4)
+    for (let i = 0; i < count; i++) {
+      const x = spot.x + (Math.random() - 0.5) * 0.5
+      const z = spot.z + (Math.random() - 0.5) * 0.35
+      this.particles.emit({
+        x, y: terrainHeight(x, z) + 0.05 + Math.random() * 0.3, z,
+        vx: (Math.random() - 0.5) * 0.02,
+        vy: 0.03 + Math.random() * 0.04,
+        vz: (Math.random() - 0.5) * 0.02,
+        size: 0.005 + Math.random() * 0.008,
+        life: 5.0 + Math.random() * 4.0,
+        color: { r: 0.7, g: 0.95, b: 0.9 },
+        gravity: -0.12,
+      })
+    }
+  }
+
   /** Update the uniforms the frame's passes read. */
   updateUniforms() {
     const water = this.water.material.uniforms
@@ -272,13 +492,35 @@ class AquariumStage {
 
   /** One frame: reflection, refraction, then the composited main render. */
   loop() {
-    if (this.disposed) return
+    if (this.disposed || !this.running) return
     const dt = Math.min(this.clock.getDelta(), 0.05)
     this.elapsed += dt
+    // Frame-rate authority: two seconds is long enough to be a measurement and
+    // short enough that a slow machine is not slow for long.
+    this.frameCount += 1
+    this.frameSeconds += dt
+    if (this.frameSeconds > 2) {
+      this.frameRate = this.frameCount / this.frameSeconds
+      this.frameCount = 0
+      this.frameSeconds = 0
+      this.adaptQuality()
+    }
     this.renderer.shadowMap.needsUpdate = false
     this.camera.updateMatrixWorld(true)
     this.camera.matrixWorldInverse.copy(this.camera.matrixWorld).invert()
     this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse)
+    this.ripples.update(this.renderer, this.elapsed)
+    this.food.update(dt)
+    this.school.update(dt, this.elapsed, {
+      pellets: this.food.pellets,
+      onEat: (pellet) => this.particles.burst(pellet.x, pellet.y + 0.02, pellet.z, 2),
+    })
+    this.updateBubbles(dt)
+    this.particles.update(dt, {
+      waterY: this.settings.waterLevel,
+      time: this.elapsed,
+      onPop: (x, z) => this.addRipple(x, z, 0.0035, 'fish'),
+    })
     this.updateUniforms()
     this.renderReflection()
     this.renderRefraction()
@@ -287,6 +529,8 @@ class AquariumStage {
       // Development view: one pipeline target straight onto the canvas.
       this.debugBlit.material.uniforms.uTex.value = this.debugTarget.texture
       this.renderer.render(this.debugBlit.scene, this.debugBlit.camera)
+    } else if (this.settings.post) {
+      this.post.render(this.scene, this.camera, this.elapsed)
     } else {
       this.renderer.render(this.scene, this.camera)
     }
@@ -294,11 +538,22 @@ class AquariumStage {
   }
 
   /**
+   * Disturb the surface at one point. Everything that reads the surface field
+   * sees it: the water, the glass behind it, and the caustics on the sand.
+   * @param x - world X of the disturbance.
+   * @param z - world Z of the disturbance.
+   * @param amplitude - surface displacement in meters.
+   * @param kind - `drop`, `splash`, `fish`, or `paw`.
+   */
+  addRipple(x, z, amplitude = 0.008, kind = 'splash') {
+    this.ripples.add(x, z, amplitude, kind)
+  }
+
+  /**
    * Development helper: show one pipeline target on the canvas instead of the scene.
    * @param name - `refl`, `refr`, `glass`, or null to resume the normal render.
    * @returns whether the named target exists.
-   */
-  debugShow(name) {
+   */  debugShow(name) {
     if (name === null) {
       this.debugTarget = null
       return true
@@ -338,8 +593,10 @@ class AquariumStage {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.running = false
     cancelAnimationFrame(this.animationFrame)
     this.resizeObserver.disconnect()
+    document.removeEventListener('visibilitychange', this.onVisibility)
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
@@ -347,6 +604,14 @@ class AquariumStage {
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost)
     for (const rt of Object.values(this.targets)) if (rt !== null) rt.dispose()
+    this.ripples.dispose()
+    this.school.dispose()
+    this.food.dispose()
+    this.particles.dispose()
+    this.post.dispose()
+    this.body.material.dispose()
+    this.body.shaftMaterial.dispose()
+    this.body.shaftGeometry.dispose()
     this.scene.traverse((child) => {
       if (child.isMesh) {
         child.geometry?.dispose()

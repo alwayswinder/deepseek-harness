@@ -2,19 +2,20 @@
  * The water surface.
  *
  * The surface is one plane at the resting water level. Its height and normal
- * come from the same four-wave field the caustics use, the interior seen
- * through it comes from the refraction target the pipeline rendered first, and
- * the sky/room it mirrors comes from the planar reflection target. Fresnel
- * decides how much of each is visible, so the view flips from "looking into
- * water" to "looking at reflected room" as the camera rises.
+ * come from the shared surface field — wind waves plus whatever the ripple
+ * field holds — the interior seen through it comes from the refraction target
+ * the pipeline rendered first, and the room it mirrors comes from the planar
+ * reflection target. Fresnel decides how much of each is visible, so the view
+ * flips from "looking into water" to "looking at reflected room" as the camera
+ * rises.
  */
 import * as THREE from '../vendor/three.module.js'
 import { TANK } from './tank.js'
-import { WAVE_GLSL } from './fx.js'
+import { FX, SURFACE_GLSL } from './fx.js'
 
 /**
  * Create the water mesh and its material.
- * @returns the mesh plus the uniform-setter the stage calls each frame.
+ * @returns the mesh plus its material, whose uniforms the stage drives per frame.
  */
 export function createWater() {
   const material = new THREE.ShaderMaterial({
@@ -45,17 +46,26 @@ export function createWater() {
       uHoodI: { value: 1.4 },
       uEdge: { value: new THREE.Vector2(TANK.hx, TANK.hz) },
       uRes: { value: new THREE.Vector2(1, 1) },
+      uFoamAmt: { value: 1 },
+      // The ripple field is one fact for the whole scene: the water and every
+      // injected material share these uniform objects.
+      uRipTex: FX.uRipTex,
+      uRipExt: FX.uRipExt,
+      uRipNrm: FX.uRipNrm,
+      uRipDisp: FX.uRipDisp,
     },
     vertexShader: /* glsl */`
       uniform float uTime, uWindSpeed;
       varying vec3 vWorld;
-      ${WAVE_GLSL}
+      varying float vFoam;
+      ${SURFACE_GLSL}
       void main(){
         vec4 world = modelMatrix * vec4(position, 1.0);
-        float h; vec2 g;
-        waveHG(world.xz, uTime, uWindSpeed, h, g);
+        float h; vec2 g; float foam;
+        aqSurface(world.xz, uTime, uWindSpeed, h, g, foam);
         world.y += h;
         vWorld = world.xyz;
+        vFoam = foam;
         gl_Position = projectionMatrix * viewMatrix * world;
       }
     `,
@@ -66,9 +76,10 @@ export function createWater() {
       uniform vec3 uCamPos, uDeep, uShallow, uAbsorb, uHoodDir, uHoodCol;
       uniform vec2 uEdge, uRes;
       uniform float uTime, uWindSpeed, uWaterY, uBedY, uReflAmt, uReflStrength;
-      uniform float uReflDistort, uReflBlur, uRefrAmt, uIOR, uHoodI;
+      uniform float uReflDistort, uReflBlur, uRefrAmt, uIOR, uHoodI, uFoamAmt;
       varying vec3 vWorld;
-      ${WAVE_GLSL}
+      varying float vFoam;
+      ${SURFACE_GLSL}
 
       /* Screen coordinate of a world point under the main camera. */
       vec2 screenOf(vec3 p){
@@ -89,8 +100,8 @@ export function createWater() {
       }
 
       void main(){
-        float h; vec2 g;
-        waveHG(vWorld.xz, uTime, uWindSpeed, h, g);
+        float h; vec2 g; float foam;
+        aqSurface(vWorld.xz, uTime, uWindSpeed, h, g, foam);
         vec3 N = normalize(vec3(-g.x * 2.1, 1.0, -g.y * 2.1));
         vec3 V = normalize(uCamPos - vWorld);
         float ndv = max(dot(N, V), 0.0);
@@ -122,6 +133,9 @@ export function createWater() {
         float spec = pow(max(dot(N, H), 0.0), 190.0) * uHoodI;
         col += uHoodCol * spec;
 
+        /* Foam: what a splash left on the surface, brighter than the water. */
+        col += vec3(0.55, 0.72, 0.72) * clamp(vFoam + foam, 0.0, 1.5) * 0.35 * uFoamAmt;
+
         /* Meniscus: the surface darkens into the glass instead of ending flat. */
         float edge = 1.0 - smoothstep(0.86, 1.0, max(abs(vWorld.x) / uEdge.x, abs(vWorld.z) / uEdge.y));
         col = mix(col * 0.55, col, edge);
@@ -131,7 +145,7 @@ export function createWater() {
     `,
   })
 
-  const geometry = new THREE.PlaneGeometry(TANK.hx * 2 + 0.004, TANK.hz * 2 + 0.004, 48, 24)
+  const geometry = new THREE.PlaneGeometry(TANK.hx * 2 + 0.004, TANK.hz * 2 + 0.004, 96, 48)
   geometry.rotateX(-Math.PI / 2)
   const mesh = new THREE.Mesh(geometry, material)
   mesh.name = 'water'

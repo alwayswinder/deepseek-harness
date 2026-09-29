@@ -406,13 +406,17 @@ function sampleWork(ctx, waiting) {
   const agents = ctx.get('agents')
   const jobs = ctx.get('jobs')
   const live = agents === undefined ? [] : agents.list()
-  // Work is a model that is generating or running tools, or a background job
-  // that is still going. A message in an inbox is input nobody is processing:
-  // a settled job's completion notice lands in `nextStep` and waits there for a
-  // step that may never come (a quiet delivery, or a spent wake budget), so
-  // counting the inbox would paint the pet as busy while nothing runs at all.
-  // The desktop update gate counts the inbox because it asks a different
-  // question — whether stopping the Host right now would lose something.
+  // Work is a model that is generating or running tools. A job does not count,
+  // even though a running one is real work: every tool call's subprocess is a
+  // job, and a call whose child outlives it — a dev server left running, a
+  // detached helper, a push still holding its connection — keeps that job
+  // `running` indefinitely, so a pet reading jobs stayed on "working" long after
+  // the turn ended. A message in an inbox is not work either: a settled job's
+  // completion notice lands in `nextStep` and waits there for a step that may
+  // never come (a quiet delivery, or a spent wake budget). The desktop update
+  // gate counts both because it asks a different question — whether stopping the
+  // Host right now would lose something. A delegated subagent still shows up as
+  // an agent, so real background work keeps the face it should have.
   const generating = live.filter(agent => !waiting.has(agent.id) && agent.status === 'running')
   const queued = live.reduce(
     (total, agent) => total + agent.inbox.nextTurn.length + agent.inbox.nextStep.length,
@@ -421,10 +425,11 @@ function sampleWork(ctx, waiting) {
   const working = jobs === undefined ? [] : [undefined, ...live].flatMap(agent => jobs.list(agent?.id)
     .filter(job => job.status === 'running' || job.status === 'stopping'))
   return {
-    busy: generating.length > 0 || working.length > 0,
+    busy: generating.length > 0,
     waiting: live.some(agent => waiting.has(agent.id)),
-    // Published with the state, so a pet that looks stuck can be explained from
-    // the file alone: which of the three made it say "working".
+    // Published with the state, so a face that looks wrong explains itself from
+    // the file: how many agents generate, how many jobs are still running, and
+    // how much input is waiting.
     reason: { agents: generating.length, jobs: working.length, queued },
   }
 }

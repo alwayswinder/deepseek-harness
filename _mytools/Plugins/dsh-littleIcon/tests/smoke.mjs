@@ -39,7 +39,9 @@ function fakeContext({ running = false, queued = false, stepped = false, jobs = 
         inbox: { nextTurn: queued ? [{}] : [], nextStep: stepped ? [{}] : [] },
       }],
     },
-    jobs: { list: () => jobs },
+    // The real registry scopes by owner: an omitted caller sees only unowned
+    // jobs, so the same double must not answer for both or every job counts twice.
+    jobs: { list: (owner) => (owner === undefined ? [] : jobs) },
   }
   return { get: (name) => services[name] }
 }
@@ -51,8 +53,16 @@ assert.deepEqual(sampleWork(fakeContext(), noWaiting), {
   reason: { agents: 0, jobs: 0, queued: 0 },
 })
 assert.equal(sampleWork(fakeContext({ running: true }), noWaiting).busy, true, 'a running agent is work')
-assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting).busy, true, 'a running job is work')
-assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'stopping' }] }), noWaiting).busy, true, 'a stopping job is work')
+// A job is real work, but it does not drive the face: every tool call's
+// subprocess is a job, and one whose child outlives the call — a dev server left
+// running, a detached helper — stays `running` long after the turn ended. It is
+// still reported, so the state file says what is going on.
+assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting).busy, false,
+  'a running job does not hold the pet on "working"')
+assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting).reason.jobs, 1,
+  'but it is reported in the published reason')
+assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'stopping' }] }), noWaiting).busy, false,
+  'a stopping job does not hold it either')
 assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'completed' }] }), noWaiting).busy, false)
 assert.equal(sampleWork({ get: () => undefined }, noWaiting).busy, false, 'a profile without agents or jobs is never busy')
 // Input waiting in an inbox is not work: a settled job's completion notice is
@@ -77,8 +87,8 @@ assert.equal(sampleWork(fakeContext({ running: true }), new Set(['another-agent'
   'a different agent keeps working while one waits')
 assert.equal(sampleWork(fakeContext({ running: true }), new Set(['another-agent'])).waiting, false,
   'a question for one agent is not reported for another')
-assert.equal(sampleWork(fakeContext({ running: true, jobs: [{ status: 'running' }] }), new Set(['agent-1'])).busy, true,
-  'a background job still counts while an agent waits')
+assert.equal(sampleWork(fakeContext({ running: true, jobs: [{ status: 'running' }] }), new Set(['agent-1'])).busy, false,
+  'a waiting agent is not work, and a job does not change that')
 
 const DEFAULTS = {
   size: 160,

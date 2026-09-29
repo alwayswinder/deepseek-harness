@@ -1,0 +1,7 @@
+# aquarium3d bundle patch: one host row mounting the plugin package. The host
+# half (index.js) serves the plugin's own directory as a same-origin static
+# tree (three.js runtime + scene modules); the browser half (client.js)
+# registers the floating entry button and the fullscreen WebGL aquarium.
+- insert:
+    - id: aquarium3d
+      name: '@local/dsh-aquarium3d'

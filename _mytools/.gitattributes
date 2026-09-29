@@ -3,3 +3,9 @@
 # endings on every machine. Keep the in-repo form normalized as text while
 # every checkout writes CRLF, mirroring the root `*.cmd` override.
 *.bat text eol=crlf
+
+# three.js is copied into the aquarium plugin byte for byte, and it carries a
+# handful of lines with a space before a tab. Reformatting a verbatim
+# third-party file to satisfy `git diff --check` would be worse than saying so
+# here, which is what this turns off for exactly this path.
+Plugins/dsh-aquarium3d/vendor/three.module.js -whitespace

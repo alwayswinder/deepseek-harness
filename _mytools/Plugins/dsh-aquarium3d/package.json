@@ -1,0 +1,31 @@
+{
+  "name": "@local/dsh-aquarium3d",
+  "description": "DSH 3D 玻璃鱼缸插件 — 右侧悬浮按钮打开全屏 WebGL 鱼缸：玻璃折射、水面倒影、水底焦散与鱼群。A WebGL glass-aquarium overlay for the DSH web GUI: glass refraction, water reflections, caustics, and a live fish school.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "src",
+    "vendor",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  }
+}

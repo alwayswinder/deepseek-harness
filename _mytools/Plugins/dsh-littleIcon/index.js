@@ -293,10 +293,26 @@ class StateFileWriter {
         if (attempt < REPLACE_ATTEMPTS) sleepSync(REPLACE_RETRY_MS)
       }
     }
-    if (now - this.lastFailureAt >= FAILURE_REPORT_MS) {
+    const report = (error) => {
+      if (now - this.lastFailureAt < FAILURE_REPORT_MS) return
       this.lastFailureAt = now
-      this.onFailure(failure)
+      this.onFailure(error)
     }
+    // The pet reads this file every 200 ms and Windows refuses to rename over an
+    // open file, so a snapshot can lose that race five times running. Writing in
+    // place is not atomic, but the pet tolerates a half-read snapshot — its JSON
+    // parse fails and it keeps the values it had — and a file that never moves is
+    // worse: the pet would wear an old expression until the next launch. Only a
+    // snapshot that cannot land either way is a failure worth reporting.
+    try {
+      writeFileSync(this.path, text, 'utf8')
+      this.lastStable = stableText
+      this.lastWrite = now
+      return true
+    } catch (error) {
+      failure = error
+    }
+    report(failure)
     return false
   }
 }
@@ -390,13 +406,26 @@ function sampleWork(ctx, waiting) {
   const agents = ctx.get('agents')
   const jobs = ctx.get('jobs')
   const live = agents === undefined ? [] : agents.list()
-  const agentBusy = live.some(agent => !waiting.has(agent.id) && (agent.status === 'running'
-    || agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0))
-  const jobsBusy = jobs !== undefined && [undefined, ...live].some(agent => jobs.list(agent?.id)
-    .some(job => job.status === 'running' || job.status === 'stopping'))
+  // Work is a model that is generating or running tools, or a background job
+  // that is still going. A message in an inbox is input nobody is processing:
+  // a settled job's completion notice lands in `nextStep` and waits there for a
+  // step that may never come (a quiet delivery, or a spent wake budget), so
+  // counting the inbox would paint the pet as busy while nothing runs at all.
+  // The desktop update gate counts the inbox because it asks a different
+  // question — whether stopping the Host right now would lose something.
+  const generating = live.filter(agent => !waiting.has(agent.id) && agent.status === 'running')
+  const queued = live.reduce(
+    (total, agent) => total + agent.inbox.nextTurn.length + agent.inbox.nextStep.length,
+    0,
+  )
+  const working = jobs === undefined ? [] : [undefined, ...live].flatMap(agent => jobs.list(agent?.id)
+    .filter(job => job.status === 'running' || job.status === 'stopping'))
   return {
-    busy: agentBusy || jobsBusy,
+    busy: generating.length > 0 || working.length > 0,
     waiting: live.some(agent => waiting.has(agent.id)),
+    // Published with the state, so a pet that looks stuck can be explained from
+    // the file alone: which of the three made it say "working".
+    reason: { agents: generating.length, jobs: working.length, queued },
   }
 }
 
@@ -1022,9 +1051,14 @@ export function apply(ctx, config) {
     // on the much shorter timer the settings card exposes.
     const config = dshWindow.visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
     const activity = activityAt()
-    const state = sampleState(sampleWork(ctx, waitingForUser), activity, timeline, config, now)
+    const work = sampleWork(ctx, waitingForUser)
+    const state = sampleState(work, activity, timeline, config, now)
     writer.write({
       state,
+      // Why the pet says "working", for the settings card and for anyone
+      // reading the file when it looks stuck: agents generating, jobs running,
+      // and how much input is waiting in the inboxes.
+      work: work.reason,
       size: current.size,
       // The pet applies one opacity; `translucent` is the switch the settings
       // card exposes, `idleOpacity` how far it fades.

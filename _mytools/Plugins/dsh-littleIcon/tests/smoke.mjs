@@ -30,13 +30,13 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 // ---- busy predicate ---------------------------------------------------------
 
 /** @param {object} options - which services exist and what they report. */
-function fakeContext({ running = false, queued = false, jobs = [] } = {}) {
+function fakeContext({ running = false, queued = false, stepped = false, jobs = [] } = {}) {
   const services = {
     agents: {
       list: () => [{
         id: 'agent-1',
         status: running ? 'running' : 'idle',
-        inbox: { nextTurn: queued ? [{}] : [], nextStep: [] },
+        inbox: { nextTurn: queued ? [{}] : [], nextStep: stepped ? [{}] : [] },
       }],
     },
     jobs: { list: () => jobs },
@@ -45,13 +45,27 @@ function fakeContext({ running = false, queued = false, jobs = [] } = {}) {
 }
 
 const noWaiting = new Set()
-assert.deepEqual(sampleWork(fakeContext(), noWaiting), { busy: false, waiting: false })
+assert.deepEqual(sampleWork(fakeContext(), noWaiting), {
+  busy: false,
+  waiting: false,
+  reason: { agents: 0, jobs: 0, queued: 0 },
+})
 assert.equal(sampleWork(fakeContext({ running: true }), noWaiting).busy, true, 'a running agent is work')
-assert.equal(sampleWork(fakeContext({ queued: true }), noWaiting).busy, true, 'queued work is work')
 assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'running' }] }), noWaiting).busy, true, 'a running job is work')
 assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'stopping' }] }), noWaiting).busy, true, 'a stopping job is work')
 assert.equal(sampleWork(fakeContext({ jobs: [{ status: 'completed' }] }), noWaiting).busy, false)
 assert.equal(sampleWork({ get: () => undefined }, noWaiting).busy, false, 'a profile without agents or jobs is never busy')
+// Input waiting in an inbox is not work: a settled job's completion notice is
+// injected as a next-step message and, under a quiet delivery or a spent wake
+// budget, waits there while nothing runs. Counting it kept the pet on "working"
+// long after the task it belonged to had finished — the reason the published
+// state carries `reason`, so the file explains itself.
+assert.equal(sampleWork(fakeContext({ queued: true }), noWaiting).busy, false, 'queued input is not work')
+assert.equal(sampleWork(fakeContext({ stepped: true }), noWaiting).busy, false, 'an injected step notice is not work')
+assert.deepEqual(sampleWork(fakeContext({ stepped: true, queued: true }), noWaiting).reason,
+  { agents: 0, jobs: 0, queued: 2 }, 'the published reason counts what is waiting')
+assert.equal(sampleWork(fakeContext({ running: true, stepped: true }), noWaiting).busy, true,
+  'a running agent stays busy whatever is queued behind it')
 // An agent waiting for the user is not working: the loop is blocked on the person,
 // so a question on screen — or input queued behind it — must not read as work.
 const askedWork = sampleWork(fakeContext({ running: true }), new Set(['agent-1']))
@@ -248,23 +262,31 @@ if (process.platform === 'win32') {
   const holder = openSync(stateFile, 'r')
   try {
     const started = Date.now()
-    assert.equal(writer.write({ state: 'happy', updatedAt: 4 }), false, 'a refused write returns false')
+    assert.equal(writer.write({ state: 'happy', updatedAt: 4 }), true,
+      'a refused replacement still lands in place')
     // Attempts, not duration, are what matter; the floor only proves the retry loop
-    // ran instead of giving up on the first refusal.
-    assert.ok(Date.now() - started >= 40, 'the refused write retried before giving up')
-    assert.equal(writeFailures.length, 1, 'the refused write reports its error')
-    assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).state, 'working',
-      'the pet keeps reading the last snapshot that landed')
-    assert.equal(writer.write({ state: 'bored', updatedAt: 5 }), false, 'a repeated failure does not throw')
-    assert.equal(writeFailures.length, 1, 'a failing stretch reports once, not once per tick')
+    // ran instead of falling back to the in-place write immediately.
+    assert.ok(Date.now() - started >= 40, 'the replacement was retried before falling back')
+    assert.equal(writeFailures.length, 0, 'a snapshot that landed in place is not a failure')
+    assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).state, 'happy',
+      'the pet reads the new snapshot')
   } finally {
     closeSync(holder)
   }
-  assert.equal(writer.write({ state: 'happy', updatedAt: 6 }), true, 'writing resumes once the file is free')
-  assert.equal(JSON.parse(readFileSync(stateFile, 'utf8')).state, 'happy')
 } else {
   console.log('skipping the held-open state file case: only Windows refuses the replacement')
 }
+
+// A snapshot that cannot be placed at all — here the path names a directory —
+// returns false and reports, instead of throwing into the sampling timer that
+// exits the whole DSH host.
+const blocked = join(writerDir, 'blocked')
+mkdirSync(blocked)
+const blockedWriter = new StateFileWriter(blocked, 60_000, (error) => writeFailures.push(error))
+assert.equal(blockedWriter.write({ state: 'idle', updatedAt: 7 }), false, 'a write that cannot land returns false')
+assert.equal(writeFailures.length, 1, 'and it reports its error')
+assert.equal(blockedWriter.write({ state: 'working', updatedAt: 8 }), false, 'a repeated failure does not throw')
+assert.equal(writeFailures.length, 1, 'a failing stretch reports once, not once per tick')
 rmSync(writerDir, { recursive: true, force: true })
 
 // ---- pet script -------------------------------------------------------------

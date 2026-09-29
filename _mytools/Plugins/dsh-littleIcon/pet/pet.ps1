@@ -15,7 +15,10 @@
     right-click on the pet opens the menu; an entry the page
     carries out (the chat site, or the plugin's own Git page) brings DSH back on
     screen first and is written to command.json beside the state file for the host
-    to relay, and the rest act on this process at once. Ending DSH is one of those:
+    to relay, and the rest act on this process at once - a screenshot among them:
+    the pet owns the desktop the region is dragged over, so the selection is made
+    here and the PNG lands in shots/ beside the state file. Ending DSH is one of
+    those as well:
     the window's own close only hides it now, so that entry ends the process every
     part of DSH runs under instead (see Stop-DshWindow). Restarting is the same
     ending plus a replacement, which a detached waiter starts once DSH is gone
@@ -46,6 +49,12 @@
 .PARAMETER SelfTest
     Print the loaded labels and the asset inventory, then exit, so a broken script
     fails before the next DSH start.
+
+.PARAMETER ShotProbe
+    Capture a fixed corner of the screen for real, print the file it wrote, and
+    exit. The selection sheet is not drawn and nobody drags: this is the bitmap,
+    the encoder, and the shots directory on their own, so a machine whose screen
+    cannot be read fails here instead of at the first menu click.
 #>
 [CmdletBinding()]
 param(
@@ -53,7 +62,8 @@ param(
     [Parameter(Mandatory = $true)][string]$StateFile,
     [Parameter(Mandatory = $true)][string]$PositionFile,
     [int]$DshPid = 0,
-    [switch]$SelfTest
+    [switch]$SelfTest,
+    [switch]$ShotProbe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -243,6 +253,11 @@ namespace DshPet
                         graphics.DrawLine(pen, P(bounds, 8f, 18f), P(bounds, 12f, 18f));
                         graphics.DrawLine(pen, P(bounds, 10f, 15f), P(bounds, 10f, 18f));
                         break;
+                    case "camera":
+                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.5f, 6f, 17f, 11f)));
+                        graphics.DrawEllipse(pen, R(bounds, 7f, 9f, 6f, 6f));
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 6.5f, 6f), P(bounds, 7.5f, 3f), P(bounds, 12.5f, 3f), P(bounds, 13.5f, 6f) });
+                        break;
                     case "corner":
                         graphics.DrawLine(pen, P(bounds, 3f, 17f), P(bounds, 17f, 3f));
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 9f, 3f), P(bounds, 17f, 3f), P(bounds, 17f, 11f) });
@@ -292,6 +307,10 @@ $SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:Stat
 # or DSH is shutting down. Answering it lets the pet store its position and close
 # its window in order; a pet that does not answer is killed as the fallback.
 $SCRIPT:QuitFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quit'
+# Where a capture lands. Beside the state file, in this machine's own harness home:
+# the shots are not part of the repository, and the pet is the half holding the
+# screen, so nothing else has to agree with the host about them.
+$SCRIPT:ShotDir = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'shots'
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
 $SCRIPT:DshPid = $DshPid
@@ -309,6 +328,11 @@ function Get-Labels {
         OpenCwdNoCwd          = 'That session has no working directory yet, so there is no folder to open.'
         OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
         OpenCwdFailed         = 'The folder could not be opened.'
+        Shot                  = 'Screenshot'
+        ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
+        ShotSaved             = 'Screenshot saved; its path is on the clipboard'
+        ShotSavedNoClipboard  = 'Screenshot saved, but its path could not be copied'
+        ShotFailed            = 'The screenshot could not be saved.'
         ToggleShown           = 'Tuck DSH away'
         ToggleHidden          = 'Show DSH'
         Reset                 = 'Move to corner'
@@ -582,14 +606,59 @@ function Restart-DshWindow {
     Stop-DshWindow
 }
 
+# ---- captures (files) -------------------------------------------------------
+# A capture is the screen, a bitmap, and a PNG. These are the parts that do not
+# need a window: the sheet that is dragged on is built further down, next to the
+# menu that opens it.
+function Get-ShotRectangle($Start, $End) {
+    # A drag runs in any direction, so the rectangle comes from the two corners
+    # rather than from the points in the order they arrived.
+    $left = [Math]::Min($Start.X, $End.X)
+    $top = [Math]::Min($Start.Y, $End.Y)
+    $right = [Math]::Max($Start.X, $End.X)
+    $bottom = [Math]::Max($Start.Y, $End.Y)
+    return [System.Drawing.Rectangle]::new($left, $top, ($right - $left), ($bottom - $top))
+}
+
+function New-ShotPath {
+    if (-not (Test-Path -LiteralPath $SCRIPT:ShotDir)) {
+        [void][System.IO.Directory]::CreateDirectory($SCRIPT:ShotDir)
+    }
+    # Milliseconds in the name: two captures inside the same second are ordinary.
+    return (Join-Path $SCRIPT:ShotDir ('shot-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss-fff') + '.png'))
+}
+
+function Save-ScreenShot([System.Drawing.Rectangle]$Rectangle) {
+    # PNG rather than JPEG: a capture is read back, not photographed, and the
+    # encoder is built in, so the pet needs nothing installed beside it.
+    $bitmap = [System.Drawing.Bitmap]::new($Rectangle.Width, $Rectangle.Height)
+    $graphics = $null
+    try {
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        $graphics.CopyFromScreen($Rectangle.Left, $Rectangle.Top, 0, 0,
+            [System.Drawing.Size]::new($Rectangle.Width, $Rectangle.Height))
+        $path = New-ShotPath
+        $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        return $path
+    } finally {
+        if ($null -ne $graphics) { $graphics.Dispose() }
+        $bitmap.Dispose()
+    }
+}
+
 # ---- self test --------------------------------------------------------------
 if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
+    # Where a capture lands, and what a backwards drag selects: both are built
+    # here, and neither needs a screen to be read.
+    Write-Output "shot-file: $(New-ShotPath)"
+    $drag = Get-ShotRectangle ([System.Drawing.Point]::new(30, 40)) ([System.Drawing.Point]::new(10, 20))
+    Write-Output "shot-rect: $($drag.X),$($drag.Y) $($drag.Width)x$($drag.Height)"
     # The host's reasons for an open that produced no window, in this side's
     # words: a reason nobody mapped would otherwise reach the person as a box
     # about the wrong thing.
@@ -609,6 +678,15 @@ if ($SelfTest) {
     # read back is what the waiter's cmd will expand.
     Set-RelaunchCommand 'relaunch probe'
     Write-Output "relaunch-variable: $([System.Environment]::GetEnvironmentVariable($SCRIPT:RelaunchVariable))"
+    exit 0
+}
+
+if ($ShotProbe) {
+    # The capture itself, taken for real: no sheet is drawn and nobody drags, so
+    # what is left to fail is the screen read, the encoder, and the directory.
+    $probePath = Save-ScreenShot ([System.Drawing.Rectangle]::new(0, 0, 320, 200))
+    Write-Output "shot-probe: $probePath"
+    Write-Output "shot-probe-bytes: $((Get-Item -LiteralPath $probePath).Length)"
     exit 0
 }
 
@@ -905,6 +983,292 @@ function Invoke-PetClick {
     }
 }
 
+# ---- capture sheet ----------------------------------------------------------
+# The shutter is drawn on the desktop rather than in the pet window: a capture has
+# to reach every screen the person can point at, and the pet is one small window in
+# a corner. The sheet is a topmost WinForms form, dimmed, whose region has the
+# selection cut out, so the hole is a live view of exactly what the file will hold.
+# WinForms is also what keeps every coordinate in physical pixels - the units
+# Screen and CopyFromScreen use - so a selection never drifts at a display scale
+# other than 100%, which is the trap the pet's own WPF position avoids by staying
+# in WPF's units.
+$SCRIPT:ShotOverlay = $null
+$SCRIPT:ShotDragging = $false
+$SCRIPT:ShotStart = [System.Drawing.Point]::Empty
+$SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+
+# A capture that only lands in a file says nothing to the person who made it, so
+# the pet says one line where they are already looking - above itself, for a few
+# seconds, without taking the focus away from what they were doing.
+$SCRIPT:Toast = $null
+$SCRIPT:ToastTimer = New-Object System.Windows.Threading.DispatcherTimer
+$SCRIPT:ToastTimer.Interval = [TimeSpan]::FromSeconds(3.5)
+$SCRIPT:ToastTimer.Add_Tick({
+    $SCRIPT:ToastTimer.Stop()
+    if ($null -ne $SCRIPT:Toast) {
+        $SCRIPT:Toast.Close()
+        $SCRIPT:Toast = $null
+    }
+})
+
+function Set-ShotHole($Form, [System.Drawing.Rectangle]$Selection) {
+    # The window's region is the sheet minus the selection: what is left of the
+    # window is drawn, and the hole is not part of it at all, so the desktop shows
+    # through unmodified.
+    $region = [System.Drawing.Region]::new([System.Drawing.Rectangle]::new(0, 0, $Form.ClientSize.Width, $Form.ClientSize.Height))
+    if ($Selection.Width -gt 0 -and $Selection.Height -gt 0) { $region.Exclude($Selection) }
+    $previous = $Form.Region
+    $Form.Region = $region
+    if ($null -ne $previous) { $previous.Dispose() }
+}
+
+function Close-ShotOverlay {
+    $form = $SCRIPT:ShotOverlay
+    $SCRIPT:ShotOverlay = $null
+    $SCRIPT:ShotDragging = $false
+    if ($null -eq $form) { return }
+    try {
+        $region = $form.Region
+        $form.Region = $null
+        if ($null -ne $region) { $region.Dispose() }
+    } catch { }
+    try { $form.Hide() } catch { }
+    try { $form.Close() } catch { }
+}
+
+function Copy-ShotPath([string]$Path) {
+    # Whatever else is running can hold the clipboard open for a moment, and the
+    # capture is already on disk: a refusal costs one retry, and only the last one
+    # costs the convenience of pasting the path.
+    $lastError = ''
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        try {
+            [System.Windows.Forms.Clipboard]::SetText($Path)
+            return $true
+        } catch {
+            $lastError = $_.Exception.Message
+            Start-Sleep -Milliseconds 80
+        }
+    }
+    Write-Log "copying the screenshot path failed: $lastError"
+    return $false
+}
+
+function Show-ShotFailure([string]$Detail) {
+    # The person asked for a capture, and a capture that silently wrote nothing
+    # reads as a dead menu entry; the reason is the only thing that makes it
+    # fixable. Same box the restart entry uses for the same reason.
+    $text = $SCRIPT:Labels.ShotFailed
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) { $text = "$text`n`n$Detail" }
+    [void][System.Windows.MessageBox]::Show($SCRIPT:Window, $text,
+        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
+function Show-PetNotice([string]$Title, [string]$Detail) {
+    try {
+        if ($null -ne $SCRIPT:Toast) {
+            $SCRIPT:Toast.Close()
+            $SCRIPT:Toast = $null
+        }
+        $toast = New-Object System.Windows.Window
+        $toast.WindowStyle = [System.Windows.WindowStyle]::None
+        $toast.AllowsTransparency = $true
+        $toast.Background = [System.Windows.Media.Brushes]::Transparent
+        $toast.ShowInTaskbar = $false
+        $toast.Topmost = $true
+        $toast.ShowActivated = $false
+        $toast.ResizeMode = [System.Windows.ResizeMode]::NoResize
+        $toast.SizeToContent = [System.Windows.SizeToContent]::WidthAndHeight
+        $toast.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+
+        $panel = New-Object System.Windows.Controls.StackPanel
+        $panel.Margin = New-Object System.Windows.Thickness(16, 11, 16, 12)
+        $headline = New-Object System.Windows.Controls.TextBlock
+        $headline.Text = $Title
+        $headline.FontSize = 13
+        $headline.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 240, 244, 250))
+        $path = New-Object System.Windows.Controls.TextBlock
+        $path.Text = $Detail
+        $path.FontSize = 11.5
+        $path.MaxWidth = 460
+        $path.TextWrapping = [System.Windows.TextWrapping]::Wrap
+        $path.Margin = New-Object System.Windows.Thickness(0, 4, 0, 0)
+        $path.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(255, 176, 186, 200))
+        [void]$panel.Children.Add($headline)
+        [void]$panel.Children.Add($path)
+
+        $border = New-Object System.Windows.Controls.Border
+        $border.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromArgb(242, 38, 43, 52))
+        $border.CornerRadius = New-Object System.Windows.CornerRadius(10)
+        $border.Child = $panel
+        $shadow = New-Object System.Windows.Media.Effects.DropShadowEffect
+        $shadow.BlurRadius = 18
+        $shadow.Opacity = 0.35
+        $shadow.ShadowDepth = 3
+        $border.Effect = $shadow
+        $toast.Content = $border
+
+        $toast.Show()
+        # Placed after Show() because SizeToContent gives no size before it: above
+        # the pet where the screen has room there, below it otherwise.
+        $toast.UpdateLayout()
+        $area = [System.Windows.SystemParameters]::WorkArea
+        $left = $window.Left + (($window.Width - $toast.ActualWidth) / 2)
+        $top = $window.Top - $toast.ActualHeight - 10
+        if ($top -lt ($area.Top + 8)) { $top = $window.Top + $window.Height + 10 }
+        $toast.Left = [Math]::Min([Math]::Max($left, $area.Left + 8), [Math]::Max($area.Left + 8, $area.Right - $toast.ActualWidth - 8))
+        $toast.Top = [Math]::Min([Math]::Max($top, $area.Top + 8), [Math]::Max($area.Top + 8, $area.Bottom - $toast.ActualHeight - 8))
+        $SCRIPT:Toast = $toast
+        $SCRIPT:ToastTimer.Stop()
+        $SCRIPT:ToastTimer.Start()
+    } catch {
+        Write-Log "showing the pet notice failed: $($_.Exception.Message)"
+    }
+}
+
+function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
+    # This process's own sheet has to be off the screen before the shutter, or the
+    # dimming would be in the file. The hole already showed the desktop, so what
+    # the person saw inside the selection is what lands in the PNG.
+    $shot = [System.Drawing.Rectangle]::new(($Form.Left + $Selection.X), ($Form.Top + $Selection.Y),
+        $Selection.Width, $Selection.Height)
+    $Form.Hide()
+    [System.Windows.Forms.Application]::DoEvents()
+    # The hidden window is gone once the system has composed a frame without it;
+    # a sleeping dispatcher needs no repaint, so this is the wait that costs.
+    Start-Sleep -Milliseconds 90
+    $path = Save-ScreenShot $shot
+    Close-ShotOverlay
+    if (Copy-ShotPath $path) { Show-PetNotice $SCRIPT:Labels.ShotSaved $path }
+    else { Show-PetNotice $SCRIPT:Labels.ShotSavedNoClipboard $path }
+}
+
+function Start-RegionShot {
+    if ($null -ne $SCRIPT:ShotOverlay) { return }
+    $form = New-Object System.Windows.Forms.Form
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    # The virtual screen, so a second monitor is captured like the first.
+    $form.Bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    $form.BackColor = [System.Drawing.Color]::Black
+    $form.Opacity = 0.35
+    $form.TopMost = $true
+    $form.ShowInTaskbar = $false
+    # Escape has to reach this form: it is the way out for a capture opened by
+    # mistake, next to a right-click.
+    $form.KeyPreview = $true
+    $form.Cursor = [System.Windows.Forms.Cursors]::Cross
+
+    $SCRIPT:ShotOverlay = $form
+    $SCRIPT:ShotDragging = $false
+    $SCRIPT:ShotStart = [System.Drawing.Point]::Empty
+    $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+    Set-ShotHole $form $SCRIPT:ShotSelection
+
+    $form.add_Paint({
+        param($sender, $eventArgs)
+        try {
+            $graphics = $eventArgs.Graphics
+            $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+            $font = $null
+            $brush = $null
+            $pen = $null
+            try {
+                $font = New-Object System.Drawing.Font('Microsoft YaHei UI', 11, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
+                $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(242, 244, 247))
+                $primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+                $hint = $graphics.MeasureString($SCRIPT:Labels.ShotHint, $font)
+                $graphics.DrawString($SCRIPT:Labels.ShotHint, $font, $brush,
+                    (($primary.Left - $sender.Left) + (($primary.Width - $hint.Width) / 2)),
+                    (($primary.Top - $sender.Top) + 42))
+                $selection = $SCRIPT:ShotSelection
+                if ($selection.Width -gt 0 -and $selection.Height -gt 0) {
+                    # The hole is the selection, so the frame is drawn just outside
+                    # it: a stroke centred on that edge would be clipped in half.
+                    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 122, 180, 255), 2)
+                    $graphics.DrawRectangle($pen, ($selection.X - 2), ($selection.Y - 2),
+                        ($selection.Width + 3), ($selection.Height + 3))
+                    $graphics.DrawString(('{0} x {1}' -f $selection.Width, $selection.Height), $font, $brush,
+                        $selection.X, [Math]::Max(4, ($selection.Y - 26)))
+                }
+            } finally {
+                if ($null -ne $pen) { $pen.Dispose() }
+                if ($null -ne $brush) { $brush.Dispose() }
+                if ($null -ne $font) { $font.Dispose() }
+            }
+        } catch {
+            Write-Log "drawing the capture sheet failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseDown({
+        param($sender, $eventArgs)
+        try {
+            if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) {
+                Close-ShotOverlay
+                return
+            }
+            $SCRIPT:ShotStart = $eventArgs.Location
+            $SCRIPT:ShotDragging = $true
+            $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+            Set-ShotHole $sender $SCRIPT:ShotSelection
+            # Held, so the drag keeps arriving once the pointer is over the hole.
+            $sender.Capture = $true
+            $sender.Invalidate()
+        } catch {
+            Write-Log "starting the selection failed: $($_.Exception.Message)"
+            Close-ShotOverlay
+        }
+    })
+    $form.add_MouseMove({
+        param($sender, $eventArgs)
+        if (-not $SCRIPT:ShotDragging) { return }
+        try {
+            $SCRIPT:ShotSelection = Get-ShotRectangle $SCRIPT:ShotStart $eventArgs.Location
+            Set-ShotHole $sender $SCRIPT:ShotSelection
+            $sender.Invalidate()
+        } catch {
+            Write-Log "drawing the selection failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseUp({
+        param($sender, $eventArgs)
+        try {
+            if (-not $SCRIPT:ShotDragging) { return }
+            $SCRIPT:ShotDragging = $false
+            $sender.Capture = $false
+            if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+            $selection = Get-ShotRectangle $SCRIPT:ShotStart $eventArgs.Location
+            # A click that never dragged is not a selection: it leaves no file and
+            # says nothing, exactly like Escape.
+            if ($selection.Width -lt 4 -or $selection.Height -lt 4) {
+                Close-ShotOverlay
+                return
+            }
+            Complete-RegionShot $sender $selection
+        } catch {
+            Write-Log "saving the capture failed: $($_.Exception.Message)"
+            Close-ShotOverlay
+            try { Show-ShotFailure $_.Exception.Message } catch { }
+        }
+    })
+    $form.add_KeyDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+            $eventArgs.Handled = $true
+            Close-ShotOverlay
+        }
+    })
+
+    $form.Show()
+    $form.Activate()
+    # Escape is only heard by the window that has the focus, so the sheet asks for
+    # it twice: Activate() moves within this process, and SetForegroundWindow asks
+    # the system. The click that chose the menu entry is what makes the second one
+    # allowed, and a refusal costs nothing.
+    [void][DshPet.Win32]::SetForegroundWindow($form.Handle)
+}
+
 # ---- menu -------------------------------------------------------------------
 function Exit-Pet {
     if ($SCRIPT:Exiting) { return }
@@ -988,6 +1352,16 @@ function New-PetMenu {
     $openItem = Add-PetMenuItem $menu $SCRIPT:Labels.OpenCwd 'folder'
     $openItem.add_Click({
         try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
+    })
+    # A capture belongs to this process rather than to the page: the pet is the half
+    # that can draw over the whole desktop, and the file needs nothing of DSH. It
+    # therefore raises no window either - the sheet covers whatever is there.
+    $shotItem = Add-PetMenuItem $menu $SCRIPT:Labels.Shot 'camera'
+    $shotItem.add_Click({
+        try { Start-RegionShot } catch {
+            Write-Log "starting a capture failed: $($_.Exception.Message)"
+            try { Show-ShotFailure $_.Exception.Message } catch { }
+        }
     })
     # Without a DSH window to control (the web profile) the window entries would be
     # dead, so the menu keeps only the page command and the position. The pet never

@@ -190,7 +190,9 @@ assert.equal(labels.ToggleShown, '收起 DSH')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
 assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
+assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
+  'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
   'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable',
   'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
@@ -244,8 +246,9 @@ rmSync(writerDir, { recursive: true, force: true })
 if (process.platform === 'win32') {
   // The self test exits before it touches these; a temp directory keeps a stray
   // failure from dropping state files into the repository.
+  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
   const probeDir = mkdtempSync(join(tmpdir(), 'little-icon-selftest-'))
-  const selfTest = spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), [
+  const selfTest = spawnSync(powershell, [
     '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
     '-File', join(root, 'pet', 'pet.ps1'),
     '-AssetDir', join(root, 'assets'),
@@ -263,7 +266,17 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /收起 DSH/)
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
   assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
+  assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
+  // A capture lands beside the state file, in the harness home rather than the
+  // repository, and its name is what tells two captures in one second apart.
+  const shotFile = /shot-file: (.*)/.exec(selfTest.stdout)
+  assert.ok(shotFile !== null, 'the self test must report where a capture lands')
+  assert.match(shotFile[1].trim(), /shots[\\/]shot-\d{8}-\d{6}-\d{3}\.png$/,
+    'a capture lands in shots/ beside the state file')
+  // A drag that runs up and to the left selects the same rectangle as one that
+  // runs down and to the right, which is what the bitmap is cut with.
+  assert.match(selfTest.stdout, /shot-rect: 10,20 20x20/, 'the drag rectangle is rebuilt from its corners')
   // A failed open is reported in the pet's own words, which only happens if the
   // reason the host sends is one this mapping knows.
   assert.ok(selfTest.stdout.includes(
@@ -291,6 +304,32 @@ if (process.platform === 'win32') {
   // value the waiter's cmd is meant to expand.
   assert.match(selfTest.stdout, /relaunch-variable: relaunch probe/,
     'the command the waiter expands must be readable back out of the environment')
+
+  // The capture itself, taken for real: the sheet is not drawn and nobody drags, so
+  // what is left under test is the screen read, the encoder, and the directory. A
+  // machine whose screen cannot be read fails here rather than at the first drag.
+  const shotDir = mkdtempSync(join(tmpdir(), 'little-icon-shot-'))
+  const shotProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(shotDir, 'state.json'),
+    '-PositionFile', join(shotDir, 'position.json'),
+    '-ShotProbe',
+  ], { encoding: 'utf8' })
+  assert.equal(shotProbe.status, 0, `pet.ps1 -ShotProbe failed: ${shotProbe.stderr}`)
+  const shotPath = /shot-probe: (.*)/.exec(shotProbe.stdout)
+  assert.ok(shotPath !== null, 'the capture probe must report the file it wrote')
+  const shotBytes = readFileSync(shotPath[1].trim())
+  rmSync(shotDir, { recursive: true, force: true })
+  assert.deepEqual([...shotBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'a capture is a PNG')
+  // The bitmap is cut to the rectangle it was given: a capture that came back at
+  // another size would mean the selection and the shutter disagree about units.
+  assert.equal(shotBytes.readUInt32BE(16), 320, 'the capture is as wide as the rectangle it was given')
+  assert.equal(shotBytes.readUInt32BE(20), 200, 'the capture is as tall as the rectangle it was given')
+  const shotReported = /shot-probe-bytes: (\d+)/.exec(shotProbe.stdout)
+  assert.ok(shotReported !== null, 'the capture probe must report the bytes it wrote')
+  assert.equal(Number(shotReported[1]), shotBytes.length, 'the reported size is the file that landed')
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')
 }

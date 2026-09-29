@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write _mytools/Plugins/dsh-ths-holdings/README.md
+/dsh-ths-holdings:
+  en: d2585fef7b14854b
+  zh: 3a62b693f093b46d
+/dsh-ths-holdings/screenshots:
+  en: 14ecb8385423c12d
+  zh: 313db098a6ed0027
+/dsh-ths-holdings/installation:
+  en: c868251283b7d033
+  zh: 6ec96d9bdf3bdf66
+/dsh-ths-holdings/usage:
+  en: 9b255323f6c1ecc9
+  zh: e055dc2501de91be
+/dsh-ths-holdings/features:
+  en: 7d29f6164e9f2ced
+  zh: 45d824ab6550c65c
+/dsh-ths-holdings/how-it-works:
+  en: 41cfd6f384e8a74e
+  zh: d88c198e8e444af8
+/dsh-ths-holdings/config:
+  en: b931040309de17f0
+  zh: ca8af90186bd2b77
+/dsh-ths-holdings/directory-structure:
+  en: 7643416ab7e7e34f
+  zh: c5295d9510d025f5
+/dsh-ths-holdings/faq-troubleshooting:
+  en: 11ff82977f9382a0
+  zh: 074058c192a09f3d
+/dsh-ths-holdings/model-experience:
+  en: b621b9b8c881338c
+  zh: 07fdf9e7799a677c
+/dsh-ths-holdings/model-experience/kv-cache-effect:
+  en: 1964c817745ae310
+  zh: b4ce53b632a122f3
+/dsh-ths-holdings/known-limitations:
+  en: bea855a098fe1328
+  zh: 2829329d68845071
+/dsh-ths-holdings/license:
+  en: 82fa813f0a93522d
+  zh: 82fa813f0a93522d

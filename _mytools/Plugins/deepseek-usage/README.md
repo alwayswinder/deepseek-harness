@@ -96,7 +96,6 @@ Shipping defaults:
 
 | account | provider | balanceBaseUrl | credential |
 |---|---|---|---|
-| opencode | `opencode` | (none — opencode.ai/zen has no balance API) | `OPENCODE_API_KEY` |
 | deepseek-official | `''` (catch-all) | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` |
 
 ## Pricing notes
@@ -148,8 +147,5 @@ billing — and note that:
   it, so the balance delta trails the locally metered figure briefly.
 - `assistant/attempt` settlements (an aborted or errored stream that still
   reported usage) are not metered.
-- `opencode.ai/zen` exposes **no** public balance endpoint, so the openCode
-  account shows spend only and a "该平台无余额接口" badge; its shipped rates are
-  placeholders.
 - The official DeepSeek account needs its key stored as the `DEEPSEEK_OFFICIAL_API_KEY`
   credential (e.g. via the Models page or `$DSH_HOME/.credentials.yaml`).

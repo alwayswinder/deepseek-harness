@@ -68,7 +68,6 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 
 | account | provider | balanceBaseUrl | credential |
 |---|---|---|---|
-| opencode | `opencode` | （无 —— opencode.ai/zen 没有余额接口） | `OPENCODE_API_KEY` |
 | deepseek-official | `''`（兜底所有未匹配路由） | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` |
 
 ## 计价说明
@@ -92,5 +91,4 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 - 本地计量只覆盖流经本 DSH 实例的请求。
 - 官方余额比产生它的请求晚几分钟结算，因此余额差会短暂落后于本地计量值。
 - `assistant/attempt` 结算（已中断或报错、但仍上报了用量的流）不计入。
-- `opencode.ai/zen` **不提供**公开余额端点，因此 openCode 账户只显示消费，并带一个“该平台无余额接口”标记；它的随附费率只是占位值。
 - 官方 DeepSeek 账户需要把密钥存为 `DEEPSEEK_OFFICIAL_API_KEY` 凭据（例如通过模型页面或 `$DSH_HOME/.credentials.yaml`）。

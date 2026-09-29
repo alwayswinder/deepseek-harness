@@ -12,19 +12,6 @@
       config:
         refreshSeconds: 30
         accounts:
-          opencode:
-            id: opencode
-            label: OpenCode 网关
-            provider: opencode
-            balanceBaseUrl: ''
-            credential: OPENCODE_API_KEY
-            currency: CNY
-            # Placeholder until this gateway's real prices are known: the numbers
-            # below are DeepSeek's superseded Flash list.
-            defaultRate:
-              input: 1.58
-              cacheHit: 0.05
-              output: 4.75
           deepseek-official:
             id: deepseek-official
             label: DeepSeek 官方

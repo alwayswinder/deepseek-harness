@@ -1,4 +1,6 @@
-<h1 align="center">dsh-ths-holdings</h1>
+# dsh-ths-holdings
+
+English | [中文](README.zh.md)
 
 <p align="center">
   <a href="https://awesome-dsh-plugin.com"><img src="https://awesome-dsh-plugin.com/badge.svg" alt="Awesome DSH Plugin"></a>
@@ -7,8 +9,6 @@
   <img src="https://img.shields.io/badge/license-MIT-ff1493?style=flat-square" alt="MIT">
   <a href="https://www.npmjs.com/package/dsh-ths-holdings"><img src="https://img.shields.io/npm/dt/dsh-ths-holdings?style=flat-square" alt="npm version"></a>
 </p>
-
-English | [中文](README.zh.md)
 
 A floating **position P&L card** for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) web GUI. It automatically syncs your **real portfolio data** from the [Tonghuashun investment-ledger](https://tzzb.10jqka.com.cn) (同花顺投资账本) — no manual stock picking. Displays **今日盈亏** (today's P&L), **上证指数** (Shanghai Composite Index), and an intraday mini chart, all in the A-share red-up/green-down convention.
 
@@ -26,12 +26,14 @@ dsh plugin --profile web add dsh-ths-holdings
 
 Installation is `pnpm add` inside your web profile: the package's `dsh.bundle.patch` is applied to the profile layer automatically. Then **restart `dsh web`** — a floating card appears at the bottom-right corner.
 
+Version `0.1.8` supports DSH `0.2.0-rc.1` and later `0.2.x` releases. Older plugin versions target DSH `0.1.x` and are rejected by the DSH compatibility check.
+
 To install manually (without `dsh plugin`), edit `$DSH_HOME/profiles/web/package.json`:
 
 ```jsonc
 {
   "dependencies": {
-    "dsh-ths-holdings": "^0.1.0"
+    "dsh-ths-holdings": "^0.1.8"
   },
   "dsh": {
     "profile": {
@@ -152,7 +154,9 @@ dsh-ths-holdings/
 | Card shows `请配置 Cookie` | `STOCK_PNL_COOKIE` is empty — click **auto-acquire** in the ⚙ panel, or paste manually. |
 | Card shows `Token 已过期` | The session Cookie expired — click **auto-acquire** in the ⚙ panel to re-sign-in, or re-run `copy(document.cookie)` and paste. |
 | Auto-acquire reports missing playwright-core | `playwright-core` did not ship with the install (typically a legacy install or a manually pruned dependency tree) — re-`pnpm add dsh-ths-holdings` (or `npm i playwright-core`), restart `dsh web`, retry. |
+| Auto-acquire window does not respond | Complete the sign-in in the popped window (QR code / account); the window closes and saves the Cookie after sign-in. |
 | Popped window shows `Nginx forbidden` | The Tonghuashun WAF intermittently refuses automation — F5 in the window or open the ledger URL manually, then click **「我已登录，继续 →」**. |
+| Saved Cookie shows `✗ invalid` | The Cookie expired or does not belong to an investment-ledger session — sign in again and retry; the panel displays the specific reason. |
 | No portfolio in the dropdown | The account list needs a valid Cookie first; save the Cookie, then click ↻ to refresh. |
 | Multiple portfolios | Select the one you want from the dropdown — the choice is saved as `STOCK_PNL_FUND_KEY`. |
 | Cookie pasted with line breaks | The plugin strips whitespace on save, so wrapped lines are fine. |

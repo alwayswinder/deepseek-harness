@@ -1,4 +1,6 @@
-<h1 align="center">dsh-ths-holdings</h1>
+# dsh-ths-holdings
+
+[English](README.md) | 中文
 
 <p align="center">
   <a href="https://awesome-dsh-plugin.com"><img src="https://awesome-dsh-plugin.com/badge.svg" alt="Awesome DSH Plugin"></a>
@@ -6,8 +8,6 @@
   <a href="https://github.com/PM25000/dsh-ths-holdings"><img src="https://img.shields.io/github/stars/PM25000/dsh-ths-holdings?style=flat-square" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/license-MIT-ff1493?style=flat-square" alt="MIT">
 </p>
-
-[English](README.md) | 中文
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）网页 GUI 上的**持仓盈亏悬浮卡片**。自动从[同花顺投资账本](https://tzzb.10jqka.com.cn)同步你的**真实持仓数据**——无需手动添加股票。实时显示**今日盈亏**、**上证指数**和当日分时走势图，遵循 A 股红涨绿跌惯例。
 
@@ -25,17 +25,19 @@ dsh plugin --profile web add dsh-ths-holdings
 
 安装实际上是在 web profile 里执行 `pnpm add`：包的 `dsh.bundle.patch` 会自动并入 profile 层。然后**重启 `dsh web`**，右下角出现悬浮卡片。
 
+`0.1.8` 支持 DSH `0.2.0-rc.1` 及后续 `0.2.x` 版本。更早的插件版本面向 DSH `0.1.x`，会被 DSH 的兼容性检查拒绝。
+
 不用 `dsh plugin` 手动安装：编辑 `$DSH_HOME/profiles/web/package.json`：
 
 ```jsonc
 {
   "dependencies": {
-    "dsh-ths-holdings": "^0.1.0"
+    "dsh-ths-holdings": "^0.1.8"
   },
   "dsh": {
     "profile": {
       "bundles": [
-        // ...原有 bundles，
+        // ...existing bundles,
         "dsh-ths-holdings"
       ]
     }
@@ -90,23 +92,23 @@ dsh plugin --profile web add dsh-ths-holdings
 ## 工作原理
 
 ```text
-┌─────────────── Web 浏览器 ───────────────┐
-│  lib/client.js（浏览器端模块）            │
-│  · shell.overlay 槽位 → 悬浮卡片          │
-│  · React + CSS Modules                    │
-│  · 配置存 localStorage                    │
-│          │ fetch（同源）                  │
-└──────────┼────────────────────────────────┘
+┌─────────────── Web browser ───────────────┐
+│  lib/client.js (browser module)           │
+│  · shell.overlay slot → floating card      │
+│  · React + CSS Modules                     │
+│  · config in localStorage                  │
+│          │ fetch (same-origin)             │
+└──────────┼─────────────────────────────────┘
            ▼
-┌─────────────── DSH 宿主（lib/index.js）──┐
-│  cordis 插件：webServer 路由             │
-│  · GET /api/stock-pnl          快照      │
-│  · GET /api/stock-pnl/portfolios 账户列表 │
-│  · GET /api/stock-pnl/verify    Cookie 校验 │
-│  · POST /api/stock-pnl/acquire*  自动登录 │
-│  通过 ctx.credentials 解析 Cookie        │
-│  自动发现 user_id + fund_key             │
-│  POST 同花顺账本 API                     │
+┌─────────────── DSH Host (lib/index.js) ───┐
+│  cordis plugin: webServer routes          │
+│  · GET /api/stock-pnl          snapshot    │
+│  · GET /api/stock-pnl/portfolios  accounts │
+│  · GET /api/stock-pnl/verify     cookie ok?│
+│  · POST /api/stock-pnl/acquire*   sign-in │
+│  resolves Cookie via ctx.credentials      │
+│  auto-discovers user_id + fund_key        │
+│  POSTs Tonghuashun ledger APIs            │
 └───────────────────────────────────────────┘
 ```
 
@@ -131,16 +133,16 @@ node 半区每次请求通过凭据引用通道（`ctx.credentials`）读取登�
 ```
 dsh-ths-holdings/
 ├── src/
-│   ├── index.ts            # node 半区：webServer 路由 + 凭据解析
-│   ├── fetch.ts            # 同花顺账本 API 调用 + 自动发现 + Cookie 校验
-│   ├── acquire.ts          # 自动获取 Cookie（playwright-core 驱动 Edge）
+│   ├── index.ts            # node half: webServer routes + credential resolution
+│   ├── fetch.ts            # Tonghuashun ledger API calls + auto-discovery + cookie verify
+│   ├── acquire.ts          # auto-acquire cookie (playwright-core drives Edge)
 │   └── client/
-│       ├── index.ts        # 浏览器半区：shell.overlay 注册
+│       ├── index.ts        # browser half: shell.overlay registration
 │       └── StockPnlCard.tsx
-├── lib/                    # 构建产物（index.js + client.js）
-├── cordis.patch.yml        # dsh.bundle 补丁层
-├── package.json            # dsh.bundle + dsh.client 清单
-├── tests/                  # 账本获取 / 校验 / 自动获取单元测试
+├── lib/                    # built artifacts (index.js + client.js)
+├── cordis.patch.yml        # dsh.bundle patch layer
+├── package.json            # dsh.bundle + dsh.client manifests
+├── tests/                  # ledger / verify / acquire unit tests
 └── README.md
 ```
 

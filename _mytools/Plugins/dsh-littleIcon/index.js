@@ -41,7 +41,7 @@
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 
@@ -177,7 +177,27 @@ export const Config = z.object({
   clickAction: z.union(['toggle', 'minimize', 'none']).default('toggle').volatile(),
   /** Milliseconds a Git pull may spend contacting and updating from its upstream. */
   gitPullTimeoutMs: z.number().step(1000).min(1000).max(300000).default(GIT_PULL_TIMEOUT_MS).volatile(),
+  /**
+   * Directory screenshots are written to; blank keeps them in the plugin's own
+   * `shots/` beside the state file.
+   */
+  shotDir: z.string().default('').volatile(),
 })
+
+/**
+ * The directory a capture goes to, as the pet is told it: a blank setting is no
+ * choice at all, `~` expands to the user directory, and a relative path is
+ * relative to that directory rather than to whatever this process was started in.
+ * @param raw - the configured value.
+ * @returns absolute directory, or undefined when the setting is blank.
+ */
+function resolveShotDir(raw) {
+  const value = raw.trim()
+  if (value === '') return undefined
+  if (value === '~') return homedir()
+  if (value.startsWith('~/') || value.startsWith('~\\')) return join(homedir(), value.slice(2))
+  return isAbsolute(value) ? resolve(value) : resolve(homedir(), value)
+}
 
 /**
  * Resolve `$DSH_HOME` exactly as the harness does: blank means unset, a leading
@@ -946,6 +966,7 @@ export function apply(ctx, config) {
     autoHideSeconds: config.autoHideSeconds.get(),
     topmost: config.topmost.get(),
     clickAction: config.clickAction.get(),
+    shotDir: config.shotDir.get(),
   })
 
   /**
@@ -1011,6 +1032,9 @@ export function apply(ctx, config) {
       frameMs: current.frameMs,
       topmost: current.topmost,
       clickAction: current.clickAction,
+      // Where a capture goes. Absent while the setting is blank, which is what
+      // leaves the pet on its own directory beside the state file.
+      shotDir: resolveShotDir(current.shotDir),
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),
@@ -1358,6 +1382,7 @@ export const internals = {
   sampleWork,
   shouldTuck,
   resolveDshHome,
+  resolveShotDir,
   readGitRepository,
   pullGitRepository,
   readGitDiff,

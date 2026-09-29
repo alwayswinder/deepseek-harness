@@ -110,6 +110,7 @@ window.__ModuleLoader__.load({
       sleepWhenHiddenSeconds: 20,
       autoHide: true,
       autoHideSeconds: 0,
+      shotDir: '',
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -162,6 +163,10 @@ window.__ModuleLoader__.load({
       hiddenSleepHint: '收起后只有拖动桌宠算操作；重新显示 DSH、或点一下桌宠也立刻醒来。',
       pollMs: '状态采样间隔',
       pollMsHint: '宿主读取 agent 状态的间隔；改大更省，改小更跟手。',
+      shotDir: '截图存放位置',
+      shotDirHint: '右键菜单「截图」存下的 PNG 放在这个文件夹里；留空就放在 DSH 自己的 little-icon/shots 下。',
+      shotDirPlaceholder: '留空 = 默认位置',
+      shotDirBrowse: '浏览…',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} 秒',
@@ -252,6 +257,10 @@ window.__ModuleLoader__.load({
       hiddenSleepHint: 'Tucked away, only dragging the pet counts; showing DSH again — or clicking the pet — wakes it at once.',
       pollMs: 'State sampling',
       pollMsHint: 'How often the host reads agent state.',
+      shotDir: 'Screenshot folder',
+      shotDirHint: 'Where the right-click menu\'s screenshots are written; leave it empty for the plugin\'s own little-icon/shots directory.',
+      shotDirPlaceholder: 'Empty = the default location',
+      shotDirBrowse: 'Browse…',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} s',
@@ -324,6 +333,13 @@ window.__ModuleLoader__.load({
         '.dli-row[data-disabled="true"]{opacity:.5;}',
         '.dli-select{background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));',
         'color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:4px 8px;font:inherit;}',
+        '.dli-path{display:flex;gap:8px;align-items:center;}',
+        '.dli-text{flex:1 1 auto;min-width:0;background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));',
+        'color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:4px 8px;font:inherit;}',
+        '.dli-button{flex:0 0 auto;background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));',
+        'color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:4px 10px;font:inherit;',
+        'cursor:pointer;}',
+        '.dli-button:disabled{cursor:default;opacity:.5;}',
         '.dli-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary);}',
         '.dli-grid{display:flex;flex-direction:column;gap:14px;padding-top:12px;}',
         '.dli-status{font-size:11px;color:var(--dsw-alias-label-secondary);min-height:16px;}',
@@ -444,6 +460,12 @@ window.__ModuleLoader__.load({
         props.write(patch, immediate)
       }
 
+      /** Ask for a folder and store it; a cancelled picker changes nothing. */
+      const pickDirectoryIntoFolder = async () => {
+        const picked = await props.pickDirectory()
+        if (typeof picked === 'string' && picked !== '') write({ shotDir: picked }, true)
+      }
+
       const editable = live.status === 'ready' && live.writable === true
       /** Slider props: local echo while dragging, one write after it settles. */
       const slider = (field) => ({
@@ -455,6 +477,23 @@ window.__ModuleLoader__.load({
         type: 'checkbox', disabled: !editable, checked: draft[field] === true,
         onChange: (event) => write({ [field]: event.target.checked }, true),
       })
+      /**
+       * The folder control: a path box that writes when it is left — typing is a
+       * local echo, not one profile write per keystroke — beside the button that
+       * fills it from the directory picker.
+       */
+      const shotDirControl = h('div', { className: 'dli-path' },
+        h('input', {
+          className: 'dli-text', type: 'text', disabled: !editable,
+          value: draft.shotDir ?? '', placeholder: t('shotDirPlaceholder'),
+          onChange: (event) => setDraft((current) => ({ ...current, shotDir: event.target.value })),
+          onBlur: (event) => write({ shotDir: event.target.value.trim() }, true),
+          onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+        }),
+        h('button', {
+          className: 'dli-button', type: 'button', disabled: !editable,
+          onClick: () => { void pickDirectoryIntoFolder() },
+        }, t('shotDirBrowse')))
 
       return h('div', { className: 'dli-page' },
         h(Row, {
@@ -508,6 +547,10 @@ window.__ModuleLoader__.load({
         h(Row, {
           label: t('pace'), value: t('milliseconds', { value: draft.frameMs }), text: t('paceHint'), disabled: !editable,
           control: h('input', { min: FRAME_MS.min, max: FRAME_MS.max, step: FRAME_MS.step, ...slider('frameMs') }),
+        }),
+        h(Row, {
+          label: t('shotDir'), text: t('shotDirHint'), disabled: !editable,
+          control: shotDirControl,
         }),
         h('details', { className: 'dli-details' },
           h('summary', null, t('advanced')),
@@ -1068,6 +1111,19 @@ window.__ModuleLoader__.load({
                 console.warn('little-icon: the Host could not be asked to open the working directory', error)
               })
           },
+          settings: () => {
+            // This card lives on the Plugins page, which belongs to the plugin
+            // manager: reaching it is cross-plugin navigation through the service
+            // that page provides, not a route of this plugin's own. A build without
+            // that panel provides no such service, so it is looked up rather than
+            // injected - the reason the Sidebar entries above do the same.
+            const navigation = ctx.get('pluginNavigation')
+            if (navigation === undefined) {
+              console.warn('little-icon: this DSH build has no Plugins page to show the settings card on')
+              return
+            }
+            navigation.openBundle(PACKAGE_NAME)
+          },
         }
 
         // The Host holds this stream open and relays the pet's menu commands on it.
@@ -1229,11 +1285,30 @@ window.__ModuleLoader__.load({
 
         ctx.effect(() => () => { if (timer !== undefined) clearTimeout(timer) }, 'little-icon: pending writes')
 
+        /**
+         * Ask for a folder, through the same picker the workspace panel opens.
+         * @returns the chosen directory, or null when it was cancelled or this build
+         *   has no picker.
+         */
+        const pickDirectory = async () => {
+          const workspace = ctx.get('uiWorkspace')
+          if (workspace === undefined) {
+            console.warn('little-icon: this DSH build has no directory picker to choose a screenshot folder with')
+            return null
+          }
+          try {
+            return await workspace.pickDirectory()
+          } catch (error) {
+            console.warn('little-icon: choosing a screenshot folder failed', error)
+            return null
+          }
+        }
+
         ctx.effect(() => ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
           name: 'plugins.bundle.config',
           key: PACKAGE_NAME,
           locale: NS,
-          inject: () => ({ hooks: { petSettings: store }, write }),
+          inject: () => ({ hooks: { petSettings: store }, write, pickDirectory }),
         }, PetSettings)), 'little-icon: pet settings card')
       },
     }

@@ -14,15 +14,15 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
+import { join, sep } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
   GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_PULL_PATH, OPEN_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
   parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, pullGitRepository, readGitDiff, readGitCommit,
-  openWorkingDirectory, StateFileWriter,
+  openWorkingDirectory, resolveShotDir, StateFileWriter,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -186,20 +186,41 @@ assert.deepEqual(petFunctions.filter((name, index) => petFunctions.indexOf(name)
   `pet/pet.ps1 defines a function twice: ${petFunctions.join(', ')}`)
 
 const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8'))
-assert.equal(labels.ToggleShown, '收起 DSH')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
 assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
+assert.equal(labels.Settings, '设置', 'the menu entry that opens the plugin settings page')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
-  'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
-  'ToggleShown', 'ToggleHidden', 'Reset', 'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable',
-  'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
+  'Settings', 'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
+  'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
 // its lifetime, and the freed entry ends DSH instead.
 assert.equal(labels.Quit, undefined, 'the pet must not offer to quit itself')
+// Nor does the menu carry the window utilities any more: clicking the pet is the
+// tuck route (DSH's own tray icon is the other), and the position only ever moves
+// by dragging the pet.
+assert.equal(labels.ToggleShown, undefined, 'the menu must not offer to tuck DSH away')
+assert.equal(labels.ToggleHidden, undefined, 'the menu must not offer to show DSH either')
+assert.equal(labels.Reset, undefined, 'the menu must not offer to move the pet home')
+
+// ---- screenshot folder ------------------------------------------------------
+
+// What the pet is told is an absolute path or nothing at all. A blank setting means
+// "no choice", which leaves the pet on its own directory; `~` and a relative path
+// resolve against the user directory, never against wherever DSH happened to be
+// started, because the pet is handed a directory rather than a rule for finding one.
+assert.equal(resolveShotDir('   '), undefined, 'a blank setting is no choice at all')
+assert.equal(resolveShotDir('~'), homedir())
+assert.equal(resolveShotDir('~/pics'), join(homedir(), 'pics'), 'a leading ~ expands to the user directory')
+assert.equal(resolveShotDir(join('pics', 'dsh')), join(homedir(), 'pics', 'dsh'),
+  'a relative path is relative to the user directory, not to this process')
+const absoluteShotDir = join(homedir(), 'somewhere', 'shots')
+assert.equal(resolveShotDir(absoluteShotDir), absoluteShotDir, 'an absolute path is kept as it is')
+assert.equal(resolveShotDir(`${absoluteShotDir}${sep}`), absoluteShotDir,
+  'a trailing separator is normalized away, so one folder has one spelling')
 
 // ---- state writer -----------------------------------------------------------
 
@@ -263,9 +284,9 @@ if (process.platform === 'win32') {
   for (const state of STATES) assert.match(selfTest.stdout, new RegExp(`${state}=${frameCounts[state]}`))
   // The self test prints the labels it loaded from labels.json, so this proves
   // Windows PowerShell read that UTF-8 file as UTF-8.
-  assert.match(selfTest.stdout, /收起 DSH/)
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
   assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
+  assert.match(selfTest.stdout, /设置/, 'the self test must report the settings entry too')
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
   // A capture lands beside the state file, in the harness home rather than the
@@ -277,6 +298,14 @@ if (process.platform === 'win32') {
   // A drag that runs up and to the left selects the same rectangle as one that
   // runs down and to the right, which is what the bitmap is cut with.
   assert.match(selfTest.stdout, /shot-rect: 10,20 20x20/, 'the drag rectangle is rebuilt from its corners')
+  // The settings may name the folder captures go to; a blank setting and no
+  // setting at all are the same thing, which is the plugin's own directory.
+  const shotDirs = /shot-dirs: (.*)/.exec(selfTest.stdout)
+  assert.ok(shotDirs !== null, 'the self test must report where a capture would go')
+  const [configuredDir, blankDir, missingDir] = shotDirs[1].trim().split(' / ')
+  assert.equal(configuredDir, 'C:\\shots', 'a configured folder is used as it is')
+  assert.equal(blankDir, missingDir, 'a blank setting and no setting are the same directory')
+  assert.equal(blankDir, join(probeDir, 'shots'), 'and both are the plugin\'s own shots directory')
   // A failed open is reported in the pet's own words, which only happens if the
   // reason the host sends is one this mapping knows.
   assert.ok(selfTest.stdout.includes(
@@ -447,7 +476,7 @@ rmSync(openDir, { recursive: true, force: true })
     frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
-    gitPullTimeoutMs: fixed(60_000),
+    gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''),
   }
   try {
     apply(hostCtx, config)
@@ -864,12 +893,24 @@ try {
   commands.onmessage({ data: '{"command":"chat"}' })
   commands.onmessage({ data: '{"command":"git"}' })
   assert.equal(openedTabs.length, 2, 'without the Sidebar service nothing may open')
+  // "Settings" is cross-plugin navigation rather than a page of this plugin's own:
+  // the card is rendered on the plugin manager's page, so the service that page
+  // provides is what selects this bundle, and a build without that page must say
+  // so instead of quietly doing nothing.
+  const openedBundles = []
+  clientServices.pluginNavigation = { openBundle: (name) => { openedBundles.push(name) } }
+  commands.onmessage({ data: '{"command":"settings"}' })
+  assert.deepEqual(openedBundles, [packageName], 'settings must select this bundle on the Plugins page')
+  clientServices.pluginNavigation = undefined
+  commands.onmessage({ data: '{"command":"settings"}' })
+  assert.deepEqual(openedBundles, [packageName], 'without the Plugins page nothing may be selected')
 } finally {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
-// One unknown command, then the two refusals above in each of their two forms.
-assert.equal(warned.length, 5, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// One unknown command, the two refusals above in each of their two forms, and the
+// settings entry with no Plugins page to reach.
+assert.equal(warned.length, 6, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // "Open working directory" is the one command this half only names: the folder
 // belongs to the Session the main view holds — the same row the shipped
@@ -981,9 +1022,17 @@ const flatten = (node, found = []) => {
 const face = registration.options.inject()
 /** The framework binds `use<Name>` hooks from the inject face's hooks compartment. */
 const usePetSettings = (selector) => selector(face.hooks.petSettings.getSnapshot())
+/** Directories the stub picker answers with, in order; an empty queue is a cancel. */
+const picks = []
 const render = (value) => {
   form.accept(value)
-  return registration.component({ t, view: 'page', usePetSettings, write: face.write })
+  return registration.component({
+    t,
+    view: 'page',
+    usePetSettings,
+    write: face.write,
+    pickDirectory: () => Promise.resolve(picks.length === 0 ? null : picks.shift()),
+  })
 }
 
 const summary = registration.component({ t, view: 'summary' })
@@ -1034,6 +1083,32 @@ face.write({ size: 208 }, false)
 await new Promise((resolve) => setTimeout(resolve, 400))
 assert.equal(form.writes.length, 2, 'a slider drag must merge into one write')
 assert.deepEqual(form.writes[1].ops, [{ op: 'set', path: ['size'], value: 208 }])
+
+// The screenshot folder is a path, not a slider: typing echoes locally and the
+// setting is written once the field is left, so a path being spelled out is not
+// one profile write per keystroke. The picker writes the folder it answered with,
+// and a cancelled one changes nothing.
+const shotElements = flatten(render({ shotDir: 'D:\\shots' }))
+const shotField = shotElements.find(node => node.type === 'input' && node.props.type === 'text')
+assert.ok(shotField !== undefined, 'the screenshot folder field is missing')
+assert.equal(shotField.props.value, 'D:\\shots', 'the card must show the stored screenshot folder')
+const writesBeforeTyping = form.writes.length
+shotField.props.onChange({ target: { value: 'E:\\pics' } })
+assert.equal(form.writes.length, writesBeforeTyping, 'typing a path must not write per keystroke')
+shotField.props.onBlur({ target: { value: '  E:\\pics  ' } })
+assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['shotDir'], value: 'E:\\pics' }],
+  'leaving the field writes the trimmed path')
+assert.equal(form.writes.at(-1).revision, 7, 'and it reaches the form at the revision it was read at')
+const browseButton = shotElements.find(node => node.type === 'button')
+assert.ok(browseButton !== undefined, 'the folder-picking button is missing')
+assert.deepEqual(browseButton.children, [t('shotDirBrowse')], 'the button carries its own label')
+picks.push('F:\\picked')
+await browseButton.props.onClick()
+assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['shotDir'], value: 'F:\\picked' }],
+  'choosing a folder stores it')
+const writesAfterPicking = form.writes.length
+await browseButton.props.onClick()
+assert.equal(form.writes.length, writesAfterPicking, 'a cancelled picker changes nothing')
 
 // The Git page draws two columns from one Host answer. The load effect normally
 // sets that answer; the test seeds it instead, so only the render is under test.

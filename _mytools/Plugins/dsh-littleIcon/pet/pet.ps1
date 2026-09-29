@@ -247,20 +247,23 @@ namespace DshPet
                         }
                         graphics.DrawLine(pen, P(bounds, 1f, 8f), P(bounds, 18f, 8f));
                         break;
-                    case "display":
-                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1f, 2f, 18f, 13f)));
-                        graphics.DrawLine(pen, P(bounds, 1f, 12f), P(bounds, 19f, 12f));
-                        graphics.DrawLine(pen, P(bounds, 8f, 18f), P(bounds, 12f, 18f));
-                        graphics.DrawLine(pen, P(bounds, 10f, 15f), P(bounds, 10f, 18f));
-                        break;
                     case "camera":
                         graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.5f, 6f, 17f, 11f)));
                         graphics.DrawEllipse(pen, R(bounds, 7f, 9f, 6f, 6f));
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 6.5f, 6f), P(bounds, 7.5f, 3f), P(bounds, 12.5f, 3f), P(bounds, 13.5f, 6f) });
                         break;
-                    case "corner":
-                        graphics.DrawLine(pen, P(bounds, 3f, 17f), P(bounds, 17f, 3f));
-                        graphics.DrawLines(pen, new PointF[] { P(bounds, 9f, 3f), P(bounds, 17f, 3f), P(bounds, 17f, 11f) });
+                    case "gear":
+                        graphics.DrawEllipse(pen, R(bounds, 4.6f, 4.6f, 10.8f, 10.8f));
+                        PointF hub = P(bounds, 10f, 10f);
+                        float toothInner = bounds.Width * 5.2f / 20f;
+                        float toothOuter = bounds.Width * 8.6f / 20f;
+                        for (int step = 0; step < 8; step++)
+                        {
+                            double angle = step * Math.PI / 4;
+                            graphics.DrawLine(pen,
+                                new PointF(hub.X + (float)(Math.Cos(angle) * toothInner), hub.Y + (float)(Math.Sin(angle) * toothInner)),
+                                new PointF(hub.X + (float)(Math.Cos(angle) * toothOuter), hub.Y + (float)(Math.Sin(angle) * toothOuter)));
+                        }
                         break;
                     case "restart":
                         graphics.DrawArc(pen, R(bounds, 2f, 2f, 16f, 16f), 36f, 286f);
@@ -307,10 +310,13 @@ $SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:Stat
 # or DSH is shutting down. Answering it lets the pet store its position and close
 # its window in order; a pet that does not answer is killed as the fallback.
 $SCRIPT:QuitFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quit'
-# Where a capture lands. Beside the state file, in this machine's own harness home:
-# the shots are not part of the repository, and the pet is the half holding the
-# screen, so nothing else has to agree with the host about them.
-$SCRIPT:ShotDir = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'shots'
+# Where a capture lands when the settings do not say otherwise. Beside the state
+# file, in this machine's own harness home: the shots are not part of the
+# repository, and the pet is the half holding the screen, so nothing else has to
+# agree with the host about them. The settings may name another directory, which
+# arrives in the state file and moves this one (see Apply-State).
+$SCRIPT:DefaultShotDir = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'shots'
+$SCRIPT:ShotDir = $SCRIPT:DefaultShotDir
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
 $SCRIPT:DshPid = $DshPid
@@ -328,14 +334,12 @@ function Get-Labels {
         OpenCwdNoCwd          = 'That session has no working directory yet, so there is no folder to open.'
         OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
         OpenCwdFailed         = 'The folder could not be opened.'
+        Settings              = 'Settings'
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
         ShotSavedNoClipboard  = 'Screenshot saved as a file, but it could not be copied to the clipboard'
         ShotFailed            = 'The screenshot could not be saved.'
-        ToggleShown           = 'Tuck DSH away'
-        ToggleHidden          = 'Show DSH'
-        Reset                 = 'Move to corner'
         RestartDsh            = 'Restart DSH'
         RestartDshConfirm     = 'Restart DSH? A running task will be interrupted.'
         RestartDshUnavailable = 'Could not read how DSH was started, so it was left alone. Start it yourself.'
@@ -413,7 +417,6 @@ $SCRIPT:StateStamp = [DateTime]::MinValue
 $SCRIPT:LastNoticeAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $SCRIPT:Ticks = 0
 $SCRIPT:PetMenu = $null
-$SCRIPT:ToggleItems = @()
 $SCRIPT:Exiting = $false
 
 function Write-Log([string]$Message) {
@@ -610,6 +613,15 @@ function Restart-DshWindow {
 # A capture is the screen, a bitmap, and a PNG. These are the parts that do not
 # need a window: the sheet that is dragged on is built further down, next to the
 # menu that opens it.
+function Select-ShotDir($State) {
+    # The host leaves the field out while the setting is blank, and an empty
+    # setting is the default directory rather than a directory named by nothing.
+    if ($null -ne $State -and $null -ne $State.shotDir -and -not [string]::IsNullOrWhiteSpace([string]$State.shotDir)) {
+        return [string]$State.shotDir
+    }
+    return $SCRIPT:DefaultShotDir
+}
+
 function Get-ShotRectangle($Start, $End) {
     # A drag runs in any direction, so the rectangle comes from the two corners
     # rather than from the points in the order they arrived.
@@ -657,12 +669,21 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.ToggleShown) / $($SCRIPT:Labels.ToggleHidden) / $($SCRIPT:Labels.Reset) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     # Where a capture lands, and what a backwards drag selects: both are built
     # here, and neither needs a screen to be read.
     Write-Output "shot-file: $(New-ShotPath)"
+    # Where a capture goes when the settings name a directory, when they name an
+    # empty one, and when the host says nothing at all - the last two are the
+    # plugin's own directory, which is what the settings field being blank means.
+    $shotDirs = @(
+        Select-ShotDir ([pscustomobject]@{ shotDir = 'C:\shots' })
+        Select-ShotDir ([pscustomobject]@{ shotDir = '' })
+        Select-ShotDir $null
+    )
+    Write-Output "shot-dirs: $($shotDirs -join ' / ')"
     $drag = Get-ShotRectangle ([System.Drawing.Point]::new(30, 40)) ([System.Drawing.Point]::new(10, 20))
     Write-Output "shot-rect: $($drag.X),$($drag.Y) $($drag.Width)x$($drag.Height)"
     # The host's reasons for an open that produced no window, in this side's
@@ -833,6 +854,9 @@ function Apply-State($State) {
     if ($null -ne $State.size) { Set-PetSize ([int]$State.size) }
     if ($null -ne $State.topmost) { $window.Topmost = [bool]$State.topmost }
     if ($null -ne $State.state) { Set-Expression ([string]$State.state) }
+    # Where captures go: the settings may name a directory, and a blank one is the
+    # default beside the state file.
+    $SCRIPT:ShotDir = Select-ShotDir $State
     # The host asks for a tuck once the user has left DSH untouched long enough;
     # the request says nothing about the current window state, so it only ever
     # hides, and hiding an already hidden window is a no-op.
@@ -901,16 +925,6 @@ function Get-DshForeground {
     return ($owner -eq $SCRIPT:DshPid -or $owner -eq $PID)
 }
 
-function Update-MenuLabels {
-    # Every menu carrying the toggle shows the state it will produce, not the one
-    # it was built with.
-    foreach ($item in $SCRIPT:ToggleItems) {
-        if ($null -eq $item) { continue }
-        if (Get-DshShown) { $item.Text = $SCRIPT:Labels.ToggleShown }
-        else { $item.Text = $SCRIPT:Labels.ToggleHidden }
-    }
-}
-
 function Set-DshWindowShown([bool]$Shown) {
     if ($SCRIPT:DshPid -le 0) { return }
     $handle = Find-DshWindow
@@ -935,7 +949,6 @@ function Set-DshWindowShown([bool]$Shown) {
     } else {
         [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwHide)
     }
-    Update-MenuLabels
     Save-WindowState
 }
 
@@ -1413,20 +1426,22 @@ function New-PetMenu {
             try { Show-ShotFailure $_.Exception.Message } catch { }
         }
     })
-    # Without a DSH window to control (the web profile) the window entries would be
-    # dead, so the menu keeps only the page command and the position. The pet never
-    # offers to quit itself: the plugin's own switch owns its lifetime.
-    if ($SCRIPT:DshPid -gt 0) {
-        $toggleItem = Add-PetMenuItem $menu $SCRIPT:Labels.ToggleShown 'display'
-        $toggleItem.add_Click({ try { Switch-DshWindow } catch { Write-Log $_.Exception.Message } })
-        $SCRIPT:ToggleItems += $toggleItem
-    }
-    $resetItem = Add-PetMenuItem $menu $SCRIPT:Labels.Reset 'corner'
-    $resetItem.add_Click({ try { Set-DefaultPosition; Save-Position } catch { Write-Log $_.Exception.Message } })
+    # Settings ends the list on both profiles: it opens a page of DSH's own rather
+    # than a window this process controls, so the web profile keeps it too. The pet
+    # never offers to quit itself: the plugin's own switch owns its lifetime.
+    $settingsItem = Add-PetMenuItem $menu $SCRIPT:Labels.Settings 'gear'
+    $settingsItem.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'settings'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    # Ending or restarting the app is the one thing a profile without a DSH window
+    # cannot offer, so the divider and those two entries exist on Desktop only.
     if ($SCRIPT:DshPid -gt 0) {
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
         # Restarting is the entry edits to the plugin, and builds, are usually
-        # for, so it sits with ending DSH rather than with the window actions.
+        # for, so it sits with ending DSH rather than with the page actions.
         $restartItem = Add-PetMenuItem $menu $SCRIPT:Labels.RestartDsh 'restart'
         $restartItem.add_Click({
             try {
@@ -1546,7 +1561,6 @@ $timer.Add_Tick({
             if ($item.LastWriteTime -ne $SCRIPT:StateStamp) {
                 $SCRIPT:StateStamp = $item.LastWriteTime
                 Apply-State (Read-Json $SCRIPT:StateFile)
-                Update-MenuLabels
             }
         } catch { }
 
@@ -1578,11 +1592,12 @@ $timer.Add_Tick({
 
 try { $SCRIPT:PetMenu = New-PetMenu } catch { Write-Log "pet menu unavailable: $($_.Exception.Message)" }
 
+
+
 # Apply the state first (it fixes the window size), then place the window and
 # clamp it onto a screen.
 Apply-State (Read-Json $SCRIPT:StateFile)
 Restore-Position
-Update-MenuLabels
 Save-WindowState
 
 # WPF's ShowInTaskbar=false does not put WS_EX_TOOLWINDOW on the real handle, so
@@ -1595,6 +1610,9 @@ $exStyle = [DshPet.Win32]::GetWindowLong($helper.Handle, $SCRIPT:GwlExStyle)
 
 $window.Show()
 $timer.Start()
+
+
+
 $app.Run()
 
 # After Run() returns: Exit-Pet already disposed the menu; this is a backstop.

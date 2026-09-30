@@ -288,6 +288,11 @@ namespace DshPet
                                 new PointF(hub.X + (float)(Math.Cos(angle) * toothOuter), hub.Y + (float)(Math.Sin(angle) * toothOuter)));
                         }
                         break;
+                    case "globe":
+                        graphics.DrawEllipse(pen, R(bounds, 1.6f, 1.6f, 16.8f, 16.8f));
+                        graphics.DrawEllipse(pen, R(bounds, 6.4f, 1.6f, 7.2f, 16.8f));
+                        graphics.DrawLine(pen, P(bounds, 1.6f, 10f), P(bounds, 18.4f, 10f));
+                        break;
                     case "restart":
                         graphics.DrawArc(pen, R(bounds, 2f, 2f, 16f, 16f), 36f, 286f);
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 12f, 1.8f), P(bounds, 17.5f, 3.5f), P(bounds, 16f, 8f) });
@@ -363,6 +368,9 @@ function Get-Labels {
         OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
         OpenCwdFailed         = 'The folder could not be opened.'
         Settings              = 'Settings'
+        Sites                 = 'Sites'
+        SitesEmpty            = 'No sites yet. Add one under Settings.'
+        SitesManage           = 'Manage sites'
         Games                 = 'Mini games'
         Aquarium              = 'Glass aquarium'
         Shot                  = 'Screenshot'
@@ -455,6 +463,11 @@ $SCRIPT:LastNoticeAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $SCRIPT:Ticks = 0
 $SCRIPT:PetMenu = $null
 $SCRIPT:UpdateMenuItem = $null
+# The sites the host last published for the right-click menu's "sites" submenu,
+# and that submenu itself: it is rebuilt from this list every time it opens, so an
+# edit in the settings card reaches a pet that is already running.
+$SCRIPT:Sites = @()
+$SCRIPT:SiteMenu = $null
 $SCRIPT:BuildStartedAt = 0
 $SCRIPT:Exiting = $false
 
@@ -790,15 +803,158 @@ function Save-ShotBitmap($Bitmap, [string]$Path) {
     $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
 }
 
+# ---- menu commands and sites ------------------------------------------------
+# Defined here rather than with the rest of the menu because the self test below
+# builds the sites submenu and fires an entry, so the whole path that click takes
+# - the command file it writes, and the list it draws from - has to exist by then.
+# Only the window raise in that path is stubbed there: it is defined further down
+# and DshPid is 0 in a self test, so it would do nothing anyway.
+#
+# Write the pet's menu choice where the host reads it. The host watches this file
+# the way this pet watches the state file, and the timestamp is what tells a fresh
+# choice from the one it already forwarded. The address rides along for the one
+# entry that opens a configured site; the host checks it again before the page sees
+# it, because this file is a file.
+function Send-MenuCommand([string]$Command, [string]$Url = '') {
+    $payload = [ordered]@{
+        command = $Command
+        at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Url)) { $payload.url = $Url }
+    Write-Json $SCRIPT:CommandFile $payload
+}
+
+# The sites the host published, as the menu draws them. The host has already
+# dropped every row it cannot open, so a row reaching here is one to offer; the
+# note is what the entry reads, and a row that left it blank is named by its host.
+function Get-SiteList($State) {
+    $sites = @()
+    if ($null -eq $State -or $null -eq $State.sites) { return ,$sites }
+    foreach ($site in @($State.sites)) {
+        if ($null -eq $site) { continue }
+        $url = [string]$site.url
+        if ([string]::IsNullOrWhiteSpace($url)) { continue }
+        $name = [string]$site.name
+        if ([string]::IsNullOrWhiteSpace($name)) { $name = $url }
+        $sites += [pscustomobject]@{ Name = $name; Url = $url }
+    }
+    return ,$sites
+}
+
+function Add-SiteMenuItem($Menu, $Site) {
+    # One entry per call, and GetNewClosure pins this entry's own site into its
+    # handler: a script block reads its variables from the scope in force when it
+    # runs, not the one that made it, so a handler that merely referred to $Site -
+    # or one shared by a loop - would find nothing at the click and send the
+    # command with no address at all.
+    $item = New-Object System.Windows.Forms.ToolStripMenuItem
+    $item.Text = [string]$Site.Name
+    # No Tag: these entries carry no icon, and the renderer draws nothing for one
+    # it does not know. The address is what the entry opens and the note is what it
+    # reads, so the address stays reachable without widening the menu.
+    $item.ToolTipText = [string]$Site.Url
+    $item.AutoSize = $true
+    $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $item.add_Click({
+        try {
+            # The page opens the site in its own Browser tab, so DSH has to be on
+            # screen first: a tab opened in a hidden window is a tab nobody sees.
+            Show-DshWindow
+            Send-MenuCommand 'site' $Site.Url
+        } catch { Write-Log $_.Exception.Message }
+    }.GetNewClosure())
+    [void]$Menu.DropDownItems.Add($item)
+}
+
+function Update-SiteMenu {
+    # Rebuilt whole at every open rather than kept in step with the state file:
+    # the list is configuration, it is short, and rebuilding is what makes an edit
+    # in the settings card reach this menu without restarting either half.
+    if ($null -eq $SCRIPT:SiteMenu) { return }
+    while ($SCRIPT:SiteMenu.DropDownItems.Count -gt 0) {
+        $stale = $SCRIPT:SiteMenu.DropDownItems[0]
+        $SCRIPT:SiteMenu.DropDownItems.RemoveAt(0)
+        $stale.Dispose()
+    }
+    $sites = @($SCRIPT:Sites)
+    if ($sites.Count -eq 0) {
+        $empty = New-Object System.Windows.Forms.ToolStripMenuItem
+        $empty.Text = $SCRIPT:Labels.SitesEmpty
+        $empty.Enabled = $false
+        $empty.AutoSize = $true
+        $empty.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+        [void]$SCRIPT:SiteMenu.DropDownItems.Add($empty)
+    } else {
+        foreach ($site in $sites) { Add-SiteMenuItem $SCRIPT:SiteMenu $site }
+    }
+    # The way to a list that is empty, and to a longer one: the settings card owns
+    # the list, so this is the same page entry the main menu's own Settings opens.
+    [void]$SCRIPT:SiteMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    $manage = New-Object System.Windows.Forms.ToolStripMenuItem
+    $manage.Text = $SCRIPT:Labels.SitesManage
+    $manage.Tag = 'gear'
+    $manage.AutoSize = $true
+    $manage.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $manage.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'settings'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    [void]$SCRIPT:SiteMenu.DropDownItems.Add($manage)
+}
+
 # ---- self test --------------------------------------------------------------
 if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
+    # The sites submenu is the menu's only part built from configuration rather than
+    # from this script, so it is built here - without ever being shown - and what
+    # each list turns into is printed. The host has already dropped every row it
+    # cannot open, so what is left to get wrong is the entries themselves: their
+    # text, the address each carries, and the ones an empty list still needs.
+    # The item is the submenu, so its own DropDownItems is the collection the menu
+    # fills; a ContextMenuStrip is a dropdown and has none.
+    $SCRIPT:SiteMenu = New-Object System.Windows.Forms.ToolStripMenuItem
+    $siteMenuProbe = New-Object System.Collections.Generic.List[string]
+    $SCRIPT:Sites = @()
+    Update-SiteMenu
+    [void]$siteMenuProbe.Add((@($SCRIPT:SiteMenu.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)" }) -join '|')
+    $SCRIPT:Sites = @(
+        [pscustomobject]@{ Name = 'Chat'; Url = 'https://chat.deepseek.com/' }
+        [pscustomobject]@{ Name = 'Docs'; Url = 'https://docs.example.com/' }
+    )
+    Update-SiteMenu
+    [void]$siteMenuProbe.Add((@($SCRIPT:SiteMenu.DropDownItems) | ForEach-Object { "$($_.Text)@$($_.ToolTipText)" }) -join '|')
+    # Firing the first entry is the part that cannot be read off the item: a handler
+    # that reads the wrong scope still shows the right text and tooltip and still
+    # writes a command, just without the address. DshPid is 0 here, so raising DSH
+    # would be a no-op anyway - but it is also defined further down this script,
+    # which has not run yet at this point, so it is stubbed for the probe rather
+    # than reached. Nothing else about the handler changes.
+    function Show-DshWindow { }
+    $probeCommand = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'command.json'
+    if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
+    $SCRIPT:SiteMenu.DropDownItems[0].PerformClick()
+    $clicked = Read-Json $probeCommand
+    if ($null -eq $clicked) { [void]$siteMenuProbe.Add('click=no-command') }
+    else { [void]$siteMenuProbe.Add("click=$($clicked.command)|$($clicked.url)") }
+    $SCRIPT:SiteMenu.Dispose()
+    $SCRIPT:SiteMenu = $null
+    # What the host publishes, read back the way Apply-State reads it: the note names
+    # the entry, and a row that left it blank is named by its address instead of
+    # reaching the menu as an empty line.
+    $published = Get-SiteList ([pscustomobject]@{ sites = @(
+        [pscustomobject]@{ name = 'Chat'; url = 'https://chat.deepseek.com/' },
+        [pscustomobject]@{ name = ''; url = 'https://bare.test/' }
+    ) })
+    [void]$siteMenuProbe.Add((@($published) | ForEach-Object { "$($_.Name)=$($_.Url)" }) -join '|')
+    Write-Output "site-menu: $($siteMenuProbe -join ' >> ')"
     # Where a capture lands, and what a backwards drag selects: both are built
     # here, and neither needs a screen to be read.
     Write-Output "shot-file: $(New-ShotPath)"
@@ -988,6 +1144,9 @@ function Apply-State($State) {
     # Where captures go: the settings may name a directory, and a blank one is the
     # default beside the state file.
     $SCRIPT:ShotDir = Select-ShotDir $State
+    # The sites the menu offers; the submenu redraws itself from this list the next
+    # time it opens.
+    $SCRIPT:Sites = Get-SiteList $State
     # The host asks for a tuck once the user has left DSH untouched long enough;
     # the request says nothing about the current window state, so it only ever
     # hides, and hiding an already hidden window is a no-op.
@@ -1478,15 +1637,6 @@ function Exit-Pet {
     try { $app.Shutdown() } catch { }
 }
 
-function Send-MenuCommand([string]$Command) {
-    # The host watches this file the way this pet watches the state file, and the
-    # timestamp is what tells a fresh choice from the one it already forwarded.
-    Write-Json $SCRIPT:CommandFile ([ordered]@{
-        command = $Command
-        at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    })
-}
-
 function Add-PetMenuItem($Menu, [string]$Text, [string]$Icon) {
     $item = New-Object System.Windows.Forms.ToolStripMenuItem
     $item.Text = $Text
@@ -1529,6 +1679,19 @@ function New-PetMenu {
             Send-MenuCommand 'chat'
         } catch { Write-Log $_.Exception.Message }
     })
+    # The sites the settings card owns, one level down: the list is the person's
+    # own and can be any length, so the entry itself opens nothing and the submenu
+    # is rebuilt from the published list at every open (see Update-SiteMenu), which
+    # is also what makes an edit reach a pet that is already running.
+    $sitesItem = Add-PetMenuItem $menu $SCRIPT:Labels.Sites 'globe'
+    $sitesItem.DropDown.ShowImageMargin = $false
+    $sitesItem.DropDown.ShowItemToolTips = $true
+    $sitesItem.DropDown.BackColor = $menu.BackColor
+    $sitesItem.DropDown.ForeColor = $menu.ForeColor
+    $sitesItem.add_DropDownOpening({
+        try { Update-SiteMenu } catch { Write-Log $_.Exception.Message }
+    })
+    $SCRIPT:SiteMenu = $sitesItem
     # The Git page is the plugin's own tab type, so unlike Chat it needs nothing
     # shipped besides the right Sidebar; the page reads the repository of whatever
     # Session is in front. Showing DSH first is the same requirement.

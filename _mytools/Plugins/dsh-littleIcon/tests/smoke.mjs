@@ -24,7 +24,7 @@ const {
   GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
   parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, readGitRemoteStatus,
   pullGitRepository, readGitDiff, readGitCommit,
-  openWorkingDirectory, resolveShotDir, StateFileWriter,
+  openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -220,8 +220,10 @@ assert.equal(labels.Settings, '设置', 'the menu entry that opens the plugin se
 assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang under')
 assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens the aquarium')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
+assert.equal(labels.Sites, '常用网站', 'the menu entry the configured sites hang under')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
-  'Settings', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
+  'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved',
+  'ShotSavedNoClipboard', 'ShotFailed',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
   'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
@@ -230,6 +232,14 @@ for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwd
 // The mini-games submenu is drawn by the pet process, so the two halves only meet
 // on the command id: the pet must send the one the page carries out.
 assert.match(petSource, /Send-MenuCommand 'aquarium'/, 'the pet menu must send the aquarium command')
+// A configured site is the same handshake plus the address the entry named, and
+// the submenu is rebuilt at every open rather than fixed at startup: the list is
+// the settings card's, and editing it must not need a restarted pet.
+assert.match(petSource, /Send-MenuCommand 'site' \$Site\.Url/, 'the pet menu must send the site command with its address')
+assert.match(petSource, /add_DropDownOpening/, 'the sites submenu must rebuild itself when it opens')
+assert.match(petSource, /function Update-SiteMenu/, 'the sites submenu needs its rebuild step')
+assert.match(petSource, /\$SCRIPT:Sites = Get-SiteList \$State/, 'the published sites must reach the submenu')
+assert.match(petSource, /case "globe":/, 'the sites entry needs its icon, like every other entry')
 assert.match(petSource, /--detached --restart/, 'the update entry must restart only through the detached Desktop build')
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
 // its lifetime, and the freed entry ends DSH instead.
@@ -256,6 +266,42 @@ const absoluteShotDir = join(homedir(), 'somewhere', 'shots')
 assert.equal(resolveShotDir(absoluteShotDir), absoluteShotDir, 'an absolute path is kept as it is')
 assert.equal(resolveShotDir(`${absoluteShotDir}${sep}`), absoluteShotDir,
   'a trailing separator is normalized away, so one folder has one spelling')
+
+// ---- menu sites -------------------------------------------------------------
+
+// The sites the menu offers are resolved once, here: a row counts only when the
+// in-app Browser tab could open its address, a scheme the person did not type is
+// completed the way a browser's address bar completes one, and a row that left the
+// note blank is named by its host so no entry reads as an empty line.
+assert.deepEqual(resolveSites(undefined), [], 'nothing configured is nothing to offer')
+assert.deepEqual(resolveSites([]), [], 'an empty list is nothing to offer')
+assert.deepEqual(resolveSites([{ name: 'Chat', url: 'https://chat.deepseek.com' }]),
+  [{ name: 'Chat', url: 'https://chat.deepseek.com/' }], 'a stored address is offered as it stands')
+assert.deepEqual(resolveSites([{ name: '', url: 'example.com' }]),
+  [{ name: 'example.com', url: 'https://example.com/' }], 'a bare host is completed, and names itself')
+assert.deepEqual(resolveSites([{ name: '  Docs  ', url: ' http://example.com/a?b=1 ' }]),
+  [{ name: 'Docs', url: 'http://example.com/a?b=1' }], 'the note and the address are both trimmed')
+assert.deepEqual(resolveSites([
+  { name: 'second', url: 'https://b.test' },
+  { name: 'first', url: 'https://a.test' },
+]).map(site => site.name), ['second', 'first'], 'the menu keeps the order the card was written in')
+// A row the Browser tab cannot open is left out rather than offered as an entry
+// that opens nothing: the same rule refuses it again when the pet sends it back.
+for (const row of [
+  { name: 'no address' },
+  { name: 'empty address', url: '' },
+  { name: 'blank address', url: '   ' },
+  { name: 'local file', url: 'file:///C:/notes.txt' },
+  { name: 'script', url: 'javascript:alert(1)' },
+  { name: 'credentials', url: 'https://user:secret@example.com' },
+  { name: 'no host', url: 'http://' },
+]) {
+  assert.deepEqual(resolveSites([row]), [], `a row that cannot open must not be offered: ${JSON.stringify(row)}`)
+}
+// A row that cannot open does not take its neighbours with it.
+assert.deepEqual(resolveSites([
+  { name: 'kept', url: 'kept.test' }, { name: 'dropped', url: 'mailto:someone@example.com' },
+]).map(site => site.url), ['https://kept.test/'], 'one unusable row must not cost the others')
 
 // ---- state writer -----------------------------------------------------------
 
@@ -335,6 +381,27 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
   assert.match(selfTest.stdout, /更新 DSH/, 'the self test must report the update entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
+  assert.match(selfTest.stdout, /常用网站/, 'the self test must report the sites entry too')
+  // The sites submenu is the menu's only part built from configuration, so the
+  // self test builds it for an empty list and for a list of two and prints what
+  // each turned into: what an entry reads, the address it carries, and the two
+  // entries an empty list still needs.
+  const siteMenu = /site-menu: (.*)/.exec(selfTest.stdout)
+  assert.ok(siteMenu !== null, 'the self test must report the sites submenu')
+  const [emptyList, twoSites, clickedEntry, published] = siteMenu[1].trim().split(' >> ')
+  assert.equal(emptyList,
+    `ToolStripMenuItem=${labels.SitesEmpty}|ToolStripSeparator=|ToolStripMenuItem=${labels.SitesManage}`,
+    'an empty list says so and still offers the way to fill it')
+  assert.equal(twoSites,
+    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.SitesManage}@`].join('|'),
+    'each configured site is one entry carrying its own address, then the way to manage them')
+  // Firing one entry is what proves the handler carries *that* entry's address: a
+  // handler reading the wrong scope still shows the right text and tooltip, and
+  // still writes a command — just with no address in it.
+  assert.equal(clickedEntry, 'click=site|https://chat.deepseek.com/',
+    'clicking a site entry must write its own command and address')
+  assert.equal(published, ['Chat=https://chat.deepseek.com/', 'https://bare.test/=https://bare.test/'].join('|'),
+    'a published row is the entry, and a row with no note is named by its address')
   // A capture lands beside the state file, in the harness home rather than the
   // repository, and its name is what tells two captures in one second apart.
   const shotFile = /shot-file: (.*)/.exec(selfTest.stdout)
@@ -531,6 +598,12 @@ rmSync(openDir, { recursive: true, force: true })
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
     gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''),
+    // One usable row and one the Browser tab cannot open: what reaches the pet is
+    // the resolved list, so an unusable row never becomes a menu entry.
+    sites: fixed([
+      { name: 'Chat', url: 'chat.deepseek.com' },
+      { name: 'Local', url: 'file:///C:/notes.txt' },
+    ]),
   }
   try {
     apply(hostCtx, config)
@@ -560,6 +633,42 @@ rmSync(openDir, { recursive: true, force: true })
     }
     assert.equal(notice()?.reason, 'no-dir', 'the failed open must reach the pet')
     assert.ok(typeof notice()?.at === 'number', 'the pet tells a new failure from one it has shown')
+
+    // The menu's site entries travel to the pet in the same file, resolved: the pet
+    // draws what it is handed, so a row the Browser tab could not open is not a row
+    // it can offer, and a bare host has already become the address to open.
+    assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).sites,
+      [{ name: 'Chat', url: 'https://chat.deepseek.com/' }], 'the pet is told the sites it may offer')
+
+    // A chosen entry comes back the other way: the pet writes the command and the
+    // address it named, and this half relays both to every listening page. The
+    // address is checked here too — a file is a file, whatever wrote it.
+    const frames = []
+    const ended = []
+    const streamRoute = routes.find((entry) => entry.path === COMMANDS_PATH)
+    streamRoute.handler({ method: 'GET', url: COMMANDS_PATH, on: () => {} }, {
+      writeHead: () => {}, write: (frame) => frames.push(frame), on: () => {},
+      end: () => { ended.push(true) },
+    })
+    assert.equal(frames[0], ': little-icon menu commands\n\n', 'a subscriber hears the stream open')
+    const commandPath = join(home, 'little-icon', 'command.json')
+    const command = (payload) => writeFileSync(commandPath, `${JSON.stringify(payload)}\n`, 'utf8')
+    const untilFramed = async (predicate) => {
+      const deadline = Date.now() + 4000
+      while (!predicate() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 25))
+      assert.ok(predicate(), `the command never reached the page: ${frames.join(' | ')}`)
+    }
+    command({ command: 'site', url: 'https://example.com/docs', at: 1 })
+    await untilFramed(() => frames.some((frame) => frame.includes('"site"')))
+    assert.deepEqual(frames.filter((frame) => frame.startsWith('data: ')),
+      ['data: {"command":"site","url":"https://example.com/docs"}\n\n'],
+      'the address the entry named must travel with its command')
+    // The same command carrying an address nothing may open arrives without one:
+    // the page then has no tab to open rather than one to a refused address.
+    command({ command: 'site', url: 'javascript:alert(1)', at: 2 })
+    await untilFramed(() => frames.some((frame) => frame.includes('"site"') && !frame.includes('example.com')))
+    assert.deepEqual(frames.filter((frame) => frame.startsWith('data: ')).at(-1),
+      'data: {"command":"site"}\n\n', 'an address that may not open must not reach the page')
   } finally {
     for (const disposer of disposers.splice(0)) disposer()
     if (previousHome === undefined) delete process.env.DSH_HOME
@@ -994,6 +1103,42 @@ try {
 // aquarium plugin installed.
 assert.equal(warned.length, 7, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
+// The "sites" entry is the one menu command that carries its own address: the
+// frame names it, and the page opens it in the same in-app Browser tab the chat
+// entry uses. A frame with nothing openable opens nothing rather than a blank tab,
+// and an address that got past the Host is checked once more here, at the last
+// point before a tab is handed it.
+const siteWarnings = []
+const realSiteWarn = console.warn
+console.warn = (...args) => { siteWarnings.push(args.join(' ')) }
+try {
+  clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
+  const openedBeforeSites = openedTabs.length
+  commands.onmessage({ data: '{"command":"site","url":"https://example.com/docs"}' })
+  assert.deepEqual(openedTabs.at(-1),
+    { kind: 'browser', options: { params: { url: 'https://example.com/docs' } } },
+    'the site entry opens the address it named, in the in-app Browser tab')
+  // What the Host refuses arrives with no address at all; what it let through can
+  // still be unopenable here if the frame was written by something else.
+  commands.onmessage({ data: '{"command":"site"}' })
+  commands.onmessage({ data: '{"command":"site","url":"javascript:alert(1)"}' })
+  commands.onmessage({ data: '{"command":"site","url":"https://user:secret@example.com"}' })
+  assert.equal(openedTabs.length, openedBeforeSites + 1, 'an address that may not open opens nothing')
+  // A Web profile may leave the Browser tab disabled, and a build without the
+  // right Sidebar provides no service at all: the entry must do nothing then.
+  clientServices.sidebarRight = undefined
+  commands.onmessage({ data: '{"command":"site","url":"https://example.com/docs"}' })
+  assert.equal(openedTabs.length, openedBeforeSites + 1, 'without the Sidebar service nothing may open')
+  // A frame naming a property of Object.prototype is not one of this plugin's
+  // entries, however the dispatched table is written.
+  commands.onmessage({ data: '{"command":"constructor"}' })
+  assert.equal(openedTabs.length, openedBeforeSites + 1, 'an inherited property is not a menu command')
+} finally {
+  console.warn = realSiteWarn
+  clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
+}
+assert.equal(siteWarnings.length, 5, `every site entry that could not open must say so: ${siteWarnings.join(' | ')}`)
+
 // "Open working directory" is the one command this half only names: the folder
 // belongs to the Session the main view holds — the same row the shipped
 // workspace control opens — and starting a file manager is the Host's, so the
@@ -1176,7 +1321,8 @@ assert.deepEqual(form.writes[1].ops, [{ op: 'set', path: ['size'], value: 208 }]
 // one profile write per keystroke. The picker writes the folder it answered with,
 // and a cancelled one changes nothing.
 const shotElements = flatten(render({ shotDir: 'D:\\shots' }))
-const shotField = shotElements.find(node => node.type === 'input' && node.props.type === 'text')
+const shotField = shotElements.find(node => node.type === 'input' && node.props.type === 'text'
+  && node.props.placeholder === t('shotDirPlaceholder'))
 assert.ok(shotField !== undefined, 'the screenshot folder field is missing')
 assert.equal(shotField.props.value, 'D:\\shots', 'the card must show the stored screenshot folder')
 const writesBeforeTyping = form.writes.length
@@ -1186,7 +1332,7 @@ shotField.props.onBlur({ target: { value: '  E:\\pics  ' } })
 assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['shotDir'], value: 'E:\\pics' }],
   'leaving the field writes the trimmed path')
 assert.equal(form.writes.at(-1).revision, 7, 'and it reaches the form at the revision it was read at')
-const browseButton = shotElements.find(node => node.type === 'button')
+const browseButton = shotElements.find(node => node.type === 'button' && node.children?.includes(t('shotDirBrowse')))
 assert.ok(browseButton !== undefined, 'the folder-picking button is missing')
 assert.deepEqual(browseButton.children, [t('shotDirBrowse')], 'the button carries its own label')
 picks.push('F:\\picked')
@@ -1196,6 +1342,61 @@ assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['shotDir'], value:
 const writesAfterPicking = form.writes.length
 await browseButton.props.onClick()
 assert.equal(form.writes.length, writesAfterPicking, 'a cancelled picker changes nothing')
+
+// The sites list is a list of records rather than one value, and the Host owns the
+// whole array: an add, a remove, and an edited box all write the complete list, in
+// the order the menu will show it. Typing echoes locally for the same reason a path
+// does — one profile write per keystroke is one YAML line rewritten per character.
+const noSites = flatten(render(undefined))
+assert.equal(noSites.filter(node => node.props?.placeholder === t('siteNotePlaceholder')).length, 0,
+  'a list nobody filled in has no rows')
+assert.ok(noSites.some(node => node.type === 'button' && node.children?.includes(t('siteAdd'))),
+  'and it still offers the way to add one')
+
+const siteElements = flatten(render({
+  sites: [{ name: 'Chat', url: 'chat.deepseek.com' }, { name: '', url: '' }],
+}))
+const noteBoxes = siteElements.filter(node => node.props?.placeholder === t('siteNotePlaceholder'))
+const addressBoxes = siteElements.filter(node => node.props?.placeholder === t('siteAddressPlaceholder'))
+assert.equal(noteBoxes.length, 2, 'one note box per configured site')
+assert.equal(addressBoxes.length, 2, 'one address box per configured site')
+assert.equal(noteBoxes[0].props.value, 'Chat', 'the card must show the stored note')
+assert.equal(addressBoxes[0].props.value, 'chat.deepseek.com', 'the card must show the stored address')
+assert.equal(noteBoxes[1].props.value, '', 'an empty row stays empty rather than being filled in for the person')
+
+const writesBeforeSites = form.writes.length
+addressBoxes[0].props.onChange({ target: { value: 'example.com/docs' } })
+assert.equal(form.writes.length, writesBeforeSites, 'typing an address must not write per keystroke')
+addressBoxes[0].props.onBlur({ target: { value: '  example.com/docs  ' } })
+assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['sites'], value: [
+  { name: 'Chat', url: 'example.com/docs' },
+  { name: '', url: '' },
+] }], 'leaving the box writes the trimmed address, with every other row as it was')
+noteBoxes[0].props.onBlur({ target: { value: '  DeepSeek  ' } })
+assert.deepEqual(form.writes.at(-1).ops[0].value[0], { name: 'DeepSeek', url: 'chat.deepseek.com' },
+  'the note box writes the list too, and leaves the addresses alone')
+
+const addSiteButton = siteElements.find(node => node.type === 'button' && node.children?.includes(t('siteAdd')))
+assert.ok(addSiteButton !== undefined, 'the add button is missing')
+addSiteButton.props.onClick()
+assert.deepEqual(form.writes.at(-1).ops[0].value, [
+  { name: 'Chat', url: 'chat.deepseek.com' }, { name: '', url: '' }, { name: '', url: '' },
+], 'adding appends one empty row for the person to fill in')
+const removeSiteButtons = siteElements.filter(node => node.type === 'button' && node.children?.includes(t('siteRemove')))
+assert.equal(removeSiteButtons.length, 2, 'every row carries its own remove button')
+removeSiteButtons[0].props.onClick()
+assert.deepEqual(form.writes.at(-1).ops[0].value, [{ name: '', url: '' }],
+  'removing drops exactly the row whose button was pressed')
+
+// An address the Host would refuse is said on the row: the entry is simply absent
+// from the menu, and a person who typed `file:///…` would otherwise be left
+// wondering where it went.
+const siteProblems = (value) => flatten(render({ sites: value }))
+  .filter(node => node.type === 'div' && node.props?.className === 'dli-site-problem')
+assert.deepEqual(siteProblems([{ name: 'Local', url: 'file:///C:/notes.txt' }]).map(node => node.children),
+  [[t('siteBadAddress')]], 'a refused address is named on its own row')
+assert.equal(siteProblems([{ name: 'ok', url: 'ok.test' }, { name: 'blank', url: '' }]).length, 0,
+  'a usable address, and a row nobody filled in yet, are both left alone')
 
 // The Git page draws two columns from one Host answer. The load effect normally
 // sets that answer; the test seeds it instead, so only the render is under test.
@@ -1519,6 +1720,7 @@ if (process.argv.includes('--pet')) {
     topmost: ref(true),
     clickAction: ref('toggle'),
     gitPullTimeoutMs: ref(60_000),
+    sites: ref([]),
   }
 
   const countPetProcesses = () => {

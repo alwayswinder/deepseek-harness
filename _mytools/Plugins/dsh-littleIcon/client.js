@@ -116,6 +116,7 @@ window.__ModuleLoader__.load({
       autoHide: true,
       autoHideSeconds: 0,
       shotDir: '',
+      sites: [],
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -172,6 +173,14 @@ window.__ModuleLoader__.load({
       shotDirHint: '右键菜单「截图」存下的 PNG 放在这个文件夹里；留空就放在 DSH 自己的 little-icon/shots 下。',
       shotDirPlaceholder: '留空 = 默认位置',
       shotDirBrowse: '浏览…',
+      sites: '常用网站',
+      sitesHint: '右键桌宠菜单里的「常用网站」按这里的顺序列出，点一条就在右侧的 Browser 标签里打开；备注是菜单上显示的名字，留空就用网址的域名。',
+      sitesLogin: '登录状态由右侧的浏览器按工作区保存，桌面端重启、重新 build 都不用重登。',
+      siteNotePlaceholder: '备注（菜单上显示的名字）',
+      siteAddressPlaceholder: '网址，例如 chat.deepseek.com',
+      siteAdd: '添加一个网站',
+      siteRemove: '删除',
+      siteBadAddress: '这个地址打不开（只支持 http/https，且不能带用户名密码），菜单里不会出现它。',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} 秒',
@@ -274,6 +283,14 @@ window.__ModuleLoader__.load({
       shotDirHint: 'Where the right-click menu\'s screenshots are written; leave it empty for the plugin\'s own little-icon/shots directory.',
       shotDirPlaceholder: 'Empty = the default location',
       shotDirBrowse: 'Browse…',
+      sites: 'Sites',
+      sitesHint: 'The right-click menu lists these under "Sites", in this order; choosing one opens it in the Browser tab beside the conversation. The note is the name the menu shows — leave it empty to use the address\'s host.',
+      sitesLogin: 'Sign-ins are kept by that Browser tab per workspace, so a restart or a rebuild does not ask for them again.',
+      siteNotePlaceholder: 'Note (the name in the menu)',
+      siteAddressPlaceholder: 'Address, for example chat.deepseek.com',
+      siteAdd: 'Add a site',
+      siteRemove: 'Remove',
+      siteBadAddress: 'This address cannot open (HTTP/HTTPS only, and no user name or password), so the menu will not list it.',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} s',
@@ -361,6 +378,14 @@ window.__ModuleLoader__.load({
         'color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:4px 10px;font:inherit;',
         'cursor:pointer;}',
         '.dli-button:disabled{cursor:default;opacity:.5;}',
+        // One site per line: a note and an address side by side, the remove button
+        // at the end, and — when the address cannot open — the reason under both
+        // boxes rather than a row that silently never reaches the menu.
+        '.dli-sites{display:flex;flex-direction:column;gap:8px;}',
+        '.dli-site{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:8px;align-items:center;}',
+        '.dli-site-problem{grid-column:1/-1;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:16px;}',
+        '.dli-sites-foot{display:flex;align-items:center;gap:8px;}',
+        '.dli-sites-foot .dli-hint{flex:1 1 auto;min-width:0;}',
         '.dli-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary);}',
         '.dli-grid{display:flex;flex-direction:column;gap:14px;padding-top:12px;}',
         '.dli-status{font-size:11px;color:var(--dsw-alias-label-secondary);min-height:16px;}',
@@ -468,6 +493,29 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The address a site row will offer, or undefined when it will not be offered.
+     * The Host owns this rule — it leaves a row it cannot open out of the menu and
+     * checks the address again when the pet sends one back — and this is the same
+     * rule read a second time so the card can say so on the row instead of an
+     * entry quietly missing from the menu.
+     * @param value - the address as typed.
+     * @returns the absolute address the Browser tab would open, or undefined.
+     */
+    function siteAddress(value) {
+      const text = typeof value === 'string' ? value.trim() : ''
+      if (text === '') return undefined
+      const candidate = /^[a-z][a-z0-9+.-]*:/iu.test(text) ? text : `https://${text}`
+      try {
+        const url = new URL(candidate)
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+        if (url.username !== '' || url.password !== '') return undefined
+        return url.href
+      } catch {
+        return undefined
+      }
+    }
+
+    /**
      * The pet's settings card.
      * @param props - slot props from `plugins.bundle.config` plus the inject face:
      *   the `usePetSettings` hook over the mirrored form and the `write` callback.
@@ -525,10 +573,66 @@ window.__ModuleLoader__.load({
           onClick: () => { void pickDirectoryIntoFolder() },
         }, t('shotDirBrowse')))
 
+      /**
+       * The site rows the card edits, as the draft currently holds them; the Host
+       * keeps the last accepted list and is the authority on what the menu offers.
+       */
+      const rows = Array.isArray(draft.sites) ? draft.sites : []
+
+      /** Local echo for one row, so typing is not one profile write per keystroke. */
+      const echoSite = (index, patch) => setDraft((current) => ({
+        ...current,
+        sites: (Array.isArray(current.sites) ? current.sites : [])
+          .map((row, position) => (position === index ? { ...row, ...patch } : row)),
+      }))
+
+      /** One row plus a patch, as the value the whole list is written back as. */
+      const withSite = (index, patch) => rows
+        .map((row, position) => (position === index ? { ...row, ...patch } : row))
+
+      /**
+       * The address box of one row: local echo while typing, one list write when
+       * it is left. A row of text boxes is otherwise one profile write per
+       * keystroke, which is a whole YAML line rewritten for one character.
+       */
+      const siteBox = (index, row, field, placeholder) => h('input', {
+        className: 'dli-text', type: 'text', disabled: !editable,
+        value: typeof row[field] === 'string' ? row[field] : '', placeholder,
+        onChange: (event) => echoSite(index, { [field]: event.target.value }),
+        onBlur: (event) => write({ sites: withSite(index, { [field]: event.target.value.trim() }) }, true),
+        onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+      })
+
+      const siteRow = (row, index) => {
+        const typed = typeof row.url === 'string' ? row.url.trim() : ''
+        const problem = typed !== '' && siteAddress(typed) === undefined
+        return h('div', { className: 'dli-site', key: `site-${String(index)}` },
+          siteBox(index, row, 'name', t('siteNotePlaceholder')),
+          siteBox(index, row, 'url', t('siteAddressPlaceholder')),
+          h('button', {
+            className: 'dli-button', type: 'button', disabled: !editable,
+            onClick: () => write({ sites: rows.filter((_row, position) => position !== index) }, true),
+          }, t('siteRemove')),
+          problem ? h('div', { className: 'dli-site-problem' }, t('siteBadAddress')) : null)
+      }
+
+      const sitesControl = h('div', { className: 'dli-sites' },
+        ...rows.map(siteRow),
+        h('div', { className: 'dli-sites-foot' },
+          h('button', {
+            className: 'dli-button', type: 'button', disabled: !editable,
+            onClick: () => write({ sites: [...rows, { name: '', url: '' }] }, true),
+          }, t('siteAdd')),
+          h('span', { className: 'dli-hint' }, t('sitesLogin'))))
+
       return h('div', { className: 'dli-page' },
         h(Row, {
           label: t('enable'), text: t('enableHint'), inline: true, disabled: !editable,
           control: h('input', toggle('enabled')),
+        }),
+        h(Row, {
+          label: t('sites'), text: t('sitesHint'), disabled: !editable,
+          control: sitesControl,
         }),
         h(Row, {
           label: t('size'), value: t('pixels', { value: draft.size }), text: t('sizeHint'), disabled: !editable,
@@ -1167,6 +1271,8 @@ window.__ModuleLoader__.load({
         /**
          * Carry out one menu command the pet reported. The pet window belongs to
          * another process, so the page is what acts on a choice made there.
+         * @param payload - the frame's `{ command, url }`; only the site entry
+         *   carries an address, and the Host has already checked it.
          */
         const runMenuCommand = {
           chat: () => {
@@ -1183,6 +1289,26 @@ window.__ModuleLoader__.load({
             // conversation, in the same surface DSH's own chat links use, never in
             // the system browser.
             sidebar.openTab(BROWSER_TAB, { params: { url: CHAT_URL } })
+          },
+          site: ({ url }) => {
+            // One configured entry, by the address the Host put in the frame. The
+            // address travelled pet -> file -> Host -> page, so it is checked once
+            // more here, at the last point before a tab is handed it; a frame
+            // carrying nothing openable opens nothing rather than a blank tab.
+            const target = siteAddress(url)
+            if (target === undefined) {
+              console.warn('little-icon: a site entry named no openable address: %s', String(url))
+              return
+            }
+            // The same in-app Browser tab the chat entry uses, with the same
+            // requirement: the site is shown beside the conversation rather than
+            // handed to the system browser.
+            const sidebar = ctx.get('sidebarRight')
+            if (sidebar === undefined || ctx.get('sidebarRightTabs')?.get(BROWSER_TAB) === undefined) {
+              console.warn('little-icon: this DSH build has no in-app Browser tab to open %s in', target)
+              return
+            }
+            sidebar.openTab(BROWSER_TAB, { params: { url: target } })
           },
           git: () => {
             // Nothing shipped is needed here: the page type is this plugin's own,
@@ -1238,21 +1364,23 @@ window.__ModuleLoader__.load({
         // The Host holds this stream open and relays the pet's menu commands on it.
         const commands = new EventSource(COMMANDS_PATH)
         commands.onmessage = (event) => {
-          let command
+          let payload
           try {
-            command = JSON.parse(event.data).command
+            payload = JSON.parse(event.data)
           } catch {
             return
           }
-          const run = runMenuCommand[command]
+          // The frame is read, not trusted: a property of Object.prototype is not
+          // one of this plugin's entries.
+          const run = Object.hasOwn(runMenuCommand, payload.command) ? runMenuCommand[payload.command] : undefined
           if (run === undefined) {
-            console.warn('little-icon: unknown menu command "%s"', command)
+            console.warn('little-icon: unknown menu command "%s"', String(payload.command))
             return
           }
           try {
-            run()
+            run(payload)
           } catch (error) {
-            console.warn('little-icon: menu command "%s" failed', command, error)
+            console.warn('little-icon: menu command "%s" failed', String(payload.command), error)
           }
         }
         ctx.effect(() => () => { commands.close() }, 'little-icon: menu commands')

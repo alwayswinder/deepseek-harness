@@ -185,6 +185,16 @@ export const Config = z.object({
    * `shots/` beside the state file.
    */
   shotDir: z.string().default('').volatile(),
+  /**
+   * Sites the pet's menu offers, in this order. `name` is what the entry reads
+   * and `url` what the page opens; a row whose address the in-app Browser tab
+   * could not open is left out of the menu rather than offered as an entry that
+   * does nothing.
+   */
+  sites: z.array(z.object({
+    name: z.string().default(''),
+    url: z.string().default(''),
+  })).default([]).volatile(),
 })
 
 /**
@@ -200,6 +210,50 @@ function resolveShotDir(raw) {
   if (value === '~') return homedir()
   if (value.startsWith('~/') || value.startsWith('~\\')) return join(homedir(), value.slice(2))
   return isAbsolute(value) ? resolve(value) : resolve(homedir(), value)
+}
+
+/**
+ * One address a menu entry may open in the in-app Browser tab. A person typing a
+ * site writes `example.com`, so a missing scheme is completed the way a browser's
+ * address bar completes one; a scheme that is already there is kept, which is
+ * what leaves `file:` and `javascript:` refused here rather than opened later.
+ * This is the only place that decides: the menu list is built from it, and the
+ * command the pet sends back is checked against it too, because that command
+ * arrives through a file.
+ * @param value - the configured address.
+ * @returns the absolute HTTP(S) address, or undefined when nothing may open.
+ */
+function openableUrl(value) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (text === '') return undefined
+  const candidate = /^[a-z][a-z0-9+.-]*:/iu.test(text) ? text : `https://${text}`
+  let url
+  try {
+    url = new URL(candidate)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+  if (url.username !== '' || url.password !== '') return undefined
+  return url.href
+}
+
+/**
+ * The sites the pet's menu offers: the configured rows the Browser tab can open,
+ * in the configured order. The note names the entry, and a row that left it blank
+ * is named by its host so the menu never shows an empty line.
+ * @param rows - configured rows.
+ * @returns sites the pet is told about, in that order.
+ */
+function resolveSites(rows) {
+  const sites = []
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const url = openableUrl(row?.url)
+    if (url === undefined) continue
+    const note = typeof row?.name === 'string' ? row.name.trim() : ''
+    sites.push({ name: note === '' ? new URL(url).hostname : note, url })
+  }
+  return sites
 }
 
 /**
@@ -458,14 +512,17 @@ function shouldTuck(dshWindow, config, now) {
 /**
  * Read the menu command the pet last wrote.
  * @param path - absolute command file path.
- * @returns that command and its timestamp, or undefined when there is nothing
- *   readable: no choice yet, or a half-written file.
+ * @returns that command, its timestamp, and — for the entry that opens a
+ *   configured site — the address it named, which is carried only when the
+ *   in-app Browser tab may open it. Undefined when there is nothing readable: no
+ *   choice yet, or a half-written file.
  */
 function readCommand(path) {
   try {
     const reported = JSON.parse(readFileSync(path, 'utf8'))
     if (typeof reported.at !== 'number' || typeof reported.command !== 'string') return undefined
-    return { command: reported.command, at: reported.at }
+    const url = openableUrl(reported.url)
+    return { command: reported.command, at: reported.at, ...url === undefined ? {} : { url } }
   } catch {
     // No command yet, or a half-written one.
     return undefined
@@ -1111,6 +1168,7 @@ export function apply(ctx, config) {
     topmost: config.topmost.get(),
     clickAction: config.clickAction.get(),
     shotDir: config.shotDir.get(),
+    sites: resolveSites(config.sites.get()),
   })
 
   /**
@@ -1184,6 +1242,10 @@ export function apply(ctx, config) {
       // Where a capture goes. Absent while the setting is blank, which is what
       // leaves the pet on its own directory beside the state file.
       shotDir: resolveShotDir(current.shotDir),
+      // The menu's site entries, in the configured order. The pet rebuilds that
+      // submenu from this list whenever it opens, so an edit here reaches a
+      // running pet without restarting either half.
+      sites: current.sites,
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),
@@ -1198,9 +1260,10 @@ export function apply(ctx, config) {
    * Send one menu command to every listening page. Nothing is queued: a command
    * chosen while no page listens is dropped, because the page is what performs it.
    * @param command - the menu entry's id, as the pet reported it.
+   * @param url - the address that entry named, for the one id that carries one.
    */
-  const publishCommand = (command) => {
-    const frame = `data: ${JSON.stringify({ command })}\n\n`
+  const publishCommand = (command, url) => {
+    const frame = `data: ${JSON.stringify({ command, ...url === undefined ? {} : { url } })}\n\n`
     for (const stream of commandStreams) {
       if (stream.writableEnded || stream.destroyed) {
         commandStreams.delete(stream)
@@ -1215,7 +1278,7 @@ export function apply(ctx, config) {
     const pressed = readCommand(commandFile)
     if (pressed === undefined || pressed.at <= lastCommandAt) return
     lastCommandAt = pressed.at
-    publishCommand(pressed.command)
+    publishCommand(pressed.command, pressed.url)
   }
 
   /**
@@ -1541,6 +1604,7 @@ export const internals = {
   shouldTuck,
   resolveDshHome,
   resolveShotDir,
+  resolveSites,
   readGitRepository,
   readGitRemoteStatus,
   pullGitRepository,

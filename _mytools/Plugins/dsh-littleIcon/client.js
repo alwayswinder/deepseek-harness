@@ -85,7 +85,7 @@ window.__ModuleLoader__.load({
      * admitted exactly as the composer admits one, so the agent reads it as an
      * instruction and commits and pushes with its own tools.
      */
-    const COMMIT_AND_PUSH_PROMPT = '没问题就提交并推送吧！'
+    const COMMIT_AND_PUSH_PROMPT = '审查本地改动，没有问题就提交并推送吧'
 
     /** At most one activity ping per window; the Host only needs coarse recency. */
     const ACTIVITY_PING_MS = 15_000

@@ -17,9 +17,9 @@ rem                          build both ends (the blunt fix after a large merge)
 rem
 rem Flags:
 rem   --no-pause             do not wait for a key at the end (agents, scripts)
-rem   --detached             run outside this process tree and log to a file, so
-rem                          the build survives the app it closes; add --restart
-rem                          to bring the app back on success
+rem   --detached             run outside this process tree, showing output while
+rem                          also logging it, so the build survives the app it
+rem                          closes; add --restart to bring the app back on success
 rem   --restart              with --detached: start-desktop.bat after a good build
 rem   --log <path>           log file of a detached run (set by --detached)
 rem
@@ -84,8 +84,8 @@ cd /d "%DSH_REPO%" || goto :finishUnexpected
 
 rem ---- detached hand-off ------------------------------------------------------
 rem The build stops this checkout's Electron, so a run started from inside the app
-rem must not be its descendant. WMI starts it instead, with its output in a log
-rem under the harness home; detach.ps1 names that log and passes it back here.
+rem must not be its descendant. WMI starts it instead; a runner keeps output in
+rem the new console and a log under the harness home.
 if defined DETACHED goto :detach
 
 echo [build] Mode: %MODE%

@@ -17,8 +17,9 @@
     screen first and is written to command.json beside the state file for the host
     to relay, and the rest act on this process at once - a screenshot among them:
     the pet owns the desktop the region is dragged over, so the selection is made
-    here and the PNG lands in shots/ beside the state file. Ending DSH is one of
-    those as well:
+    here and the PNG lands in shots/ beside the state file. Updating DSH starts
+    this checkout's detached Desktop build, which stops the current app and
+    starts the new build only after success. Ending DSH is one of those as well:
     the window's own close only hides it now, so that entry ends the process every
     part of DSH runs under instead (see Stop-DshWindow). Restarting is the same
     ending plus a replacement, which a detached waiter starts once DSH is gone
@@ -328,6 +329,11 @@ $SCRIPT:WindowFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:State
 # reach the page: the pet cannot touch the DSH window's content, and the page
 # cannot see this window's menu.
 $SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'command.json'
+# A detached build records its result beside this plugin's data directory. The
+# pet watches it only while the current app is still alive: an early failure can
+# then re-enable the menu and name the log, while a later build stops this process.
+$SCRIPT:BuildResultFile = Join-Path ([System.IO.Path]::GetDirectoryName(
+    [System.IO.Path]::GetDirectoryName($SCRIPT:StateFile))) 'build\last-build.json'
 # The host's request for this pet to quit, written when the plugin is switched off
 # or DSH is shutting down. Answering it lets the pet store its position and close
 # its window in order; a pet that does not answer is killed as the fallback.
@@ -364,6 +370,13 @@ function Get-Labels {
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
         ShotSavedNoClipboard  = 'Screenshot saved as a file, but it could not be copied to the clipboard'
         ShotFailed            = 'The screenshot could not be saved.'
+        UpdateDsh             = 'Update DSH'
+        UpdateDshConfirm      = 'Build this checkout and update DSH? DSH will close during the build and restart only after success. A running task will be interrupted. This does not pull code.'
+        UpdateDshUnavailable  = 'The Desktop build script for this checkout could not be found, so DSH was left alone.'
+        UpdateDshFailed       = 'The Desktop build could not be started, so DSH was left alone.'
+        UpdateDshBuildFailed  = 'The Desktop build failed, so DSH is still using the current build.'
+        UpdateDshFailedStep   = 'Failed step: '
+        UpdateDshLog          = 'Build log: '
         RestartDsh            = 'Restart DSH'
         RestartDshConfirm     = 'Restart DSH? A running task will be interrupted.'
         RestartDshUnavailable = 'Could not read how DSH was started, so it was left alone. Start it yourself.'
@@ -441,6 +454,8 @@ $SCRIPT:StateStamp = [DateTime]::MinValue
 $SCRIPT:LastNoticeAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
 $SCRIPT:Ticks = 0
 $SCRIPT:PetMenu = $null
+$SCRIPT:UpdateMenuItem = $null
+$SCRIPT:BuildStartedAt = 0
 $SCRIPT:Exiting = $false
 
 function Write-Log([string]$Message) {
@@ -583,6 +598,93 @@ function Start-RelaunchHelper([string]$CommandLine) {
         -WindowStyle Hidden)
 }
 
+function Get-DesktopBuildScript([string]$CommandLine) {
+    # The development launcher ends its command line with apps/desktop, which is
+    # the stable link from a running checkout back to its repository. Require
+    # that exact layout so an unrelated quoted directory cannot select a script.
+    $desktop = Get-RelaunchDirectory $CommandLine
+    if ([string]::IsNullOrWhiteSpace($desktop)) { return $null }
+    $desktop = [System.IO.Path]::GetFullPath($desktop)
+    $repository = [System.IO.Path]::GetFullPath((Join-Path $desktop '..\..'))
+    $expectedDesktop = [System.IO.Path]::GetFullPath((Join-Path $repository 'apps\desktop'))
+    if (-not [string]::Equals($desktop, $expectedDesktop, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
+    }
+    $script = Join-Path $repository '_mytools\build\build-desktop.bat'
+    if (-not (Test-Path -LiteralPath (Join-Path $repository 'package.json') -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $script -PathType Leaf)) { return $null }
+    return $script
+}
+
+function Show-UpdateFailure([string]$Detail) {
+    $text = $SCRIPT:Labels.UpdateDshFailed
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) { $text = "$text`n`n$Detail" }
+    [void][System.Windows.MessageBox]::Show($SCRIPT:Window, $text,
+        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
+function Start-DesktopBuild {
+    # build-desktop.bat owns the stop/build/restart sequence. Its detached mode
+    # returns only after WMI has created the independent build, so a zero exit
+    # means it is safe for this pet and DSH to be stopped by that build.
+    if ($SCRIPT:DshPid -le 0) { return $false }
+    $command = Get-DshLaunchCommand
+    if ($null -eq $command) {
+        Show-UpdateFailure $SCRIPT:Labels.UpdateDshUnavailable
+        return $false
+    }
+    $script = Get-DesktopBuildScript $command
+    if ($null -eq $script) {
+        Show-UpdateFailure $SCRIPT:Labels.UpdateDshUnavailable
+        return $false
+    }
+    try {
+        $SCRIPT:BuildStartedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $shell = $env:COMSPEC
+        if ([string]::IsNullOrWhiteSpace($shell)) { $shell = 'cmd.exe' }
+        $start = New-Object System.Diagnostics.ProcessStartInfo
+        $start.FileName = $shell
+        $start.Arguments = '/d /s /c ""{0}" --detached --restart"' -f $script
+        $start.WorkingDirectory = [System.IO.Path]::GetDirectoryName($script)
+        $start.UseShellExecute = $false
+        $start.CreateNoWindow = $true
+        $process = [System.Diagnostics.Process]::Start($start)
+        if ($null -eq $process) { throw 'The Desktop build launcher did not start.' }
+        $process.WaitForExit()
+        if ($process.ExitCode -ne 0) { throw "The Desktop build launcher exited with code $($process.ExitCode)." }
+        Write-Log "desktop build started: $script"
+        return $true
+    } catch {
+        $SCRIPT:BuildStartedAt = 0
+        Write-Log "starting the Desktop build failed: $($_.Exception.Message)"
+        Show-UpdateFailure $_.Exception.Message
+        return $false
+    }
+}
+
+function Check-DesktopBuildResult {
+    if ($SCRIPT:BuildStartedAt -le 0) { return }
+    $result = Read-Json $SCRIPT:BuildResultFile
+    if ($null -eq $result -or $null -eq $result.finishedAt) { return }
+    try {
+        $finishedAt = [DateTimeOffset]::Parse([string]$result.finishedAt).ToUnixTimeMilliseconds()
+    } catch { return }
+    if ($finishedAt -lt $SCRIPT:BuildStartedAt) { return }
+    $SCRIPT:BuildStartedAt = 0
+    if ($null -ne $SCRIPT:UpdateMenuItem) { $SCRIPT:UpdateMenuItem.Enabled = $true }
+    if ([bool]$result.ok) { return }
+    $detail = "$($SCRIPT:Labels.UpdateDshFailedStep)$($result.step)"
+    if (-not [string]::IsNullOrWhiteSpace([string]$result.logPath)) {
+        $detail = "$detail`n$($SCRIPT:Labels.UpdateDshLog)$($result.logPath)"
+    }
+    Write-Log "Desktop build failed: $detail"
+    [void][System.Windows.MessageBox]::Show($SCRIPT:Window,
+        "$($SCRIPT:Labels.UpdateDshBuildFailed)`n`n$detail",
+        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
 # Report a restart that could not be prepared, in the same box the entry's own
 # confirmation uses: the person asked for something, and silence would read as a
 # dead menu entry rather than as "DSH was left alone".
@@ -693,9 +795,10 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
+    Write-Output "build-result: $SCRIPT:BuildResultFile"
     # Where a capture lands, and what a backwards drag selects: both are built
     # here, and neither needs a screen to be read.
     Write-Output "shot-file: $(New-ShotPath)"
@@ -729,6 +832,10 @@ if ($SelfTest) {
     # read back is what the waiter's cmd will expand.
     Set-RelaunchCommand 'relaunch probe'
     Write-Output "relaunch-variable: $([System.Environment]::GetEnvironmentVariable($SCRIPT:RelaunchVariable))"
+    $repository = [System.IO.Path]::GetFullPath((Join-Path $SCRIPT:ScriptDir '..\..\..\..'))
+    $desktop = Join-Path $repository 'apps\desktop'
+    $buildCommand = '"{0}" "{1}"' -f (Join-Path $env:SystemRoot 'System32\notepad.exe'), $desktop
+    Write-Output "build-script: $(Get-DesktopBuildScript $buildCommand)"
     exit 0
 }
 
@@ -1481,10 +1588,27 @@ function New-PetMenu {
             Send-MenuCommand 'settings'
         } catch { Write-Log $_.Exception.Message }
     })
-    # Ending or restarting the app is the one thing a profile without a DSH window
-    # cannot offer, so the divider and those two entries exist on Desktop only.
+    # Building, ending, or restarting the app requires its Desktop process, so
+    # the divider and these entries exist on Desktop only.
     if ($SCRIPT:DshPid -gt 0) {
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        $updateItem = Add-PetMenuItem $menu $SCRIPT:Labels.UpdateDsh 'restart'
+        $SCRIPT:UpdateMenuItem = $updateItem
+        $updateItem.add_Click({
+            param($sender, $eventArgs)
+            try {
+                $answer = [System.Windows.MessageBox]::Show($SCRIPT:Window, $SCRIPT:Labels.UpdateDshConfirm,
+                    $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::YesNo,
+                    [System.Windows.MessageBoxImage]::Question)
+                if ($answer -eq [System.Windows.MessageBoxResult]::Yes) {
+                    $sender.Enabled = $false
+                    if (-not (Start-DesktopBuild)) { $sender.Enabled = $true }
+                }
+            } catch {
+                Write-Log $_.Exception.Message
+                try { Show-UpdateFailure $_.Exception.Message } catch { }
+            }
+        })
         # Restarting is the entry edits to the plugin, and builds, are usually
         # for, so it sits with ending DSH rather than with the page actions.
         $restartItem = Add-PetMenuItem $menu $SCRIPT:Labels.RestartDsh 'restart'
@@ -1589,6 +1713,7 @@ $timer.Interval = [TimeSpan]::FromMilliseconds(200)
 $timer.Add_Tick({
     try {
         $SCRIPT:Ticks++
+        Check-DesktopBuildResult
 
         # The host asks before it goes, so this process can store its position and
         # close in order (see $SCRIPT:QuitFile). Nothing is written here: a request

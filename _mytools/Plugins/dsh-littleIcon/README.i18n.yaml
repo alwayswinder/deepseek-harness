@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write _mytools/Plugins/dsh-littleIcon/README.md
+/:
+  en: ba5936c82d3326e6
+  zh: a55b30d390f28807
+/local-dsh-little-icon:
+  en: 8a67acbbab28feab
+  zh: d5e62b617ac8b9a1
+/local-dsh-little-icon/summary:
+  en: 7d85c5d376c46578
+  zh: 87720f6e150d1c64
+/local-dsh-little-icon/table-of-contents:
+  en: 5bf183682720b33f
+  zh: eb4a554325513e9e
+/local-dsh-little-icon/use-this-package:
+  en: 7ccdf5c78353ae4b
+  zh: 5d2d32c8a4ddcaf4
+/local-dsh-little-icon/understand-the-implementation:
+  en: 402727afa18d1c36
+  zh: 6b56899176e48a93
+/local-dsh-little-icon/model-experience:
+  en: 662496e2fd2200d2
+  zh: 9f7b87f7435ed11e
+/local-dsh-little-icon/known-limitations-and-deferred-work:
+  en: ea3cc0612651f4b0
+  zh: 7257b7bcb7b91e0b
+/local-dsh-little-icon/known-limitations-and-deferred-work/dev-note:
+  en: fe6f128549d1fbea
+  zh: 6b2ee8f554fdf7fa

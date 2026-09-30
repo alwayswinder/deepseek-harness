@@ -4,7 +4,7 @@
 # place a later reader (a person, or an agent in a fresh turn) can learn what the
 # last build did without replaying it: the mode, the step it reached, the exit
 # code, the revision it built, and where the full log is when the run was
-# detached. The console output of a detached run is that log file.
+# detached. A detached run shows the same output in its console and log.
 
 param(
     [Parameter(Mandatory = $true)][string]$Mode,

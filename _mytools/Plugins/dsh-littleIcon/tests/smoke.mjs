@@ -212,6 +212,7 @@ assert.deepEqual(petFunctions.filter((name, index) => petFunctions.indexOf(name)
 const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8'))
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
+assert.equal(labels.UpdateDsh, '更新 DSH', 'the menu entry that builds the current checkout')
 assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
 assert.equal(labels.Settings, '设置', 'the menu entry that opens the plugin settings page')
 assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang under')
@@ -219,12 +220,15 @@ assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens th
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
   'Settings', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved', 'ShotSavedNoClipboard', 'ShotFailed',
+  'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
+  'UpdateDshFailedStep', 'UpdateDshLog',
   'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
 // The mini-games submenu is drawn by the pet process, so the two halves only meet
 // on the command id: the pet must send the one the page carries out.
 assert.match(petSource, /Send-MenuCommand 'aquarium'/, 'the pet menu must send the aquarium command')
+assert.match(petSource, /--detached --restart/, 'the update entry must restart only through the detached Desktop build')
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
 // its lifetime, and the freed entry ends DSH instead.
 assert.equal(labels.Quit, undefined, 'the pet must not offer to quit itself')
@@ -327,6 +331,7 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /小游戏/, 'the self test must report the mini-games entry too')
   assert.match(selfTest.stdout, /玻璃鱼缸/, 'the self test must report the aquarium entry too')
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
+  assert.match(selfTest.stdout, /更新 DSH/, 'the self test must report the update entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
   // A capture lands beside the state file, in the harness home rather than the
   // repository, and its name is what tells two captures in one second apart.
@@ -345,6 +350,8 @@ if (process.platform === 'win32') {
   assert.equal(configuredDir, 'C:\\shots', 'a configured folder is used as it is')
   assert.equal(blankDir, missingDir, 'a blank setting and no setting are the same directory')
   assert.equal(blankDir, join(probeDir, 'shots'), 'and both are the plugin\'s own shots directory')
+  assert.ok(selfTest.stdout.includes(`build-result: ${join(probeDir, '..', 'build', 'last-build.json')}`),
+    'the detached build result is read from the harness home beside little-icon data')
   // A failed open is reported in the pet's own words, which only happens if the
   // reason the host sends is one this mapping knows.
   assert.ok(selfTest.stdout.includes(
@@ -372,6 +379,10 @@ if (process.platform === 'win32') {
   // value the waiter's cmd is meant to expand.
   assert.match(selfTest.stdout, /relaunch-variable: relaunch probe/,
     'the command the waiter expands must be readable back out of the environment')
+  const buildScript = /build-script: (.*)/.exec(selfTest.stdout)
+  assert.ok(buildScript !== null, 'the self test must report the Desktop build script')
+  assert.equal(buildScript[1].trim(), join(root, '..', '..', '..', '_mytools', 'build', 'build-desktop.bat'),
+    'the running apps/desktop directory must resolve back to this checkout build')
 
   // The capture itself, taken for real: the sheet is not drawn and nobody drags, so
   // what is left under test is the screen read, the encoder, and the directory. A
@@ -1245,7 +1256,8 @@ assert.notEqual(sendButton.props.disabled, true, 'a readable repository offers t
 sent.length = 0
 sendButton.props.onClick()
 await new Promise((resolve) => setTimeout(resolve, 0))
-assert.deepEqual(sent, ['没问题就提交并推送吧！'], 'clicking the button sends the instruction into the conversation')
+assert.deepEqual(sent, ['审查本地改动，没有问题就提交并推送吧'],
+  'clicking the button sends the review and conditional push instruction into the conversation')
 const pullButton = flatten(populated.view).find(node => node.props?.className === 'dli-git-pull')
 assert.equal(pullButton.children[0], t('gitPull'), 'the pull button names its direct Git action')
 assert.notEqual(pullButton.props.disabled, true, 'a readable repository can pull')

@@ -28,7 +28,7 @@
 | `build\build.bat web` | 只构建 Web/CLI 那一半：不停 Electron 之外与上面同步骤，不做 `build:desktop`、不准备 runtime。 | 纯网页版、或不想下载运行时的时候用，快很多。 |
 | `build\build.bat quick` | **不关 app 的宿主半边重建**：跳过 `clean` 与运行时准备，只跑 `build:lib:host` + `build:desktop`。 | **故意不碰 Web UI 与任何 `lib/client.js`**——运行中的宿主每 500ms 轮询这些 bundle（[packages/client/hmr](../packages/client/hmr/src/index.ts)）并让浏览器重载，就地重写会让浏览器 import 到半成品，页面白屏到刷新/重启为止（实测过）。宿主半边不写客户端 bundle，因此没有这个竞态；宿主代码是启动时读的，所以跑完仍需重启应用。**客户端/Web 的改动请走完整构建。** |
 | `build\build.bat repair` | 停 app → 删掉工作副本里的 `node_modules`（`apps\desktop` 那个留着，里面是 Electron 二进制）→ 重装 → 走完整两端流程。 | 大合并后依赖树乱掉时的钝器；慢，但常常比逐个查快。 |
-| `build\build.bat --detached [--restart]` | 用 WMI 把构建放到本进程树之外跑（父进程是 WmiPrvSE），全过程写日志，结束时写结果文件；`--restart` 会在成功后自动 `start-desktop.bat` 把 app 拉回来。 | 这是「让 DSH 自己重建自己」的正规路径：构建要关掉 app，而任何从 app 里起的 shell 都会跟着死。 |
+| `build\build.bat --detached [--restart]` | 用 WMI 把构建放到本进程树之外跑（父进程是 WmiPrvSE），控制台实时显示输出并同步写日志，结束时写结果文件；失败时窗口会留下来供查看，`--restart` 会在成功后自动 `start-desktop.bat` 把 app 拉回来。 | 这是「让 DSH 自己重建自己」的正规路径：构建要关掉 app，而任何从 app 里起的 shell 都会跟着死。 |
 | `build\build-desktop.bat` | 兼容壳：转发到 `build.bat desktop`。 | 老快捷方式/笔记不用改。 |
 | `build\start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
 | `build\start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。 | 只在启动所需文件缺失或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。 |
@@ -71,7 +71,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 ### 构建日志与结果
 
-每次都写 `$DSH_HOME\build\last-build.json`（模式、走到哪一步、退出码、revision、日志路径、时间）；`--detached` 还会把全过程写进 `$DSH_HOME\build\logs\build-<时间戳>.log`。**app 关着的时候构建失败，看这两个文件就知道发生了什么**，不用再靠人转述控制台。「更新上游」那条链路（`update-and-build.bat`）还会在构建前多写一个 `$DSH_HOME\build\resume-plan.json`——任务契约（仓库、revision、日志路径、预期产物清单），app 回来后的下一轮 turn 照它核验"这场构建该有什么"，而不是只看结果状态。
+每次都写 `$DSH_HOME\build\last-build.json`（模式、走到哪一步、退出码、revision、日志路径、时间）；`--detached` 的控制台实时显示构建输出，并把同一份内容写进 `$DSH_HOME\build\logs\build-<时间戳>.log`。构建失败时窗口保留最终错误、失败步骤和日志路径，按 Enter 后关闭；这两个文件也可供 app 重新打开后继续核验。「更新上游」那条链路（`update-and-build.bat`）还会在构建前多写一个 `$DSH_HOME\build\resume-plan.json`——任务契约（仓库、revision、日志路径、预期产物清单），app 回来后的下一轮 turn 照它核验"这场构建该有什么"，而不是只看结果状态。
 
 `build\preflight.mjs` 在任何破坏性动作之前跑，专门抓上游合并最常踩的几件事并指名修法：Node/pnpm 与 `engines` 不符、**tsconfig 引用的包在磁盘上不存在**（上游删包/改名的经典伤）、存在但没被任何编译面引用的包、树外插件的 peer 链接缺失。退出码 2 = 拦下（此时什么都还没动）。
 
@@ -100,7 +100,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | --- | --- | --- |
 | `appearance-plus` | 插件页增加五套护眼配色、背景图片编辑器，以及空闲锁屏壁纸：无操作满设定秒数后整屏换成锁屏图；桌面端连系统标题栏和三个窗口按钮一起清掉，窗口状态不变。 | web、desktop |
 | `deepseek-usage` | 设置页的用量/余额卡片；**对话输入框上方那条汇总**（余额、今日消费 —— 现在最前面还有一个不标单位的持仓盈亏数字）。 | web、desktop |
-| `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，单击收起/恢复 DSH 主窗口；右键与托盘菜单第一项「对话」在 DSH 自己的右侧 Browser 标签里开 chat.deepseek.com，第二项「Git 改动」在右侧栏开插件自己的仓库页（左：当前会话工作目录里未提交的改动，右：最近十次提交；双击任意一行看详情；「拉取」用 `git pull --ff-only` 更新到上游最新；「提交并推送」仍只把「没问题就提交并推送吧！」作为用户消息发进当前对话，由 AI 去执行），第三项「打开工作目录」把当前会话的工作目录交给宿主，用资源管理器打开（打不开时桌宠弹一句说明），最后两项是「重启 DSH」（先确认，然后结束 DSH 并重放它自己的启动命令行把它拉回来）与「退出 DSH」（结束应用）；DSH 切到后台就自动收起，等用户回答时举着「惊讶」。桌宠自己不在菜单里退出，生死由「启用桌宠」开关控制。 | desktop（web 可装，但那里不控制窗口；Git 页两边都能用） |
+| `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，单击收起/恢复 DSH 主窗口；右键与托盘菜单第一项「对话」在 DSH 自己的右侧 Browser 标签里开 chat.deepseek.com，第二项「Git 改动」在右侧栏开插件自己的仓库页（左：当前会话工作目录里未提交的改动，右：最近十次提交；双击任意一行看详情；「拉取」用 `git pull --ff-only` 更新到上游最新；「提交并推送」仍只把「审查本地改动，没有问题就提交并推送吧」作为用户消息发进当前对话，由 AI 去执行），第三项「打开工作目录」把当前会话的工作目录交给宿主，用资源管理器打开（打不开时桌宠弹一句说明）；分隔线下可以「更新 DSH」（构建当前工作副本，成功后自动重启）、「重启 DSH」或「退出 DSH」。DSH 切到后台就自动收起，等用户回答时举着「惊讶」。桌宠自己不在菜单里退出，生死由「启用桌宠」开关控制。 | desktop（web 可装，但那里不控制窗口；Git 页两边都能用） |
 | `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时。 | desktop |
 | `dsh-pocket` | 手机扫码访问电脑上的 DSH：设置页「手机访问」，局域网二维码（代理监听 3081）+ cloudflared 公网隧道，WebSocket 透传实时同屏。第三方插件（作者 shaobeichen，GPL-2.0）。 | desktop |
 
@@ -128,6 +128,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\finish.ps1` | 记录一次构建的结果到 `$DSH_HOME\build\last-build.json`，`-Restart` 时在成功后拉起 `build\start-desktop.bat`。由 `build\build.bat` 在每条出口调用。 |
 | `build\write-resume-plan.ps1` | 把「更新上游」的**任务契约**写进 `$DSH_HOME\build\resume-plan.json`：仓库、revision、构建日志路径、预期产物清单。由 `build\update-and-build.bat` 在构建启动前调用；输出日志路径一行供调用方捕获。 |
 | `build\detach.ps1` | 用 WMI 把构建放到本进程树之外（父进程 WmiPrvSE），日志默认落在 `$DSH_HOME\build\logs\build-<时间戳>.log`。由 `build\build.bat --detached` 调用。 |
+| `build\run-detached-build.ps1` | 在脱离的控制台中运行实际构建，把每行输出同时显示并写进日志；成功后自动关窗，失败后等待确认。由 `build\detach.ps1` 调用。 |
 | `build\resolve-dsh-home.ps1` | 按 harness 的规则解析 `$DSH_HOME`（空白=未设置、展开开头的 `~`、转绝对路径），供上面几个 PS1 共用。 |
 | `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `build\start-desktop.bat`，失败时弹带日志尾巴的对话框。 |
 | `build\install-shortcut.ps1` | 建/删那两个快捷方式；`build\make-shortcut.bat` 的实体。 |

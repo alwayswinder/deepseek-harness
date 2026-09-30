@@ -3,8 +3,8 @@
 # A build that rebuilds the Desktop app has to stop that app, and every process
 # started from inside it - an agent's shell, this launcher - dies with it. WMI
 # creates the process instead, so its parent is the WMI provider rather than the
-# app, and the build keeps running after Electron is gone. Its output is the log
-# file, because the process has no console to print to.
+# app, and the build keeps running after Electron is gone. A dedicated runner
+# keeps the output visible in that process's console and mirrors it to the log.
 
 param(
     [Parameter(Mandatory = $true)][string]$Script,
@@ -23,12 +23,13 @@ if ($Log -eq '') {
 $logDirectory = Split-Path -Parent $Log
 if ($logDirectory -ne '') { New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null }
 
-$restartFlag = if ($Restart) { ' --restart' } else { '' }
-# The child is a shell command: it runs the batch, keeps its console output out
-# of the way, and appends that output to the log. Quoting is built here rather
-# than in the caller because this is the layer that knows the Windows rules.
-$commandLine = '{0} /c ""{1}" {2} --no-pause --log "{3}"{4} >> "{3}" 2>&1"' -f `
-    $env:COMSPEC, $Script, $Mode, $Log, $restartFlag
+$runner = Join-Path $PSScriptRoot 'run-detached-build.ps1'
+$powershell = Join-Path $PSHOME 'powershell.exe'
+$restartFlag = if ($Restart) { ' -Restart' } else { '' }
+# WMI receives one Windows command line, so quote every path at the layer that
+# creates it. Windows paths cannot contain a double quote.
+$commandLine = '"{0}" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "{1}" -Script "{2}" -Mode "{3}" -Log "{4}"{5}' -f `
+    $powershell, $runner, $Script, $Mode, $Log, $restartFlag
 
 $started = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $commandLine }
 if ($started.ReturnValue -ne 0) {

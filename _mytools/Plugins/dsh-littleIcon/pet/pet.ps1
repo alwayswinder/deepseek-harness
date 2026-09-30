@@ -415,10 +415,24 @@ $SCRIPT:HelperWindowClasses = @('IME', 'MSCTFIME UI', 'CandidateWindow', 'Mode I
 
 # SW_HIDE removes the window from both the screen and the taskbar; the way back is
 # the pet itself, or the tray icon DSH's own main process owns; SW_MINIMIZE keeps
-# the taskbar entry; SW_RESTORE shows and activates.
+# the taskbar entry.
 $SCRIPT:SwHide = 0
 $SCRIPT:SwMinimize = 6
 $SCRIPT:SwRestore = 9
+$SCRIPT:SwShow = 5
+
+# Which ShowWindow command brings the DSH window back is decided by the state it is
+# in, because the two commands are not interchangeable. SW_RESTORE is the one that
+# returns a minimized window, and it is the wrong one for a window that was merely
+# hidden: it also returns a maximized or fullscreen window to the size and position
+# it had before, so tucking DSH away and bringing it back would drop it out of
+# fullscreen. SW_SHOW displays a window at the size and position it already has.
+# Measured (Windows PowerShell 5.1, hidden maximized window): SW_RESTORE leaves it
+# un-maximized, SW_SHOW leaves it maximized, and neither one un-minimizes.
+function Get-ShowCommand([bool]$Minimized) {
+    if ($Minimized) { return $SCRIPT:SwRestore }
+    return $SCRIPT:SwShow
+}
 
 # Custom window message the Electron main process listens for (its hook lives in
 # apps/desktop main.ts, tracked in UPSTREAM.md). Posting it after an external
@@ -913,6 +927,10 @@ if ($SelfTest) {
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
+    # Which command brings DSH back decides whether it comes back the way it was:
+    # SW_RESTORE also returns a maximized or fullscreen window to the size it had
+    # before, so only a minimized window is restored and a hidden one is shown.
+    Write-Output "show-commands: minimized=$(Get-ShowCommand $true) hidden=$(Get-ShowCommand $false)"
     # The sites submenu is the menu's only part built from configuration rather than
     # from this script, so it is built here - without ever being shown - and what
     # each list turns into is printed. The host has already dropped every row it
@@ -1227,7 +1245,9 @@ function Set-DshWindowShown([bool]$Shown) {
     # request arrives more than once.
     if ($Shown -eq (Get-DshShown)) { return }
     if ($Shown) {
-        [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwRestore)
+        # A window this pet hid is shown, not restored: it is still maximized or
+        # fullscreen underneath, and restoring it would resize it.
+        [void][DshPet.Win32]::ShowWindow($handle, (Get-ShowCommand ([DshPet.Win32]::IsIconic($handle))))
         [void][DshPet.Win32]::SetForegroundWindow($handle)
         # Electron hid this window when its title-bar X was used, and throttles
         # the renderer while hidden. ShowWindow above brings the OS window back,

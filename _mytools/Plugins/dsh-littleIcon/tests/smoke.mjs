@@ -382,6 +382,12 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /更新 DSH/, 'the self test must report the update entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
   assert.match(selfTest.stdout, /常用网站/, 'the self test must report the sites entry too')
+  // Bringing DSH back is not one command: SW_RESTORE also returns a maximized or
+  // fullscreen window to the size it had before, so a window this pet hid is shown
+  // and only a minimized one is restored. Getting this backwards drops DSH out of
+  // fullscreen every time the pet tucks it away and brings it back.
+  assert.match(selfTest.stdout, /show-commands: minimized=9 hidden=5/,
+    'a hidden window must be shown and a minimized one restored')
   // The sites submenu is the menu's only part built from configuration, so the
   // self test builds it for an empty list and for a list of two and prints what
   // each turned into: what an entry reads, the address it carries, and the two

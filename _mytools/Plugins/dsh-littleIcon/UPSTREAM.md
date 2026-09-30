@@ -33,7 +33,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run build
 (Select-String apps\desktop\lib\main.js -Pattern 'dsh-sidebar-browser-\$\{randomUUID' -Quiet)  # 应消失
 ```
 
-生效后应用用户数据下会出现 `Partitions\dsh-sidebar-browser-<32 位摘要>`；开发流程用的是 `apps/desktop/.desktop-build/development/electron-user-data/`。侧栏分区的键是**工作区**：当前对话属于某个工作区时是 `cwd:<路径>`（稳定，重启、换对话都共用），不属于任何工作区时退化成 `session:<对话 id>`（换新对话就是新分区）。
+生效后应用用户数据下会出现 `Partitions\dsh-sidebar-browser-<32 位摘要>`；这个用户数据目录由 `start-desktop.bat` 用 `--user-data-dir` 指定，现在是 `$DSH_HOME\desktop\electron-user-data`——它以前在 `apps\desktop\.desktop-build\development\electron-user-data`，而 `pnpm run clean` 会删掉整棵 `.desktop-build`，所以上游这份持久分区虽然扛过了重启，却扛不过每次完整构建（表现就是「重新 build 后又要重新登录」）；把它挪出构建树的是工作副本自己的 `_mytools\build\migrate-desktop-user-data.bat`，不是上游改动。侧栏分区的键是**工作区**：当前对话属于某个工作区时是 `cwd:<路径>`（稳定，重启、换对话都共用），不属于任何工作区时退化成 `session:<对话 id>`（换新对话就是新分区）。
 
 ### main.ts + pet.ps1 的「外部恢复后补 show()」改动
 

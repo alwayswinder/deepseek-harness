@@ -194,6 +194,11 @@ if /i "%TARGET%"=="desktop" (
     if errorlevel 1 goto :finishStop
 )
 
+rem Carry the Desktop profile's Electron browser data out of the tree this clean
+rem deletes (see migrate-desktop-user-data.bat). The Desktop instance is stopped
+rem by now, so nothing holds its cookie databases open.
+call "%SCRIPT_DIR%migrate-desktop-user-data.bat"
+
 echo [build] Cleaning previous build outputs...
 call "%PNPM_CMD%" run clean
 if errorlevel 1 goto :finishClean

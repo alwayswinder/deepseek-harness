@@ -43,6 +43,10 @@ set "DESKTOP_DEVELOPMENT=%DESKTOP_APP%\.desktop-build\development"
 set "DESKTOP_PROJECT=%DESKTOP_DEVELOPMENT%\project"
 set "DESKTOP_EXE=%DESKTOP_APP%\node_modules\electron\dist\electron.exe"
 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop.log"
+rem Electron's browser storage lives under the Harness home, not in the build
+rem tree: a full build deletes that tree, and with it every sign-in the Sidebar
+rem browser and the platform account view had stored.
+set "DESKTOP_USER_DATA=%DSH_HOME%\desktop\electron-user-data"
 set "DSH_DESKTOP_PRIMARY_RUNTIME_DIR=%DESKTOP_APP%\.desktop-build\targets\win-x64\runtime\primary-runtime"
 set "MISSING_STARTUP_FILE="
 
@@ -57,6 +61,10 @@ rem pnpm writes once and never reconciles against the source; refresh them so a
 rem pulled plugin change is what this launch loads.
 call "%~dp0sync-plugins.bat" desktop
 if errorlevel 1 goto :pluginFailure
+
+rem Carry over the browser data earlier launchers kept inside the build tree, so
+rem this launch starts signed in instead of asking again.
+call "%~dp0migrate-desktop-user-data.bat"
 
 if not exist "%DESKTOP_EXE%" goto :missingElectron
 if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" set "MISSING_STARTUP_FILE=%DSH_REPO%\apps\cli\lib\profile-boot.js"
@@ -79,7 +87,7 @@ rem log then; Electron still starts, so a second press focuses the open window.
 copy /y nul "%DESKTOP_LOG%" >nul 2>&1
 if errorlevel 1 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop-%RANDOM%.log"
 forfiles /p "%DESKTOP_DEVELOPMENT%" /m "desktop-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
-wscript.exe //nologo "%~dp0start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_DEVELOPMENT%\electron-user-data" "%DESKTOP_APP%"
+wscript.exe //nologo "%~dp0start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_USER_DATA%" "%DESKTOP_APP%"
 if errorlevel 1 goto :launchFailure
 echo [desktop] Launch requested. Log: %DESKTOP_LOG%
 exit /b 0

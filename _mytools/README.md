@@ -31,7 +31,7 @@
 | `build\build.bat --detached [--restart]` | 用 WMI 把构建放到本进程树之外跑（父进程是 WmiPrvSE），控制台实时显示输出并同步写日志，结束时写结果文件；失败时窗口会留下来供查看，`--restart` 会在成功后自动 `start-desktop.bat` 把 app 拉回来。 | 这是「让 DSH 自己重建自己」的正规路径：构建要关掉 app，而任何从 app 里起的 shell 都会跟着死。 |
 | `build\build-desktop.bat` | 兼容壳：转发到 `build.bat desktop`。 | 老快捷方式/笔记不用改。 |
 | `build\start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
-| `build\start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。 | 只在启动所需文件缺失或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。 |
+| `build\start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。Electron 的 `--user-data-dir` 固定在 `$DSH_HOME\desktop\electron-user-data`。 | 只在启动所需文件缺失或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。浏览器数据放在 `$DSH_HOME` 下是为了躲开 `clean`，理由见下面「构建模式与『自己 build 自己』」。 |
 | `build\stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
 | `build\start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
 | `build\make-shortcut.bat` | 把「DeepSeek Harness」装进开始菜单（默认还有桌面）：带应用图标、点开不弹控制台、失败时弹一个带日志尾巴的对话框。`--start-menu-only` 只要开始菜单，`--remove` 删掉。 | 每台机器跑一次；重复跑就是刷新。见下面「像应用一样启动」。 |
@@ -61,7 +61,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 ### 构建模式与「自己 build 自己」
 
-完整构建的第一步是 `clean`，而 [scripts/clean.ts](../scripts/clean.ts) 会删 `apps\desktop\.desktop-build`——**那正是运行中的桌面端所在的地方**（主进程 `--user-data-dir` 和宿主进程的 `project\node_modules\@deepseek-ai\dsh-desktop-host\lib\index.js` 都在里面）。所以完整构建必须先停掉本工作副本的 Electron；而任何从 DSH 里起的 shell 都是它的后代，会跟着一起死。三条出路：
+完整构建的第一步是 `clean`，而 [scripts/clean.ts](../scripts/clean.ts) 会删 `apps\desktop\.desktop-build`——**那正是运行中的桌面端所在的地方**（宿主进程的 `project\node_modules\@deepseek-ai\dsh-desktop-host\lib\index.js` 就在里面；Electron 的 `--user-data-dir` 本来也在里面，现已挪到 `$DSH_HOME\desktop\electron-user-data`）。所以完整构建必须先停掉本工作副本的 Electron；而任何从 DSH 里起的 shell 都是它的后代，会跟着一起死。三条出路：
 
 1. **`build\build.bat quick`**：不关 app，只重建**宿主半边**（packages host 面、CLI、Electron 壳），跑完重启应用生效。日常改宿主侧代码用它就够。
 2. **`build\build.bat --detached --restart`**：完整构建，但用 WMI 起进程脱离这棵树，因此 app 关掉它还能继续；日志与结果落盘，成功后自己把 app 拉回来。会话是持久的，app 回来后同一个对话里读结果接着干。**上游合并、客户端/Web 改动都走这条。**
@@ -91,6 +91,8 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 `build\ensure-plugin-*.bat` 由 `build\build.bat`（任何模式）自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
 
 完整构建在第一次使用新流程时会把旧的 `apps\desktop\.desktop-build\downloads` 内容迁移到 `.cache\desktop-downloads`。后续 `clean` 仍会删除编译产物和开发工程，但保留下载归档，以及按目标、Desktop 版本和 payload 摘要索引的 `.cache\desktop-primary-runtime`；归档只在锁定哈希变化时重新下载，primary runtime 只在目标、版本、解释器、wheel 或 pnpm 输入变化时重新展开。构建目录通过 junction 使用缓存的 primary runtime，Office skill 资产仍从当前源码刷新，所有 native-target 检查仍会执行。
+
+同一个道理，Electron 的浏览器数据（`--user-data-dir`：侧栏内嵌浏览器的 Cookie 与 localStorage、platform 账号页的存储都在这里）以前待在 `clean` 会删的那棵树里，于是每次完整构建都要重新登录 chat.deepseek.com 一次。现在它固定在 `$DSH_HOME\desktop\electron-user-data`，`build\start-desktop.bat` 每次都指向那里；[build\migrate-desktop-user-data.bat](build/migrate-desktop-user-data.bat) 在 `build.bat` 的 `clean` 之前、以及每次启动之前把旧位置的数据整体搬过来——只在目标还没有 `Partitions` 时搬（Electron 已经在那里建过存储就说明那里有不能覆盖的东西），拷贝失败（上一个实例还占着 Cookie 数据库）就整份丢弃，下次启动重试。
 
 以 `file:` 依赖装进 profile 的插件是**一次性副本**（pnpm 不记录内容哈希），所以只改 `Plugins\` 里的源码而不重启启动脚本，界面会一直是旧的。以 `link:` 装的插件（`dsh-ths-holdings`）本身指向源码目录，不需要这一步。
 
@@ -130,6 +132,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\detach.ps1` | 用 WMI 把构建放到本进程树之外（父进程 WmiPrvSE），日志默认落在 `$DSH_HOME\build\logs\build-<时间戳>.log`。由 `build\build.bat --detached` 调用。 |
 | `build\run-detached-build.ps1` | 在脱离的控制台中运行实际构建，把每行输出同时显示并写进日志；成功后自动关窗，失败后等待确认。由 `build\detach.ps1` 调用。 |
 | `build\resolve-dsh-home.ps1` | 按 harness 的规则解析 `$DSH_HOME`（空白=未设置、展开开头的 `~`、转绝对路径），供上面几个 PS1 共用。 |
+| `build\migrate-desktop-user-data.bat` | 把 Electron 的浏览器数据从 `apps\desktop\.desktop-build\development\electron-user-data` 搬到 `$DSH_HOME\desktop\electron-user-data`（`Partitions` 与解密 Cookie 用的 `Local State` 一起搬）。由 `build\build.bat` 在 `clean` 前、`build\start-desktop.bat` 在启动前调用；只在旧目录还在、且新目录还没有 `Partitions` 时动手，失败就整份丢弃等下次，任何情况下都退出 0。 |
 | `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `build\start-desktop.bat`，失败时弹带日志尾巴的对话框。 |
 | `build\install-shortcut.ps1` | 建/删那两个快捷方式；`build\make-shortcut.bat` 的实体。 |
 | `build\make-app-icon.mjs` | 从 `apps\desktop\resources\icon-windows.svg` 光栅化 9 个尺寸的 `.ico` 到 `$DSH_HOME\build\dsh.ico`。 |

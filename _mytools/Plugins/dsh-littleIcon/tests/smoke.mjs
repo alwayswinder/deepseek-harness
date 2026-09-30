@@ -20,8 +20,10 @@ import { join, sep } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_PULL_PATH, OPEN_PATH, GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
-  parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, pullGitRepository, readGitDiff, readGitCommit,
+  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH, OPEN_PATH,
+  GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
+  parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, readGitRemoteStatus,
+  pullGitRepository, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, StateFileWriter,
 } = internals
 
@@ -455,6 +457,8 @@ assert.deepEqual(parseGitLog(''), [])
 // so they run even without git.
 const missingDir = await readGitRepository(join(tmpdir(), 'little-icon-no-such-directory'))
 assert.deepEqual(missingDir, { ok: false, reason: 'no-dir' })
+assert.deepEqual(await readGitRemoteStatus(join(tmpdir(), 'little-icon-no-such-directory')),
+  { ok: false, reason: 'no-dir' })
 // The detail readers answer the same four reasons as the listing, so a page that
 // asks about a directory that is gone is told that rather than that Git failed.
 assert.deepEqual(await readGitDiff(join(tmpdir(), 'little-icon-no-such-directory'), 'a.txt'),
@@ -583,6 +587,8 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
       [[' M', 'kept.txt'], ['??', 'untracked.txt']])
     assert.deepEqual(read.commits.map(commit => commit.subject), ['first commit'])
     assert.match(read.commits[0].hash, /^[0-9a-f]{40}$/)
+    assert.deepEqual(await readGitRemoteStatus(repo), { ok: false, reason: 'no-upstream' },
+      'a local branch without an upstream says that instead of claiming it is current')
 
     // One file's diff. The reader looks the path's own status up instead of
     // trusting the caller, so an unstaged edit is compared against the index and
@@ -687,6 +693,7 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
       assert.equal(unborn.ok, true, `an unborn HEAD is still a repository: ${JSON.stringify(unborn)}`)
       assert.deepEqual(unborn.commits, [])
       assert.equal(unborn.branch !== '', true, 'the branch is known before the first commit')
+      assert.deepEqual(await readGitRemoteStatus(empty), { ok: false, reason: 'no-upstream' })
       // The diff reader names no revision either, so a staged file in a repository
       // without a first commit still has a diff to show.
       writeFileSync(join(empty, 'first.txt'), 'first\n')
@@ -728,6 +735,13 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     writeFileSync(join(upstream, 'shared.txt'), 'two\n')
     must(upstream, 'commit', '-q', '-am', 'remote update')
     must(upstream, 'push', '-q')
+    const [behind, joinedBehind] = await Promise.all([
+      readGitRemoteStatus(local, 10_000),
+      readGitRemoteStatus(local, 10_000),
+    ])
+    assert.deepEqual(behind, { ok: true, relation: 'behind', ahead: 0, behind: 1 },
+      'the status check fetches the current upstream before comparing it')
+    assert.deepEqual(joinedBehind, behind, 'simultaneous tabs join one upstream check')
     const [first, joined] = await Promise.all([
       pullGitRepository(local, 10_000),
       pullGitRepository(local, 10_000),
@@ -741,6 +755,8 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     const current = await pullGitRepository(local, 10_000)
     assert.equal(current.ok, true, JSON.stringify(current))
     assert.equal(current.updated, false, 'pulling an up-to-date branch must say HEAD did not move')
+    assert.deepEqual(await readGitRemoteStatus(local, 10_000),
+      { ok: true, relation: 'up-to-date', ahead: 0, behind: 0 })
 
     // `--ff-only` must leave both local history and the working tree alone once
     // the two sides diverge; fetching the remote ref is allowed, merging is not.
@@ -754,6 +770,9 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     must(upstream, 'add', 'remote.txt')
     must(upstream, 'commit', '-q', '-m', 'second remote update')
     must(upstream, 'push', '-q')
+    assert.deepEqual(await readGitRemoteStatus(local, 10_000),
+      { ok: true, relation: 'diverged', ahead: 1, behind: 1 },
+      'a diverged branch reports both its local and unpulled commits')
     const diverged = await pullGitRepository(local, 10_000)
     assert.equal(diverged.ok, false)
     assert.equal(diverged.reason, 'failed')
@@ -762,8 +781,10 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     assert.equal(existsSync(join(local, 'remote.txt')), false, 'a diverged pull must not update the working tree')
 
     must(local, 'checkout', '-q', '-b', 'local-only')
+    assert.deepEqual(await readGitRemoteStatus(local, 10_000), { ok: false, reason: 'no-upstream' })
     assert.deepEqual(await pullGitRepository(local, 10_000), { ok: false, reason: 'no-upstream' })
     must(local, 'checkout', '-q', '--detach', 'main')
+    assert.deepEqual(await readGitRemoteStatus(local, 10_000), { ok: false, reason: 'detached-head' })
     assert.deepEqual(await pullGitRepository(local, 10_000), { ok: false, reason: 'detached-head' })
   } finally {
     rmSync(pullWorld, { recursive: true, force: true })
@@ -1013,6 +1034,10 @@ const loaded = await gitFace.load('D:\\work\\proj', undefined)
 assert.deepEqual(pings.at(-1), { url: `${GIT_PATH}?cwd=D%3A%5Cwork%5Cproj`, method: undefined },
   'the directory travels as a query parameter, escaped')
 assert.equal(loaded.ok, true)
+const remoteStatus = await gitFace.loadRemote('D:\\work\\proj', undefined)
+assert.deepEqual(pings.at(-1), { url: `${GIT_REMOTE_PATH}?root=D%3A%5Cwork%5Cproj`, method: 'POST' },
+  'the upstream check is an explicit POST naming the repository root')
+assert.equal(remoteStatus.ok, true)
 const pulled = await gitFace.pull('D:\\work\\proj', undefined)
 assert.deepEqual(pings.at(-1), { url: `${GIT_PULL_PATH}?cwd=D%3A%5Cwork%5Cproj`, method: 'POST' },
   'pull is an explicit POST naming the Session directory')
@@ -1029,6 +1054,7 @@ assert.deepEqual(pings.at(-1), { url: `${GIT_COMMIT_PATH}?root=%2Frepo&hash=abc1
 const answerFetch = globalThis.fetch
 globalThis.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
 await assert.rejects(() => gitFace.load('/repo', undefined), /answered 500/)
+await assert.rejects(() => gitFace.loadRemote('/repo', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadDiff('/repo', 'a.txt', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadCommit('/repo', 'abc123', undefined), /answered 500/)
 await assert.rejects(() => gitFace.pull('/repo', undefined), /answered 500/)
@@ -1188,6 +1214,7 @@ const gitProps = {
   useSessions: (select) => select({ byId: { session: { cwd: '/repo' } } }),
   useTabInfo: () => ({ tab: { navigation: { revision: 1 } } }),
   load: () => Promise.resolve({}),
+  loadRemote: () => Promise.resolve({}),
   pull: async (cwd) => { pullRequests.push(cwd); return { ...listing, updated: true } },
   loadDiff: () => Promise.resolve({}),
   loadCommit: () => Promise.resolve({}),
@@ -1214,16 +1241,41 @@ const listing = {
   ],
   commits: [{ hash: 'abc', short: 'abc1234', author: 'Ada', date: '2026-01-02T03:04:05+08:00', subject: 'first subject' }],
 }
-seeded.push({ phase: 'settled', result: listing })
+seeded.push({
+  phase: 'settled',
+  result: listing,
+  remote: { phase: 'settled', result: { ok: true, relation: 'behind', ahead: 0, behind: 2 } },
+})
 const populated = gitRender()
 assert.equal(populated.section, 2, 'the page is one column of changes beside one column of commits')
 for (const text of [t('gitChanges'), t('gitCommits'), t('gitBranch', { name: 'main' }), t('gitRefresh'),
-  t('gitPull'), t('gitModified'), t('gitAdded'), t('gitUntracked'), t('gitRenamed'), t('gitStaged'),
+  t('gitPull'), t('gitRemoteBehind', { count: 2 }), t('gitModified'), t('gitAdded'), t('gitUntracked'),
+  t('gitRenamed'), t('gitStaged'),
   'src/a.ts', 'new file.txt', 'abc1234', 'first subject']) {
   assert.ok(populated.nodes.includes(text), `the Git page must show ${text}`)
 }
 assert.equal(populated.nodes.filter(text => text === t('gitStaged')).length, 2,
   'the staged add and the staged rename carry the marker; the unstaged edit and the untracked file do not')
+const remoteBadge = flatten(populated.view).find(node => node.props?.className === 'dli-git-remote')
+assert.equal(remoteBadge.children[0], t('gitRemoteBehind', { count: 2 }),
+  'the recent-commits heading says how many commits are waiting upstream')
+assert.equal(remoteBadge.props['data-tone'], 'warn', 'unpulled commits use the warning treatment')
+
+const renderRemote = (remote) => {
+  seeded.push({ phase: 'settled', result: listing, remote })
+  return gitRender()
+}
+const currentRemote = renderRemote({
+  phase: 'settled', result: { ok: true, relation: 'up-to-date', ahead: 0, behind: 0 },
+})
+assert.ok(currentRemote.nodes.includes(t('gitRemoteCurrent')), 'a current branch says it is up to date')
+const divergedRemote = renderRemote({
+  phase: 'settled', result: { ok: true, relation: 'diverged', ahead: 1, behind: 3 },
+})
+assert.ok(divergedRemote.nodes.includes(t('gitRemoteDiverged', { count: 3 })),
+  'a diverged branch still names the commits waiting upstream')
+const noUpstream = renderRemote({ phase: 'settled', result: { ok: false, reason: 'no-upstream' } })
+assert.ok(noUpstream.nodes.includes(t('gitRemoteNoUpstream')), 'a branch without an upstream does not claim freshness')
 
 // A changed file opens its own diff, which is the one thing on this page a click
 // does; the tooltip has to say so, since nothing about a row looks clickable.
@@ -1553,11 +1605,12 @@ $found
     // The page reports input here; without it the pet could only see agents and
     // jobs, and it would sleep while the person is using DSH. The second route is
     // the stream the pet's menu commands come back on, the next four are what
-    // the Git page reads and fast-forwards a Session's repository through, and
-    // the last is the menu's open-directory entry.
+    // the Git page reads, checks, and fast-forwards a Session's repository
+    // through, and the last is the menu's open-directory entry.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
       [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
-        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_PULL_PATH}`,
+        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_REMOTE_PATH}`,
+        `exact ${GIT_PULL_PATH}`,
         `exact ${OPEN_PATH}`])
 
     // The Git routes answer JSON for one directory and refuse everything else.
@@ -1567,6 +1620,7 @@ $found
     const gitRoute = routes.find((route) => route.path === GIT_PATH)
     const diffRoute = routes.find((route) => route.path === GIT_DIFF_PATH)
     const commitRoute = routes.find((route) => route.path === GIT_COMMIT_PATH)
+    const remoteRoute = routes.find((route) => route.path === GIT_REMOTE_PATH)
     const pullRoute = routes.find((route) => route.path === GIT_PULL_PATH)
     const answered = () => {
       const response = {
@@ -1630,8 +1684,17 @@ $found
       `${GIT_COMMIT_PATH}?root=${encodeURIComponent(home)}&hash=abc`)
     assert.deepEqual(outsideCommit.body, { ok: false, reason: 'not-a-repo' })
 
-    // Pull is the one Git mutation: re-reads cannot trigger it, and an explicit
-    // POST without a Session directory is answered before Git is started.
+    // Refreshing upstream status updates a remote-tracking ref, so it requires
+    // an explicit POST even though it never moves the local branch or files.
+    assert.equal((await askGit(remoteRoute, 'GET', GIT_REMOTE_PATH)).status, 405,
+      'the upstream check must require POST')
+    const outsideRemote = await askGit(remoteRoute, 'POST',
+      `${GIT_REMOTE_PATH}?root=${encodeURIComponent(home)}`)
+    assert.deepEqual(outsideRemote.body, { ok: false, reason: 'not-a-repo' })
+
+    // Pull is the one operation that moves the local branch or files: re-reads
+    // cannot trigger it, and a POST without a Session directory is answered
+    // before Git is started.
     assert.equal((await askGit(pullRoute, 'GET', GIT_PULL_PATH)).status, 405,
       'the pull route must require POST')
     const noPullCwd = await askGit(pullRoute, 'POST', GIT_PULL_PATH)

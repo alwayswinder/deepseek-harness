@@ -20,7 +20,9 @@
  * The Git page is a tab type this plugin registers itself: the right Sidebar's
  * registry is the extension point for exactly that, so the page needs neither the
  * product's Browser tab nor any other shipped viewer. It draws what the Host's
- * Git route answers for the Session's working directory, and it only ever reads.
+ * Git route answers for the Session's working directory. Listings and details
+ * are reads; the remote status check refreshes one tracking ref, and only Pull
+ * moves the local branch or working tree.
  */
 
 window.__ModuleLoader__.load({
@@ -67,6 +69,9 @@ window.__ModuleLoader__.load({
 
     /** The Host route it reads one commit's changed files from, the same way. */
     const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
+
+    /** The Host route that refreshes and compares the configured upstream. */
+    const GIT_REMOTE_PATH = '/api/little-icon/git/remote'
 
     /** The Host route that fast-forwards the current branch from its upstream. */
     const GIT_PULL_PATH = '/api/little-icon/git/pull'
@@ -182,6 +187,14 @@ window.__ModuleLoader__.load({
       gitPulling: '拉取中…',
       gitPulled: '已拉取',
       gitUpToDate: '已是最新',
+      gitRemoteChecking: '检查中…',
+      gitRemoteCurrent: '已是最新',
+      gitRemoteBehind: '{count} 个提交待拉取',
+      gitRemoteDiverged: '已分叉 · {count} 个待拉取',
+      gitRemoteNoUpstream: '未跟踪上游',
+      gitRemoteDetached: 'detached HEAD',
+      gitRemoteUnknown: '远端状态未知',
+      gitRemoteFailed: '远端状态检查失败：{message}',
       gitPullDetached: '当前处于 detached HEAD，无法拉取',
       gitPullNoUpstream: '当前分支没有上游分支，无法拉取',
       gitPullTimedOut: '拉取超时，请检查网络后重试',
@@ -276,6 +289,14 @@ window.__ModuleLoader__.load({
       gitPulling: 'Pulling…',
       gitPulled: 'Pulled',
       gitUpToDate: 'Up to date',
+      gitRemoteChecking: 'Checking…',
+      gitRemoteCurrent: 'Up to date',
+      gitRemoteBehind: '{count} to pull',
+      gitRemoteDiverged: 'Diverged · {count} to pull',
+      gitRemoteNoUpstream: 'No upstream',
+      gitRemoteDetached: 'detached HEAD',
+      gitRemoteUnknown: 'Remote status unknown',
+      gitRemoteFailed: 'Could not check the remote: {message}',
       gitPullDetached: 'The repository is on a detached HEAD, so it cannot pull.',
       gitPullNoUpstream: 'The current branch has no upstream to pull from.',
       gitPullTimedOut: 'The pull timed out; check the network and try again.',
@@ -366,6 +387,15 @@ window.__ModuleLoader__.load({
         '.dli-git-head{display:flex;align-items:center;gap:8px;padding:6px 10px;',
         'border-bottom:0.5px solid rgba(127,127,127,.25);}',
         '.dli-git-title{font-weight:600;}',
+        '.dli-git-remote{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+        'font-size:11px;line-height:18px;padding:0 6px;border-radius:999px;',
+        'color:var(--dsw-alias-label-secondary);background:rgba(127,127,127,.14);}',
+        '.dli-git-remote[data-tone="success"]{color:var(--dsw-alias-state-success-primary);',
+        'background:var(--dsw-alias-state-success-tertiary);}',
+        '.dli-git-remote[data-tone="warn"]{color:var(--dsw-alias-state-warn-label);',
+        'background:var(--dsw-alias-state-warn-tertiary);}',
+        '.dli-git-remote[data-tone="error"]{color:var(--dsw-alias-state-error-primary);',
+        'background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);}',
         '.dli-git-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;}',
         '.dli-git-list{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 0;}',
         '.dli-git-row{display:flex;align-items:center;gap:6px;padding:2px 10px;}',
@@ -738,13 +768,14 @@ window.__ModuleLoader__.load({
      * row replaces both columns with what that row is about — one file's diff, or
      * one commit's changed files — and a back button returns.
      *
-     * The Pull button is the page's only direct Git mutation: the Host accepts it
-     * only as a fast-forward and returns the refreshed listing. Nothing here
-     * stages, commits, pushes, or discards work. The working directory comes from
-     * the Session rather than from a setting, so the page follows whichever
-     * project the conversation is in.
-     * @param props - slot props plus the injected `load`, `pull`, `loadDiff`, and
-     *   `loadCommit` callbacks.
+     * The upstream badge refreshes one remote-tracking ref without moving local
+     * work. Pull is the only action that changes the branch or working tree: the
+     * Host accepts it only as a fast-forward and returns the refreshed listing.
+     * Nothing here stages, commits, pushes, or discards work. The working
+     * directory comes from the Session rather than from a setting, so the page
+     * follows whichever project the conversation is in.
+     * @param props - slot props plus the injected `load`, `loadRemote`, `pull`,
+     *   `loadDiff`, and `loadCommit` callbacks.
      * @returns the two columns, the open detail, or the line explaining why there
      *   is neither.
      */
@@ -775,7 +806,27 @@ window.__ModuleLoader__.load({
         const controller = new AbortController()
         setState({ phase: 'loading' })
         props.load(cwd, controller.signal).then(
-          (result) => { if (!controller.signal.aborted) setState({ phase: 'settled', result }) },
+          (result) => {
+            if (controller.signal.aborted) return
+            if (!result.ok) {
+              setState({ phase: 'settled', result })
+              return
+            }
+            setState({ phase: 'settled', result, remote: { phase: 'loading' } })
+            void props.loadRemote(result.root, controller.signal).then(
+              (remoteResult) => {
+                if (controller.signal.aborted) return
+                setState((current) => current.result?.root === result.root
+                  ? { ...current, remote: { phase: 'settled', result: remoteResult } }
+                  : current)
+              },
+              (error) => {
+                if (controller.signal.aborted) return
+                setState((current) => current.result?.root === result.root
+                  ? { ...current, remote: { phase: 'failed', error } }
+                  : current)
+              })
+          },
           (error) => { if (!controller.signal.aborted) setState({ phase: 'failed', error }) })
         return () => { controller.abort() }
       }, [cwd, tab.navigation.revision, attempt])
@@ -834,7 +885,11 @@ window.__ModuleLoader__.load({
             if (controller.signal.aborted) return
             pullController.current = undefined
             if (outcome.ok) {
-              setState({ phase: 'settled', result: outcome })
+              setState({
+                phase: 'settled',
+                result: outcome,
+                remote: { phase: 'settled', result: { ok: true, relation: 'up-to-date', behind: 0 } },
+              })
               setDetail(undefined)
               setPull({ phase: 'done', updated: outcome.updated === true })
             } else {
@@ -851,6 +906,46 @@ window.__ModuleLoader__.load({
         if (pull.phase === 'pulling') return t('gitPulling')
         if (pull.phase === 'done') return t(pull.updated ? 'gitPulled' : 'gitUpToDate')
         return t('gitPull')
+      }
+
+      /** Current upstream comparison, shown beside the recent-commits heading. */
+      const remoteBadge = () => {
+        if (loaded === undefined) return null
+        const remote = state.remote
+        let label = t('gitRemoteChecking')
+        let tone = 'muted'
+        let title
+        if (remote?.phase === 'failed') {
+          label = t('gitRemoteUnknown')
+          tone = 'error'
+          title = t('gitRemoteFailed', { message: String(remote.error?.message ?? remote.error) })
+        } else if (remote?.phase === 'settled') {
+          const status = remote.result
+          if (status.ok) {
+            if (status.relation === 'behind') {
+              label = t('gitRemoteBehind', { count: status.behind })
+              tone = 'warn'
+            } else if (status.relation === 'diverged') {
+              label = t('gitRemoteDiverged', { count: status.behind })
+              tone = 'error'
+            } else {
+              label = t('gitRemoteCurrent')
+              tone = 'success'
+            }
+          } else if (status.reason === 'no-upstream') {
+            label = t('gitRemoteNoUpstream')
+          } else if (status.reason === 'detached-head') {
+            label = t('gitRemoteDetached')
+          } else {
+            label = t('gitRemoteUnknown')
+            tone = 'error'
+            title = t('gitRemoteFailed', { message: status.message ?? status.reason })
+          }
+        }
+        return h('span', {
+          className: 'dli-git-remote', 'data-tone': tone, title: title ?? label,
+          role: 'status', 'aria-live': 'polite',
+        }, label)
       }
 
       /**
@@ -885,7 +980,8 @@ window.__ModuleLoader__.load({
         }, t('gitRefresh')),
         h('button', {
           type: 'button', className: 'dli-git-pull', onClick: pullLatest,
-          disabled: loaded === undefined || state.phase === 'loading' || pull.phase === 'pulling',
+          disabled: loaded === undefined || state.phase === 'loading' || state.remote?.phase === 'loading'
+            || pull.phase === 'pulling',
         }, pullLabel()),
         h('button', {
           type: 'button', className: 'dli-git-send', onClick: submit,
@@ -899,9 +995,10 @@ window.__ModuleLoader__.load({
           : t('gitSendFailed', { message: send.message }))
       const pullNote = pull.phase === 'failed' ? note(gitPullReason(t, pull.result)) : null
 
-      const column = (title, count, rows) => h('section', { className: 'dli-git-col' },
+      const column = (title, count, rows, status) => h('section', { className: 'dli-git-col' },
         h('div', { className: 'dli-git-head' },
           h('span', { className: 'dli-git-title' }, title),
+          status,
           h('span', { className: 'dli-git-count' }, String(count))),
         h('div', { className: 'dli-git-list' }, rows))
 
@@ -1027,7 +1124,7 @@ window.__ModuleLoader__.load({
           column(t('gitChanges'), changes.length,
             changes.length === 0 ? note(t('gitEmptyChanges')) : changes),
           column(t('gitCommits'), commits.length,
-            commits.length === 0 ? note(t('gitEmptyCommits')) : commits))
+            commits.length === 0 ? note(t('gitEmptyCommits')) : commits, remoteBadge()))
       }
 
       return h('div', { className: 'dli-git' }, bar, pullNote, sendNote, body())
@@ -1176,12 +1273,26 @@ window.__ModuleLoader__.load({
             key: GIT_TYPE_ID,
             locale: NS,
             // The component reaches no service itself: these callbacks read the
-            // repository, fast-forward it, read one detail, or put a message in
-            // the conversation; all are bound to the Session this tab belongs to.
+            // repository, compare or fast-forward its upstream, read one detail,
+            // or put a message in the conversation; all are bound to the Session
+            // this tab belongs to.
             inject: (sessionId) => ({
               load: async (cwd, signal) => {
                 const response = await fetch(`${GIT_PATH}?cwd=${encodeURIComponent(cwd)}`, { signal })
                 if (!response.ok) throw new Error(`little-icon: the Git route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Refresh and compare the branch's configured upstream.
+               * @param root - repository root from the local listing.
+               * @param signal - aborts the page's wait when it closes or refreshes.
+               * @returns ahead/behind status, or why no status is available.
+               */
+              loadRemote: async (root, signal) => {
+                const response = await fetch(`${GIT_REMOTE_PATH}?root=${encodeURIComponent(root)}`, {
+                  method: 'POST', signal,
+                })
+                if (!response.ok) throw new Error(`little-icon: the Git remote route answered ${response.status}`)
                 return response.json()
               },
               /**

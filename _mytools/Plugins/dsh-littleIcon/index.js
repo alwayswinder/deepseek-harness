@@ -88,6 +88,9 @@ const GIT_DIFF_PATH = '/api/little-icon/git/diff'
  */
 const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
 
+/** Same-origin POST route that refreshes and compares the configured upstream. */
+const GIT_REMOTE_PATH = '/api/little-icon/git/remote'
+
 /** Same-origin POST route that fast-forwards the current branch from its upstream. */
 const GIT_PULL_PATH = '/api/little-icon/git/pull'
 
@@ -105,7 +108,7 @@ const GIT_EXECUTABLE = 'git'
 /** Longest a single Git command may run before it is killed. */
 const GIT_TIMEOUT_MS = 10_000
 
-/** Default network deadline for a pull; deployments can override it in the plugin config. */
+/** Default network deadline for an upstream check or pull; deployments can override it. */
 const GIT_PULL_TIMEOUT_MS = 60_000
 
 /** Ceiling on one command's output; a larger status or log is an error, not a pause. */
@@ -175,7 +178,7 @@ export const Config = z.object({
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
   clickAction: z.union(['toggle', 'minimize', 'none']).default('toggle').volatile(),
-  /** Milliseconds a Git pull may spend contacting and updating from its upstream. */
+  /** Milliseconds an upstream check or pull may spend contacting its remote. */
   gitPullTimeoutMs: z.number().step(1000).min(1000).max(300000).default(GIT_PULL_TIMEOUT_MS).volatile(),
   /**
    * Directory screenshots are written to; blank keeps them in the plugin's own
@@ -628,6 +631,109 @@ async function readGitRepository(cwd) {
   }
 }
 
+/** Last queued network operation per repository root. */
+const gitNetworkTails = new Map()
+
+/** Upstream checks already running for one repository and tracking ref. */
+const gitRemoteChecks = new Map()
+
+/**
+ * Serialize remote operations for one repository.
+ *
+ * Separate tabs may refresh or pull the same checkout at once. Git protects its
+ * refs with lock files, so those operations take turns here instead of exposing
+ * an incidental lock failure in the page.
+ * @param root - repository root used as the serialization key.
+ * @param run - operation to start after the previous one settles.
+ * @returns the operation's result.
+ */
+async function runGitNetworkOperation(root, run) {
+  const previous = gitNetworkTails.get(root) ?? Promise.resolve()
+  const operation = previous.catch(() => {}).then(run)
+  const tail = operation.then(() => undefined, () => undefined)
+  gitNetworkTails.set(root, tail)
+  try {
+    return await operation
+  } finally {
+    if (gitNetworkTails.get(root) === tail) gitNetworkTails.delete(root)
+  }
+}
+
+/**
+ * Refresh and compare one branch's configured upstream.
+ *
+ * The fetch updates only that branch's remote-tracking ref and never the local
+ * branch, index, or working tree. `ahead` counts commits only on local HEAD;
+ * `behind` counts commits available from the upstream but absent from HEAD.
+ * Concurrent tabs join the same check.
+ * @param cwd - directory inside the repository to inspect.
+ * @param timeoutMs - remote contact deadline in milliseconds.
+ * @returns `{ ok: true, relation, ahead, behind }`, or `{ ok: false }` with
+ *   `no-dir`, `no-git`, `not-a-repo`, `detached-head`, `no-upstream`,
+ *   `timed-out`, or `failed`.
+ */
+async function readGitRemoteStatus(cwd, timeoutMs = GIT_PULL_TIMEOUT_MS) {
+  if (!isDirectory(cwd)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(cwd, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  const root = top.stdout.trim()
+  const branch = await execGit(root, ['branch', '--show-current'])
+  if (!branch.ok) return { ok: false, reason: 'failed', message: branch.message }
+  const branchName = branch.stdout.trim()
+  if (branchName === '') return { ok: false, reason: 'detached-head' }
+
+  const configured = await execGit(root, [
+    'for-each-ref',
+    '--count=1',
+    '--format=%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream)',
+    `refs/heads/${branchName}`,
+  ])
+  if (!configured.ok) return { ok: false, reason: 'failed', message: configured.message }
+  const [remoteName = '', remoteRef = '', upstreamRef = ''] = configured.stdout.trim().split('\0')
+  if (remoteName === '' || remoteRef === '' || upstreamRef === '') {
+    return { ok: false, reason: 'no-upstream' }
+  }
+
+  const key = `${root}\0${upstreamRef}`
+  const running = gitRemoteChecks.get(key)
+  if (running !== undefined) return running
+  const operation = runGitNetworkOperation(root, async () => {
+    if (remoteName !== '.') {
+      const fetched = await execGit(root, [
+        'fetch', '--quiet', '--no-tags', '--no-write-fetch-head',
+        remoteName, `+${remoteRef}:${upstreamRef}`,
+      ], timeoutMs)
+      if (!fetched.ok) {
+        return {
+          ok: false,
+          reason: fetched.timedOut ? 'timed-out' : 'failed',
+          message: fetched.message,
+        }
+      }
+    }
+    const counts = await execGit(root, ['rev-list', '--left-right', '--count', `HEAD...${upstreamRef}`])
+    if (!counts.ok) return { ok: false, reason: 'failed', message: counts.message }
+    const [aheadText, behindText] = counts.stdout.trim().split(/\s+/)
+    const ahead = Number.parseInt(aheadText, 10)
+    const behind = Number.parseInt(behindText, 10)
+    if (!Number.isInteger(ahead) || !Number.isInteger(behind)) {
+      return { ok: false, reason: 'failed', message: 'git rev-list returned invalid ahead/behind counts' }
+    }
+    return {
+      ok: true,
+      relation: behind === 0 ? 'up-to-date' : ahead === 0 ? 'behind' : 'diverged',
+      ahead,
+      behind,
+    }
+  })
+  gitRemoteChecks.set(key, operation)
+  try {
+    return await operation
+  } finally {
+    if (gitRemoteChecks.get(key) === operation) gitRemoteChecks.delete(key)
+  }
+}
+
 /** Pull operations already running for a repository root, shared by every open tab. */
 const gitPulls = new Map()
 
@@ -658,20 +764,24 @@ async function pullGitRepository(cwd, timeoutMs = GIT_PULL_TIMEOUT_MS) {
   const running = gitPulls.get(root)
   if (running !== undefined) return running
   const operation = (async () => {
-    const before = await execGit(root, ['rev-parse', 'HEAD'])
-    if (!before.ok) return { ok: false, reason: 'failed', message: before.message }
-    const pulled = await execGit(root, [
-      '-c', 'merge.autoStash=false', '-c', 'rebase.autoStash=false',
-      'pull', '--ff-only',
-    ], timeoutMs)
-    if (!pulled.ok) {
-      return { ok: false, reason: pulled.timedOut ? 'timed-out' : 'failed', message: pulled.message }
-    }
-    const after = await execGit(root, ['rev-parse', 'HEAD'])
-    if (!after.ok) return { ok: false, reason: 'failed', message: after.message }
+    const updated = await runGitNetworkOperation(root, async () => {
+      const before = await execGit(root, ['rev-parse', 'HEAD'])
+      if (!before.ok) return { ok: false, reason: 'failed', message: before.message }
+      const pulled = await execGit(root, [
+        '-c', 'merge.autoStash=false', '-c', 'rebase.autoStash=false',
+        'pull', '--ff-only',
+      ], timeoutMs)
+      if (!pulled.ok) {
+        return { ok: false, reason: pulled.timedOut ? 'timed-out' : 'failed', message: pulled.message }
+      }
+      const after = await execGit(root, ['rev-parse', 'HEAD'])
+      if (!after.ok) return { ok: false, reason: 'failed', message: after.message }
+      return { ok: true, moved: before.stdout.trim() !== after.stdout.trim() }
+    })
+    if (!updated.ok) return updated
     const listing = await readGitRepository(root)
     return listing.ok
-      ? { ...listing, updated: before.stdout.trim() !== after.stdout.trim() }
+      ? { ...listing, updated: updated.moved }
       : listing
   })()
   gitPulls.set(root, operation)
@@ -1231,9 +1341,9 @@ export function apply(ctx, config) {
   // process of its own, so the Host is the only half that can ask Git anything.
   // The directory arrives with the listing request because the page is what knows
   // which Session it belongs to — the same directory the person already handed
-  // this agent to work in — and the route answers only reads, so no path a page
-  // can name gives it anything the Session itself could not do. The pull route is
-  // the explicit exception to the reads: POST and fast-forward-only.
+  // this agent to work in. The upstream status route is POST because it refreshes
+  // one remote-tracking ref. Pull is the only route that changes the local branch
+  // or working tree, and it stays fast-forward-only.
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
@@ -1269,6 +1379,15 @@ export function apply(ctx, config) {
         ))
       },
     }), `little-icon: GET ${GIT_COMMIT_PATH}`)
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_REMOTE_PATH,
+      handler: (req, res) => {
+        serveGitMutation(ctx, req, res, (query) => readGitRemoteStatus(
+          query.get('root') ?? '', config.gitPullTimeoutMs.get(),
+        ))
+      },
+    }), `little-icon: POST ${GIT_REMOTE_PATH}`)
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
       path: GIT_PULL_PATH,
@@ -1423,6 +1542,7 @@ export const internals = {
   resolveDshHome,
   resolveShotDir,
   readGitRepository,
+  readGitRemoteStatus,
   pullGitRepository,
   readGitDiff,
   readGitCommit,
@@ -1437,6 +1557,7 @@ export const internals = {
   GIT_PATH,
   GIT_DIFF_PATH,
   GIT_COMMIT_PATH,
+  GIT_REMOTE_PATH,
   GIT_PULL_PATH,
   OPEN_PATH,
   GIT_DIFF_MAX_CHARS,

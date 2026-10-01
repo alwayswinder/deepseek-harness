@@ -221,9 +221,10 @@ assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang unde
 assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens the aquarium')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 assert.equal(labels.Sites, '常用网站', 'the menu entry the configured sites hang under')
+assert.equal(labels.System, '系统', 'the menu entry the DSH lifecycle entries hang under')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
   'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved',
-  'ShotSavedNoClipboard', 'ShotFailed',
+  'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
   'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
@@ -240,6 +241,15 @@ assert.match(petSource, /add_DropDownOpening/, 'the sites submenu must rebuild i
 assert.match(petSource, /function Update-SiteMenu/, 'the sites submenu needs its rebuild step')
 assert.match(petSource, /\$SCRIPT:Sites = Get-SiteList \$State/, 'the published sites must reach the submenu')
 assert.match(petSource, /case "globe":/, 'the sites entry needs its icon, like every other entry')
+// The three entries that act on the running application share one parent rather
+// than sitting at the top level, so the divider opens a submenu.
+assert.match(petSource, /Add-PetMenuItem \$systemItem\.DropDownItems \$SCRIPT:Labels\.UpdateDsh/,
+  'the update entry must belong to the system submenu')
+assert.match(petSource, /Add-PetMenuItem \$systemItem\.DropDownItems \$SCRIPT:Labels\.RestartDsh/,
+  'and so must the restart entry')
+assert.match(petSource, /Add-PetMenuItem \$systemItem\.DropDownItems \$SCRIPT:Labels\.QuitDsh/,
+  'and so must the quit entry')
+assert.match(petSource, /case "system":/, 'the system submenu needs its own icon')
 assert.match(petSource, /--detached --restart/, 'the update entry must restart only through the detached Desktop build')
 // The pet has no quit entry of its own any more: the plugin's enable switch owns
 // its lifetime, and the freed entry ends DSH instead.
@@ -376,6 +386,7 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
   assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
   assert.match(selfTest.stdout, /设置/, 'the self test must report the settings entry too')
+  assert.match(selfTest.stdout, /系统/, 'the self test must report the system entry too')
   assert.match(selfTest.stdout, /小游戏/, 'the self test must report the mini-games entry too')
   assert.match(selfTest.stdout, /玻璃鱼缸/, 'the self test must report the aquarium entry too')
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')

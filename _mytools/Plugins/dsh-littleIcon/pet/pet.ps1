@@ -293,6 +293,11 @@ namespace DshPet
                         graphics.DrawEllipse(pen, R(bounds, 6.4f, 1.6f, 7.2f, 16.8f));
                         graphics.DrawLine(pen, P(bounds, 1.6f, 10f), P(bounds, 18.4f, 10f));
                         break;
+                    case "system":
+                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.6f, 3.6f, 16.8f, 11.6f)));
+                        graphics.DrawLine(pen, P(bounds, 10f, 15.2f), P(bounds, 10f, 17.6f));
+                        graphics.DrawLine(pen, P(bounds, 6.4f, 17.6f), P(bounds, 13.6f, 17.6f));
+                        break;
                     case "restart":
                         graphics.DrawArc(pen, R(bounds, 2f, 2f, 16f, 16f), 36f, 286f);
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 12f, 1.8f), P(bounds, 17.5f, 3.5f), P(bounds, 16f, 8f) });
@@ -378,6 +383,7 @@ function Get-Labels {
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
         ShotSavedNoClipboard  = 'Screenshot saved as a file, but it could not be copied to the clipboard'
         ShotFailed            = 'The screenshot could not be saved.'
+        System                = 'System'
         UpdateDsh             = 'Update DSH'
         UpdateDshConfirm      = 'Build this checkout and update DSH? DSH will close during the build and restart only after success. A running task will be interrupted. This does not pull code.'
         UpdateDshUnavailable  = 'The Desktop build script for this checkout could not be found, so DSH was left alone.'
@@ -923,7 +929,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -1657,14 +1663,14 @@ function Exit-Pet {
     try { $app.Shutdown() } catch { }
 }
 
-function Add-PetMenuItem($Menu, [string]$Text, [string]$Icon) {
+function Add-PetMenuItem($Items, [string]$Text, [string]$Icon) {
     $item = New-Object System.Windows.Forms.ToolStripMenuItem
     $item.Text = $Text
     $item.Tag = $Icon
     $item.AutoSize = $true
     $item.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
     $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
-    [void]$Menu.Items.Add($item)
+    [void]$Items.Add($item)
     return $item
 }
 
@@ -1690,7 +1696,7 @@ function New-PetMenu {
         param($sender, $eventArgs)
         try { [DshPet.PetMenuRenderer]::ApplyRoundedRegion($sender) } catch { Write-Log $_.Exception.Message }
     })
-    $chatItem = Add-PetMenuItem $menu $SCRIPT:Labels.Chat 'chat'
+    $chatItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Chat 'chat'
     $chatItem.add_Click({
         try {
             # The page opens the site in its own Browser tab, so DSH has to be on
@@ -1703,7 +1709,7 @@ function New-PetMenu {
     # own and can be any length, so the entry itself opens nothing and the submenu
     # is rebuilt from the published list at every open (see Update-SiteMenu), which
     # is also what makes an edit reach a pet that is already running.
-    $sitesItem = Add-PetMenuItem $menu $SCRIPT:Labels.Sites 'globe'
+    $sitesItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Sites 'globe'
     $sitesItem.DropDown.ShowImageMargin = $false
     $sitesItem.DropDown.ShowItemToolTips = $true
     $sitesItem.DropDown.BackColor = $menu.BackColor
@@ -1715,7 +1721,7 @@ function New-PetMenu {
     # The Git page is the plugin's own tab type, so unlike Chat it needs nothing
     # shipped besides the right Sidebar; the page reads the repository of whatever
     # Session is in front. Showing DSH first is the same requirement.
-    $gitItem = Add-PetMenuItem $menu $SCRIPT:Labels.Git 'git'
+    $gitItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Git 'git'
     $gitItem.add_Click({
         try {
             Show-DshWindow
@@ -1726,7 +1732,7 @@ function New-PetMenu {
     # reason: the pet knows no Session's directory, and the page can name one but
     # cannot open it. Nothing is raised first here - the folder window is what the
     # person asked to see, and Explorer brings itself to the front.
-    $openItem = Add-PetMenuItem $menu $SCRIPT:Labels.OpenCwd 'folder'
+    $openItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.OpenCwd 'folder'
     $openItem.add_Click({
         try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
     })
@@ -1735,7 +1741,7 @@ function New-PetMenu {
     # child is the glass aquarium, which the page owns like the entries above,
     # and therefore raises DSH for the same reason: a fullscreen overlay in a
     # hidden window is an overlay nobody sees.
-    $gamesItem = Add-PetMenuItem $menu $SCRIPT:Labels.Games 'games'
+    $gamesItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Games 'games'
     $gamesItem.DropDown.ShowImageMargin = $false
     $gamesItem.DropDown.BackColor = $menu.BackColor
     $gamesItem.DropDown.ForeColor = $menu.ForeColor
@@ -1754,7 +1760,7 @@ function New-PetMenu {
     # A capture belongs to this process rather than to the page: the pet is the half
     # that can draw over the whole desktop, and the file needs nothing of DSH. It
     # therefore raises no window either - the sheet covers whatever is there.
-    $shotItem = Add-PetMenuItem $menu $SCRIPT:Labels.Shot 'camera'
+    $shotItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Shot 'camera'
     $shotItem.add_Click({
         try { Start-RegionShot } catch {
             Write-Log "starting a capture failed: $($_.Exception.Message)"
@@ -1764,7 +1770,7 @@ function New-PetMenu {
     # Settings ends the list on both profiles: it opens a page of DSH's own rather
     # than a window this process controls, so the web profile keeps it too. The pet
     # never offers to quit itself: the plugin's own switch owns its lifetime.
-    $settingsItem = Add-PetMenuItem $menu $SCRIPT:Labels.Settings 'gear'
+    $settingsItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Settings 'gear'
     $settingsItem.add_Click({
         try {
             Show-DshWindow
@@ -1772,10 +1778,16 @@ function New-PetMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     # Building, ending, or restarting the app requires its Desktop process, so
-    # the divider and these entries exist on Desktop only.
+    # the divider and the submenu under it exist on Desktop only. The three share
+    # one parent because each of them acts on the running application rather than
+    # opening something inside it.
     if ($SCRIPT:DshPid -gt 0) {
         [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-        $updateItem = Add-PetMenuItem $menu $SCRIPT:Labels.UpdateDsh 'restart'
+        $systemItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.System 'system'
+        $systemItem.DropDown.ShowImageMargin = $false
+        $systemItem.DropDown.BackColor = $menu.BackColor
+        $systemItem.DropDown.ForeColor = $menu.ForeColor
+        $updateItem = Add-PetMenuItem $systemItem.DropDownItems $SCRIPT:Labels.UpdateDsh 'restart'
         $SCRIPT:UpdateMenuItem = $updateItem
         $updateItem.add_Click({
             param($sender, $eventArgs)
@@ -1792,9 +1804,9 @@ function New-PetMenu {
                 try { Show-UpdateFailure $_.Exception.Message } catch { }
             }
         })
-        # Restarting is the entry edits to the plugin, and builds, are usually
-        # for, so it sits with ending DSH rather than with the page actions.
-        $restartItem = Add-PetMenuItem $menu $SCRIPT:Labels.RestartDsh 'restart'
+        # Restarting is what edits to the plugin, and builds, are usually for, so
+        # it sits above ending DSH rather than first in the submenu.
+        $restartItem = Add-PetMenuItem $systemItem.DropDownItems $SCRIPT:Labels.RestartDsh 'restart'
         $restartItem.add_Click({
             try {
                 # Like ending DSH, a restart interrupts whatever is running, so the
@@ -1811,7 +1823,7 @@ function New-PetMenu {
                 try { Show-RestartFailure $_.Exception.Message } catch { }
             }
         })
-        $quitItem = Add-PetMenuItem $menu $SCRIPT:Labels.QuitDsh 'power'
+        $quitItem = Add-PetMenuItem $systemItem.DropDownItems $SCRIPT:Labels.QuitDsh 'power'
         $quitItem.add_Click({
             try {
                 # Closing DSH interrupts whatever is running, so the entry asks first;

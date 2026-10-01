@@ -13,9 +13,9 @@
  * page reports its own input, so the pet can tell "nobody is there" from "no task
  * is running". And it performs the pet's menu commands: the pet window belongs to
  * another process, so a choice made there reaches the page through the Host, and
- * "chat" opens the DeepSeek chat site in DSH's own Browser tab rather than the
- * system browser, while "git" opens this plugin's own Git page beside the
- * conversation.
+ * "chat" and the Sites entries open their address where Chat's own "Open chat
+ * links in" preference points — DSH's Browser tab, or the system browser — while
+ * "git" opens this plugin's own Git page beside the conversation.
  *
  * The Git page is a tab type this plugin registers itself: the right Sidebar's
  * registry is the extension point for exactly that, so the page needs neither the
@@ -51,6 +51,12 @@ window.__ModuleLoader__.load({
 
     /** The right-Sidebar page type that shows an HTTP(S) site inside DSH. */
     const BROWSER_TAB = 'browser'
+
+    /** The row whose "Open chat links in" preference decides where a site opens. */
+    const CHAT_NS = 'ui-chat'
+
+    /** The destination that preference takes while nobody has chosen one. */
+    const DEFAULT_LINK_OPENING = 'sidebar'
 
     /** The right-Sidebar page type the pet's "git" entry opens. */
     const GIT_KIND = 'little-icon-git'
@@ -1268,6 +1274,41 @@ window.__ModuleLoader__.load({
           document.removeEventListener('visibilitychange', onVisibility)
         }, 'little-icon: activity reporting')
 
+        // Where a menu entry opens is the person's choice rather than this plugin's:
+        // Chat and Sites must land where a chat link lands, so they follow ui-chat's
+        // "Open chat links in" preference instead of keeping a second copy of it.
+        // That row belongs to ui-chat and `configForms.get` answers for any id, so a
+        // deployment without ui-chat reads no value and keeps the in-app Browser tab.
+        // Read at the click rather than mirrored: nothing renders from it.
+        const linkForm = ctx.configForms.get(CHAT_NS)
+        const wantsInApp = () => (linkForm.getSnapshot().value?.linkOpening ?? DEFAULT_LINK_OPENING) === 'sidebar'
+
+        /**
+         * Open one address where the person's link preference points: the in-app
+         * Browser tab, or the system browser, which is where the Desktop shell sends
+         * an HTTP(S) `window.open`. Both services are looked up instead of injected
+         * because a Web profile may leave the Browser type disabled and a build
+         * without the right Sidebar provides neither: this plugin must load and
+         * render its settings card either way.
+         * @param url - HTTP(S) address to open.
+         */
+        const openAddress = (url) => {
+          const sidebar = ctx.get('sidebarRight')
+          const inApp = wantsInApp() && sidebar !== undefined
+            && ctx.get('sidebarRightTabs')?.get(BROWSER_TAB) !== undefined
+          if (inApp) {
+            sidebar.openTab(BROWSER_TAB, { params: { url } })
+            return
+          }
+          // The preference asked for the in-app tab and this build has none. Handing
+          // the address to the system browser is what ui-chat's own fallback does;
+          // saying so keeps the fallback from looking like a click that went nowhere.
+          if (wantsInApp()) {
+            console.warn('little-icon: this DSH build has no in-app Browser tab to open %s in', url)
+          }
+          window.open(url, '_blank', 'noopener,noreferrer')
+        }
+
         /**
          * Carry out one menu command the pet reported. The pet window belongs to
          * another process, so the page is what acts on a choice made there.
@@ -1276,19 +1317,7 @@ window.__ModuleLoader__.load({
          */
         const runMenuCommand = {
           chat: () => {
-            // The Browser tab is a shipped type a Web profile may leave disabled,
-            // and a build without the right Sidebar provides no service at all, so
-            // both are looked up instead of injected: this plugin must load and
-            // render its settings card either way.
-            const sidebar = ctx.get('sidebarRight')
-            if (sidebar === undefined || ctx.get('sidebarRightTabs')?.get(BROWSER_TAB) === undefined) {
-              console.warn('little-icon: this DSH build has no in-app Browser tab to open %s in', CHAT_URL)
-              return
-            }
-            // "In DSH" is the requirement: the chat site opens beside the
-            // conversation, in the same surface DSH's own chat links use, never in
-            // the system browser.
-            sidebar.openTab(BROWSER_TAB, { params: { url: CHAT_URL } })
+            openAddress(CHAT_URL)
           },
           site: ({ url }) => {
             // One configured entry, by the address the Host put in the frame. The
@@ -1300,15 +1329,7 @@ window.__ModuleLoader__.load({
               console.warn('little-icon: a site entry named no openable address: %s', String(url))
               return
             }
-            // The same in-app Browser tab the chat entry uses, with the same
-            // requirement: the site is shown beside the conversation rather than
-            // handed to the system browser.
-            const sidebar = ctx.get('sidebarRight')
-            if (sidebar === undefined || ctx.get('sidebarRightTabs')?.get(BROWSER_TAB) === undefined) {
-              console.warn('little-icon: this DSH build has no in-app Browser tab to open %s in', target)
-              return
-            }
-            sidebar.openTab(BROWSER_TAB, { params: { url: target } })
+            openAddress(target)
           },
           git: () => {
             // Nothing shipped is needed here: the page type is this plugin's own,

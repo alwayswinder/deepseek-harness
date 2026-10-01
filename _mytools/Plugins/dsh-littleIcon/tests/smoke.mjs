@@ -399,6 +399,11 @@ if (process.platform === 'win32') {
   // fullscreen every time the pet tucks it away and brings it back.
   assert.match(selfTest.stdout, /show-commands: minimized=9 hidden=5/,
     'a hidden window must be shown and a minimized one restored')
+  // A click means "let me look at DSH", so it may only tuck away a window that is
+  // already in front. Deciding on visibility alone made a click while working in
+  // another application hide DSH, which is the opposite of what it asked for.
+  assert.match(selfTest.stdout, /click-intent: front=hide behind=show hidden=show minimized=show/,
+    'a click must hide only an in-front window and raise every other one')
   // The sites submenu is the menu's only part built from configuration, so the
   // self test builds it for an empty list and for a list of two and prints what
   // each turned into: what an entry reads, the address it carries, and the two
@@ -927,10 +932,13 @@ let loadedRecord = null
 const windowListeners = new Map()
 const documentListeners = new Map()
 const pings = []
+/** Addresses handed to the system browser, which is where `window.open` lands. */
+const externalOpens = []
 globalThis.window = {
   __ModuleLoader__: { load: (record) => { loadedRecord = record } },
   addEventListener: (name, handler) => { windowListeners.set(name, handler) },
   removeEventListener: (name) => { windowListeners.delete(name) },
+  open: (url, target, features) => { externalOpens.push({ url, target, features }) },
 }
 globalThis.document = {
   visibilityState: 'visible',
@@ -996,6 +1004,18 @@ const form = {
     for (const listener of formListeners) listener()
   },
 }
+/**
+ * The row ui-chat owns. The pet's Chat and Sites entries read its "Open chat links
+ * in" preference rather than keeping a copy of it, so the test drives that value
+ * here; an absent value is the default the product itself falls back to.
+ */
+const chatForm = {
+  snapshot: { status: 'ready', writable: true, revision: 3, value: {} },
+  getSnapshot() { return this.snapshot },
+  subscribe() { return () => {} },
+  /** Accept a new Host section, as an accepted write on the Chat settings page does. */
+  accept(value) { this.snapshot = { ...this.snapshot, value } },
+}
 const registrations = []
 const dictionaries = new Map()
 const clientDisposers = []
@@ -1025,7 +1045,8 @@ const clientCtx = {
     assert.ok(typeof text === 'string', `the page asked for missing copy: ${key}`)
     return params === undefined ? text : text.replace(/\{(\w+)\}/g, (_, name) => String(params[name]))
   } },
-  configForms: { get: () => form },
+  // `get` answers for any row id, which is what lets the menu read the Chat row.
+  configForms: { get: (id) => (id === 'ui-chat' ? chatForm : form) },
   slots: {
     inject: (_key, callback) => callback(),
     register: (options, component) => { registrations.push({ options, component }); return () => {} },
@@ -1057,8 +1078,9 @@ assert.equal(pings.length, 1, 'activity pings must be throttled')
 
 // The pet's menu is drawn by another process, so its commands arrive here on a
 // Host-held event stream and this half performs them: "chat" opens the DeepSeek
-// chat site in DSH's own Browser tab, never in the system browser, and "git"
-// opens this plugin's own Git page beside the conversation.
+// chat site and "git" opens this plugin's own Git page beside the conversation.
+// Where "chat" lands is the person's own chat-link preference; with nobody having
+// chosen one it is the in-app Browser tab, which is where a chat link goes too.
 assert.equal(eventSources.length, 1, 'the page must listen for menu commands')
 assert.equal(eventSources[0].url, COMMANDS_PATH)
 const [commands] = eventSources
@@ -1069,6 +1091,7 @@ try {
   commands.onmessage({ data: '{"command":"chat"}' })
   assert.equal(openedTabs.length, 1, 'the chat command must open one tab')
   assert.deepEqual(openedTabs[0], { kind: 'browser', options: { params: { url: 'https://chat.deepseek.com' } } })
+  assert.equal(externalOpens.length, 0, 'the default preference keeps the chat site inside DSH')
   commands.onmessage({ data: '{"command":"git"}' })
   assert.equal(openedTabs.length, 2, 'the git command must open one tab')
   assert.deepEqual(openedTabs[1], { kind: 'little-icon-git', options: undefined },
@@ -1078,18 +1101,23 @@ try {
   commands.onmessage({ data: 'not json' })
   assert.equal(openedTabs.length, 2, 'only known commands open anything')
   // A Web profile may leave the Browser tab disabled and a build without the right
-  // Sidebar provides no service at all: the command must then do nothing instead
-  // of failing at the click, and the card must still have been registered.
+  // Sidebar provides no service at all. The preference still asked for the in-app
+  // tab, so the address goes to the system browser — the same fallback ui-chat's
+  // own chat links take — the click says why, and the card stays registered either
+  // way.
   clientServices.sidebarRightTabs.get = () => undefined
   commands.onmessage({ data: '{"command":"chat"}' })
   commands.onmessage({ data: '{"command":"git"}' })
-  assert.equal(openedTabs.length, 2, 'without a registered type nothing may open')
+  assert.equal(openedTabs.length, 2, 'without a registered type no tab may open')
+  assert.deepEqual(externalOpens[0], { url: 'https://chat.deepseek.com', target: '_blank', features: 'noopener,noreferrer' },
+    'a missing Browser type hands the address to the system browser')
   clientServices.sidebarRightTabs.get = (kind) => registeredTypes.find(definition => definition.kind === kind)
     ?? (kind === 'browser' ? { id: 'browser' } : undefined)
   clientServices.sidebarRight = undefined
   commands.onmessage({ data: '{"command":"chat"}' })
   commands.onmessage({ data: '{"command":"git"}' })
-  assert.equal(openedTabs.length, 2, 'without the Sidebar service nothing may open')
+  assert.equal(openedTabs.length, 2, 'without the Sidebar service no tab may open')
+  assert.equal(externalOpens.length, 2, 'a missing Sidebar service falls back the same way')
   // "Settings" is cross-plugin navigation rather than a page of this plugin's own:
   // the card is rendered on the plugin manager's page, so the service that page
   // provides is what selects this bundle, and a build without that page must say
@@ -1121,10 +1149,10 @@ try {
 assert.equal(warned.length, 7, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // The "sites" entry is the one menu command that carries its own address: the
-// frame names it, and the page opens it in the same in-app Browser tab the chat
-// entry uses. A frame with nothing openable opens nothing rather than a blank tab,
-// and an address that got past the Host is checked once more here, at the last
-// point before a tab is handed it.
+// frame names it, and the page opens it where the chat entry would open one. A
+// frame with nothing openable opens nothing rather than a blank tab, and an
+// address that got past the Host is checked once more here, at the last point
+// before a tab is handed it.
 const siteWarnings = []
 const realSiteWarn = console.warn
 console.warn = (...args) => { siteWarnings.push(args.join(' ')) }
@@ -1135,17 +1163,23 @@ try {
   assert.deepEqual(openedTabs.at(-1),
     { kind: 'browser', options: { params: { url: 'https://example.com/docs' } } },
     'the site entry opens the address it named, in the in-app Browser tab')
+  assert.equal(externalOpens.length, 2, 'the default preference keeps a site inside DSH')
   // What the Host refuses arrives with no address at all; what it let through can
   // still be unopenable here if the frame was written by something else.
   commands.onmessage({ data: '{"command":"site"}' })
   commands.onmessage({ data: '{"command":"site","url":"javascript:alert(1)"}' })
   commands.onmessage({ data: '{"command":"site","url":"https://user:secret@example.com"}' })
   assert.equal(openedTabs.length, openedBeforeSites + 1, 'an address that may not open opens nothing')
+  assert.equal(externalOpens.length, 2, 'an address that may not open reaches no browser either')
   // A Web profile may leave the Browser tab disabled, and a build without the
-  // right Sidebar provides no service at all: the entry must do nothing then.
+  // right Sidebar provides no service at all: the address then follows the same
+  // fallback the chat entry takes rather than being dropped.
   clientServices.sidebarRight = undefined
   commands.onmessage({ data: '{"command":"site","url":"https://example.com/docs"}' })
-  assert.equal(openedTabs.length, openedBeforeSites + 1, 'without the Sidebar service nothing may open')
+  assert.equal(openedTabs.length, openedBeforeSites + 1, 'without the Sidebar service no tab may open')
+  assert.deepEqual(externalOpens.at(-1),
+    { url: 'https://example.com/docs', target: '_blank', features: 'noopener,noreferrer' },
+    'without the Sidebar service the address goes to the system browser')
   // A frame naming a property of Object.prototype is not one of this plugin's
   // entries, however the dispatched table is written.
   commands.onmessage({ data: '{"command":"constructor"}' })
@@ -1155,6 +1189,40 @@ try {
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
 assert.equal(siteWarnings.length, 5, `every site entry that could not open must say so: ${siteWarnings.join(' | ')}`)
+
+// "Default Browser" is the other value of the Chat row's preference, and it moves
+// both entries at once: the page hands the address to the system browser and opens
+// no tab, which is where the Desktop shell's `window.open` handler sends an HTTP(S)
+// address. The value is read at the click, so a change on the Chat settings page
+// reaches the very next menu choice without a restart.
+const preferenceWarnings = []
+const realPreferenceWarn = console.warn
+console.warn = (...args) => { preferenceWarnings.push(args.join(' ')) }
+try {
+  chatForm.accept({ linkOpening: 'new-tab' })
+  const tabsBeforePreference = openedTabs.length
+  const externalBeforePreference = externalOpens.length
+  commands.onmessage({ data: '{"command":"chat"}' })
+  assert.deepEqual(externalOpens.at(-1),
+    { url: 'https://chat.deepseek.com', target: '_blank', features: 'noopener,noreferrer' },
+    'the chat entry follows "Default Browser"')
+  commands.onmessage({ data: '{"command":"site","url":"https://example.com/docs"}' })
+  assert.deepEqual(externalOpens.at(-1),
+    { url: 'https://example.com/docs', target: '_blank', features: 'noopener,noreferrer' },
+    'the sites entry follows the same preference')
+  assert.equal(openedTabs.length, tabsBeforePreference, 'no tab may open while the preference says otherwise')
+  assert.equal(externalOpens.length, externalBeforePreference + 2, 'both entries reach the system browser')
+  assert.equal(preferenceWarnings.length, 0, 'a build with no in-app tab is not the case here')
+  // An unrecognized or missing value is the product's own default, not a third
+  // destination: a row whose Chat plugin was never composed keeps the Browser tab.
+  chatForm.accept({})
+  commands.onmessage({ data: '{"command":"chat"}' })
+  assert.equal(openedTabs.length, tabsBeforePreference + 1, 'an absent preference restores the in-app tab')
+  assert.equal(externalOpens.length, externalBeforePreference + 2, 'and opens nothing externally')
+} finally {
+  console.warn = realPreferenceWarn
+  chatForm.accept({})
+}
 
 // "Open working directory" is the one command this half only names: the folder
 // belongs to the Session the main view holds — the same row the shipped

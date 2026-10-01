@@ -357,6 +357,10 @@ $SCRIPT:DefaultShotDir = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:S
 $SCRIPT:ShotDir = $SCRIPT:DefaultShotDir
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
+# Sampled before the click, never by it: whether DSH is the window in front is what
+# a click acts on, and by the time the click is handled the press has already made
+# the pet the foreground window.
+$SCRIPT:DshInFront = $false
 $SCRIPT:DshPid = $DshPid
 
 function Read-Utf8Text([string]$Path) {
@@ -438,6 +442,18 @@ $SCRIPT:SwShow = 5
 function Get-ShowCommand([bool]$Minimized) {
     if ($Minimized) { return $SCRIPT:SwRestore }
     return $SCRIPT:SwShow
+}
+
+# What a click on the pet means. A click says "I want to look at DSH", so it hides
+# only a window that is already the one in front; a window that is merely behind
+# another application is raised instead of being tucked away. Deciding on whether
+# the window is on screen alone turned a click made while working in another
+# application into "make DSH disappear", which is the opposite of what it meant.
+# A window that is not on screen is raised whichever way the foreground question
+# answers, because a hidden window is nobody's foreground window.
+function Get-ClickIntent([bool]$Shown, [bool]$InFront) {
+    if ($Shown -and $InFront) { return 'hide' }
+    return 'show'
 }
 
 # Custom window message the Electron main process listens for (its hook lives in
@@ -937,6 +953,10 @@ if ($SelfTest) {
     # SW_RESTORE also returns a maximized or fullscreen window to the size it had
     # before, so only a minimized window is restored and a hidden one is shown.
     Write-Output "show-commands: minimized=$(Get-ShowCommand $true) hidden=$(Get-ShowCommand $false)"
+    # Whether a click hides DSH or brings it forward is the other decision that
+    # cannot be read off the window after the fact, so it is printed here too: only
+    # a window that is both on screen and in front is tucked away.
+    Write-Output "click-intent: front=$(Get-ClickIntent $true $true) behind=$(Get-ClickIntent $true $false) hidden=$(Get-ClickIntent $false $false) minimized=$(Get-ClickIntent $false $true)"
     # The sites submenu is the menu's only part built from configuration rather than
     # from this script, so it is built here - without ever being shown - and what
     # each list turns into is printed. The host has already dropped every row it
@@ -1239,6 +1259,21 @@ function Get-DshForeground {
     return ($owner -eq $SCRIPT:DshPid -or $owner -eq $PID)
 }
 
+function Get-DshInFront {
+    # The click's own question, and deliberately stricter than Get-DshForeground:
+    # what decides whether a click tucks DSH away is whether DSH itself is the
+    # window in front. The pet's own window does not count, because the press that
+    # makes the click activates the pet - counting it, the way the host's auto-tuck
+    # question must, would answer "in front" for every click and the pet could never
+    # tuck DSH away again. Measured on the click's behalf before it happens, never
+    # during it.
+    $handle = [DshPet.Win32]::GetForegroundWindow()
+    if ($handle -eq [IntPtr]::Zero) { return $false }
+    $owner = 0
+    [void][DshPet.Win32]::GetWindowThreadProcessId($handle, [ref]$owner)
+    return ($owner -eq $SCRIPT:DshPid)
+}
+
 function Set-DshWindowShown([bool]$Shown) {
     if ($SCRIPT:DshPid -le 0) { return }
     $handle = Find-DshWindow
@@ -1266,10 +1301,6 @@ function Set-DshWindowShown([bool]$Shown) {
         [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwHide)
     }
     Save-WindowState
-}
-
-function Switch-DshWindow {
-    Set-DshWindowShown (-not (Get-DshShown))
 }
 
 function Show-DshWindow {
@@ -1307,6 +1338,11 @@ function Save-WindowState {
     if ($SCRIPT:DshPid -le 0) { return }
     $visible = Get-DshShown
     $foreground = Get-DshForeground
+    # Taken here rather than at the click, which arrives after the press has already
+    # made the pet the foreground window. The early return below skips the file
+    # write, not this sample, because a click needs it fresh even when nothing the
+    # host reads has moved.
+    $SCRIPT:DshInFront = Get-DshInFront
     if ($visible -eq $SCRIPT:WindowVisible -and $foreground -eq $SCRIPT:WindowForeground) { return }
     $SCRIPT:WindowVisible = $visible
     $SCRIPT:WindowForeground = $foreground
@@ -1315,7 +1351,13 @@ function Save-WindowState {
 
 function Invoke-PetClick {
     switch ($SCRIPT:ClickAction) {
-        'toggle' { Switch-DshWindow }
+        'toggle' {
+            # A click hides only a DSH that is already in front; one that is merely
+            # behind another application is brought forward, and one that is away is
+            # restored, so the click always means "let me look at DSH".
+            if ((Get-ClickIntent (Get-DshShown) $SCRIPT:DshInFront) -eq 'hide') { Set-DshWindowShown $false }
+            else { Show-DshWindow }
+        }
         'minimize' {
             if ($SCRIPT:DshPid -le 0) { return }
             $handle = Find-DshWindow
@@ -1839,7 +1881,7 @@ function New-PetMenu {
 }
 
 # ---- interaction ------------------------------------------------------------
-$window.Add_MouseEnter({ try { $SCRIPT:Hovered = $true; Update-PetOpacity } catch { } })
+$window.Add_MouseEnter({ try { $SCRIPT:Hovered = $true; $SCRIPT:DshInFront = Get-DshInFront; Update-PetOpacity } catch { } })
 $window.Add_MouseLeave({ try { $SCRIPT:Hovered = $false; Update-PetOpacity } catch { } })
 $window.Add_MouseLeftButtonDown({
     try {

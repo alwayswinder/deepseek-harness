@@ -3,18 +3,24 @@ setlocal
 chcp 65001 >nul
 
 rem ============================================================
-rem Refresh a profile's installed copy of the out-of-tree plugins that the
-rem profile installs as `file:` directory dependencies.
+rem Make sure a profile serves the current source of the out-of-tree plugins
+rem under Plugins\.
 rem
-rem `pnpm add file:<dir>` copies the package into the profile once and records
-rem no content hash, so an edit in Plugins\ afterwards reaches nothing: the
-rem running host keeps loading the old host half and keeps serving the old
-rem client bundle, and a pulled update looks like it never arrived. This step
-rem runs on every launch, so the next start serves the current source.
+rem How the profile installs a plugin decides whether there is anything to do:
 rem
-rem A plugin the profile installs as `link:` needs no step here - the profile
-rem holds a junction to the source directory, so its files already are the
-rem source files.
+rem   link:  the profile keeps a junction to the plugin's source directory, so
+rem          the files it loads already are the source files; an edit is live as
+rem          soon as the half that reads it restarts. Nothing is copied here.
+rem   file:  the profile holds a real copy, and `pnpm add file:<dir>` records no
+rem          content hash for it, so an edit in Plugins\ afterwards reaches
+rem          nothing: the running host keeps loading the old host half and keeps
+rem          serving the old client bundle, and a pulled update looks like it
+rem          never arrived. Only that copy is refreshed here.
+rem
+rem Every plugin under Plugins\ is installed with link: today, so on this machine
+rem the copy branch normally does nothing. It stays because the linkage is
+rem measured per plugin instead of assumed: a machine or a profile that installs
+rem copies still gets its files refreshed on every launch.
 rem
 rem %1 = profile name under the harness home (web, desktop).
 rem Called by start-dsh.bat (web) and start-desktop.bat (desktop).
@@ -46,22 +52,23 @@ for %%I in ("%DSH_HOME_DIR%") do set "DSH_HOME_DIR=%%~fI"
 set "PROFILE_LOCAL=%DSH_HOME_DIR%\profiles\%PROFILE_NAME%\node_modules\@local"
 set "PLUGIN_FAILED="
 
-rem One call per plugin installed as a file: directory copy: its directory
-rem under Plugins\, then its package name under @local. Add a line here when a
-rem profile starts installing another such plugin.
+rem One call per plugin shipped from this tree: its directory under Plugins\,
+rem then its package name under @local. Add a line here when another plugin
+rem moves into Plugins\.
 call :syncPlugin appearance-plus dsh-appearance-plus
 call :syncPlugin deepseek-usage dsh-deepseek-usage
 call :syncPlugin dsh-fish-tank dsh-fish-tank
+call :syncPlugin dsh-aquarium3d dsh-aquarium3d
 call :syncPlugin dsh-littleIcon dsh-little-icon
 
 if defined PLUGIN_FAILED exit /b 1
 exit /b 0
 
 rem ============================================================
-rem Copy one plugin's packaged files over the profile's installed copy.
+rem Refresh one plugin's installed copy, when the profile holds a copy at all.
 rem %1 = plugin directory under Plugins\, %2 = package name under @local.
-rem A profile that does not install this plugin is skipped, so one script
-rem serves every profile. Sets PLUGIN_FAILED when a copy fails.
+rem A profile that does not install this plugin is skipped, so one script serves
+rem every profile. Sets PLUGIN_FAILED when a copy fails.
 rem ============================================================
 :syncPlugin
 set "SYNC_SRC=%MYTOOLS_ROOT%\Plugins\%~1"
@@ -74,6 +81,13 @@ if not exist "%SYNC_SRC%\package.json" (
     goto :eof
 )
 if not exist "%SYNC_DEST%\package.json" goto :eof
+
+rem A junction or symlink means this profile reads the source directory itself,
+rem so the files are already current. cmd reports a reparse point as the `l`
+rem attribute, which is why no extra command is needed to measure it.
+set "SYNC_ATTR="
+for %%A in ("%SYNC_DEST%") do set "SYNC_ATTR=%%~aA"
+if not "%SYNC_ATTR:l=%"=="%SYNC_ATTR%" goto :eof
 
 for %%F in (index.js client.js cordis.patch.yml package.json README.md README.zh.md README.i18n.yaml bg.jpg) do (
     if exist "%SYNC_SRC%\%%F" (
@@ -90,10 +104,11 @@ for %%F in (index.js client.js cordis.patch.yml package.json README.md README.zh
     )
 )
 
-rem Directories a plugin ships beside those files (桌宠的素材与脚本) are mirrored,
-rem because the copy above only ever covers single files. robocopy reports 0-7 on
-rem success and >=8 on failure; it skips identical files, so this stays cheap.
-for %%D in (assets pet locale) do (
+rem Directories a plugin ships beside those files (桌宠的素材与脚本、鱼缸的
+rem src\ 与 vendor\) are mirrored, because the copy above only ever covers single
+rem files. robocopy reports 0-7 on success and >=8 on failure; it skips identical
+rem files, so this stays cheap.
+for %%D in (assets pet locale src vendor tools) do (
     if exist "%SYNC_SRC%\%%D" (
         robocopy "%SYNC_SRC%\%%D" "%SYNC_DEST%\%%D" /E /NJH /NJS /NP /NDL /R:0 /W:0 >nul
         if errorlevel 8 (

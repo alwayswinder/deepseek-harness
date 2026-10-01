@@ -5,13 +5,16 @@ chcp 65001 >nul
 rem ============================================================
 rem One-shot "update upstream + build" for this working copy.
 rem
-rem   update-and-build.bat                fetch deepseek-ai, merge master, run
-rem                                       preflight, then hand the build off
-rem                                       (build.bat --detached --restart)
+rem   update-and-build.bat                fetch the upstream remote, merge
+rem                                       master, run preflight, then hand the
+rem                                       build off (build.bat --detached --restart)
 rem   update-and-build.bat --push         also push master to origin after merge
 rem   update-and-build.bat --check        environment check only; changes nothing
 rem   update-and-build.bat --no-pause     do not wait for a key at the end
 rem   update-and-build.bat --help
+rem
+rem The upstream remote's name is per clone, so it is resolved instead of
+rem assumed: `deepseek-ai` when it exists, otherwise `upstream`.
 rem
 rem Exit codes: 0 = handed off / check ok, 1 = failure, 2 = merge conflict
 rem (aborted; resolve then rerun), 3 = preflight blocked, 4 = usage error.
@@ -44,7 +47,13 @@ cd /d "%DSH_REPO%" || goto :cantEnter
 rem ---- environment ----------------------------------------------------------
 git --version >nul 2>&1
 if errorlevel 1 goto :noGit
+rem The upstream remote is named per clone: this checkout calls it deepseek-ai,
+rem another may call it upstream. Either is accepted; the name is resolved once
+rem here and used for every fetch and merge below.
+set "UPSTREAM_REMOTE=deepseek-ai"
 git remote get-url deepseek-ai >nul 2>&1
+if errorlevel 1 set "UPSTREAM_REMOTE=upstream"
+git remote get-url %UPSTREAM_REMOTE% >nul 2>&1
 if errorlevel 1 goto :noRemote
 where node >nul 2>&1
 if errorlevel 1 goto :noNode
@@ -60,14 +69,14 @@ if "%MODE%"=="check" goto :checkEnv
 rem ---- update -----------------------------------------------------------------
 if "%DIRTY%"=="1" goto :dirtyTree
 
-echo [update] Fetching upstream deepseek-ai...
-git fetch deepseek-ai
+echo [update] Fetching upstream %UPSTREAM_REMOTE%...
+git fetch %UPSTREAM_REMOTE%
 if errorlevel 1 goto :fetchFailed
 
 for /f "delims=" %%R in ('git rev-parse HEAD') do set "HEAD_BEFORE=%%R"
 
-echo [update] Merging deepseek-ai/master...
-git merge --no-edit deepseek-ai/master
+echo [update] Merging %UPSTREAM_REMOTE%/master...
+git merge --no-edit %UPSTREAM_REMOTE%/master
 if errorlevel 1 goto :mergeConflict
 
 for /f "delims=" %%R in ('git rev-parse HEAD') do set "HEAD_AFTER=%%R"
@@ -115,7 +124,7 @@ rem ---- branches --------------------------------------------------------------
 :checkEnv
 echo [update] Environment check:
 echo [update]   git:          OK
-echo [update]   upstream:     deepseek-ai
+echo [update]   upstream:     %UPSTREAM_REMOTE%
 if "%DIRTY%"=="0" (
     echo [update]   working tree: clean
 ) else (
@@ -155,9 +164,9 @@ if not defined NOPAUSE pause
 exit /b 1
 
 :noRemote
-echo [update] The upstream remote 'deepseek-ai' is not configured.
-echo [update] Add it once, then rerun:
-echo [update]   git remote add deepseek-ai git@github.com:deepseek-ai/deepseek-harness.git
+echo [update] Neither upstream remote 'deepseek-ai' nor 'upstream' is configured.
+echo [update] Add one once, then rerun:
+echo [update]   git remote add upstream git@github.com:deepseek-ai/deepseek-harness.git
 if not defined NOPAUSE pause
 exit /b 1
 

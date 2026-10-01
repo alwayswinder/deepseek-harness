@@ -35,7 +35,7 @@
 | `build\stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
 | `build\start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
 | `build\make-shortcut.bat` | 把「DeepSeek Harness」装进开始菜单（默认还有桌面）：带应用图标、点开不弹控制台、失败时弹一个带日志尾巴的对话框。`--start-menu-only` 只要开始菜单，`--remove` 删掉。 | 每台机器跑一次；重复跑就是刷新。见下面「像应用一样启动」。 |
-| `build\update-and-build.bat` | **「更新上游」一条龙入口**：`--check` 预检 → `git fetch deepseek-ai` → `git merge --no-edit deepseek-ai/master`（冲突即 `--abort` 停下，exit 2）→ preflight（exit 2 时停下，exit 3）→ `write-resume-plan.ps1` 写契约 → `build.bat --detached --restart`。`--push` 才会在 merge 后推 `origin master`；`--check` 只查环境不做事；`--no-pause` 免按键。 | 说「更新上游」就按它跑（约定见仓库根 [AGENTS.local.md](../AGENTS.local.md) 的「更新上游」节）。**完整构建会停掉本副本的 Electron，而会话跑在 app 进程树里——被停瞬间当前 turn 中断是机制不是失败**；detached 构建活到完成、自动把 app 拉回来，回来后读 `resume-plan.json` + `last-build.json` 收尾。 |
+| `build\update-and-build.bat` | **「更新上游」一条龙入口**：`--check` 预检 → `git fetch <上游>` → `git merge --no-edit <上游>/master`（冲突即 `--abort` 停下，exit 2）→ preflight（exit 2 时停下，exit 3）→ `write-resume-plan.ps1` 写契约 → `build.bat --detached --restart`。上游 remote 名由脚本解析：有 `deepseek-ai` 就用它，否则用 `upstream`（两个都没有时报错并给出 `git remote add` 命令）。`--push` 才会在 merge 后推 `origin master`；`--check` 只查环境不做事；`--no-pause` 免按键。 | 说「更新上游」就按它跑（约定见仓库根 [AGENTS.local.md](../AGENTS.local.md) 的「更新上游」节）。**完整构建会停掉本副本的 Electron，而会话跑在 app 进程树里——被停瞬间当前 turn 中断是机制不是失败**；detached 构建活到完成、自动把 app 拉回来，回来后读 `resume-plan.json` + `last-build.json` 收尾。 |
 
 ### 像应用一样启动（图标 + 无控制台）
 
@@ -86,7 +86,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | --- | --- |
 | `build\ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：`@deepseek-ai/schemastery` → `vendor\schemastery`，`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`。链接已正确就跳过，缺了就补。 |
 | `build\ensure-plugin-builds.bat` | 每次都按插件自己的 lockfile 同步依赖，再重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），避免更新后沿用旧 `node_modules` 或 `lib\`。 |
-| `build\sync-plugins.bat <profile>` | 把以 `file:` 依赖装进 profile 的插件副本（`appearance-plus`、`deepseek-usage`、`dsh-fish-tank`、`dsh-littleIcon`）刷新成 `Plugins\` 里的最新源码，含插件自带的 `assets\`、`pet\`、`locale\` 目录；内容相同就不写。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
+| `build\sync-plugins.bat <profile>` | 把**以 `file:` 副本装进 profile** 的插件（`appearance-plus`、`deepseek-usage`、`dsh-fish-tank`、`dsh-aquarium3d`、`dsh-littleIcon`）刷新成 `Plugins\` 里的最新源码，含插件自带的 `assets\`、`pet\`、`locale\`、`src\`、`vendor\`、`tools\` 目录；内容相同就不写。装成 `link:`（junction）的插件实测跳过——profile 加载的就是源码本身，没有副本要刷新。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
 `build\ensure-plugin-*.bat` 由 `build\build.bat`（任何模式）自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
 
@@ -94,7 +94,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 同一个道理，Electron 的浏览器数据（`--user-data-dir`：侧栏内嵌浏览器的 Cookie 与 localStorage、platform 账号页的存储都在这里）以前待在 `clean` 会删的那棵树里，于是每次完整构建都要重新登录 chat.deepseek.com 一次。现在它固定在 `$DSH_HOME\desktop\electron-user-data`，`build\start-desktop.bat` 每次都指向那里；[build\migrate-desktop-user-data.bat](build/migrate-desktop-user-data.bat) 在 `build.bat` 的 `clean` 之前、以及每次启动之前把旧位置的数据整体搬过来——只在目标还没有 `Partitions` 时搬（Electron 已经在那里建过存储就说明那里有不能覆盖的东西），拷贝失败（上一个实例还占着 Cookie 数据库）就整份丢弃，下次启动重试。
 
-以 `file:` 依赖装进 profile 的插件是**一次性副本**（pnpm 不记录内容哈希），所以只改 `Plugins\` 里的源码而不重启启动脚本，界面会一直是旧的。以 `link:` 装的插件（`dsh-ths-holdings`）本身指向源码目录，不需要这一步。
+以 `file:` 依赖装进 profile 的插件是**一次性副本**（pnpm 不记录内容哈希），所以只改 `Plugins\` 里的源码而不重启启动脚本，界面会一直是旧的。以 `link:` 装的插件本身指向源码目录（`dsh-ths-holdings`，以及本机 desktop profile 里的全部 5 个），不需要这一步。**装成了哪一种要实测，不要按插件名推断**：`Get-Item <profile>\node_modules\@local\<包名> | Select-Object LinkType,Target` 有值就是链接、是空就是副本（2026-10-01 实测：desktop 全是 junction，web 里 `dsh-deepseek-usage` 是副本）。
 
 ## 树外插件（`Plugins\`）
 

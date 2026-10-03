@@ -76,6 +76,9 @@ window.__ModuleLoader__.load({
     /** The Host route it reads one commit's changed files from, the same way. */
     const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
 
+    /** The Host route it reads later pages of the history column from, under the same filter. */
+    const GIT_COMMITS_PATH = '/api/little-icon/git/commits'
+
     /** The Host route that refreshes and compares the configured upstream. */
     const GIT_REMOTE_PATH = '/api/little-icon/git/remote'
 
@@ -197,6 +200,13 @@ window.__ModuleLoader__.load({
       gitTab: 'Git 改动',
       gitChanges: '未提交的改动',
       gitCommits: '最近提交',
+      gitAuthorFilter: '按作者筛选',
+      gitAuthorAll: '全部作者',
+      gitAuthorOption: '{name}（{count}）',
+      gitMore: '加载更多',
+      gitMoreLoading: '加载中…',
+      gitMoreRetry: '重试',
+      gitMoreFailed: '加载更多失败：{message}',
       gitRefresh: '刷新',
       gitPull: '拉取',
       gitPulling: '拉取中…',
@@ -219,6 +229,7 @@ window.__ModuleLoader__.load({
       gitBranch: '分支 {name}',
       gitEmptyChanges: '没有未提交的改动。',
       gitEmptyCommits: '还没有提交记录。',
+      gitEmptyAuthor: '这个作者没有提交记录。',
       gitNoCwd: '这个会话还没有工作目录，读不到 Git 状态。',
       gitNoDir: '工作目录已经不在，读不到 Git 状态。',
       gitNoGit: '找不到 git 命令，确认它在 PATH 里再刷新。',
@@ -307,6 +318,13 @@ window.__ModuleLoader__.load({
       gitTab: 'Git changes',
       gitChanges: 'Uncommitted changes',
       gitCommits: 'Recent commits',
+      gitAuthorFilter: 'Filter by author',
+      gitAuthorAll: 'All authors',
+      gitAuthorOption: '{name} ({count})',
+      gitMore: 'Load more',
+      gitMoreLoading: 'Loading…',
+      gitMoreRetry: 'Retry',
+      gitMoreFailed: 'Could not load more: {message}',
       gitRefresh: 'Refresh',
       gitPull: 'Pull',
       gitPulling: 'Pulling…',
@@ -329,6 +347,7 @@ window.__ModuleLoader__.load({
       gitBranch: 'branch {name}',
       gitEmptyChanges: 'No uncommitted changes.',
       gitEmptyCommits: 'No commits yet.',
+      gitEmptyAuthor: 'No commits by this author.',
       gitNoCwd: 'This session has no working directory yet, so there is no Git state to read.',
       gitNoDir: 'The working directory is gone, so there is no Git state to read.',
       gitNoGit: 'The git command was not found; make sure it is on PATH and refresh.',
@@ -410,10 +429,14 @@ window.__ModuleLoader__.load({
         'background:rgba(127,127,127,.18);border:1px solid rgba(127,127,127,.4);border-radius:6px;}',
         '.dli-git-send:disabled{opacity:.5;cursor:default;}',
         '.dli-git-send[data-sent="true"]{color:#3fb950;border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.12);}',
-        '.dli-git-cols{display:flex;flex:1 1 auto;flex-wrap:wrap;gap:12px;min-height:0;}',
         // Two columns side by side, stacked once the pane is too narrow to hold
         // both: a fixed split would leave one of them unreadable in a small pane.
-        '.dli-git-col{display:flex;flex:1 1 220px;flex-direction:column;min-width:0;min-height:0;',
+        // Tracks divide the height between the columns, so each list keeps its
+        // own scrollport; a wrapping flex line is sized by its items instead,
+        // which leaves both columns taller than the pane with nothing to scroll.
+        '.dli-git-cols{display:grid;flex:1 1 auto;gap:12px;min-height:0;',
+        'grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));grid-auto-rows:minmax(0,1fr);}',
+        '.dli-git-col{display:flex;flex-direction:column;min-width:0;min-height:0;',
         'border:1px solid rgba(127,127,127,.25);border-radius:8px;overflow:hidden;}',
         '.dli-git-head{display:flex;align-items:center;gap:8px;padding:6px 10px;',
         'border-bottom:0.5px solid rgba(127,127,127,.25);}',
@@ -428,7 +451,23 @@ window.__ModuleLoader__.load({
         '.dli-git-remote[data-tone="error"]{color:var(--dsw-alias-state-error-primary);',
         'background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);}',
         '.dli-git-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;}',
+        // The author filter sits on its own row under the heading rather than
+        // beside it: the heading already carries the title, the upstream badge,
+        // and the count, and a control wedged among them is unreadable in a
+        // narrow column.
+        '.dli-git-filter{display:flex;flex:0 0 auto;align-items:center;gap:6px;padding:6px 10px;',
+        'border-bottom:0.5px solid rgba(127,127,127,.25);}',
+        '.dli-git-author{flex:1 1 auto;min-width:0;font:inherit;font-size:12px;color:inherit;',
+        'background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));border:1px solid rgba(127,127,127,.35);',
+        'border-radius:6px;padding:2px 6px;cursor:pointer;}',
         '.dli-git-list{flex:1 1 auto;min-height:0;overflow:auto;padding:4px 0;}',
+        // The end of the list is also the way to the next page: the row stays
+        // inside the scrollport, so scrolling to it is what asks for more.
+        '.dli-git-more{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 10px;}',
+        '.dli-git-more-button{font:inherit;font-size:12px;color:inherit;cursor:pointer;padding:2px 12px;',
+        'background:transparent;border:1px solid rgba(127,127,127,.35);border-radius:6px;}',
+        '.dli-git-more-button:disabled{opacity:.5;cursor:default;}',
+        '.dli-git-more-note{color:var(--dsw-alias-label-secondary);font-size:11px;text-align:center;}',
         '.dli-git-row{display:flex;align-items:center;gap:6px;padding:2px 10px;}',
         '.dli-git-row:hover{background:rgba(127,127,127,.10);}',
         '.dli-git-badge{flex:0 0 auto;font-size:11px;padding:0 5px;border-radius:4px;',
@@ -874,9 +913,15 @@ window.__ModuleLoader__.load({
 
     /**
      * The Git page: the Session's working directory, its uncommitted changes on
-     * the left, and its last commits on the right. Double-clicking either kind of
+     * the left, and its commits on the right. Double-clicking either kind of
      * row replaces both columns with what that row is about — one file's diff, or
      * one commit's changed files — and a back button returns.
+     *
+     * The history column holds one page of commits and reads the next one when
+     * its end comes into view, so the list keeps going rather than stopping at
+     * the first page; the select under its heading narrows the whole list to one
+     * author. Both are reads of the same list, so a page that a filter or a
+     * refresh has replaced is dropped rather than appended.
      *
      * The upstream badge refreshes one remote-tracking ref without moving local
      * work. Pull is the only action that changes the branch or working tree: the
@@ -884,8 +929,8 @@ window.__ModuleLoader__.load({
      * Nothing here stages, commits, pushes, or discards work. The working
      * directory comes from the Session rather than from a setting, so the page
      * follows whichever project the conversation is in.
-     * @param props - slot props plus the injected `load`, `loadRemote`, `pull`,
-     *   `loadDiff`, and `loadCommit` callbacks.
+     * @param props - slot props plus the injected `load`, `loadCommits`,
+     *   `loadRemote`, `pull`, `loadDiff`, and `loadCommit` callbacks.
      * @returns the two columns, the open detail, or the line explaining why there
      *   is neither.
      */
@@ -904,6 +949,36 @@ window.__ModuleLoader__.load({
       // What has taken the two columns' place: `undefined` is the listing, and
       // anything else names one row's subject and how its read is going.
       const [detail, setDetail] = React.useState(undefined)
+      // The history column's author filter, and its own page of commits: an
+      // undefined `list` is the listing's first page, which is the one the column
+      // shows until a filter or a further page replaces it.
+      const [author, setAuthor] = React.useState('')
+      const [history, setHistory] = React.useState({ author: '', list: undefined, more: false, phase: 'idle' })
+      const historyController = React.useRef(undefined)
+      // What the filter the column is showing is, for reads that were started
+      // before it and land after it: the listing's own answer must not put an
+      // unfiltered page under a heading that says otherwise.
+      const authorRef = React.useRef('')
+      React.useEffect(() => { authorRef.current = author }, [author])
+      /** A listing that settled: every read of the column belongs to it from here. */
+      const [listingRev, setListingRev] = React.useState(0)
+
+      /**
+       * Put the history column back on the listing's own first page.
+       *
+       * A listing and a pull both answer with one repository's first page, so
+       * whatever page was read before them is stale; a filter that is still in
+       * force is read again from that listing rather than left showing rows that
+       * belong to the one before it.
+       * @param forAuthor - the author filter the listing is being seeded under.
+       */
+      const seedHistory = (forAuthor) => {
+        historyController.current?.abort()
+        historyController.current = undefined
+        setHistory(forAuthor === ''
+          ? { author: '', list: undefined, more: false, phase: 'idle' }
+          : { author: forAuthor, list: [], more: false, phase: 'loading' })
+      }
 
       // Three things move this read: the Session's working directory, the refresh
       // button's `attempt`, and the tab's navigation revision — choosing the pet's
@@ -923,6 +998,11 @@ window.__ModuleLoader__.load({
               return
             }
             setState({ phase: 'settled', result, remote: { phase: 'loading' } })
+            // The listing carries the column's first page, so it is what the
+            // column shows from here; a chosen author is read again below, once
+            // this listing has replaced whatever page was on screen.
+            seedHistory(authorRef.current)
+            setListingRev((value) => value + 1)
             void props.loadRemote(result.root, controller.signal).then(
               (remoteResult) => {
                 if (controller.signal.aborted) return
@@ -938,8 +1018,71 @@ window.__ModuleLoader__.load({
               })
           },
           (error) => { if (!controller.signal.aborted) setState({ phase: 'failed', error }) })
-        return () => { controller.abort() }
+        return () => { controller.abort(); historyController.current?.abort() }
       }, [cwd, tab.navigation.revision, attempt])
+
+      /**
+       * Read one page of the history column: the first page of an author's own
+       * list, or the page after the rows on screen.
+       *
+       * One read at a time: a newer one aborts the one before it, so a page that
+       * a filter or a refresh has already replaced cannot land on top of it.
+       * @param who - the author identity to keep, or empty for every author.
+       * @param skip - how many commits the column already shows.
+       * @param append - whether the page extends the list rather than replacing it.
+       */
+      const readHistory = (who, skip, append) => {
+        if (cwd === undefined || cwd === '') return
+        const controller = new AbortController()
+        historyController.current?.abort()
+        historyController.current = controller
+        const base = history.list ?? loaded?.commits ?? []
+        setHistory((current) => ({
+          author: who,
+          list: append ? current.list ?? base : [],
+          more: append && current.more,
+          phase: 'loading',
+        }))
+        props.loadCommits(cwd, skip, who, controller.signal).then(
+          (page) => {
+            if (controller.signal.aborted) return
+            historyController.current = undefined
+            if (page.ok !== true) {
+              // The repository became unreadable under the column: the rows
+              // already read stay where they are, with the reason beneath them.
+              setHistory((current) => ({ ...current, phase: 'refused', refused: page, more: true }))
+              return
+            }
+            setHistory((current) => ({
+              author: who,
+              list: append ? [...current.list ?? base, ...page.commits] : page.commits,
+              more: page.hasMore === true,
+              phase: 'idle',
+            }))
+          },
+          (error) => {
+            if (controller.signal.aborted) return
+            historyController.current = undefined
+            // Keeping the rows and leaving the way forward is what makes a failed
+            // page a retry rather than an empty column.
+            setHistory((current) => ({ ...current, phase: 'failed', error, more: true }))
+          })
+      }
+
+      // A listing that lands while an author is chosen is what that author's page
+      // belongs to — a refresh, a pull, another repository — so it is read again
+      // from that listing. An author this history does not have is dropped: a
+      // filter nothing can match would only ever show an empty column.
+      React.useEffect(() => {
+        if (author === '' || loaded === undefined) return undefined
+        if (!(loaded.authors ?? []).some((entry) => entry.id === author)) {
+          setAuthor('')
+          seedHistory('')
+          return undefined
+        }
+        readHistory(author, 0, false)
+        return undefined
+      }, [listingRev])
 
       // The detail is read once, when a row is double-clicked or when the refresh
       // button re-arms it: the row it belongs to is its identity, so an answer
@@ -1000,6 +1143,10 @@ window.__ModuleLoader__.load({
                 result: outcome,
                 remote: { phase: 'settled', result: { ok: true, relation: 'up-to-date', behind: 0 } },
               })
+              // A pull answers with a fresh listing, which is the column's new
+              // first page: the rows read before it belong to the old history.
+              seedHistory(authorRef.current)
+              setListingRev((value) => value + 1)
               setDetail(undefined)
               setPull({ phase: 'done', updated: outcome.updated === true })
             } else {
@@ -1105,12 +1252,102 @@ window.__ModuleLoader__.load({
           : t('gitSendFailed', { message: send.message }))
       const pullNote = pull.phase === 'failed' ? note(gitPullReason(t, pull.result)) : null
 
-      const column = (title, count, rows, status) => h('section', { className: 'dli-git-col' },
+      /**
+       * One of the two columns: its heading, what sits under the heading, and the
+       * rows in their own scrollport.
+       * @param title - the column's name.
+       * @param count - how many rows it currently holds.
+       * @param rows - the rows, or the line explaining why there are none.
+       * @param status - the upstream badge, when the column carries one.
+       * @param options - the heading's filter row and the scrollport's own ref,
+       *   which the history column needs for the next page.
+       * @returns the column.
+       */
+      const column = (title, count, rows, status, options = {}) => h('section', { className: 'dli-git-col' },
         h('div', { className: 'dli-git-head' },
           h('span', { className: 'dli-git-title' }, title),
           status,
           h('span', { className: 'dli-git-count' }, String(count))),
-        h('div', { className: 'dli-git-list' }, rows))
+        options.filter ?? null,
+        h('div', { className: 'dli-git-list', ref: options.listRef }, rows))
+
+      // The history column as the filter on screen sees it: a page read for
+      // another author belongs to that author, not to this one.
+      const historyMine = history.author === author
+      const commitRows = !historyMine ? [] : history.list ?? loaded?.commits ?? []
+      const moreCommits = historyMine
+        && (history.list === undefined ? loaded?.hasMoreCommits === true : history.more)
+      const commitPhase = historyMine ? history.phase : 'loading'
+      const listNode = React.useRef(undefined)
+      const moreNode = React.useRef(undefined)
+
+      /** Ask for the page after the rows on screen. */
+      const loadMore = () => {
+        if (commitPhase === 'loading' || !moreCommits) return
+        readHistory(author, commitRows.length, true)
+      }
+
+      // Reaching the end of the list is how the next page is asked for: the
+      // sentinel lives inside the scrollport, so scrolling to it reads on before
+      // the reader has to ask. The button in that row is the same read for a
+      // pointer that arrived some other way.
+      React.useEffect(() => {
+        const node = moreNode.current
+        if (node === undefined || node === null || typeof IntersectionObserver !== 'function') return undefined
+        const observer = new IntersectionObserver((entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) loadMore()
+        }, { root: listNode.current ?? null })
+        observer.observe(node)
+        return () => { observer.disconnect() }
+      }, [moreCommits, commitPhase, commitRows.length, author, loaded])
+
+      /**
+       * Narrow the history column to one author, or put every author back.
+       * @param who - the identity the Host listed, or empty for all of them.
+       */
+      const chooseAuthor = (who) => {
+        if (who === author) return
+        setAuthor(who)
+        // Every author again is the listing's own first page, which is already in
+        // hand; one author is that author's first page, read from here.
+        if (who === '') seedHistory('')
+        else readHistory(who, 0, false)
+      }
+
+      /** The author filter, once the Host has named the authors of this history. */
+      const authorFilter = () => {
+        const authors = loaded?.authors ?? []
+        if (authors.length === 0) return null
+        return h('div', { className: 'dli-git-filter' },
+          h('select', {
+            className: 'dli-git-author', value: author,
+            'aria-label': t('gitAuthorFilter'), title: t('gitAuthorFilter'),
+            onChange: (event) => { chooseAuthor(event.target.value) },
+          },
+          h('option', { value: '' }, t('gitAuthorAll')),
+          authors.map((entry) => h('option', {
+            key: entry.id,
+            value: entry.id,
+            // The identity is what the filter matches on; the address beside it
+            // is what tells two people with one name apart on hover.
+            title: entry.email === '' ? entry.name : `${entry.name} <${entry.email}>`,
+          }, t('gitAuthorOption', { name: entry.name, count: entry.commits })))))
+      }
+
+      /** The end of the history column: the next page, and how asking for it went. */
+      const moreRow = () => h('div', { className: 'dli-git-more', ref: moreNode },
+        h('button', {
+          type: 'button', className: 'dli-git-more-button', disabled: commitPhase === 'loading',
+          onClick: loadMore,
+        }, commitPhase === 'loading' ? t('gitMoreLoading')
+          : commitPhase === 'idle' ? t('gitMore') : t('gitMoreRetry')),
+        commitPhase === 'failed'
+          ? h('span', { className: 'dli-git-more-note' },
+            t('gitMoreFailed', { message: String(history.error?.message ?? history.error) }))
+          : null,
+        commitPhase === 'refused'
+          ? h('span', { className: 'dli-git-more-note' }, gitReason(t, history.refused))
+          : null)
 
       /**
        * Open one changed file's diff, replacing the two columns.
@@ -1219,7 +1456,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'dli-git-path' }, change.path),
           view.staged ? h('span', { className: 'dli-git-staged' }, t('gitStaged')) : null)
         })
-        const commits = loaded.commits.map((commit) => h('div', {
+        const commits = commitRows.map((commit) => h('div', {
           className: 'dli-git-commit',
           key: commit.hash,
           title: `${commit.subject}\n${t('gitCommitHint')}`,
@@ -1230,11 +1467,21 @@ window.__ModuleLoader__.load({
         h('div', { className: 'dli-git-subject' }, commit.subject),
         h('div', { className: 'dli-git-hash' }, commit.short),
         h('div', { className: 'dli-git-byline' }, `${commit.author} · ${formatCommitDate(commit.date)}`)))
+        // An empty column says which kind of empty it is: a history with nothing
+        // in it at all, one this author never wrote in, or a page still on its way.
+        const commitBody = commits.length > 0
+          ? (moreCommits || commitPhase !== 'idle' ? [...commits, moreRow()] : commits)
+          : note(commitPhase === 'loading' ? t('gitLoading')
+            : commitPhase === 'refused' ? gitReason(t, history.refused)
+            : commitPhase === 'failed'
+              ? t('gitMoreFailed', { message: String(history.error?.message ?? history.error) })
+              : author === '' ? t('gitEmptyCommits') : t('gitEmptyAuthor'))
         return h('div', { className: 'dli-git-cols' },
           column(t('gitChanges'), changes.length,
             changes.length === 0 ? note(t('gitEmptyChanges')) : changes),
-          column(t('gitCommits'), commits.length,
-            commits.length === 0 ? note(t('gitEmptyCommits')) : commits, remoteBadge()))
+          column(t('gitCommits'), commitRows.length, commitBody, remoteBadge(), {
+            filter: authorFilter(), listRef: listNode,
+          }))
       }
 
       return h('div', { className: 'dli-git' }, bar, pullNote, sendNote, body())
@@ -1429,6 +1676,26 @@ window.__ModuleLoader__.load({
               load: async (cwd, signal) => {
                 const response = await fetch(`${GIT_PATH}?cwd=${encodeURIComponent(cwd)}`, { signal })
                 if (!response.ok) throw new Error(`little-icon: the Git route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Read one page of the listing's own history.
+               *
+               * The page is asked for by the directory rather than by the root
+               * the listing named, so the Host resolves the repository exactly as
+               * it did for the listing: a workspace that moved since then is
+               * answered about the repository that is there now.
+               * @param cwd - the Session's working directory.
+               * @param skip - how many commits the column already shows.
+               * @param author - one identity from the listing's author list, or
+               *   empty for every author.
+               * @param signal - aborts the read when the page moves on.
+               * @returns the Host's page: the commits, and whether more follow.
+               */
+              loadCommits: async (cwd, skip, author, signal) => {
+                const query = `cwd=${encodeURIComponent(cwd)}&skip=${skip}&author=${encodeURIComponent(author)}`
+                const response = await fetch(`${GIT_COMMITS_PATH}?${query}`, { signal })
+                if (!response.ok) throw new Error(`little-icon: the Git commits route answered ${response.status}`)
                 return response.json()
               },
               /**

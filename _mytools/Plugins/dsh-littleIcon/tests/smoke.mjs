@@ -20,9 +20,10 @@ import { join, sep } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH, OPEN_PATH,
-  GIT_DIFF_MAX_CHARS, GIT_LOG_LIMIT,
-  parseGitStatus, parseGitLog, parseGitCommitFiles, readGitRepository, readGitRemoteStatus,
+  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH, OPEN_PATH,
+  GIT_DIFF_MAX_CHARS, GIT_LOG_PAGE,
+  parseGitStatus, parseGitLog, parseGitAuthors, parseGitCommitFiles,
+  readGitRepository, readGitCommits, readGitRemoteStatus,
   pullGitRepository, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
 } = internals
@@ -839,6 +840,88 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     rmSync(repo, { recursive: true, force: true })
   }
 
+  // The history column is read a page at a time, and one author at a time. The
+  // repository carries one commit more than a page plus a second author whose
+  // address is full of regular-expression punctuation, which is the case that
+  // tells an escaped `--author` pattern from one Git reads as a quantifier.
+  const historyRepo = mkdtempSync(join(tmpdir(), 'little-icon-history-'))
+  try {
+    const history = (...args) => spawnSync('git', args, { cwd: historyRepo, encoding: 'utf8' })
+    history('init', '-q', '-b', 'main')
+    history('config', 'user.email', 'first@example.test')
+    history('config', 'user.name', 'First Author')
+    for (let index = 0; index < GIT_LOG_PAGE + 3; index += 1) {
+      writeFileSync(join(historyRepo, `file-${index}.txt`), `${index}\n`)
+      history('add', '.')
+      history('commit', '-q', '-m', `commit ${index}`)
+    }
+    writeFileSync(join(historyRepo, 'theirs.txt'), 'theirs\n')
+    history('add', 'theirs.txt')
+    // `-c` belongs before the subcommand: this commit is written by a second
+    // identity, which is what the filter has to tell apart from the first.
+    spawnSync('git', ['-c', 'user.name=Second+Author', '-c', 'user.email=second+tag@example.test',
+      'commit', '-q', '-m', 'a second author'], { cwd: historyRepo, encoding: 'utf8' })
+
+    const firstPage = await readGitRepository(historyRepo)
+    assert.equal(firstPage.ok, true, JSON.stringify(firstPage))
+    assert.equal(firstPage.commits.length, GIT_LOG_PAGE, 'the listing carries one page of history')
+    assert.equal(firstPage.hasMoreCommits, true, 'and says the history continues past it')
+    assert.deepEqual(firstPage.commits[0].subject, 'a second author', 'the newest commit leads the page')
+    assert.deepEqual(firstPage.authors.map(author => [author.name, author.email, author.commits]), [
+      ['First Author', 'first@example.test', GIT_LOG_PAGE + 3],
+      ['Second+Author', 'second+tag@example.test', 1],
+    ], 'every author of the history is offered, with how many commits each wrote')
+    assert.ok(firstPage.authors.every(author => author.id === `${author.name} <${author.email}>`),
+      'the identity the filter matches on is the one Git spells')
+
+    // The second page carries what the first left, and the end of the history
+    // says so rather than offering a page that would be empty.
+    const secondPage = await readGitCommits(historyRepo, GIT_LOG_PAGE)
+    assert.equal(secondPage.ok, true, JSON.stringify(secondPage))
+    assert.deepEqual(secondPage.commits.map(commit => commit.subject),
+      ['commit 3', 'commit 2', 'commit 1', 'commit 0'],
+      'the next page starts where the first stopped')
+    assert.equal(secondPage.hasMore, false, 'the last page does not offer another one')
+    assert.deepEqual(await readGitCommits(historyRepo, 999),
+      { ok: true, root: secondPage.root, commits: [], hasMore: false },
+      'past the end is an empty page, which is what scrolling a short history shows')
+
+    // One author's history is that author's rows only, and its pages line up with
+    // the filtered list rather than with the whole one.
+    const second = firstPage.authors.find(author => author.commits === 1)
+    const onlyTheirs = await readGitCommits(historyRepo, 0, second.id)
+    assert.deepEqual(onlyTheirs.commits.map(commit => commit.subject), ['a second author'],
+      'an address with a plus sign in it is matched literally, not as a quantifier')
+    assert.equal(onlyTheirs.hasMore, false)
+    const firstAuthor = firstPage.authors.find(author => author.commits === GIT_LOG_PAGE + 3)
+    const theirFirstPage = await readGitCommits(historyRepo, 0, firstAuthor.id)
+    assert.equal(theirFirstPage.commits.length, GIT_LOG_PAGE)
+    assert.equal(theirFirstPage.hasMore, true, 'a filtered history pages like the unfiltered one')
+    const theirSecondPage = await readGitCommits(historyRepo, GIT_LOG_PAGE, firstAuthor.id)
+    assert.deepEqual(theirSecondPage.commits.map(commit => commit.subject),
+      ['commit 2', 'commit 1', 'commit 0'], 'and its last page holds what is left of that author')
+    // A pattern nothing matches is an empty page rather than a failure: the
+    // column keeps its rows and offers the way back.
+    assert.deepEqual(await readGitCommits(historyRepo, 0, 'Nobody <nobody@example.test>'),
+      { ok: true, root: secondPage.root, commits: [], hasMore: false })
+    // The page routes answer the listing's own reasons before they run Git.
+    assert.deepEqual(await readGitCommits(join(tmpdir(), 'little-icon-no-such-directory')),
+      { ok: false, reason: 'no-dir' })
+  } finally {
+    rmSync(historyRepo, { recursive: true, force: true })
+  }
+
+  // The filter reads the identity as a fixed string, which is what the address
+  // above pins end to end: `+` is a quantifier to `--author`'s own pattern
+  // reader. The listing's author rows are parsed without Git for the same reason
+  // the other parsers are.
+  assert.deepEqual(parseGitAuthors('   12\tAda Lovelace <ada@example.test>\n    3\tNo Address\n'),
+    [
+      { id: 'Ada Lovelace <ada@example.test>', name: 'Ada Lovelace', email: 'ada@example.test', commits: 12 },
+      { id: 'No Address', name: 'No Address', email: '', commits: 3 },
+    ])
+  assert.deepEqual(parseGitAuthors(''), [], 'a repository with no history offers no authors')
+
   // A private file:// remote keeps the mutation test keyless and isolated from
   // network state. Two simultaneous page requests join one fast-forward, then a
   // second pull observes that the local branch is already current.
@@ -1281,9 +1364,21 @@ assert.deepEqual(pings.at(-1), { url: `${GIT_DIFF_PATH}?root=%2Frepo&path=src%2F
 await gitFace.loadCommit('/repo', 'abc123', undefined)
 assert.deepEqual(pings.at(-1), { url: `${GIT_COMMIT_PATH}?root=%2Frepo&hash=abc123`, method: undefined },
   'the commit read names the root and one hash, both escaped')
+// A page of history names the directory rather than the root, so the Host
+// resolves the repository exactly as it did for the listing, and the author and
+// the offset travel with it.
+await gitFace.loadCommits('D:\\work\\proj', 0, '', undefined)
+assert.deepEqual(pings.at(-1),
+  { url: `${GIT_COMMITS_PATH}?cwd=D%3A%5Cwork%5Cproj&skip=0&author=`, method: undefined },
+  'the first page names the directory, and no author')
+await gitFace.loadCommits('D:\\work\\proj', 20, 'Ada Lovelace <ada@example.test>', undefined)
+assert.deepEqual(pings.at(-1),
+  { url: `${GIT_COMMITS_PATH}?cwd=D%3A%5Cwork%5Cproj&skip=20&author=Ada%20Lovelace%20%3Cada%40example.test%3E`, method: undefined },
+  'a further page carries the offset and the author identity the Host listed')
 const answerFetch = globalThis.fetch
 globalThis.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
 await assert.rejects(() => gitFace.load('/repo', undefined), /answered 500/)
+await assert.rejects(() => gitFace.loadCommits('/repo', 0, '', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadRemote('/repo', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadDiff('/repo', 'a.txt', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadCommit('/repo', 'abc123', undefined), /answered 500/)
@@ -1494,12 +1589,17 @@ const strings = (node, found = []) => {
   strings(node.children, found)
   return found
 }
+const commitPages = []
 const gitProps = {
   t,
   sessionId: 'session',
   useSessions: (select) => select({ byId: { session: { cwd: '/repo' } } }),
   useTabInfo: () => ({ tab: { navigation: { revision: 1 } } }),
   load: () => Promise.resolve({}),
+  loadCommits: (cwd, skip, author) => {
+    commitPages.push({ cwd, skip, author })
+    return Promise.resolve({ ok: true, commits: [], hasMore: false })
+  },
   loadRemote: () => Promise.resolve({}),
   pull: async (cwd) => { pullRequests.push(cwd); return { ...listing, updated: true } },
   loadDiff: () => Promise.resolve({}),
@@ -1584,6 +1684,58 @@ assert.equal(commit.children[2].children[0], `Ada · ${new Date('2026-01-02T03:0
 assert.equal(typeof commit.props.onDoubleClick, 'function', 'a commit opens its files on a double-click')
 assert.equal(commit.props.title, `first subject\n${t('gitCommitHint')}`,
   'the row says what a double-click does, and keeps the subject as its tooltip')
+
+// The history column is one page of many: the listing says whether the rest
+// continues, and the row at the end of the list is both what the scrollport
+// watches and the way a pointer asks for the next page directly.
+const paged = (extra) => {
+  seeded.push({
+    phase: 'settled',
+    result: { ...listing, ...extra },
+    remote: { phase: 'settled', result: { ok: true, relation: 'up-to-date', ahead: 0, behind: 0 } },
+  })
+  return gitRender()
+}
+const continuing = paged({ hasMoreCommits: true })
+const moreButton = flatten(continuing.view).find(node => node.props?.className === 'dli-git-more-button')
+assert.equal(moreButton.children[0], t('gitMore'), 'a history that continues offers the next page')
+commitPages.length = 0
+moreButton.props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+assert.deepEqual(commitPages, [{ cwd: '/repo', skip: 1, author: '' }],
+  'the next page starts after the rows already on screen')
+const ended = paged({ hasMoreCommits: false })
+assert.ok(ended.nodes.includes(t('gitCommits')), 'the history column is still drawn')
+assert.equal(flatten(ended.view).some(node => node.props?.className === 'dli-git-more'), false,
+  'a history that ended keeps no way to ask for more')
+
+// The author filter is the list of identities the Host read from this history.
+// Choosing one reads that author's first page, not the next page of the list on
+// screen: the filtered column is a different list.
+const authors = [
+  { id: 'Ada <ada@example.test>', name: 'Ada', email: 'ada@example.test', commits: 12 },
+  { id: 'Bob <bob@example.test>', name: 'Bob', email: 'bob@example.test', commits: 3 },
+]
+const authorSelect = flatten(paged({ authors }).view).find(node => node.props?.className === 'dli-git-author')
+const authorOptions = flatten(authorSelect).filter(node => node.type === 'option')
+assert.equal(authorSelect.props.value, '', 'the column starts on every author')
+assert.equal(authorSelect.props['aria-label'], t('gitAuthorFilter'), 'the control names what it filters by')
+assert.deepEqual(authorOptions.map(option => option.children[0]),
+  [t('gitAuthorAll'), t('gitAuthorOption', { name: 'Ada', count: 12 }), t('gitAuthorOption', { name: 'Bob', count: 3 })],
+  'every author of the history is offered, with how many commits each wrote')
+assert.deepEqual(authorOptions.slice(1).map(option => option.props.value), authors.map(author => author.id),
+  'the identity Git spelled is what the filter sends back')
+assert.equal(authorOptions[1].props.title, 'Ada <ada@example.test>',
+  'the address rides the tooltip, which is what tells two people with one name apart')
+commitPages.length = 0
+authorSelect.props.onChange({ target: { value: authors[1].id } })
+await new Promise((resolve) => setTimeout(resolve, 0))
+assert.deepEqual(commitPages, [{ cwd: '/repo', skip: 0, author: authors[1].id }],
+  'choosing an author reads that author from the top of their own history')
+const unfiltered = paged({ authors: [] })
+assert.equal(flatten(unfiltered.view).some(node => node.props?.className === 'dli-git-author'), false,
+  'a history with no authors carries no filter to offer')
+assert.ok(unfiltered.nodes.includes(t('gitCommits')), 'and the history column is drawn without it')
 
 // The page carries the one action that writes something: it puts "commit and
 // push" in the conversation and lets the agent do it. Clicking sends that text

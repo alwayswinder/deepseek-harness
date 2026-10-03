@@ -29,7 +29,9 @@
  * the asking Session works in, so the page sends it with the request, and the
  * detail behind one row is a route of its own — one file's diff, or one
  * commit's files — because each asks a different question about a different
- * pair of Git objects.
+ * pair of Git objects. The history column is read a page at a time on a route of
+ * its own as well, so the list can be walked past its first ten commits and
+ * narrowed to one author.
  *
  * Opening that same directory in the file manager is the mirror image: the page
  * knows which directory it is and cannot open one, this half can open one and
@@ -88,6 +90,14 @@ const GIT_DIFF_PATH = '/api/little-icon/git/diff'
  */
 const GIT_COMMIT_PATH = '/api/little-icon/git/commit'
 
+/**
+ * Same-origin route the page reads later pages of that history column from, and
+ * the same column under an author filter. It is a route of its own because the
+ * column asks the same question again and again: where the listing answers with
+ * a repository's first page, this answers with one page of one author's history.
+ */
+const GIT_COMMITS_PATH = '/api/little-icon/git/commits'
+
 /** Same-origin POST route that refreshes and compares the configured upstream. */
 const GIT_REMOTE_PATH = '/api/little-icon/git/remote'
 
@@ -138,8 +148,12 @@ const GIT_DIFF_FLAGS = ['--no-color', '--no-ext-diff']
  */
 const PET_QUIT_GRACE_MS = 1_000
 
-/** How many commits the history column shows. */
-const GIT_LOG_LIMIT = 10
+/**
+ * How many commits one page of the history column holds. The page asks for the
+ * next one when the list is scrolled to its end, so this is what the column
+ * shows before the reader asks for more rather than a cap on the list.
+ */
+const GIT_LOG_PAGE = 10
 
 /**
  * Field separator inside one `git log` record. `-z` separates records with NUL,
@@ -611,6 +625,53 @@ function parseGitLog(raw) {
 }
 
 /**
+ * Arguments for one page of `git log`.
+ *
+ * One row over the page size is asked for, so whether a further page exists is
+ * answered by the same walk instead of a second one counting the history.
+ * `--skip` is what moves the page along; the listing's own first page is this
+ * query without it, which is what keeps the two lined up. `-F` is what makes an
+ * author identity a fixed string: `--author` reads its pattern as a basic
+ * regular expression otherwise, where an address like `second+tag@example.test`
+ * is a quantifier that matches another commit, or nothing at all.
+ * @param options - page offset, rows per page, and the author identity to keep.
+ * @returns the arguments, without the executable.
+ */
+function gitLogArgs({ skip = 0, limit = GIT_LOG_PAGE, author = '' } = {}) {
+  const args = ['log', '-z', '-n', String(limit + 1), `--skip=${skip}`,
+    `--pretty=format:%H${GIT_FIELD}%h${GIT_FIELD}%an${GIT_FIELD}%aI${GIT_FIELD}%s`]
+  return author === '' ? args : [...args, '-F', `--author=${author}`]
+}
+
+/**
+ * Parse `git shortlog -sne`.
+ *
+ * One line per identity: the commit count, a tab, then `Name <email>` as Git
+ * spells it — the same spelling the log rows carry, which is what makes it the
+ * filter's identity rather than a display name the page would have to translate
+ * back into one.
+ * @param raw - the command's output.
+ * @returns one entry per author, in Git's own order, which counts down.
+ */
+function parseGitAuthors(raw) {
+  const authors = []
+  for (const line of raw.split('\n')) {
+    const match = /^\s*(\d+)\t(.*)$/u.exec(line)
+    if (match === null) continue
+    const id = match[2].trim()
+    if (id === '') continue
+    const parts = /^(.*?)\s*<([^>]*)>$/u.exec(id)
+    authors.push({
+      id,
+      name: parts === null ? id : parts[1],
+      email: parts === null ? '' : parts[2],
+      commits: Number(match[1]),
+    })
+  }
+  return authors
+}
+
+/**
  * Whether a path is an existing directory.
  * @param path - absolute path to test.
  * @returns whether it is a directory right now.
@@ -658,9 +719,9 @@ function openWorkingDirectory(cwd, launch) {
  * repository. A directory outside every repository is a normal answer, not a
  * failure, and so is a repository whose first commit has not been made yet.
  * @param cwd - directory to inspect.
- * @returns `{ ok: true, root, branch, changes, commits }`, or `{ ok: false }` with
- *   a `reason` of `no-dir`, `no-git`, `not-a-repo`, or `failed` plus the command's
- *   message.
+ * @returns `{ ok: true, root, branch, changes, commits, hasMoreCommits, authors }`,
+ *   or `{ ok: false }` with a `reason` of `no-dir`, `no-git`, `not-a-repo`, or
+ *   `failed` plus the command's message.
  */
 async function readGitRepository(cwd) {
   // Checked here rather than inferred from a spawn failure: a missing directory
@@ -670,22 +731,55 @@ async function readGitRepository(cwd) {
   const top = await execGit(cwd, ['rev-parse', '--show-toplevel'])
   if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
   const root = top.stdout.trim()
-  const [branch, status, log] = await Promise.all([
+  const [branch, status, log, authors] = await Promise.all([
     execGit(root, ['branch', '--show-current']),
     execGit(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
-    execGit(root, ['log', '-z', '-n', String(GIT_LOG_LIMIT),
-      `--pretty=format:%H${GIT_FIELD}%h${GIT_FIELD}%an${GIT_FIELD}%aI${GIT_FIELD}%s`]),
+    execGit(root, gitLogArgs()),
+    // The filter's choices come from one walk of the history rather than from
+    // the rows on screen, which would only ever offer the authors already there.
+    execGit(root, ['shortlog', '-sne', 'HEAD']),
   ])
   if (!status.ok) return { ok: false, reason: 'failed', message: status.message }
+  const rows = parseGitLog(log.stdout)
   return {
     ok: true,
     root,
     // A detached HEAD has no branch name; the column then shows the commit alone.
     branch: branch.ok ? branch.stdout.trim() : '',
     changes: parseGitStatus(status.stdout),
-    // `git log` fails while the repository has no commit to walk from.
-    commits: log.ok ? parseGitLog(log.stdout) : [],
+    // `git log` fails while the repository has no commit to walk from, which is
+    // a repository that has no history rather than one that cannot be read.
+    commits: log.ok ? rows.slice(0, GIT_LOG_PAGE) : [],
+    hasMoreCommits: log.ok && rows.length > GIT_LOG_PAGE,
+    authors: authors.ok ? parseGitAuthors(authors.stdout) : [],
   }
+}
+
+/**
+ * Read one page of the history column.
+ *
+ * It is the listing's own log query moved along by `skip` and narrowed to one
+ * author, because the column shows more of one list rather than a different
+ * question. The directory identifies the repository exactly as it does for the
+ * listing, so a page asked for after the workspace moved is answered about the
+ * repository that is there now.
+ * @param cwd - the Session's working directory.
+ * @param skip - how many commits the column already shows.
+ * @param author - one identity from the listing's own author list, or empty for
+ *   every author.
+ * @returns `{ ok: true, root, commits, hasMore }`, or `{ ok: false }` with the
+ *   listing's own reasons.
+ */
+async function readGitCommits(cwd, skip = 0, author = '') {
+  if (!isDirectory(cwd)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(cwd, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  const root = top.stdout.trim()
+  const log = await execGit(root, gitLogArgs({ skip, author }))
+  // Past the last page Git answers with nothing rather than failing; a walk that
+  // did fail has no history to add, which is the same answer to the column.
+  const rows = log.ok ? parseGitLog(log.stdout) : []
+  return { ok: true, root, commits: rows.slice(0, GIT_LOG_PAGE), hasMore: rows.length > GIT_LOG_PAGE }
 }
 
 /** Last queued network operation per repository root. */
@@ -1442,6 +1536,22 @@ export function apply(ctx, config) {
         ))
       },
     }), `little-icon: GET ${GIT_COMMIT_PATH}`)
+    // Later pages of the same history column, and the same column under one
+    // author: the page keeps one list and asks for more of it.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_COMMITS_PATH,
+      handler: (req, res) => {
+        serveGitRead(ctx, req, res, (query) => {
+          const cwd = query.get('cwd') ?? ''
+          if (cwd === '') return Promise.resolve({ ok: false, reason: 'no-cwd' })
+          const skip = Number.parseInt(query.get('skip') ?? '', 10)
+          return readGitCommits(
+            cwd, Number.isSafeInteger(skip) && skip > 0 ? skip : 0, query.get('author') ?? '',
+          )
+        })
+      },
+    }), `little-icon: GET ${GIT_COMMITS_PATH}`)
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
       path: GIT_REMOTE_PATH,
@@ -1606,6 +1716,7 @@ export const internals = {
   resolveShotDir,
   resolveSites,
   readGitRepository,
+  readGitCommits,
   readGitRemoteStatus,
   pullGitRepository,
   readGitDiff,
@@ -1614,6 +1725,7 @@ export const internals = {
   parseGitStatus,
   parseGitCommitFiles,
   parseGitLog,
+  parseGitAuthors,
   StateFileWriter,
   STATES,
   ACTIVITY_PATH,
@@ -1621,9 +1733,10 @@ export const internals = {
   GIT_PATH,
   GIT_DIFF_PATH,
   GIT_COMMIT_PATH,
+  GIT_COMMITS_PATH,
   GIT_REMOTE_PATH,
   GIT_PULL_PATH,
   OPEN_PATH,
   GIT_DIFF_MAX_CHARS,
-  GIT_LOG_LIMIT,
+  GIT_LOG_PAGE,
 }

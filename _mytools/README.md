@@ -141,6 +141,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\dsh-web.log` | `build\start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
 | `ai-game\` | 个人东西（ATB 回合制战斗 demo，纯 HTML/CSS/JS），与 DSH 运行无关。 |
 | `bg\` | 背景图素材。 |
+| `MouseShare\` | 一套键鼠控制两台 Windows 电脑的软 KVM，**反向连接**（被控端拨入），两台不在同一网段也能用。说明见 [MouseShare\README.md](MouseShare/README.md)；`build.bat` 用系统自带 csc.exe 编译，无需 .NET SDK。 |
 
 ## 约定
 

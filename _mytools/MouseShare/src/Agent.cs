@@ -48,6 +48,11 @@ static class Agent
                 using (TcpClient client = new TcpClient())
                 {
                     client.NoDelay = true;
+                    // 主机端每 1 秒发一次心跳，所以 5 秒收不到任何数据就说明链路已死。
+                    // 没有这个超时的话，Wi-Fi 掉线时 FIN 收不到，本进程会永远阻塞在 Read 上
+                    // 而主机端早已判掉线——表现为「按热键提示还没连上，对端也不重连」。
+                    client.ReceiveTimeout = 5000;
+                    client.SendTimeout = 1000;
                     client.Connect(server, port);
                     Console.WriteLine("[agent] 已连接 " + server + ":" + port);
                     using (NetworkStream stream = client.GetStream())

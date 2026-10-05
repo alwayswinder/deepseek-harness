@@ -517,7 +517,7 @@ if (process.platform === 'win32') {
   // apps/desktop anchor is what finds that tool.
   const settingsSync = /settings-sync: (.*)/.exec(selfTest.stdout)
   assert.ok(settingsSync !== null, 'the self test must report the settings sync script')
-  assert.equal(settingsSync[1].trim(), join(root, '..', '..', '..', '_mytools', 'settings', 'sync-pet-settings.mjs'),
+  assert.equal(settingsSync[1].trim(), join(root, '..', '..', '..', '_mytools', 'settings', 'sync-settings.mjs'),
     'a checkout whose apps/desktop is running must resolve its settings tool too')
 
   // The capture itself, taken for real: the sheet is not drawn and nobody drags, so

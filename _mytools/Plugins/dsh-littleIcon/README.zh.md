@@ -41,7 +41,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 - **切到别的应用就收起 DSH**：默认开启；下面那条滑块是「到后台多久才收起」，默认 0（一切到后台立刻收），关掉开关时变灰；
 - 另外还有启用开关、始终置顶、点击行为、表情节奏，以及折叠在**更多**里的空闲节奏、开心时长和状态采样间隔。
 
-控件即时写回 profile 配置（`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 里那一行 `little-icon`），不需要重启：宿主半改配置会重新发布状态文件，桌宠一秒内套用。把**启用桌宠**关掉再打开也能立刻结束/重新拉起桌宠进程。**改完一秒半后宿主还会把这一行抄进仓库的 [../../settings/pet-settings.yml](../../settings/pet-settings.yml)**——只有 desktop profile 会自动保存，提交与推送仍由你决定；另一台机器 `git pull` 后启动时，`build\start-desktop.bat` 把它合并回那台机器的 profile，所以两台电脑不必各设一遍。反过来，本机改过的值会保留到那份文件下次更新；要强制退回文件里的值，跑 `node _mytools\settings\sync-pet-settings.mjs apply --force`（机制细节见工作副本的 `_mytools/README.md` 里「桌宠设置跟着 git 走」一节）。这张卡片由插件的浏览器半边（`client.js`）提供，所以重启后不会再出现第二份自动生成的表单。
+控件即时写回 profile 配置（`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 里那一行 `little-icon`），不需要重启：宿主半改配置会重新发布状态文件，桌宠一秒内套用。把**启用桌宠**关掉再打开也能立刻结束/重新拉起桌宠进程。**改完一秒半后宿主还会把这一行抄进仓库的 [../../settings/pet-settings.yml](../../settings/pet-settings.yml)**——只有 desktop profile 会自动保存，提交与推送仍由你决定；同一条通路也带走 **Desktop 的快捷键**：那个文档归主进程管（`$DSH_HOME\desktop\electron-user-data\keybindings.json`），宿主看不到它的编辑事件，所以直接盯着那个文件，应用一改就抄进 [../../settings/keybindings.json](../../settings/keybindings.json)。另一台机器 `git pull` 后启动时，`build\start-desktop.bat`（或桌宠菜单里的重启）把这两份文件合并回那台机器，所以两台电脑不必各设一遍。反过来，本机改过的值会保留到对应文件下次更新；要强制退回文件里的值，跑 `node _mytools\settings\sync-settings.mjs apply --force`（机制细节见工作副本的 `_mytools/README.md` 里「设置跟着 git 走」一节）。这张卡片由插件的浏览器半边（`client.js`）提供，所以重启后不会再出现第二份自动生成的表单。
 
 **交互。** 桌宠默认贴在主屏右下角，闲置时按上面的设置半透明，鼠标移上去变清晰。按住左键拖动会移动位置（松开即记住，下次启动还原，并夹在当前虚拟屏幕内）。**单击**（没有拖动的那一次按下）执行配置里的 `clickAction`：`toggle`（默认）只在 DSH **已经是最前面那个窗口**时把它收起；DSH 只是被别的应用盖住时，单击是**把它提到最前**而不是收起；DSH 已收起或最小化时单击则恢复并置顶。`minimize` 只最小化；`none` 什么也不做。**右键点桌宠**弹出的菜单提供「对话」「常用网站」「Git 改动」「打开工作目录」「小游戏」「截图」「特殊功能」「设置」，桌面端另有「系统」子菜单，里面是「更新 DSH」「重启 DSH」「退出 DSH」。除了你点它，桌宠还会在 DSH 被晾到后台的时候自己动手：见下面「切到别的应用就收起」。
 
@@ -108,7 +108,7 @@ dsh plugin --profile web add file:<repo>/_mytools/Plugins/dsh-littleIcon
 
 桌宠把「DSH 现在在不在屏幕上」和「在不在前台」（前台是不是 DSH 自己那一侧：它的主窗口、它的对话框，或桌宠）写进 `window.json`；前者决定用哪条打盹计时，后者决定要不要自动收起，两者变化本身也算一次操作。每套表情都是四帧循环。
 
-本机数据写在 `$DSH_HOME/little-icon/`：`state.json`（宿主写、桌宠读；除了表情、尺寸这类状态，还捎带一条 `notice`——「上一回打开工作目录没打开」及其时间戳、截图要去的绝对路径 `shotDir`（设置留空时没有这个字段），以及菜单要列出的网站 `sites`）、`position.json`（桌宠写的位置）、`window.json`（桌宠写的「DSH 在不在屏幕上、在不在前台」）、`command.json`（桌宠写的右键菜单选择，宿主读走后转交给页面）、`shots/`（菜单里**截图**存下的 PNG，一次一张、按时间命名；`shotDir` 设置把它们挪走时这里就空着）与 `quit`（宿主写的「请你退出」，桌宠读到就存好位置、按顺序关掉自己的窗口再退出，退出时把它删掉）。它们按机器独立，不随仓库同步，删掉即回到默认位置与默认状态；**设置**不在这个目录里——那一行由 [../../settings/pet-settings.yml](../../settings/pet-settings.yml) 跟着 git 走，再由 `build\start-desktop.bat` 写回每台机器的 profile。
+本机数据写在 `$DSH_HOME/little-icon/`：`state.json`（宿主写、桌宠读；除了表情、尺寸这类状态，还捎带一条 `notice`——「上一回打开工作目录没打开」及其时间戳、截图要去的绝对路径 `shotDir`（设置留空时没有这个字段），以及菜单要列出的网站 `sites`）、`position.json`（桌宠写的位置）、`window.json`（桌宠写的「DSH 在不在屏幕上、在不在前台」）、`command.json`（桌宠写的右键菜单选择，宿主读走后转交给页面）、`shots/`（菜单里**截图**存下的 PNG，一次一张、按时间命名；`shotDir` 设置把它们挪走时这里就空着）与 `quit`（宿主写的「请你退出」，桌宠读到就存好位置、按顺序关掉自己的窗口再退出，退出时把它删掉）。它们按机器独立，不随仓库同步，删掉即回到默认位置与默认状态；**设置**不在这个目录里——桌宠那一行由 [../../settings/pet-settings.yml](../../settings/pet-settings.yml) 跟着 git 走，Desktop 的快捷键文档在它的 userData 里、由 [../../settings/keybindings.json](../../settings/keybindings.json) 跟着 git 走，两份都由 `build\start-desktop.bat`（或桌宠菜单里的重启）写回每台机器。
 
 -----
 

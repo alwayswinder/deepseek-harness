@@ -1,6 +1,6 @@
 # 桌宠便携设置：little-icon 段的一份可移植副本，跟着 git 走。
 #
-# 本机 → 仓库：双击 save-pet-settings.bat，把本机 profile 的设置抄到这里，
+# 本机 → 仓库：双击 save-settings.bat，把本机 profile 的设置抄到这里，
 #   然后自己 git add / commit / push。
 # 仓库 → 本机：启动 DSH 前由 build\start-desktop.bat 自动合并；只有这份文件
 #   变了才会覆盖本机设置，本机自己改过的值会保留到文件下次更新。

@@ -121,22 +121,24 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 - 没配 Cookie 时走"导出持仓 + 公开行情"这条本地通路；以后若在设置里存了 `STOCK_PNL_COOKIE`，插件会自动切回账本接口。
 - 换机器：代码跟仓库走，`positions.json` 不跟（隐私）——新机器上拖一次 xlsx 就有数了。
 
-## 桌宠设置跟着 git 走（`settings\`）
+## 设置跟着 git 走（`settings\`）
 
-桌宠的设置（大小、透明度、动画帧速、常用网站、截图目录、多机地址与热键）由设置页写进 `$DSH_HOME\profiles\desktop\cordis.patch.yml`，那份文件按机器存在、不进仓库。[settings\](settings/) 是它的一份可移植副本，两头都是自动的：**改完约 1.5 秒**，插件把 `little-icon` 段抄进 [pet-settings.yml](settings/pet-settings.yml)；另一台机器 `git pull` 后启动桌面端时，在应用读配置之前合并回本机 profile（两条启动路径都覆盖，见下面第二条）。你只需要在方便的时候 `git add`/`commit`/`push`。
+两台机器上不一致的东西都收在这里，跟着仓库走，两头都自动：**改完约 1.5 秒**写进仓库里的文件，另一台机器 `git pull` 后启动桌面端时、在应用读配置之前合并回本机（两条启动路径都覆盖，见下面第二条）。你只需要在方便的时候 `git add`/`commit`/`push`。
 
 | 文件 | 说明 |
 | --- | --- |
-| `settings\pet-settings.yml` | 随 git 走的桌宠设置，内容就是 `little-icon` 段的 `config`。可以手改：改完和"在设置页里改"等价，没写到的字段用插件默认值。 |
-| `settings\sync-pet-settings.mjs` | 实体，三个模式：`export`（抄出本机设置）、`apply`（合并进本机 profile）、`status`（只看差异，不写文件）。 |
-| `settings\save-pet-settings.bat` | 手动保存一份：双击即可，用于别的 profile（`save-pet-settings.bat web`）、或插件的自动保存没生效时（例如插件被装成 `file:` 副本、不在仓库里，那时宿主会记一条 info 说明跳过）。 |
+| `settings\pet-settings.yml` | 桌宠设置（大小、透明度、动画帧速、常用网站、截图目录、多机地址与热键）。内容就是 profile 里 `little-icon` 段的 `config`；本机那份在 `$DSH_HOME\profiles\desktop\cordis.patch.yml`。可以手改：改完和"在设置页里改"等价，没写到的字段用插件默认值。 |
+| `settings\keybindings.json` | Desktop 的快捷键覆盖，逐字就是 `$DSH_HOME\desktop\electron-user-data\keybindings.json`（Electron 主进程拥有的那份文档，`profiles` 按 `desktop:windows` 这样的运行时+平台分键）。 |
+| `settings\sync-settings.mjs` | 实体，三个模式：`export`（抄出本机）、`apply`（写回本机）、`status`（只看差异，不写文件）；`--only pet|keybindings` 只跑一份，`--force` 无视哈希守卫。 |
+| `settings\save-settings.bat` | 手动保存一份：双击即可，用于别的 profile（`save-settings.bat web`）、或插件的自动保存没生效时（例如插件被装成 `file:` 副本、不在仓库里，那时宿主会记一条 info 说明跳过）。 |
 
-- **自动保存由插件做**（`Plugins\dsh-littleIcon\index.js` 的 settings sync 一段）：设置变更事件到达时 profile patch 已经写完，所以导出读到的一定是新值；只有 **desktop** profile 会自动写这份文件——web profile 可以装同一个插件，让它写会把两台桌面共用的那份覆盖掉。
+- **自动保存由插件做**（`Plugins\dsh-littleIcon\index.js` 的 settings sync 一段），两份产物的触发方式不同：桌宠那份等设置变更事件——配置编辑器先落盘再通知 Loader，所以导出读到的一定是新值；快捷键那份是**盯文件**（`fs.watch` 主进程那份 `keybindings.json`），因为快捷键的编辑走的是 Electron 主进程，宿主侧看不到事件。只有 **desktop** profile 会自动写：web profile 可以装同一个插件，让它写会把两台桌面共用的那份覆盖掉。
 - **应用有两条路径**：`build\start-desktop.bat` 在应用读配置之前合并（开始菜单/桌面图标、「更新 DSH」的自动重启、`build.bat --restart` 都经过它）；桌宠菜单里的**重启 DSH** 重放的是 Electron 命令行本身、不经过那个脚本，所以桌宠在重放前自己补跑一次同样的合并（`pet\pet.ps1`，找不到 `node` 或合并失败只记一条日志，不拦重启）。两条都是同一个哈希守卫，重复跑不会覆盖本机改过的值。
-- **只有 `pet-settings.yml` 变了才会覆盖本机设置**：已合并的文件按内容哈希记在 `$DSH_HOME\little-icon\pet-settings-sync.json`，同一份文件重复启动什么都不做。所以本机临时改的值会保留到文件下次更新；要强制退回文件里的值，跑 `node _mytools\settings\sync-pet-settings.mjs apply --force`。
-- **哪个 profile**：默认 `desktop`，`--profile web` 可换。profile 没装桌宠插件时 `apply` 拒绝写入并说明原因，免得给用不上的 profile 留一条死配置。
+- **只有对应文件变了才会覆盖本机**：已应用的内容按哈希记在 `$DSH_HOME\settings-sync\state.json`（`pet` 按 profile 记，`keybindings` 记一份），同一份文件重复启动什么都不做。所以本机临时改的值会保留到文件下次更新；要强制退回文件里的值，跑 `node _mytools\settings\sync-settings.mjs apply --force`。
+- **哪个 profile**：默认 `desktop`，`--profile web` 可换，但只影响桌宠那份（快捷键不属于任何 profile）。profile 没装桌宠插件时桌宠那份拒绝写入并说明原因，免得给用不上的 profile 留一条死配置。
+- **写进快捷键文档前会先验一遍**（JSON 能不能解析、`schemaVersion` 是不是产品认的 1/2、顶层只有 `schemaVersion` 和 `profiles`）：产品读到读不懂的文件会拒读并锁住快捷键编辑，所以宁可拒绝写，也不把坏文件带到另一台机器上。
 - **不同步的东西**：窗口坐标（`position.json`）、当前状态、多机连接状态是运行时产物，由每台机器的屏幕和网络决定；凭据在 `$DSH_HOME\.credentials.yaml`，永不进仓库。
-- 合并用的是 harness 自己写 profile patch 的那套 YAML 文档读写，所以其它条目的注释和 `!!js` 表达式都原样保留；本机 patch 的 `little-icon` 段里若出现 `!!js`，导出直接报错，而不是把它写成普通字符串。
+- 合并桌宠那份用的是 harness 自己写 profile patch 的那套 YAML 文档读写，所以其它条目的注释和 `!!js` 表达式都原样保留；本机 patch 的 `little-icon` 段里若出现 `!!js`，导出直接报错，而不是把它写成普通字符串。
 
 ## 其它文件
 

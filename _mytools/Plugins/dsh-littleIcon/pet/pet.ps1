@@ -694,14 +694,15 @@ function Get-DesktopBuildScript([string]$CommandLine) {
 }
 
 function Get-SettingsSyncScript([string]$CommandLine) {
-    # Where the checkout keeps the tool that merges its committed pet settings
-    # into a profile. Restarting from this menu replays the Electron command line
-    # instead of going through build\start-desktop.bat, so the merge that launcher
-    # performs before every start has to be run here as well; otherwise a settings
-    # file pulled on this machine would wait for a start made another way.
+    # Where the checkout keeps the tool that merges its committed settings (the
+    # pet's profile section and the Desktop's shortcut document) into a machine.
+    # Restarting from this menu replays the Electron command line instead of going
+    # through build\start-desktop.bat, so the merge that launcher performs before
+    # every start has to be run here as well; otherwise a settings file pulled on
+    # this machine would wait for a start made another way.
     $repository = Get-CheckoutRepository $CommandLine
     if ([string]::IsNullOrWhiteSpace($repository)) { return $null }
-    $script = Join-Path $repository '_mytools\settings\sync-pet-settings.mjs'
+    $script = Join-Path $repository '_mytools\settings\sync-settings.mjs'
     if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { return $null }
     return $script
 }

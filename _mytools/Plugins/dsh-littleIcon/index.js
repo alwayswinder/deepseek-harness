@@ -22,9 +22,10 @@
  *
  * State and window position live under `$DSH_HOME/little-icon/`, so they stay
  * per machine and never sync with the repository. The settings do sync: this
- * half copies the profile's `little-icon` section into the repository's
- * `_mytools/settings/pet-settings.yml` when it changes, and the launcher merges
- * that file back into the profile before the next start on either machine.
+ * half copies the profile's `little-icon` section and the Desktop's shortcut
+ * document into the repository's `_mytools/settings/` when either changes, and
+ * the launcher — or the pet, on a restart from its own menu — merges those files
+ * back into a machine before the next start.
  *
  * The menu's Git entry needs repository facts the page cannot read: this half
  * runs `git` itself and serves the result on same-origin routes, because the
@@ -44,7 +45,7 @@
  */
 
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { homedir, networkInterfaces } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -152,17 +153,19 @@ const GIT_DIFF_FLAGS = ['--no-color', '--no-ext-diff']
 const PET_QUIT_GRACE_MS = 1_000
 
 /**
- * How long a settings write settles before this machine's pet settings are
- * copied into the checked-in file. One card edit can persist several fields in a
- * row, and the config editor reports each of them to the Loader.
+ * How long a settings write settles before this machine's settings are copied
+ * into the checked-in files. One card edit can persist several fields in a row,
+ * the config editor reports each of them to the Loader, and one shortcut edit
+ * reaches this half as several file events.
  */
 const SETTINGS_SYNC_DEBOUNCE_MS = 1_500
 
 /**
- * The profile whose pet settings the checked-in file carries. The pet window
- * belongs to the desktop profile, and the web profile can install this plugin
- * too; letting that second copy write the same file would overwrite what the
- * desktops share, so only this profile saves on its own.
+ * The profile whose settings the checked-in files carry. The pet window belongs
+ * to the desktop profile, and the Desktop shortcut document exists only there;
+ * the web profile can install this plugin too, and letting that second copy write
+ * the same files would overwrite what the desktops share, so only this profile
+ * saves on its own.
  */
 const SETTINGS_SYNC_PROFILE = 'desktop'
 
@@ -1230,16 +1233,16 @@ function spawnPet(script, assets, stateFile, positionFile, dshPid) {
 }
 
 /**
- * Path of the repository tool that copies this machine's pet settings into the
- * checked-in file, or undefined when this plugin is mounted outside the
+ * Path of the repository tool that copies this machine's settings into the
+ * checked-in files, or undefined when this plugin is mounted outside the
  * repository. The plugin is normally a junction into the repository, so its own
  * location answers this in one step; a profile that holds a copy of it instead
  * names the source directory in its own manifest, which is the second attempt.
  * @param profileDir - the active profile's directory.
- * @returns absolute path of `sync-pet-settings.mjs`.
+ * @returns absolute path of `sync-settings.mjs`.
  */
 function resolveSettingsSync(profileDir) {
-  const beside = fileURLToPath(new URL('../../settings/sync-pet-settings.mjs', import.meta.url))
+  const beside = fileURLToPath(new URL('../../settings/sync-settings.mjs', import.meta.url))
   if (existsSync(beside)) return beside
   let manifest
   try {
@@ -1252,10 +1255,24 @@ function resolveSettingsSync(profileDir) {
     const source = String(value).replace(/^(?:link|file):/u, '').replace(/\\/gu, '/')
     const at = source.indexOf('/_mytools/Plugins/dsh-littleIcon')
     if (at <= 0) continue
-    const script = `${source.slice(0, at)}/_mytools/settings/sync-pet-settings.mjs`
+    const script = `${source.slice(0, at)}/_mytools/settings/sync-settings.mjs`
     if (existsSync(script)) return script
   }
   return undefined
+}
+
+/**
+ * The Desktop's shortcut document, resolved the way the settings tool resolves
+ * it: the userData directory the launcher pins under the harness home, or the
+ * development override when one is set.
+ * @returns absolute path of `keybindings.json`.
+ */
+function shortcutSettingsPath() {
+  const configured = process.env.DSH_DESKTOP_USER_DATA_DIR
+  const directory = configured !== undefined && configured.trim() !== ''
+    ? resolve(configured.trim())
+    : join(resolveDshHome(), 'desktop', 'electron-user-data')
+  return join(directory, 'keybindings.json')
 }
 
 /**
@@ -1611,27 +1628,34 @@ export function apply(ctx, config) {
 
   // ---- settings sync --------------------------------------------------------
   //
-  // A settings-card edit belongs to every machine, so it is copied into the
-  // repository's `_mytools/settings/pet-settings.yml` as it is made: the config
-  // editor writes the profile patch and only then reports the change to the
-  // Loader, so this export always reads a file that already holds the new
-  // values. Two paths merge that same file back before DSH starts: the
-  // `build/start-desktop.bat` launcher for an ordinary start, and this plugin's
-  // own `pet/pet.ps1` for a restart from the pet menu, which replays the Electron
-  // command line instead of going through that launcher. Committing and pushing
-  // stay the person's call, which is why this only ever writes the working tree.
+  // What this machine decides about itself belongs to every machine, so it is
+  // copied into the repository's `_mytools/settings/` as it changes: the pet's
+  // own settings when the settings card writes them (the config editor writes
+  // the profile patch and only then reports the change to the Loader, so that
+  // export always reads a file holding the new values), and the Desktop's
+  // shortcut document when the app rewrites it. Two paths merge those files back
+  // before DSH starts: the `build/start-desktop.bat` launcher for an ordinary
+  // start, and this plugin's own `pet/pet.ps1` for a restart from the pet menu,
+  // which replays the Electron command line instead of going through that
+  // launcher. Committing and pushing stay the person's call, which is why this
+  // only ever writes the working tree.
   const profile = ctx.get('profileContext')
   const syncScript = profile === undefined || profile.name !== SETTINGS_SYNC_PROFILE
     ? undefined
     : resolveSettingsSync(profile.dir)
   if (syncScript === undefined) {
-    ctx.logger.info('little-icon: pet settings are not saved to the repository from this profile')
+    ctx.logger.info('little-icon: settings are not saved to the repository from this profile')
   }
   let syncTimer
+  let shortcutTimer
 
-  /** Run one export, reporting its own failure rather than letting it reach the host. */
-  const syncSettings = () => {
-    const child = spawn(process.execPath, [syncScript, 'export', '--profile', profile.name, '--quiet'], {
+  /**
+   * Copy one artifact out to the repository, reporting its own failure rather
+   * than letting it reach the host.
+   * @param only - `pet` or `keybindings`, the artifact to write.
+   */
+  const exportSettings = (only) => {
+    const child = spawn(process.execPath, [syncScript, 'export', '--profile', profile.name, '--only', only, '--quiet'], {
       // The desktop host is itself an Electron process in Node mode, so the tool
       // it starts has to be told the same thing rather than opening a second app.
       env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
@@ -1644,19 +1668,58 @@ export function apply(ctx, config) {
       if (text !== '') ctx.logger.warn('little-icon settings: %s', text)
     })
     child.once('error', (error) => {
-      ctx.logger.warn('little-icon: could not save the pet settings: %s', String(error))
+      ctx.logger.warn('little-icon: could not save the %s settings: %s', only, String(error))
     })
     child.once('exit', (code) => {
-      if (code !== 0) ctx.logger.warn('little-icon: saving the pet settings exited with code %s', String(code))
+      if (code !== 0) ctx.logger.warn('little-icon: saving the %s settings exited with code %s', only, String(code))
     })
   }
 
-  /** Copy the settings once the writes that reported them have stopped arriving. */
+  /** Copy the pet settings once the writes that reported them have stopped arriving. */
   const scheduleSettingsSync = () => {
     if (syncScript === undefined) return
     clearTimeout(syncTimer)
-    syncTimer = setTimeout(() => { guarded('settings export', syncSettings) }, SETTINGS_SYNC_DEBOUNCE_MS)
+    syncTimer = setTimeout(() => { guarded('settings export', () => exportSettings('pet')) }, SETTINGS_SYNC_DEBOUNCE_MS)
   }
+
+  /**
+   * Watch the Desktop's shortcut document. The main process owns that file and
+   * rewrites it whole whenever the settings page changes a binding, and this
+   * half sees no event for it: watching the file is what turns such an edit into
+   * the same automatic export the pet's own settings get.
+   * @returns disposer for the watcher.
+   */
+  const watchShortcutSettings = () => {
+    if (syncScript === undefined) return () => {}
+    const path = shortcutSettingsPath()
+    if (!existsSync(path)) {
+      ctx.logger.info('little-icon: no Desktop shortcut document yet at %s', path)
+      return () => {}
+    }
+    let watcher
+    try {
+      watcher = watch(path, () => {
+        clearTimeout(shortcutTimer)
+        shortcutTimer = setTimeout(() => {
+          guarded('shortcut settings export', () => exportSettings('keybindings'))
+        }, SETTINGS_SYNC_DEBOUNCE_MS)
+      })
+    } catch (error) {
+      // A document that vanished between the check and the watch, or one this
+      // process may not watch: the plugin still has to load, so this is a report
+      // rather than a failure.
+      ctx.logger.warn('little-icon: could not watch the shortcut document at %s: %s', path, String(error))
+      return () => {}
+    }
+    watcher.on('error', (error) => {
+      ctx.logger.warn('little-icon: watching the shortcut document failed: %s', String(error))
+    })
+    return () => {
+      clearTimeout(shortcutTimer)
+      watcher.close()
+    }
+  }
+  ctx.effect(watchShortcutSettings, 'little-icon: shortcut settings')
 
   // The page pings this on pointer and keyboard activity; without it the pet
   // could only tell "no task is running", which is not the same as "nobody is

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 2,
+  "profiles": {
+    "desktop:windows": {
+      "sidebar.left.toggle": {
+        "code": "Backquote",
+        "modifiers": []
+      },
+      "sidebar.right.toggle": {
+        "code": "Tab",
+        "modifiers": []
+      }
+    }
+  }
+}

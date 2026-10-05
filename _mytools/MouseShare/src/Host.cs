@@ -29,11 +29,21 @@ static class Host
     static bool autoRemote;           // --remote：被控端一连上就切到远程模式
     static bool acceptInjected;       // --accept-injected：连注入的鼠标事件也转发（仅自测用）
     static bool trace;                // --trace：打印每个鼠标事件的原始坐标与推算结果
+    // 边缘穿越：鼠标碰到本机那条边就切到对端，对端光标从它相邻的那条边进来；
+    // 推过对端近侧边缘 RETURN_MARGIN 像素再回来。默认对端在本机左侧。
+    static bool edgeCross = true;     // --no-edge 关掉，只用热键
+    static int side = -1;             // -1：对端在左（默认）；+1：对端在右
+    static bool edgeSession;          // 本次远程是边缘穿越进来的（决定映射基准与返回判定）
+    static long mapOffsetX;           // 映射基准：远端当作本机旁边一块等宽的虚拟屏
+    static long nearX;                // 本机与远端的分界，在本机坐标里
     static volatile bool swallowHotkeyUp;
+    const int ReturnMargin = 24;      // 推过分界这么多像素才算回来，避免贴边误触
+    const int CornerBlock = 8;        // 屏幕上下两端留出的角落安全带（点开始菜单不误切）
 
     static readonly HashSet<ushort> downKeys = new HashSet<ushort>();
     static Native.POINT savedPos;     // 进入远程模式时的本机光标位置，同时是位移锚点
-    static int virtX, virtY;          // 虚拟光标：按「事件位置 − 锚点」累积出来的远端映射位置
+    static long virtRawX;             // 虚拟光标 X（未夹取，边缘会话要靠它判断推过分界）
+    static int virtY;                 // 虚拟光标 Y：按「事件位置 − 锚点」累积出来的远端映射位置
     static volatile bool movePending; // 有未发出的鼠标位置，由发送线程按固定节奏合并发出
     static int pendingNx, pendingNy;
     static int rttLast, rttMin = int.MaxValue, rttMax, rttSamples;
@@ -65,11 +75,26 @@ static class Host
             else if (a == "--remote") autoRemote = true;
             else if (a == "--accept-injected") acceptInjected = true;
             else if (a == "--trace") trace = true;
+            else if (a == "--no-edge") edgeCross = false;
+            else if (a == "--side")
+            {
+                if (i + 1 >= args.Length) { Console.WriteLine("[x] --side 需要 left 或 right"); return 1; }
+                string value = args[++i].Trim().ToLowerInvariant();
+                if (value == "left") side = -1;
+                else if (value == "right") side = 1;
+                else { Console.WriteLine("[x] --side 只认 left 或 right"); return 1; }
+            }
             else { Console.WriteLine("[x] 未知参数: " + a); return 1; }
         }
 
         Console.WriteLine("MouseShare 主机端 0.1");
         Console.WriteLine("切换热键: " + HotkeyText());
+        if (edgeCross)
+        {
+            Console.WriteLine("边缘穿越: 已开启，对端在本机" + (side < 0 ? "左" : "右") + "侧"
+                + "（鼠标碰到" + (side < 0 ? "左" : "右") + "边缘过去，在对端推回另一侧回来）；--no-edge 可关");
+        }
+        else Console.WriteLine("边缘穿越: 已关闭（只用热键切换）");
         Console.WriteLine();
         foreach (string ip in LocalIPv4()) Console.WriteLine("本机可用地址: " + ip);
         listener = new TcpListener(IPAddress.Any, port);
@@ -127,8 +152,14 @@ static class Host
                 connected = true;
                 peerText = client.Client.RemoteEndPoint == null ? string.Empty : client.Client.RemoteEndPoint.ToString();
                 Status.Write("host", true, peerText, false, rttLast);
-                Console.WriteLine("[host] 被控端已连接: " + client.Client.RemoteEndPoint + "  （按 " + HotkeyText() + " 切到远程）");
-                if (autoRemote) EnterRemote();
+                Console.WriteLine("[host] 被控端已连接: " + client.Client.RemoteEndPoint
+                    + (edgeCross ? "  （鼠标碰到" + (side < 0 ? "左" : "右") + "边缘即可过去）" : "  （按 " + HotkeyText() + " 切到远程）"));
+                if (autoRemote)
+                {
+                    Native.POINT at;
+                    Native.GetCursorPos(out at);
+                    EnterRemote(at, false);
+                }
 
                 byte[] buf = new byte[512];
                 while (connected && epoch == connEpoch)
@@ -155,7 +186,7 @@ static class Host
                 if (connected) Console.WriteLine("[host] 读取结束: " + ex.Message);
             }
             connected = false;
-            ExitRemote("连接断开");
+            ExitRemote("连接断开", false);
             Status.Write("host", false, peerText, false, rttLast);
             try { if (client != null) client.Close(); } catch { }
             stream = null;
@@ -208,24 +239,48 @@ static class Host
 
     static void Toggle()
     {
-        if (remote) ExitRemote("热键切回");
-        else EnterRemote();
+        if (remote) ExitRemote("热键切回", false);
+        else
+        {
+            Native.POINT at;
+            Native.GetCursorPos(out at);
+            EnterRemote(at, false);
+        }
     }
 
-    static void EnterRemote()
+    /**
+     * 进入远程模式。
+     * @param from 触发时的物理光标位置，同时作为位移锚点。
+     * @param byEdge 是否由鼠标碰边缘触发；是则远端光标从相邻那条边进来，映射按拼接后的虚拟屏算。
+     */
+    static void EnterRemote(Native.POINT from, bool byEdge)
     {
         if (!connected) { Console.WriteLine("[host] 被控端还没连上，无法切换"); return; }
-        Native.GetCursorPos(out savedPos);
-        virtX = savedPos.x;
-        virtY = savedPos.y;
+        int vx, vy, vw, vh;
+        Metrics(out vx, out vy, out vw, out vh);
+        savedPos = from;
         lock (keysLock) downKeys.Clear();
+        edgeSession = byEdge;
+        nearX = side < 0 ? vx : vx + vw - 1;
+        // 远端被当作本机旁边一块等宽的虚拟屏：对端在左时它的右边缘贴着本机左边缘
+        mapOffsetX = side < 0 ? vx - vw : vx + vw;
+        virtRawX = byEdge ? nearX : from.x;
+        virtY = from.y;
         remote = true;
         Native.timeBeginPeriod(1);   // 让发送线程的 5ms 节奏真的成立
         Status.Write("host", connected, peerText, true, rttLast);
-        Console.WriteLine("[host] >>> 远程模式：本地键鼠已接管并转发到被控端，再按一次 " + HotkeyText() + " 返回");
+        QueuePosition();
+        Console.WriteLine(byEdge
+            ? "[host] >>> 远程模式（鼠标从" + (side < 0 ? "左" : "右") + "边缘过去；在对端推回另一侧即可回来）"
+            : "[host] >>> 远程模式：本地键鼠已接管并转发到被控端，再按一次 " + HotkeyText() + " 返回");
     }
 
-    static void ExitRemote(string why)
+    /**
+     * 退回本地模式。
+     * @param why 记进日志与状态的原因。
+     * @param byEdge 是否由鼠标推过分界触发；是则落回本机那条边内侧，方便继续往屏幕里走。
+     */
+    static void ExitRemote(string why, bool byEdge)
     {
         if (!remote) return;
         List<ushort> pending;
@@ -237,15 +292,57 @@ static class Host
         foreach (ushort vk in pending) Send("K " + vk + " 0 " + Native.KEYEVENTF_KEYUP);
         remote = false;
         movePending = false;
+        edgeSession = false;
         Native.timeEndPeriod(1);
         Status.Write("host", connected, peerText, false, rttLast);
-        Native.SetCursorPos(savedPos.x, savedPos.y);
+        if (byEdge)
+        {
+            int vx, vy, vw, vh;
+            Metrics(out vx, out vy, out vw, out vh);
+            Native.SetCursorPos(side < 0 ? vx + 2 : vx + vw - 3, Clamp(virtY, vy, vy + vh - 1));
+        }
+        else Native.SetCursorPos(savedPos.x, savedPos.y);
         Console.WriteLine("[host] <<< 本地模式（" + why + "）");
+    }
+
+    /** 本机虚拟桌面范围；进程已声明 DPI 感知，因此都是物理像素。 */
+    static void Metrics(out int vx, out int vy, out int vw, out int vh)
+    {
+        vx = Native.GetSystemMetrics(Native.SM_XVIRTUALSCREEN);
+        vy = Native.GetSystemMetrics(Native.SM_YVIRTUALSCREEN);
+        vw = Native.GetSystemMetrics(Native.SM_CXVIRTUALSCREEN);
+        vh = Native.GetSystemMetrics(Native.SM_CYVIRTUALSCREEN);
+        if (vw < 2) vw = 2;
+        if (vh < 2) vh = 2;
+    }
+
+    static int Clamp(int value, int low, int high)
+    {
+        if (value < low) return low;
+        if (value > high) return high;
+        return value;
+    }
+
+    /** 光标是否停在配置的那条边上；上下两端留出角落安全带，点开始菜单不会切走。 */
+    static bool AtCrossEdge(Native.POINT pt)
+    {
+        int vx, vy, vw, vh;
+        Metrics(out vx, out vy, out vw, out vh);
+        if (pt.y <= vy + CornerBlock || pt.y >= vy + vh - 1 - CornerBlock) return false;
+        return side < 0 ? pt.x <= vx : pt.x >= vx + vw - 1;
+    }
+
+    /** 没有按键按下才做边缘穿越，免得把窗口拖到边缘时人被切走。 */
+    static bool ButtonsUp()
+    {
+        return (Native.GetAsyncKeyState(Native.VK_LBUTTON) & 0x8000) == 0
+            && (Native.GetAsyncKeyState(Native.VK_RBUTTON) & 0x8000) == 0
+            && (Native.GetAsyncKeyState(Native.VK_MBUTTON) & 0x8000) == 0;
     }
 
     static void Cleanup()
     {
-        ExitRemote("退出");
+        ExitRemote("退出", false);
         try { if (mouseHook != IntPtr.Zero) Native.UnhookWindowsHookEx(mouseHook); } catch { }
         try { if (kbHook != IntPtr.Zero) Native.UnhookWindowsHookEx(kbHook); } catch { }
         mouseHook = kbHook = IntPtr.Zero;
@@ -257,11 +354,26 @@ static class Host
 
     static IntPtr MouseHook(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode < 0 || !remote) return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
-        if (!connected) { ExitRemote("连接断开"); return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam); }
+        if (nCode < 0) return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
 
         Native.MSLLHOOKSTRUCT ms = (Native.MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.MSLLHOOKSTRUCT));
         uint msg = unchecked((uint)wParam.ToInt64());
+
+        if (!remote)
+        {
+            // 本地模式下唯一要判的就是「鼠标碰到那条边了吗」：碰到了就切过去，
+            // 并且把这一下吞掉，免得本机也处理一次。
+            if (edgeCross && connected && msg == Native.WM_MOUSEMOVE
+                && (acceptInjected || (ms.flags & Native.LLMHF_INJECTED) == 0)
+                && ButtonsUp() && AtCrossEdge(ms.pt))
+            {
+                EnterRemote(ms.pt, true);
+                if (remote) return (IntPtr)1;
+            }
+            return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
+        }
+
+        if (!connected) { ExitRemote("连接断开", false); return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam); }
 
         // 自己 SetCursorPos 回锚点也会产生事件，直接吞掉以免自我放大
         if (!acceptInjected && (ms.flags & Native.LLMHF_INJECTED) != 0) return (IntPtr)1;
@@ -317,7 +429,7 @@ static class Host
         }
 
         if (!remote) return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
-        if (!connected) { ExitRemote("连接断开"); return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam); }
+        if (!connected) { ExitRemote("连接断开", false); return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam); }
 
         uint flags = (kb.flags & Native.LLKHF_EXTENDED) | (isDown ? 0u : Native.KEYEVENTF_KEYUP);
         lock (keysLock)
@@ -366,26 +478,41 @@ static class Host
         if (trace) Console.WriteLine("[trace] pt=(" + pt.x + "," + pt.y + ") anchor=(" + savedPos.x + "," + savedPos.y + ") d=(" + dx + "," + dy + ")");
         if (dx == 0 && dy == 0) return;
 
-        int vx = Native.GetSystemMetrics(Native.SM_XVIRTUALSCREEN);
-        int vy = Native.GetSystemMetrics(Native.SM_YVIRTUALSCREEN);
-        int vw = Native.GetSystemMetrics(Native.SM_CXVIRTUALSCREEN);
-        int vh = Native.GetSystemMetrics(Native.SM_CYVIRTUALSCREEN);
-        if (vw < 2) vw = 2;
-        if (vh < 2) vh = 2;
-
-        virtX += dx;
+        virtRawX += dx;
         virtY += dy;
-        if (virtX < vx) virtX = vx; else if (virtX > vx + vw - 1) virtX = vx + vw - 1;
-        if (virtY < vy) virtY = vy; else if (virtY > vy + vh - 1) virtY = vy + vh - 1;
+        QueuePosition();
 
-        long nx = (long)(virtX - vx) * 65535 / (vw - 1);
+        Native.SetCursorPos(savedPos.x, savedPos.y);
+
+        // 边缘会话：推过分界（对端靠本机那条边）就算回到本机
+        if (edgeSession)
+        {
+            if (side < 0)
+            {
+                if (virtRawX >= nearX + ReturnMargin) ExitRemote("鼠标推回本机", true);
+            }
+            else if (virtRawX <= nearX - ReturnMargin) ExitRemote("鼠标推回本机", true);
+        }
+    }
+
+    /**
+     * 把虚拟光标折算成被控端的归一化坐标，交给发送线程合并发出。
+     * 边缘会话按「本机旁边一块等宽的虚拟屏」映射（对端在左时它的右边缘贴着本机左边缘），
+     * 热键会话仍按原来的本机屏幕比例映射。
+     */
+    static void QueuePosition()
+    {
+        int vx, vy, vw, vh;
+        Metrics(out vx, out vy, out vw, out vh);
+        long baseX = edgeSession ? mapOffsetX : vx;
+        long nx = (virtRawX - baseX) * 65535 / (vw - 1);
         long ny = (long)(virtY - vy) * 65535 / (vh - 1);
+        if (nx < 0) nx = 0; else if (nx > 65535) nx = 65535;
+        if (ny < 0) ny = 0; else if (ny > 65535) ny = 65535;
 
         pendingNx = (int)nx;
         pendingNy = (int)ny;
         movePending = true;              // 交给发送线程合并发出，本回调里不再写网络
-
-        Native.SetCursorPos(savedPos.x, savedPos.y);
     }
 
     // ---------------- 热键 ----------------

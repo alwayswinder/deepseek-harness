@@ -60,6 +60,9 @@ static class Native
     public const int SM_CYVIRTUALSCREEN = 79;
 
     // ---- 虚拟键 ----
+    public const int VK_LBUTTON = 0x01;
+    public const int VK_RBUTTON = 0x02;
+    public const int VK_MBUTTON = 0x04;
     public const int VK_SHIFT = 0x10;
     public const int VK_CONTROL = 0x11;
     public const int VK_MENU = 0x12;

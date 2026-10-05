@@ -21,7 +21,10 @@
  * by this process's parent — the Electron main process.
  *
  * State and window position live under `$DSH_HOME/little-icon/`, so they stay
- * per machine and never sync with the repository.
+ * per machine and never sync with the repository. The settings do sync: this
+ * half copies the profile's `little-icon` section into the repository's
+ * `_mytools/settings/pet-settings.yml` when it changes, and the launcher merges
+ * that file back into the profile before the next start on either machine.
  *
  * The menu's Git entry needs repository facts the page cannot read: this half
  * runs `git` itself and serves the result on same-origin routes, because the
@@ -147,6 +150,21 @@ const GIT_DIFF_FLAGS = ['--no-color', '--no-ext-diff']
  * pet that cannot answer at all, and every millisecond of it delays a restart.
  */
 const PET_QUIT_GRACE_MS = 1_000
+
+/**
+ * How long a settings write settles before this machine's pet settings are
+ * copied into the checked-in file. One card edit can persist several fields in a
+ * row, and the config editor reports each of them to the Loader.
+ */
+const SETTINGS_SYNC_DEBOUNCE_MS = 1_500
+
+/**
+ * The profile whose pet settings the checked-in file carries. The pet window
+ * belongs to the desktop profile, and the web profile can install this plugin
+ * too; letting that second copy write the same file would overwrite what the
+ * desktops share, so only this profile saves on its own.
+ */
+const SETTINGS_SYNC_PROFILE = 'desktop'
 
 /**
  * How many commits one page of the history column holds. The page asks for the
@@ -1212,6 +1230,35 @@ function spawnPet(script, assets, stateFile, positionFile, dshPid) {
 }
 
 /**
+ * Path of the repository tool that copies this machine's pet settings into the
+ * checked-in file, or undefined when this plugin is mounted outside the
+ * repository. The plugin is normally a junction into the repository, so its own
+ * location answers this in one step; a profile that holds a copy of it instead
+ * names the source directory in its own manifest, which is the second attempt.
+ * @param profileDir - the active profile's directory.
+ * @returns absolute path of `sync-pet-settings.mjs`.
+ */
+function resolveSettingsSync(profileDir) {
+  const beside = fileURLToPath(new URL('../../settings/sync-pet-settings.mjs', import.meta.url))
+  if (existsSync(beside)) return beside
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8'))
+  } catch {
+    // No readable profile manifest: this half cannot trace the plugin back to a repository.
+    return undefined
+  }
+  for (const value of Object.values(manifest.dependencies ?? {})) {
+    const source = String(value).replace(/^(?:link|file):/u, '').replace(/\\/gu, '/')
+    const at = source.indexOf('/_mytools/Plugins/dsh-littleIcon')
+    if (at <= 0) continue
+    const script = `${source.slice(0, at)}/_mytools/settings/sync-pet-settings.mjs`
+    if (existsSync(script)) return script
+  }
+  return undefined
+}
+
+/**
  * Start the pet, publish its state, and stop both when the plugin unloads.
  * @param ctx - host context.
  * @param config - validated volatile config references.
@@ -1562,6 +1609,55 @@ export function apply(ctx, config) {
     })
   }
 
+  // ---- settings sync --------------------------------------------------------
+  //
+  // A settings-card edit belongs to every machine, so it is copied into the
+  // repository's `_mytools/settings/pet-settings.yml` as it is made: the config
+  // editor writes the profile patch and only then reports the change to the
+  // Loader, so this export always reads a file that already holds the new
+  // values. Two paths merge that same file back before DSH starts: the
+  // `build/start-desktop.bat` launcher for an ordinary start, and this plugin's
+  // own `pet/pet.ps1` for a restart from the pet menu, which replays the Electron
+  // command line instead of going through that launcher. Committing and pushing
+  // stay the person's call, which is why this only ever writes the working tree.
+  const profile = ctx.get('profileContext')
+  const syncScript = profile === undefined || profile.name !== SETTINGS_SYNC_PROFILE
+    ? undefined
+    : resolveSettingsSync(profile.dir)
+  if (syncScript === undefined) {
+    ctx.logger.info('little-icon: pet settings are not saved to the repository from this profile')
+  }
+  let syncTimer
+
+  /** Run one export, reporting its own failure rather than letting it reach the host. */
+  const syncSettings = () => {
+    const child = spawn(process.execPath, [syncScript, 'export', '--profile', profile.name, '--quiet'], {
+      // The desktop host is itself an Electron process in Node mode, so the tool
+      // it starts has to be told the same thing rather than opening a second app.
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    })
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (chunk) => {
+      const text = String(chunk).trim()
+      if (text !== '') ctx.logger.warn('little-icon settings: %s', text)
+    })
+    child.once('error', (error) => {
+      ctx.logger.warn('little-icon: could not save the pet settings: %s', String(error))
+    })
+    child.once('exit', (code) => {
+      if (code !== 0) ctx.logger.warn('little-icon: saving the pet settings exited with code %s', String(code))
+    })
+  }
+
+  /** Copy the settings once the writes that reported them have stopped arriving. */
+  const scheduleSettingsSync = () => {
+    if (syncScript === undefined) return
+    clearTimeout(syncTimer)
+    syncTimer = setTimeout(() => { guarded('settings export', syncSettings) }, SETTINGS_SYNC_DEBOUNCE_MS)
+  }
+
   // The page pings this on pointer and keyboard activity; without it the pet
   // could only tell "no task is running", which is not the same as "nobody is
   // there", and it would fall asleep while the person is working in DSH.
@@ -1819,11 +1915,13 @@ export function apply(ctx, config) {
     wasEnabled = enabled
     guarded('publish', publish)
     schedule()
+    scheduleSettingsSync()
   })
 
   ctx.effect(() => () => {
     disposed = true
     clearInterval(timer)
+    clearTimeout(syncTimer)
     stopPet()
     // The multi-machine process ends with DSH: it holds a listening port and global
     // input hooks, so leaving it behind would be a service nobody asked for.

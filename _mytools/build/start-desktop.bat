@@ -62,6 +62,18 @@ rem pulled plugin change is what this launch loads.
 call "%~dp0sync-plugins.bat" desktop
 if errorlevel 1 goto :pluginFailure
 
+rem Merge the checked-in desk-pet settings into this machine's profile before the
+rem app reads them, so a pulled change is in effect on this launch. A value edited
+rem on this machine keeps until that file changes again. A missing node or a
+rem failed merge is reported and never blocks the launch.
+for %%I in ("%~dp0..\settings") do set "PET_SETTINGS_DIR=%%~fI"
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [desktop] WARNING: node was not found; skipping the desk-pet settings sync.
+) else (
+    node "%PET_SETTINGS_DIR%\sync-pet-settings.mjs" apply --profile desktop --quiet
+)
+
 rem Carry over the browser data earlier launchers kept inside the build tree, so
 rem this launch starts signed in instead of asking again.
 call "%~dp0migrate-desktop-user-data.bat"

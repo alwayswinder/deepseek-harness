@@ -669,7 +669,7 @@ function Start-RelaunchHelper([string]$CommandLine) {
         -WindowStyle Hidden)
 }
 
-function Get-DesktopBuildScript([string]$CommandLine) {
+function Get-CheckoutRepository([string]$CommandLine) {
     # The development launcher ends its command line with apps/desktop, which is
     # the stable link from a running checkout back to its repository. Require
     # that exact layout so an unrelated quoted directory cannot select a script.
@@ -681,10 +681,63 @@ function Get-DesktopBuildScript([string]$CommandLine) {
     if (-not [string]::Equals($desktop, $expectedDesktop, [System.StringComparison]::OrdinalIgnoreCase)) {
         return $null
     }
+    return $repository
+}
+
+function Get-DesktopBuildScript([string]$CommandLine) {
+    $repository = Get-CheckoutRepository $CommandLine
+    if ([string]::IsNullOrWhiteSpace($repository)) { return $null }
     $script = Join-Path $repository '_mytools\build\build-desktop.bat'
     if (-not (Test-Path -LiteralPath (Join-Path $repository 'package.json') -PathType Leaf) -or
         -not (Test-Path -LiteralPath $script -PathType Leaf)) { return $null }
     return $script
+}
+
+function Get-SettingsSyncScript([string]$CommandLine) {
+    # Where the checkout keeps the tool that merges its committed pet settings
+    # into a profile. Restarting from this menu replays the Electron command line
+    # instead of going through build\start-desktop.bat, so the merge that launcher
+    # performs before every start has to be run here as well; otherwise a settings
+    # file pulled on this machine would wait for a start made another way.
+    $repository = Get-CheckoutRepository $CommandLine
+    if ([string]::IsNullOrWhiteSpace($repository)) { return $null }
+    $script = Join-Path $repository '_mytools\settings\sync-pet-settings.mjs'
+    if (-not (Test-Path -LiteralPath $script -PathType Leaf)) { return $null }
+    return $script
+}
+
+function Invoke-SettingsSync([string]$Script) {
+    # A failure here is reported and the restart continues: coming back with the
+    # pet as it was beats not coming back at all. Node is the same requirement the
+    # launcher has, and it is looked up rather than assumed so a machine without
+    # it says so once instead of failing the restart.
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if ($null -eq $node) {
+        Write-Log 'settings sync skipped: node is not on PATH'
+        return
+    }
+    $name = 'pet-settings-sync-' + [guid]::NewGuid().ToString('N')
+    $outLog = Join-Path ([System.IO.Path]::GetTempPath()) ($name + '.out.log')
+    $errLog = Join-Path ([System.IO.Path]::GetTempPath()) ($name + '.err.log')
+    try {
+        # Not --quiet: a merge that changed this profile is worth one line in the
+        # log, and the line reads the same whether a person restarts from the menu
+        # or the launcher does it before a start. Newlines are folded so the log
+        # stays one line per event.
+        $process = Start-Process -FilePath $node.Source `
+            -ArgumentList @("`"$Script`"", 'apply', '--profile', 'desktop') `
+            -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+        $text = if (Test-Path -LiteralPath $outLog) { (Get-Content -LiteralPath $outLog -Raw).Trim() } else { '' }
+        if ($text -ne '') { Write-Log "settings sync: $($text -replace "`r?`n", ' | ')" }
+        if ($process.ExitCode -ne 0) {
+            $errors = if (Test-Path -LiteralPath $errLog) { (Get-Content -LiteralPath $errLog -Raw).Trim() } else { '' }
+            Write-Log "settings sync failed with code $($process.ExitCode): $errors"
+        }
+    } catch {
+        Write-Log "settings sync could not run: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -LiteralPath $outLog, $errLog -ErrorAction SilentlyContinue
+    }
 }
 
 function Show-UpdateFailure([string]$Detail) {
@@ -796,6 +849,8 @@ function Restart-DshWindow {
         return
     }
     try {
+        $sync = Get-SettingsSyncScript $command
+        if (-not [string]::IsNullOrWhiteSpace($sync)) { Invoke-SettingsSync $sync }
         Start-RelaunchHelper $command
         Write-Log "restarting DSH after it exits: $command"
     } catch {
@@ -1175,6 +1230,9 @@ if ($SelfTest) {
     $desktop = Join-Path $repository 'apps\desktop'
     $buildCommand = '"{0}" "{1}"' -f (Join-Path $env:SystemRoot 'System32\notepad.exe'), $desktop
     Write-Output "build-script: $(Get-DesktopBuildScript $buildCommand)"
+    # The same anchor selects the settings tool a restart from the menu has to run
+    # before replaying the launcher's command line.
+    Write-Output "settings-sync: $(Get-SettingsSyncScript $buildCommand)"
     exit 0
 }
 

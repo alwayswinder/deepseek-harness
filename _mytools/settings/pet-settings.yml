@@ -1,0 +1,29 @@
+# 桌宠便携设置：little-icon 段的一份可移植副本，跟着 git 走。
+#
+# 本机 → 仓库：双击 save-pet-settings.bat，把本机 profile 的设置抄到这里，
+#   然后自己 git add / commit / push。
+# 仓库 → 本机：启动 DSH 前由 build\start-desktop.bat 自动合并；只有这份文件
+#   变了才会覆盖本机设置，本机自己改过的值会保留到文件下次更新。
+# 手改这份文件同样有效：config 段就是设置页里的字段，没写到的字段用插件默认值。
+
+version: 1
+exportedFrom: desktop
+exportedAt: 2026-10-05T07:17:52.066Z
+name: "@local/dsh-little-icon"
+config:
+  enabled: true
+  size: 128
+  translucent: false
+  idleOpacity: 0.2
+  happyMs: 7000
+  boredMs: 11000
+  autoHide: false
+  autoHideSeconds: 5
+  shotDir: D:\AI\Tmp
+  sites:
+    - name: b站
+      url: https://www.bilibili.com/
+    - name: git
+      url: https://github.com/
+    - name: 用量统计
+      url: https://platform.deepseek.com/usage

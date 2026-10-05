@@ -512,6 +512,13 @@ if (process.platform === 'win32') {
   assert.ok(buildScript !== null, 'the self test must report the Desktop build script')
   assert.equal(buildScript[1].trim(), join(root, '..', '..', '..', '_mytools', 'build', 'build-desktop.bat'),
     'the running apps/desktop directory must resolve back to this checkout build')
+  // A restart from the menu replays the Electron command line rather than going
+  // through the launcher, so it has to run the settings merge itself; the same
+  // apps/desktop anchor is what finds that tool.
+  const settingsSync = /settings-sync: (.*)/.exec(selfTest.stdout)
+  assert.ok(settingsSync !== null, 'the self test must report the settings sync script')
+  assert.equal(settingsSync[1].trim(), join(root, '..', '..', '..', '_mytools', 'settings', 'sync-pet-settings.mjs'),
+    'a checkout whose apps/desktop is running must resolve its settings tool too')
 
   // The capture itself, taken for real: the sheet is not drawn and nobody drags, so
   // what is left under test is the screen read, the encoder, and the directory. A

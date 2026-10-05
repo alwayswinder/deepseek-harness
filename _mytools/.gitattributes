@@ -9,3 +9,7 @@
 # third-party file to satisfy `git diff --check` would be worse than saying so
 # here, which is what this turns off for exactly this path.
 Plugins/dsh-aquarium3d/vendor/three.module.js -whitespace
+
+# The compiled MouseShare helper ships in the repository so the second machine
+# only has to `git pull` (it is a PE image: no end-of-line or diff handling).
+MouseShare/bin/*.exe binary

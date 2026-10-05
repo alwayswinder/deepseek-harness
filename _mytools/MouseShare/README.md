@@ -16,7 +16,7 @@ MWB 的连接方向是「对端连到有键鼠的那台」之外还要求主机�
 | `src/Program.cs` | 入口、用法、注入链路自检 |
 | `build.bat` | 用系统自带 `csc.exe` 编译到 `bin\MouseShare.exe`，不需要 .NET SDK |
 | `run-host.bat` / `run-agent.bat` | 双击即用；`run-agent.bat` 的主机地址取自第一个参数，留空则提示输入 |
-| `bin/MouseShare.exe` | 构建产物，由 `.gitignore` 排除，不进仓库 |
+| `bin/MouseShare.exe` | 已编译好的程序，**跟着仓库走**：另一台 `git pull` 就能直接拿到，不必自己编译。改过源码后跑 `build.bat` 重新生成并一并提交 |
 
 ## 编译
 
@@ -28,7 +28,7 @@ build.bat
 
 ## 部署与使用
 
-1. 把 `bin\MouseShare.exe`（或整个目录）拷到另一台电脑。那台能不能被访问不重要，只要它**能出网到主机**即可。
+1. 在另一台电脑上 `git pull` 拿到 `bin\MouseShare.exe`（它已入库），或直接拷贝整个目录。那台能不能被访问不重要，只要它**能出网到主机**即可。
 2. **先在被控端**运行：`run-agent.bat`（提示输入主机地址），或 `MouseShare.exe agent --server <主机IP>:15180`
 3. **再在主机端**运行：`run-host.bat`，或 `MouseShare.exe host`
 4. 主机端窗口显示「被控端已连接」后，按 **Ctrl+Alt+F12** 切到远程；再按一次切回本地。

@@ -4,6 +4,7 @@
 // 远程模式下吞掉本地输入、把它转发给被控端注入。
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -33,6 +34,12 @@ static class Host
     static readonly HashSet<ushort> downKeys = new HashSet<ushort>();
     static Native.POINT savedPos;     // 进入远程模式时的本机光标位置，同时是位移锚点
     static int virtX, virtY;          // 虚拟光标：按「事件位置 − 锚点」累积出来的远端映射位置
+    static volatile bool movePending; // 有未发出的鼠标位置，由发送线程按固定节奏合并发出
+    static int pendingNx, pendingNy;
+    static int rttLast, rttMin = int.MaxValue, rttMax, rttSamples;
+    static readonly Stopwatch clock = Stopwatch.StartNew();
+    static long pSentTicks;           // 上次心跳发出时刻（Stopwatch 计时，微秒级）
+    static volatile bool awaitingPong;
     static volatile int lastRecvTick;
 
     static Native.HookProc mouseProc, kbProc;
@@ -74,6 +81,7 @@ static class Host
         lastRecvTick = Environment.TickCount;
         new Thread(ListenLoop) { IsBackground = true }.Start();
         new Thread(KeepAliveLoop) { IsBackground = true }.Start();
+        new Thread(SenderLoop) { IsBackground = true }.Start();
 
         mouseProc = MouseHook;
         kbProc = KeyboardHook;
@@ -124,6 +132,17 @@ static class Host
                     int n = stream.Read(buf, 0, buf.Length);
                     if (n <= 0) break;
                     lastRecvTick = Environment.TickCount;
+                    if (awaitingPong)
+                    {
+                        awaitingPong = false;
+                        int rtt = (int)((clock.ElapsedTicks - pSentTicks) * 1000L / Stopwatch.Frequency);
+                        rttLast = rtt;
+                        if (rtt < rttMin) rttMin = rtt;
+                        if (rtt > rttMax) rttMax = rtt;
+                        rttSamples++;
+                        if (rttSamples == 1 || rttSamples % 30 == 0 || rtt > 150)
+                            Console.WriteLine("[host] 链路 RTT " + rtt + " ms（样本 " + rttSamples + "，范围 " + rttMin + "–" + rttMax + " ms）");
+                    }
                 }
             }
             catch (Exception ex)
@@ -142,9 +161,16 @@ static class Host
     {
         while (true)
         {
-            Thread.Sleep(5000);
+            // 1 秒一次：既能量链路 RTT，也让 Wi-Fi 射频不进入省电（空闲后首个包常有
+            // 几十到几百毫秒的唤醒延迟，实测本链路 7–310ms 波动，主要来源就是它）。
+            Thread.Sleep(1000);
             if (!connected) continue;
+
+            // 心跳 + 在收包路径上量真实往返（不用轮询，避免被系统计时器粒度量化成 15ms）
+            pSentTicks = clock.ElapsedTicks;
+            awaitingPong = true;
             Send("P");
+
             if (unchecked(Environment.TickCount - lastRecvTick) > 12000)
             {
                 Console.WriteLine("[host] 12 秒未收到被控端数据，判定链路已断");
@@ -188,6 +214,7 @@ static class Host
         virtY = savedPos.y;
         lock (keysLock) downKeys.Clear();
         remote = true;
+        Native.timeBeginPeriod(1);   // 让发送线程的 5ms 节奏真的成立
         Console.WriteLine("[host] >>> 远程模式：本地键鼠已接管并转发到被控端，再按一次 " + HotkeyText() + " 返回");
     }
 
@@ -202,6 +229,8 @@ static class Host
         }
         foreach (ushort vk in pending) Send("K " + vk + " 0 " + Native.KEYEVENTF_KEYUP);
         remote = false;
+        movePending = false;
+        Native.timeEndPeriod(1);
         Native.SetCursorPos(savedPos.x, savedPos.y);
         Console.WriteLine("[host] <<< 本地模式（" + why + "）");
     }
@@ -229,21 +258,30 @@ static class Host
         // 自己 SetCursorPos 回锚点也会产生事件，直接吞掉以免自我放大
         if (!acceptInjected && (ms.flags & Native.LLMHF_INJECTED) != 0) return (IntPtr)1;
 
+        if (msg == Native.WM_MOUSEMOVE)
+        {
+            SendMouseMove(ms.pt);
+            return (IntPtr)1;
+        }
+
+        uint flags = 0, data = 0;
         switch (msg)
         {
-            case Native.WM_MOUSEMOVE:
-                SendMouseMove(ms.pt);
-                break;
-            case Native.WM_LBUTTONDOWN: SendMouse(Native.MOUSEEVENTF_LEFTDOWN, 0); break;
-            case Native.WM_LBUTTONUP: SendMouse(Native.MOUSEEVENTF_LEFTUP, 0); break;
-            case Native.WM_RBUTTONDOWN: SendMouse(Native.MOUSEEVENTF_RIGHTDOWN, 0); break;
-            case Native.WM_RBUTTONUP: SendMouse(Native.MOUSEEVENTF_RIGHTUP, 0); break;
-            case Native.WM_MBUTTONDOWN: SendMouse(Native.MOUSEEVENTF_MIDDLEDOWN, 0); break;
-            case Native.WM_MBUTTONUP: SendMouse(Native.MOUSEEVENTF_MIDDLEUP, 0); break;
-            case Native.WM_MOUSEWHEEL: SendMouse(Native.MOUSEEVENTF_WHEEL, unchecked((uint)(short)(ms.mouseData >> 16))); break;
-            case Native.WM_MOUSEHWHEEL: SendMouse(Native.MOUSEEVENTF_HWHEEL, unchecked((uint)(short)(ms.mouseData >> 16))); break;
-            case Native.WM_XBUTTONDOWN: SendMouse(Native.MOUSEEVENTF_XDOWN, ms.mouseData >> 16); break;
-            case Native.WM_XBUTTONUP: SendMouse(Native.MOUSEEVENTF_XUP, ms.mouseData >> 16); break;
+            case Native.WM_LBUTTONDOWN: flags = Native.MOUSEEVENTF_LEFTDOWN; break;
+            case Native.WM_LBUTTONUP: flags = Native.MOUSEEVENTF_LEFTUP; break;
+            case Native.WM_RBUTTONDOWN: flags = Native.MOUSEEVENTF_RIGHTDOWN; break;
+            case Native.WM_RBUTTONUP: flags = Native.MOUSEEVENTF_RIGHTUP; break;
+            case Native.WM_MBUTTONDOWN: flags = Native.MOUSEEVENTF_MIDDLEDOWN; break;
+            case Native.WM_MBUTTONUP: flags = Native.MOUSEEVENTF_MIDDLEUP; break;
+            case Native.WM_MOUSEWHEEL: flags = Native.MOUSEEVENTF_WHEEL; data = unchecked((uint)(short)(ms.mouseData >> 16)); break;
+            case Native.WM_MOUSEHWHEEL: flags = Native.MOUSEEVENTF_HWHEEL; data = unchecked((uint)(short)(ms.mouseData >> 16)); break;
+            case Native.WM_XBUTTONDOWN: flags = Native.MOUSEEVENTF_XDOWN; data = ms.mouseData >> 16; break;
+            case Native.WM_XBUTTONUP: flags = Native.MOUSEEVENTF_XUP; data = ms.mouseData >> 16; break;
+        }
+        if (flags != 0)
+        {
+            FlushMove();                 // 点击/滚轮前先落地位置，否则会点在旧位置上
+            SendMouse(flags, data);
         }
         return (IntPtr)1;   // 吞掉事件，本地不再响应
     }
@@ -279,8 +317,30 @@ static class Host
             if (isDown) downKeys.Add((ushort)kb.vkCode);
             else downKeys.Remove((ushort)kb.vkCode);
         }
+        FlushMove();                     // 按键前先落地位置，保持事件顺序
         Send("K " + kb.vkCode + " " + kb.scanCode + " " + flags);
         return (IntPtr)1;
+    }
+
+    // 合并发送：钩子只登记最新位置，发送线程按 ~5ms 的节奏发一次（进入远程模式时
+    // 把计时器精度提到 1ms，否则 Sleep 会被系统粒度拉成 15.6ms）。
+    // 高频鼠标（500/1000Hz）因此不会变成每事件一个 TCP 包，钩子回调里也不再写网络。
+    static void SenderLoop()
+    {
+        while (true)
+        {
+            Thread.Sleep(5);
+            FlushMove();
+        }
+    }
+
+    // 把待发的鼠标位置立刻发出去。点击/滚轮/按键前必须先调用，保证事件顺序。
+    static void FlushMove()
+    {
+        if (!remote || !movePending) return;
+        movePending = false;
+        uint flags = Native.MOUSEEVENTF_MOVE | Native.MOUSEEVENTF_ABSOLUTE | Native.MOUSEEVENTF_VIRTUALDESK;
+        Send("M " + flags + " " + pendingNx + " " + pendingNy + " 0");
     }
 
     static void SendMouse(uint flags, uint data)
@@ -313,8 +373,9 @@ static class Host
         long nx = (long)(virtX - vx) * 65535 / (vw - 1);
         long ny = (long)(virtY - vy) * 65535 / (vh - 1);
 
-        uint flags = Native.MOUSEEVENTF_MOVE | Native.MOUSEEVENTF_ABSOLUTE | Native.MOUSEEVENTF_VIRTUALDESK;
-        Send("M " + flags + " " + nx + " " + ny + " 0");
+        pendingNx = (int)nx;
+        pendingNy = (int)ny;
+        movePending = true;              // 交给发送线程合并发出，本回调里不再写网络
 
         Native.SetCursorPos(savedPos.x, savedPos.y);
     }

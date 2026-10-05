@@ -166,6 +166,11 @@ static class Native
     [DllImport("user32.dll")]
     public static extern bool SetProcessDPIAware();
 
+    // 提高系统计时器精度：默认粒度 15.6ms 会把 Thread.Sleep(5) 拖成 15ms，
+    // 让合并发送变成 ~64Hz，反而增加延迟。只在远程模式期间开启。
+    [DllImport("winmm.dll")] public static extern uint timeBeginPeriod(uint uMilliseconds);
+    [DllImport("winmm.dll")] public static extern uint timeEndPeriod(uint uMilliseconds);
+
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int X, int Y);
 

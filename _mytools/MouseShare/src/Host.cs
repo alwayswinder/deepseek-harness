@@ -26,10 +26,13 @@ static class Host
     static uint hotkeyVk = 0x7B;      // F12
     static bool hkCtrl = true, hkAlt = true, hkShift = false, hkWin = false;
     static bool autoRemote;           // --remote：被控端一连上就切到远程模式
+    static bool acceptInjected;       // --accept-injected：连注入的鼠标事件也转发（仅自测用）
+    static bool trace;                // --trace：打印每个鼠标事件的原始坐标与推算结果
     static volatile bool swallowHotkeyUp;
 
     static readonly HashSet<ushort> downKeys = new HashSet<ushort>();
-    static Native.POINT savedPos;
+    static Native.POINT savedPos;     // 进入远程模式时的本机光标位置，同时是位移锚点
+    static int virtX, virtY;          // 虚拟光标：按「事件位置 − 锚点」累积出来的远端映射位置
     static volatile int lastRecvTick;
 
     static Native.HookProc mouseProc, kbProc;
@@ -52,6 +55,8 @@ static class Host
                 i++;
             }
             else if (a == "--remote") autoRemote = true;
+            else if (a == "--accept-injected") acceptInjected = true;
+            else if (a == "--trace") trace = true;
             else { Console.WriteLine("[x] 未知参数: " + a); return 1; }
         }
 
@@ -179,6 +184,8 @@ static class Host
     {
         if (!connected) { Console.WriteLine("[host] 被控端还没连上，无法切换"); return; }
         Native.GetCursorPos(out savedPos);
+        virtX = savedPos.x;
+        virtY = savedPos.y;
         lock (keysLock) downKeys.Clear();
         remote = true;
         Console.WriteLine("[host] >>> 远程模式：本地键鼠已接管并转发到被控端，再按一次 " + HotkeyText() + " 返回");
@@ -218,6 +225,9 @@ static class Host
 
         Native.MSLLHOOKSTRUCT ms = (Native.MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(Native.MSLLHOOKSTRUCT));
         uint msg = unchecked((uint)wParam.ToInt64());
+
+        // 自己 SetCursorPos 回锚点也会产生事件，直接吞掉以免自我放大
+        if (!acceptInjected && (ms.flags & Native.LLMHF_INJECTED) != 0) return (IntPtr)1;
 
         switch (msg)
         {
@@ -278,8 +288,16 @@ static class Host
         Send("M " + flags + " 0 0 " + data);
     }
 
+    // 事件被钩子吞掉后本机光标停在锚点不动，所以钩子上报的 pt 只是「锚点 + 本次位移」。
+    // 用它与锚点的差累加出虚拟光标，再把虚拟光标的绝对位置按比例发给被控端；
+    // 每次把物理光标按回锚点，保证下一个事件的位移依然相对锚点。
     static void SendMouseMove(Native.POINT pt)
     {
+        int dx = pt.x - savedPos.x;
+        int dy = pt.y - savedPos.y;
+        if (trace) Console.WriteLine("[trace] pt=(" + pt.x + "," + pt.y + ") anchor=(" + savedPos.x + "," + savedPos.y + ") d=(" + dx + "," + dy + ")");
+        if (dx == 0 && dy == 0) return;
+
         int vx = Native.GetSystemMetrics(Native.SM_XVIRTUALSCREEN);
         int vy = Native.GetSystemMetrics(Native.SM_YVIRTUALSCREEN);
         int vw = Native.GetSystemMetrics(Native.SM_CXVIRTUALSCREEN);
@@ -287,13 +305,18 @@ static class Host
         if (vw < 2) vw = 2;
         if (vh < 2) vh = 2;
 
-        long nx = (long)(pt.x - vx) * 65535 / (vw - 1);
-        long ny = (long)(pt.y - vy) * 65535 / (vh - 1);
-        if (nx < 0) nx = 0; else if (nx > 65535) nx = 65535;
-        if (ny < 0) ny = 0; else if (ny > 65535) ny = 65535;
+        virtX += dx;
+        virtY += dy;
+        if (virtX < vx) virtX = vx; else if (virtX > vx + vw - 1) virtX = vx + vw - 1;
+        if (virtY < vy) virtY = vy; else if (virtY > vy + vh - 1) virtY = vy + vh - 1;
+
+        long nx = (long)(virtX - vx) * 65535 / (vw - 1);
+        long ny = (long)(virtY - vy) * 65535 / (vh - 1);
 
         uint flags = Native.MOUSEEVENTF_MOVE | Native.MOUSEEVENTF_ABSOLUTE | Native.MOUSEEVENTF_VIRTUALDESK;
         Send("M " + flags + " " + nx + " " + ny + " 0");
+
+        Native.SetCursorPos(savedPos.x, savedPos.y);
     }
 
     // ---------------- 热键 ----------------

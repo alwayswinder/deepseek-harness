@@ -46,6 +46,9 @@ static class Native
     public const uint LLKHF_INJECTED = 0x10;
     public const uint LLKHF_UP = 0x80;
 
+    // ---- MSLLHOOKSTRUCT.flags ----
+    public const uint LLMHF_INJECTED = 0x01;
+
     // ---- INPUT.type ----
     public const uint INPUT_MOUSE = 0;
     public const uint INPUT_KEYBOARD = 1;

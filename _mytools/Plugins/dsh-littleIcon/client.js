@@ -128,6 +128,7 @@ window.__ModuleLoader__.load({
       sites: [],
       coopAddress: '192.168.1.3:15180',
       coopHotkey: 'ctrl+alt+f12',
+      coopAutoStart: true,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -193,6 +194,8 @@ window.__ModuleLoader__.load({
       coopAddressHint: 'IP:端口。主机端按这个端口监听，被控端连到这个地址；主机 IP 变了只改这一处。',
       coopHotkey: '切换热键',
       coopHotkeyHint: '主机端用它在本机与远程之间切换，例如 ctrl+alt+f12。',
+      coopAutoStart: 'DSH 启动时自动启用',
+      coopAutoStartHint: '默认打开：DSH 一起来就按上面的地址启动多机协同，不必再点菜单。从菜单里停掉的链路，这次运行期间不会自己再起来，下次启动照常。',
       coopAddressPlaceholder: '192.168.1.3:15180',
       siteNotePlaceholder: '备注（菜单上显示的名字）',
       siteAddressPlaceholder: '网址，例如 chat.deepseek.com',
@@ -318,6 +321,8 @@ window.__ModuleLoader__.load({
       coopAddressHint: 'IP:port. The host listens on this port and the client connects to this address; when the host IP changes, this is the only field to edit.',
       coopHotkey: 'Switch hotkey',
       coopHotkeyHint: 'The host uses it to switch between this computer and the remote one, for example ctrl+alt+f12.',
+      coopAutoStart: 'Start with DSH',
+      coopAutoStartHint: 'On by default: DSH brings the multi-machine link up at the address above as soon as it starts, with no menu entry to choose. A link stopped from the menu stays stopped for that run and starts again on the next one.',
       coopAddressPlaceholder: '192.168.1.3:15180',
       siteNotePlaceholder: 'Note (the name in the menu)',
       siteAddressPlaceholder: 'Address, for example chat.deepseek.com',
@@ -766,6 +771,10 @@ window.__ModuleLoader__.load({
               onBlur: (event) => write({ coopHotkey: event.target.value.trim() }, true),
               onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
             }))}),
+        h(Row, {
+          label: t('coopAutoStart'), text: t('coopAutoStartHint'), inline: true, disabled: !editable,
+          control: h('input', toggle('coopAutoStart')),
+        }),
         h('details', { className: 'dli-details' },
           h('summary', null, t('advanced')),
           h('div', { className: 'dli-grid' },

@@ -8,7 +8,7 @@
 
 version: 1
 exportedFrom: desktop
-exportedAt: 2026-10-05T07:17:52.066Z
+exportedAt: 2026-10-05T09:39:24.807Z
 name: "@local/dsh-little-icon"
 config:
   enabled: true
@@ -27,3 +27,4 @@ config:
       url: https://github.com/
     - name: 用量统计
       url: https://platform.deepseek.com/usage
+  coopAutoStart: false

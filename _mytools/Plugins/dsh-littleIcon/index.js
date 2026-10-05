@@ -239,6 +239,14 @@ export const Config = z.object({
   coopAddress: z.string().default('192.168.1.3:15180').volatile(),
   /** Hotkey the host uses to switch between this computer and the remote one. */
   coopHotkey: z.string().default('ctrl+alt+f12').volatile(),
+  /**
+   * Whether the multi-machine link starts with DSH instead of waiting for the
+   * menu entry. It behaves like the pet's own switch: turning it on starts the
+   * link, turning it off ends it, and a link stopped from the menu stays stopped
+   * until the next DSH start. On by default: the two machines are set up to share
+   * one keyboard and mouse, so the link is what the plugin is for on this machine.
+   */
+  coopAutoStart: z.boolean().default(true).volatile(),
 })
 
 /**
@@ -1276,6 +1284,19 @@ function shortcutSettingsPath() {
 }
 
 /**
+ * What a settings write does to the multi-machine link: only the switch's own
+ * transition acts, so a link stopped from the menu stays stopped until the next
+ * DSH start and an unrelated write never restarts it.
+ * @param auto - the switch's value now.
+ * @param wasAuto - the switch's value the last time this was asked.
+ * @returns `start`, `stop`, or `none` when the switch did not move.
+ */
+function coopAutoAction(auto, wasAuto) {
+  if (auto === wasAuto) return 'none'
+  return auto ? 'start' : 'stop'
+}
+
+/**
  * Start the pet, publish its state, and stop both when the plugin unloads.
  * @param ctx - host context.
  * @param config - validated volatile config references.
@@ -1436,6 +1457,7 @@ export function apply(ctx, config) {
     sites: resolveSites(config.sites.get()),
     coopAddress: String(config.coopAddress.get()).trim(),
     coopHotkey: String(config.coopHotkey.get()).trim(),
+    coopAutoStart: config.coopAutoStart.get(),
   })
 
   /**
@@ -1969,13 +1991,30 @@ export function apply(ctx, config) {
   })
 
   // A pet that went away stays away: only an explicit enable transition (or the
-  // next DSH start) brings it back, never an unrelated settings write.
+  // next DSH start) brings it back, never an unrelated settings write. The
+  // multi-machine link follows the same rule through its own switch: turned on it
+  // starts, turned off it ends, and a link stopped from the menu is never
+  // restarted by a write to some other field, because only the off-to-on
+  // transition starts one.
   let wasEnabled = false
+  let wasCoopAuto = false
+  const followCoopAutoStart = () => {
+    const auto = values().coopAutoStart
+    const action = coopAutoAction(auto, wasCoopAuto)
+    if (action === 'none') return
+    wasCoopAuto = auto
+    if (action === 'start') coopStart()
+    else coopStop('settings')
+    // The pet's submenu reads the link state out of the state file, so the change
+    // is published now rather than at the next sampling tick.
+    guarded('publish', publish)
+  }
   ctx.on('loader/volatile-update', () => {
     const enabled = values().enabled
     if (!enabled) stopPet()
     else if (!wasEnabled) startPet()
     wasEnabled = enabled
+    followCoopAutoStart()
     guarded('publish', publish)
     schedule()
     scheduleSettingsSync()
@@ -1998,6 +2037,7 @@ export function apply(ctx, config) {
   publish()
   wasEnabled = values().enabled
   if (wasEnabled) startPet()
+  followCoopAutoStart()
   schedule()
 }
 
@@ -2012,6 +2052,7 @@ export const internals = {
   resolveSites,
   coopRoleFor,
   coopPortFor,
+  coopAutoAction,
   readGitRepository,
   readGitCommits,
   readGitRemoteStatus,

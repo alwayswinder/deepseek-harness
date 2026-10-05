@@ -26,7 +26,7 @@ const {
   readGitRepository, readGitCommits, readGitRemoteStatus,
   pullGitRepository, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
-  coopRoleFor, coopPortFor,
+  coopRoleFor, coopPortFor, coopAutoAction,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -46,6 +46,12 @@ assert.equal(coopPortFor('192.168.1.3:15180'), '15180', 'the configured port is 
 assert.equal(coopPortFor('192.168.1.3:9999'), '9999', 'a host on another port is honoured')
 assert.equal(coopPortFor('192.168.1.3'), '15180', 'a missing port falls back to MouseShare default')
 assert.equal(coopPortFor('192.168.1.3:abc'), '15180', 'an unusable port falls back too')
+// Only the switch's own transition touches the link: a write to another field
+// must not restart what the menu stopped, and turning the switch off must end it.
+assert.equal(coopAutoAction(true, false), 'start', 'turning the switch on starts the link')
+assert.equal(coopAutoAction(false, true), 'stop', 'turning it off ends the link')
+assert.equal(coopAutoAction(true, true), 'none', 'a write while it is on leaves a stopped link stopped')
+assert.equal(coopAutoAction(false, false), 'none', 'and one while it is off starts nothing')
 
 // ---- busy predicate ---------------------------------------------------------
 
@@ -672,9 +678,10 @@ rmSync(openDir, { recursive: true, force: true })
       { name: 'Local', url: 'file:///C:/notes.txt' },
     ]),
     // Multi-machine would start a process; this stub keeps the run in the loopback
-    // address space where the role rule takes the client side.
+    // address space where the role rule takes the client side, and the link off.
     coopAddress: fixed('192.168.1.3:15180'),
     coopHotkey: fixed('ctrl+alt+f12'),
+    coopAutoStart: fixed(false),
   }
   try {
     apply(hostCtx, config)
@@ -2008,6 +2015,9 @@ if (process.argv.includes('--pet')) {
     sites: ref([]),
     coopAddress: ref('192.168.1.3:15180'),
     coopHotkey: ref('ctrl+alt+f12'),
+    // Off: this suite must not start the multi-machine process on a machine that
+    // happens to carry the configured address.
+    coopAutoStart: ref(false),
   }
 
   const countPetProcesses = () => {

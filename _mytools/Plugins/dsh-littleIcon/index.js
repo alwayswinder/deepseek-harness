@@ -42,7 +42,7 @@
 
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, networkInterfaces } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
@@ -209,6 +209,15 @@ export const Config = z.object({
     name: z.string().default(''),
     url: z.string().default(''),
   })).default([]).volatile(),
+  /**
+   * Multi-machine: the address the settings name decides this machine's side. A
+   * network adapter on that IP means this is the host, anything else means it is
+   * the client — both machines therefore share one setting instead of each storing
+   * its own role.
+   */
+  coopAddress: z.string().default('192.168.1.3:15180').volatile(),
+  /** Hotkey the host uses to switch between this computer and the remote one. */
+  coopHotkey: z.string().default('ctrl+alt+f12').volatile(),
 })
 
 /**
@@ -268,6 +277,37 @@ function resolveSites(rows) {
     sites.push({ name: note === '' ? new URL(url).hostname : note, url })
   }
   return sites
+}
+
+/**
+ * Which side of a multi-machine pair a machine with this address is on: the one
+ * whose adapter carries the configured IP is the host, every other machine is the
+ * client. Two machines therefore share one setting instead of each storing a role.
+ * @param address - the configured host address, `IP[:port]`.
+ * @param adapters - the machine's adapters, as `networkInterfaces()` reports them.
+ * @returns `host` when this machine carries that IP, otherwise `agent`.
+ */
+function coopRoleFor(address, adapters = networkInterfaces()) {
+  const host = String(address).split(':')[0]?.trim()
+  if (host === undefined || host === '') return 'agent'
+  for (const list of Object.values(adapters)) {
+    for (const entry of list ?? []) {
+      if (entry.family === 'IPv4' && entry.address === host) return 'host'
+    }
+  }
+  return 'agent'
+}
+
+/**
+ * The port the host side listens on, taken from the same address.
+ * @param address - the configured host address, `IP[:port]`.
+ * @returns that port, or MouseShare's own default when it is missing or unusable.
+ */
+function coopPortFor(address) {
+  const text = String(address)
+  const at = text.lastIndexOf(':')
+  const port = at < 0 ? '' : text.slice(at + 1).trim()
+  return /^\d{1,5}$/.test(port) ? port : '15180'
 }
 
 /**
@@ -1200,6 +1240,73 @@ export function apply(ctx, config) {
   const script = fileURLToPath(new URL('./pet/pet.ps1', import.meta.url))
   const assets = fileURLToPath(new URL('./assets', import.meta.url))
 
+  // ---- multi-machine (MouseShare) -------------------------------------------
+  //
+  // It runs the exe shipped inside the plugin: `_mytools/MouseShare/build.bat`
+  // copies `MouseShare.exe` here after every build, so the plugin finds it whether
+  // the profile installed it as a link or as a copied directory. The client side
+  // always dials in and retries every three seconds, so either machine may be the
+  // one whose menu entry is clicked first.
+  const coopExe = fileURLToPath(new URL('./bin/MouseShare.exe', import.meta.url))
+  /**
+   * The status file MouseShare writes for `--status`. Parsing the console output it
+   * prints for a person would be brittle; this JSON is what the pet reads at every
+   * menu open, so what the submenu shows is never a cached link.
+   */
+  const coopStatusFile = join(dataDir, 'coop.json')
+  let coopChild
+  /** Why the last start failed, for the menu to report: `exe`, `address`, or `spawn`. */
+  let coopError = ''
+
+  /**
+   * End the multi-machine process and drop the status file it left behind.
+   * @param why - reason recorded in the log.
+   */
+  const coopStop = (why) => {
+    const running = coopChild
+    coopChild = undefined
+    rmSync(coopStatusFile, { force: true })
+    if (running === undefined) return
+    try { running.kill() } catch { /* already gone; nothing left to end */ }
+    ctx.logger.info('little-icon: multi-machine stopped (%s)', why)
+  }
+
+  /** Start this machine's side from the settings; a second call while one runs is a no-op. */
+  const coopStart = () => {
+    if (coopChild !== undefined) return
+    coopError = ''
+    const address = String(config.coopAddress.get()).trim()
+    const role = coopRoleFor(address)
+    if (!existsSync(coopExe)) { coopError = 'exe'; return }
+    if (address === '') { coopError = 'address'; return }
+    const hotkey = String(config.coopHotkey.get()).trim() || 'ctrl+alt+f12'
+    const args = role === 'host'
+      ? ['host', '--port', coopPortFor(address), '--hotkey', hotkey, '--status', coopStatusFile]
+      : ['agent', '--server', address, '--status', coopStatusFile]
+    let started
+    try {
+      started = spawn(coopExe, args, { windowsHide: true, stdio: 'ignore' })
+    } catch (error) {
+      coopError = 'spawn'
+      ctx.logger.warn('little-icon: could not start multi-machine: %s', String(error))
+      return
+    }
+    coopChild = started
+    started.once('exit', (code) => {
+      if (coopChild !== started) return
+      coopChild = undefined
+      rmSync(coopStatusFile, { force: true })
+      if (!disposed) ctx.logger.info('little-icon: multi-machine exited with code %s', String(code))
+    })
+    started.once('error', (error) => {
+      if (coopChild !== started) return
+      coopChild = undefined
+      coopError = 'spawn'
+      ctx.logger.warn('little-icon: multi-machine process failed: %s', String(error))
+    })
+    ctx.logger.info('little-icon: multi-machine started as %s (%s)', role, address)
+  }
+
   // The desktop shell runs this host as an Electron process in Node mode, so the
   // host's parent is the Electron main process — the window the pet tucks away.
   // The running binary is what proves it: ELECTRON_RUN_AS_NODE is inherited by
@@ -1263,6 +1370,8 @@ export function apply(ctx, config) {
     clickAction: config.clickAction.get(),
     shotDir: config.shotDir.get(),
     sites: resolveSites(config.sites.get()),
+    coopAddress: String(config.coopAddress.get()).trim(),
+    coopHotkey: String(config.coopHotkey.get()).trim(),
   })
 
   /**
@@ -1340,6 +1449,17 @@ export function apply(ctx, config) {
       // submenu from this list whenever it opens, so an edit here reaches a
       // running pet without restarting either half.
       sites: current.sites,
+      // Multi-machine: whether it runs, which side this machine was taken for, the
+      // configured address and hotkey, and why a start last failed. The link itself
+      // — connected, latency, remote mode — is in the status file MouseShare writes,
+      // which the submenu reads at every open rather than waiting for this tick.
+      coop: {
+        running: coopChild !== undefined,
+        role: coopChild === undefined ? '' : coopRoleFor(current.coopAddress),
+        address: current.coopAddress,
+        hotkey: current.coopHotkey,
+        error: coopError,
+      },
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),
@@ -1372,6 +1492,17 @@ export function apply(ctx, config) {
     const pressed = readCommand(commandFile)
     if (pressed === undefined || pressed.at <= lastCommandAt) return
     lastCommandAt = pressed.at
+    // Multi-machine runs on this half, not on the page: starting it means starting a
+    // process, and that must work whether or not a page is listening. The state is
+    // published straight away so the menu shows the new state on its next open.
+    if (pressed.command === 'coop-start') {
+      guarded('multi-machine start', () => { coopStart(); publish() })
+      return
+    }
+    if (pressed.command === 'coop-stop') {
+      guarded('multi-machine stop', () => { coopStop('menu'); publish() })
+      return
+    }
     publishCommand(pressed.command, pressed.url)
   }
 
@@ -1694,6 +1825,9 @@ export function apply(ctx, config) {
     disposed = true
     clearInterval(timer)
     stopPet()
+    // The multi-machine process ends with DSH: it holds a listening port and global
+    // input hooks, so leaving it behind would be a service nobody asked for.
+    coopStop('DSH exit')
     // End every open stream, so a page is not left waiting on a plugin that is
     // no longer there to send anything.
     for (const stream of commandStreams) stream.end()
@@ -1715,6 +1849,8 @@ export const internals = {
   resolveDshHome,
   resolveShotDir,
   resolveSites,
+  coopRoleFor,
+  coopPortFor,
   readGitRepository,
   readGitCommits,
   readGitRemoteStatus,

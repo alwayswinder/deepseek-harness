@@ -12,4 +12,6 @@ Plugins/dsh-aquarium3d/vendor/three.module.js -whitespace
 
 # The compiled MouseShare helper ships in the repository so the second machine
 # only has to `git pull` (it is a PE image: no end-of-line or diff handling).
+# The pet plugin carries its own copy of the same exe, which `build.bat` refreshes.
 MouseShare/bin/*.exe binary
+Plugins/dsh-littleIcon/bin/*.exe binary

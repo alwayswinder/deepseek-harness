@@ -26,9 +26,26 @@ const {
   readGitRepository, readGitCommits, readGitRemoteStatus,
   pullGitRepository, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
+  coopRoleFor, coopPortFor,
 } = internals
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+
+// ---- multi-machine side and port --------------------------------------------
+
+// Which side a machine takes is read off its own adapters, so one address shared by
+// both machines decides it: the machine that carries the IP hosts, the other dials
+// in. The loopback address stands in for "an adapter this machine has" and a
+// documentation address for one it does not, so the answer is the same everywhere.
+const adapters = { lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }
+assert.equal(coopRoleFor('127.0.0.1:15180', adapters), 'host', 'the machine carrying the address hosts')
+assert.equal(coopRoleFor('203.0.113.9:15180', adapters), 'agent', 'a machine without it dials in')
+assert.equal(coopRoleFor('', adapters), 'agent', 'a blank address leaves no host side to take')
+assert.equal(coopRoleFor('127.0.0.1', adapters), 'host', 'a missing port does not change the side')
+assert.equal(coopPortFor('192.168.1.3:15180'), '15180', 'the configured port is the listened one')
+assert.equal(coopPortFor('192.168.1.3:9999'), '9999', 'a host on another port is honoured')
+assert.equal(coopPortFor('192.168.1.3'), '15180', 'a missing port falls back to MouseShare default')
+assert.equal(coopPortFor('192.168.1.3:abc'), '15180', 'an unusable port falls back too')
 
 // ---- busy predicate ---------------------------------------------------------
 
@@ -394,6 +411,8 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /更新 DSH/, 'the self test must report the update entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
   assert.match(selfTest.stdout, /常用网站/, 'the self test must report the sites entry too')
+  assert.match(selfTest.stdout, /特殊功能/, 'the self test must report the Special submenu too')
+  assert.match(selfTest.stdout, /多机协同/, 'the self test must report the multi-machine entry too')
   // Bringing DSH back is not one command: SW_RESTORE also returns a maximized or
   // fullscreen window to the size it had before, so a window this pet hid is shown
   // and only a minimized one is restored. Getting this backwards drops DSH out of
@@ -425,6 +444,24 @@ if (process.platform === 'win32') {
     'clicking a site entry must write its own command and address')
   assert.equal(published, ['Chat=https://chat.deepseek.com/', 'https://bare.test/=https://bare.test/'].join('|'),
     'a published row is the entry, and a row with no note is named by its address')
+  // Multi-machine is the other submenu rebuilt at every open: its three states are
+  // rendered, and what the toggle writes is fired for the one that offers a start.
+  // No status file exists beside a self-test state file, so the two running states
+  // must read as "not connected yet" — that is the file, not a guess, being read.
+  const coopMenu = /coop-menu: (.*)/.exec(selfTest.stdout)
+  assert.ok(coopMenu !== null, 'the self test must report the multi-machine submenu')
+  const [coopOff, coopHost, coopClient, coopClicked] = coopMenu[1].trim().split(' >> ')
+  assert.equal(coopOff.split('|')[0], `ToolStripMenuItem=${labels.CoopOff}`,
+    'an idle submenu says so, and only then does it offer to start')
+  assert.ok(coopOff.includes(`ToolStripMenuItem=${labels.CoopStart}`),
+    'the idle submenu offers the start entry')
+  assert.ok(coopHost.includes(`ToolStripMenuItem=${labels.CoopHostWaiting}`),
+    'the host side with nothing connected yet waits for the other computer')
+  assert.ok(coopClient.includes(`ToolStripMenuItem=${labels.CoopAgentWaiting}`),
+    'the client side with nothing connected yet reports reconnecting')
+  assert.ok(coopHost.includes(`ToolStripMenuItem=${labels.CoopStop}`),
+    'a running submenu offers the stop entry instead')
+  assert.equal(coopClicked, 'click=coop-start', 'clicking the start entry writes its command')
   // A capture lands beside the state file, in the harness home rather than the
   // repository, and its name is what tells two captures in one second apart.
   const shotFile = /shot-file: (.*)/.exec(selfTest.stdout)
@@ -627,6 +664,10 @@ rmSync(openDir, { recursive: true, force: true })
       { name: 'Chat', url: 'chat.deepseek.com' },
       { name: 'Local', url: 'file:///C:/notes.txt' },
     ]),
+    // Multi-machine would start a process; this stub keeps the run in the loopback
+    // address space where the role rule takes the client side.
+    coopAddress: fixed('192.168.1.3:15180'),
+    coopHotkey: fixed('ctrl+alt+f12'),
   }
   try {
     apply(hostCtx, config)
@@ -1958,6 +1999,8 @@ if (process.argv.includes('--pet')) {
     clickAction: ref('toggle'),
     gitPullTimeoutMs: ref(60_000),
     sites: ref([]),
+    coopAddress: ref('192.168.1.3:15180'),
+    coopHotkey: ref('ctrl+alt+f12'),
   }
 
   const countPetProcesses = () => {

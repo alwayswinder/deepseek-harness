@@ -2,6 +2,7 @@
 // 主机端（接着键鼠的那台）监听，被控端（另一台）主动连入，
 // 因此两台即使隔着 NAT、不在同一网段也能工作。
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -12,6 +13,17 @@ static class Program
         try { Console.OutputEncoding = Encoding.UTF8; } catch { }
         // 统一到物理像素坐标系：否则钩子的 pt（物理）与 GetCursorPos/GetSystemMetrics（逻辑）混用。
         try { Native.SetProcessDPIAware(); } catch { }
+
+        // --status 由两端共用，先摘出来再分发，免得每个子命令各解析一遍。
+        List<string> rest = new List<string>(args);
+        int at = rest.IndexOf("--status");
+        if (at >= 0)
+        {
+            if (at + 1 >= rest.Count) { Console.WriteLine("[x] --status 需要一个文件路径"); return 1; }
+            Status.Configure(rest[at + 1]);
+            rest.RemoveRange(at, 2);
+        }
+        args = rest.ToArray();
 
         if (args.Length == 0) { Usage(); return 1; }
 
@@ -30,6 +42,7 @@ static class Program
         Console.WriteLine();
         Console.WriteLine("  主机端（接键鼠的那台）:  MouseShare.exe host [--port 15180] [--hotkey ctrl+alt+f12] [--remote]");
         Console.WriteLine("  被控端（另一台）      :  MouseShare.exe agent --server <主机IP>:15180 [--dry-run]");
+        Console.WriteLine("  host | agent 都可加:      --status <文件>  把运行状态写成 JSON（供桌宠插件读取）");
         Console.WriteLine("  自检                  :  MouseShare.exe selftest");
         Console.WriteLine();
         Console.WriteLine("  先在被控端启动 agent，再在主机端按热键切到远程；再按一次切回本地。");

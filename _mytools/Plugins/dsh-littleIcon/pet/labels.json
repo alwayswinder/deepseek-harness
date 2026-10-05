@@ -30,5 +30,22 @@
   "RestartDshUnavailable": "读不到 DSH 的启动方式，这次没有重启；请手动启动。",
   "RestartDshFailed": "重启没能准备好，DSH 没有被动过。",
   "QuitDsh": "退出 DSH",
-  "QuitDshConfirm": "退出 DSH？正在运行的任务会被中断。"
+  "QuitDshConfirm": "退出 DSH？正在运行的任务会被中断。",
+  "Features": "特殊功能",
+  "Coop": "多机协同",
+  "CoopStart": "启动并连接",
+  "CoopStop": "停止",
+  "CoopOff": "未启动",
+  "CoopHostWaiting": "主机端 · 等待另一台电脑",
+  "CoopHostConnected": "主机端 · 已连接",
+  "CoopHostConnectedRtt": "主机端 · 已连接（{0} ms）",
+  "CoopRemote": "远程模式",
+  "CoopJoin": "{0} · {1}",
+  "CoopAgentConnected": "被控端 · 已连接",
+  "CoopAgentWaiting": "被控端 · 重连中",
+  "CoopAddress": "主机端地址：{0}",
+  "CoopHotkey": "热键 {0}：切换本地/远程",
+  "CoopNoExe": "找不到 MouseShare.exe，先跑一次 _mytools\\MouseShare\\build.bat。",
+  "CoopNoAddress": "主机端地址是空的，先去设置里填上。",
+  "CoopSpawnFailed": "多机协同没能启动，看 DSH 日志。"
 }

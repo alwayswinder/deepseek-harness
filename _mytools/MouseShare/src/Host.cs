@@ -40,6 +40,7 @@ static class Host
     static readonly Stopwatch clock = Stopwatch.StartNew();
     static long pSentTicks;           // 上次心跳发出时刻（Stopwatch 计时，微秒级）
     static volatile bool awaitingPong;
+    static volatile string peerText = string.Empty;   // 最近一次连接的对端地址，写进状态文件
     static volatile int lastRecvTick;
 
     static Native.HookProc mouseProc, kbProc;
@@ -75,6 +76,7 @@ static class Host
         try { listener.Start(); }
         catch (Exception ex) { Console.WriteLine("[x] 无法监听 " + port + ": " + ex.Message); return 1; }
         Console.WriteLine("监听 0.0.0.0:" + port + "，等待被控端连接...");
+        Status.Write("host", false, string.Empty, false, -1);
         Console.WriteLine("在被控端运行:  MouseShare.exe agent --server <上面某个IP>:" + port);
         Console.WriteLine();
 
@@ -123,6 +125,8 @@ static class Host
                 lastRecvTick = Environment.TickCount;
                 int epoch = ++connEpoch;
                 connected = true;
+                peerText = client.Client.RemoteEndPoint == null ? string.Empty : client.Client.RemoteEndPoint.ToString();
+                Status.Write("host", true, peerText, false, rttLast);
                 Console.WriteLine("[host] 被控端已连接: " + client.Client.RemoteEndPoint + "  （按 " + HotkeyText() + " 切到远程）");
                 if (autoRemote) EnterRemote();
 
@@ -140,6 +144,7 @@ static class Host
                         if (rtt < rttMin) rttMin = rtt;
                         if (rtt > rttMax) rttMax = rtt;
                         rttSamples++;
+                        Status.Write("host", connected, peerText, remote, rtt);
                         if (rttSamples == 1 || rttSamples % 30 == 0 || rtt > 150)
                             Console.WriteLine("[host] 链路 RTT " + rtt + " ms（样本 " + rttSamples + "，范围 " + rttMin + "–" + rttMax + " ms）");
                     }
@@ -151,6 +156,7 @@ static class Host
             }
             connected = false;
             ExitRemote("连接断开");
+            Status.Write("host", false, peerText, false, rttLast);
             try { if (client != null) client.Close(); } catch { }
             stream = null;
             Console.WriteLine("[host] 等待被控端重新连接...");
@@ -215,6 +221,7 @@ static class Host
         lock (keysLock) downKeys.Clear();
         remote = true;
         Native.timeBeginPeriod(1);   // 让发送线程的 5ms 节奏真的成立
+        Status.Write("host", connected, peerText, true, rttLast);
         Console.WriteLine("[host] >>> 远程模式：本地键鼠已接管并转发到被控端，再按一次 " + HotkeyText() + " 返回");
     }
 
@@ -231,6 +238,7 @@ static class Host
         remote = false;
         movePending = false;
         Native.timeEndPeriod(1);
+        Status.Write("host", connected, peerText, false, rttLast);
         Native.SetCursorPos(savedPos.x, savedPos.y);
         Console.WriteLine("[host] <<< 本地模式（" + why + "）");
     }

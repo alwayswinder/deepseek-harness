@@ -44,9 +44,18 @@ build.bat
 | host | `--accept-injected` | 连注入的鼠标事件也转发；**仅自测用**，正常使用不要开 |
 | agent | `--server <IP>[:端口]` | 主机地址，默认 `127.0.0.1:15180` |
 | agent | `--dry-run` | 只打印收到的事件、不注入，排查用 |
+| 两端 | `--status <文件>` | 把运行状态写成 JSON（role/connected/peer/remote/rttMs/updatedAt），供桌宠插件读取 |
 | 两端 | `selftest` | 注入 1 像素鼠标移动 + F24 按键，验证注入链路 |
 
 开机自启：把 `run-agent.bat` 的快捷方式放进 `shell:startup`。
+
+## 桌宠菜单集成
+
+DSH 的桌宠插件（`_mytools/Plugins/dsh-littleIcon`）把这一套包装成了右键菜单「**特殊功能 → 多机协同**」：插件按设置里的主机端地址自动判定本机当主机端还是被控端，用 `--status` 把状态喂给菜单显示（已连接 / 等待 / 重连中 / RTT / 远程模式），子进程随 DSH 退出而结束。
+
+插件跑的是**插件目录里自带**的 `bin\MouseShare.exe`：`build.bat` 每次编译后都会把它同步过去，因此插件无论是 link 还是 file 副本装进 profile 都能找到。改完源码只需跑一次 `build.bat`。
+
+手写配置（不通过桌宠）时按上面「部署与使用」走即可，两种方式互不影响。
 
 ## 协议
 

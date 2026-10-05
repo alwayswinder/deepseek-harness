@@ -55,6 +55,7 @@ static class Agent
                     client.SendTimeout = 1000;
                     client.Connect(server, port);
                     Console.WriteLine("[agent] 已连接 " + server + ":" + port);
+                    Status.Write("agent", true, server + ":" + port, false, -1);
                     using (NetworkStream stream = client.GetStream())
                     using (StreamReader reader = new StreamReader(stream, Encoding.ASCII))
                     {
@@ -74,6 +75,7 @@ static class Agent
                 Console.WriteLine("[agent] " + ex.Message);
             }
             Console.WriteLine("[agent] 3 秒后重连...");
+            Status.Write("agent", false, server + ":" + port, false, -1);
             Thread.Sleep(3000);
         }
     }

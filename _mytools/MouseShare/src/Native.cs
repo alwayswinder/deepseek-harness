@@ -161,6 +161,11 @@ static class Native
     [DllImport("user32.dll")]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
+    // 必须在进程早期调用：不声明 DPI 感知时，低级钩子的 pt 是物理像素，
+    // 而 GetCursorPos/GetSystemMetrics 返回逻辑像素，两者混用会把位移算成天文数字。
+    [DllImport("user32.dll")]
+    public static extern bool SetProcessDPIAware();
+
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int X, int Y);
 

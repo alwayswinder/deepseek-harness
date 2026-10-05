@@ -10,6 +10,8 @@ static class Program
     static int Main(string[] args)
     {
         try { Console.OutputEncoding = Encoding.UTF8; } catch { }
+        // 统一到物理像素坐标系：否则钩子的 pt（物理）与 GetCursorPos/GetSystemMetrics（逻辑）混用。
+        try { Native.SetProcessDPIAware(); } catch { }
 
         if (args.Length == 0) { Usage(); return 1; }
 

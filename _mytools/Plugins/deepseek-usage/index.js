@@ -126,6 +126,74 @@ async function resolveKey(ctx, account) {
   return fromEnv !== undefined && fromEnv.length > 0 ? fromEnv : undefined
 }
 
+/**
+ * The Platform client identity for one account call: the version this application
+ * build inlined, the machine's own language, and its UTC offset. The Platform expects
+ * all three, so a build that carries no version reports that rather than sending a
+ * guessed one.
+ * @returns the metadata the Platform account service takes.
+ * @throws Error when this build carries no inlined client version.
+ */
+function platformClientMetadata() {
+  const version = process.env.DSH_CLIENT_VERSION
+  if (version === undefined || version === '') {
+    throw new Error('this build carries no DSH_CLIENT_VERSION, so the Platform balance cannot be read')
+  }
+  const language = Intl.DateTimeFormat().resolvedOptions().locale
+  return {
+    version,
+    // Platform takes a region-tagged wire locale; this is the same reduction the
+    // harness's own account client applies to a UI language.
+    locale: language.toLowerCase().split(/[-_]/)[0] === 'zh' ? 'zh_CN' : 'en_US',
+    // Date.getTimezoneOffset counts minutes west of UTC; Platform wants seconds east.
+    timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
+  }
+}
+
+/**
+ * Pick one currency's wallet out of a Platform wallet list.
+ * @param wallets - wallets as the Platform reported them.
+ * @param currency - the account's currency.
+ * @returns the wallet in that currency, or the first one when it holds another.
+ */
+function pickWallet(wallets, currency) {
+  const rows = Array.isArray(wallets) ? wallets : []
+  return rows.find(row => row?.currency === currency) ?? rows[0]
+}
+
+/**
+ * Read one account's balance from the Platform wallet this application is signed in
+ * to. The harness holds that login, and the same call backs the account page in
+ * settings, so this source needs no API key.
+ * @param ctx - the plugin context.
+ * @param account - the account configuration.
+ * @returns the wallet totals, or `error` when nothing answered.
+ */
+async function platformBalance(ctx, account) {
+  const service = ctx.get('deepseekAccount')
+  if (service === undefined) return { error: 'this profile has no Platform account service' }
+  let outcome
+  try {
+    outcome = await service.getBalance(platformClientMetadata())
+  } catch (error) {
+    return { error: error?.message ?? String(error) }
+  }
+  if (outcome === null) return { error: 'not signed in to the Platform account' }
+  if (outcome.status !== 'ready') return { error: 'the Platform balance request failed' }
+  const wanted = currencyOf(account.currency)
+  const recharge = pickWallet(outcome.value, wanted)
+  const bonus = pickWallet(outcome.bonusWallets, wanted)
+  if (recharge === undefined && bonus === undefined) return { error: `the Platform holds no ${wanted} wallet` }
+  const toppedUp = toFinite(recharge?.balance)
+  const granted = toFinite(bonus?.balance)
+  return {
+    currency: (recharge ?? bonus).currency ?? wanted,
+    toppedUp,
+    granted,
+    total: toppedUp + granted,
+  }
+}
+
 export const name = 'deepseek-usage'
 
 export const Config = z.object({
@@ -137,6 +205,13 @@ export const Config = z.object({
     provider: z.string(),
     balanceBaseUrl: z.string(),
     credential: z.string(),
+    // Which source answers this account's balance. `api` calls
+    // `{balanceBaseUrl}/user/balance` with a stored API key; `platform` reads the
+    // wallet the application's own Platform login already holds and therefore needs
+    // no key; `auto` uses the endpoint when a key is stored for this account and the
+    // Platform login otherwise, so a machine that signed in but never stored a key
+    // still shows a balance.
+    balanceVia: z.union(['auto', 'api', 'platform']).default('auto'),
     currency: z.string().default('CNY'),
     rates: z.dict(z.object({
       input: z.number(),
@@ -638,7 +713,10 @@ export function apply(ctx, config) {
         balanceDayOpen: dayOpen,
         officialTodaySpend: officialToday,
         balanceError: bal?.error ?? null,
-        balanceSupported: account.balanceBaseUrl !== '',
+        balanceSource: bal?.source ?? '',
+        // Either source can answer: the endpoint when this account names one, and the
+        // Platform login otherwise.
+        balanceSupported: account.balanceBaseUrl !== '' || (account.balanceVia ?? 'auto') !== 'api',
         rateFactor: factor,
         rateObservations: calibration?.observations ?? 0,
         today: day === undefined ? null : {
@@ -700,42 +778,63 @@ export function apply(ctx, config) {
     if (!force && cached !== undefined && cached.at + ttl > Date.now()) return
     const base = {
       at: Date.now(), refreshedAt: Date.now(), total: null, granted: null, toppedUp: null,
-      available: false, currency: currencyOf(account.currency), error: null,
+      available: false, currency: currencyOf(account.currency), error: null, source: '',
     }
-    if (account.balanceBaseUrl === '') {
-      balances.set(account.id, base)
-      return
-    }
-    const key = await resolveKey(ctx, account)
-    if (key === undefined) {
-      base.error = `no credential "${account.credential}" (store it on the Models page or in ~/.dsh/.credentials.yaml)`
-      balances.set(account.id, base)
-      return
-    }
-    try {
-      const url = `${account.balanceBaseUrl.replace(/\/+$/, '')}/user/balance`
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(20_000),
-      })
-      if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        base.error = `balance http ${response.status}${text ? ': ' + text.slice(0, 120) : ''}`
-      } else {
-        const body = await response.json()
-        const infos = Array.isArray(body.balance_infos) ? body.balance_infos : []
-        const wanted = currencyOf(account.currency)
-        const picked = infos.find((i) => i && i.currency === wanted) ?? infos[0]
-        if (picked !== undefined) {
-          base.total = toFinite(picked.total_balance)
-          base.granted = toFinite(picked.granted_balance)
-          base.toppedUp = toFinite(picked.topped_up_balance)
-          base.currency = typeof picked.currency === 'string' ? picked.currency : base.currency
-        }
-        base.available = body.is_available !== false
+    // Which source answers this account. The endpoint needs a stored API key, so a
+    // machine that only signed in falls through to the Platform login rather than
+    // reporting a balance it never asked for.
+    const via = account.balanceVia ?? 'auto'
+    const endpoint = account.balanceBaseUrl === '' ? undefined : account.balanceBaseUrl
+    const wantsEndpoint = via !== 'platform' && endpoint !== undefined
+    const key = wantsEndpoint ? await resolveKey(ctx, account) : undefined
+    if (via === 'api' || (via === 'auto' && wantsEndpoint && key !== undefined)) {
+      if (key === undefined) {
+        base.error = `no credential "${account.credential}" (store it on the Models page or in ~/.dsh/.credentials.yaml)`
+        balances.set(account.id, base)
+        return
       }
-    } catch (error) {
-      base.error = error?.message ?? String(error)
+      try {
+        const url = `${endpoint.replace(/\/+$/, '')}/user/balance`
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(20_000),
+        })
+        if (!response.ok) {
+          const text = await response.text().catch(() => '')
+          base.error = `balance http ${response.status}${text ? ': ' + text.slice(0, 120) : ''}`
+        } else {
+          const body = await response.json()
+          const infos = Array.isArray(body.balance_infos) ? body.balance_infos : []
+          const wanted = currencyOf(account.currency)
+          const picked = infos.find((i) => i && i.currency === wanted) ?? infos[0]
+          if (picked !== undefined) {
+            base.total = toFinite(picked.total_balance)
+            base.granted = toFinite(picked.granted_balance)
+            base.toppedUp = toFinite(picked.topped_up_balance)
+            base.currency = typeof picked.currency === 'string' ? picked.currency : base.currency
+          }
+          base.available = body.is_available !== false
+          base.source = 'api'
+        }
+      } catch (error) {
+        base.error = error?.message ?? String(error)
+      }
+    } else if (via === 'platform' || via === 'auto') {
+      const platform = await platformBalance(ctx, account)
+      if (platform.error !== undefined) {
+        base.error = platform.error
+      } else {
+        base.total = platform.total
+        base.toppedUp = platform.toppedUp
+        base.granted = platform.granted
+        base.currency = platform.currency
+        // The wallet this reads is the one API calls are charged against, so a wallet
+        // that holds something is one that can pay.
+        base.available = platform.total > 0
+        base.source = 'platform'
+      }
+    } else {
+      base.error = `no balance source for this account (balanceVia: ${via})`
     }
     if (base.error === null && base.total !== null) {
       const dayEntry = (ledger.accounts[account.id] ??= {})

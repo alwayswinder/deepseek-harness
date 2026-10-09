@@ -146,7 +146,7 @@ window.__ModuleLoader__.load({
           rows.push(h('div', { key: 'err', style: { fontSize: '11px', color: 'var(--dsw-alias-state-error-primary)', marginTop: '4px' } }, account.balanceError))
         } else if (account.balanceTotal === null) {
           rows.push(h(Row, { key: 'balance', label: '总余额' },
-            h(Badge, { tone: 'warn', text: '未配置 Key' })))
+            h(Badge, { tone: 'warn', text: '尚未取到' })))
         } else {
           rows.push(h(Row, { key: 'balance', label: '总余额' },
             fmtMoney(account.symbol, account.balanceTotal)))
@@ -154,6 +154,14 @@ window.__ModuleLoader__.load({
             fmtMoney(account.symbol, account.balanceGranted)))
           rows.push(h(Row, { key: 'avail', label: '可用状态' },
             h(Badge, { tone: account.balanceAvailable ? 'ok' : 'err', text: account.balanceAvailable ? '可用于 API 调用' : '暂不可用' })))
+          // Where the number came from: the Platform login the app already holds, or a
+          // stored API key. The two can disagree when a machine has both.
+          const source = account.balanceSource === 'platform'
+            ? '来自平台登录'
+            : account.balanceSource === 'api' ? '来自 API Key' : ''
+          if (source !== '') {
+            rows.push(h('div', { key: 'source', style: { fontSize: '11px', color: 'var(--dsw-alias-label-secondary)', marginTop: '4px' } }, source))
+          }
         }
       } else {
         rows.push(h(Row, { key: 'balance', label: '总余额' },

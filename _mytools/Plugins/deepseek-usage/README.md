@@ -8,9 +8,12 @@ page (Plugins → 插件配置). Shows, per configured account:
 - **今日消费** — today's spend, metered locally from the token usage DSH already
   records on `assistant/message` session events, priced with each account's
   configured rates (¥/1M tokens). Every session counts here, subagents included.
-- **总余额** — total balance from the account's official endpoint
-  (`GET {baseURL}/user/balance`) when the account supports one, refreshed every
-  `refreshSeconds` (default 300s).
+- **总余额** — total balance for the account, refreshed every `refreshSeconds`
+  (default 300s). `balanceVia` (default `auto`) picks the source: the official
+  endpoint (`GET {balanceBaseUrl}/user/balance`) when an API key is stored for the
+  account, and otherwise the **Platform wallet this application is signed in to** —
+  the figure the account page shows, read through the harness account service, which
+  needs no API key at all. `api` or `platform` pins one source.
 
 The settings card and the summary below the composer show only these account totals. The card header also reports the update time and timezone.
 
@@ -68,6 +71,9 @@ in `$DSH_HOME/profiles/web/cordis.patch.yml`):
         provider: <llm provider route; '' means catch-all for unmatched routes>
         balanceBaseUrl: ''            # '' disables the balance endpoint
         credential: <credential ref name>
+        # auto (default): the endpoint above when a key is stored for this account,
+        # otherwise the Platform login this app holds. api / platform pin one source.
+        balanceVia: auto
         currency: CNY
         defaultRate: { input: 1, cacheHit: 0.02, output: 4 }
         # optional per-model override, keyed by the route model id:
@@ -94,9 +100,9 @@ for events that carry no source.
 
 Shipping defaults:
 
-| account | provider | balanceBaseUrl | credential |
-|---|---|---|---|
-| deepseek-official | `''` (catch-all) | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` |
+| account | provider | balanceBaseUrl | credential | balanceVia |
+|---|---|---|---|---|
+| deepseek-official | `''` (catch-all) | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` | `auto` |
 
 ## Pricing notes
 
@@ -147,5 +153,8 @@ billing — and note that:
   it, so the balance delta trails the locally metered figure briefly.
 - `assistant/attempt` settlements (an aborted or errored stream that still
   reported usage) are not metered.
-- The official DeepSeek account needs its key stored as the `DEEPSEEK_OFFICIAL_API_KEY`
-  credential (e.g. via the Models page or `$DSH_HOME/.credentials.yaml`).
+- The official endpoint needs its key stored as the `DEEPSEEK_OFFICIAL_API_KEY`
+  credential (e.g. via the Models page or `$DSH_HOME/.credentials.yaml`). The Platform
+  source needs no key, but it is only as good as this application's own sign-in: signed
+  out, the card says so rather than showing a zero, and it reports 可用状态 as "the
+  wallet holds something" because the Platform summary carries no `is_available` flag.

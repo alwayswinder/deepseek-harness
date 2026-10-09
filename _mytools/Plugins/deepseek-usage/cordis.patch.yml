@@ -18,6 +18,10 @@
             provider: ''
             balanceBaseUrl: 'https://api.deepseek.com'
             credential: DEEPSEEK_OFFICIAL_API_KEY
+            # Where the balance comes from. `auto` uses the endpoint above when a key
+            # is stored for it and the Platform login this app is already signed in to
+            # otherwise, so a machine that only signed in still shows a balance.
+            balanceVia: auto
             currency: CNY
             defaultRate:
               input: 1

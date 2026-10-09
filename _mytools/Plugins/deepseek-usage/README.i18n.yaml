@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write _mytools/Plugins/deepseek-usage/README.md
 /deepseek-usage:
-  en: 54da584285519426
-  zh: f22298824ae56973
+  en: f084bf4f42d52a41
+  zh: 4eace1bfb73db978
 /deepseek-usage/how-it-works:
   en: e5af64a94c4e555c
   zh: 82968b694dcf491c
@@ -12,11 +12,11 @@
   en: 3046cf211a349370
   zh: e12b4fc987813d87
 /deepseek-usage/configuration:
-  en: 2959da89941d2983
-  zh: 7b92378cf40d93e4
+  en: 8bf072a763e54c38
+  zh: a92dfb63a610e363
 /deepseek-usage/pricing-notes:
   en: 77548b02bd7011d5
   zh: 29dcc6dda658a353
 /deepseek-usage/pricing-notes/self-calibration:
-  en: fc2ad00d5236a080
-  zh: ede22fbb7825abe4
+  en: b0bd3db90616e16f
+  zh: f58c73d20d26bf03

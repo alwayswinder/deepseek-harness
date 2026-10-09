@@ -5,7 +5,7 @@
 DeepSeek Harness 的树外插件：在设置页（插件 → 插件配置）提供一张**用量与余额卡片**。按每个已配置的账户显示：
 
 - **今日消费** —— 当日花费，由 DSH 已经记录在 `assistant/message` 会话事件上的 token 用量在本地计量，并按各账户配置的费率（¥/百万 token）计价；所有会话都计入，包含子 agent。
-- **总余额** —— 账户支持时，从该账户的官方端点（`GET {baseURL}/user/balance`）获取总余额，每 `refreshSeconds` 刷新一次（默认 300 秒）。
+- **总余额** —— 账户总余额，每 `refreshSeconds` 刷新一次（默认 300 秒）。来源由 `balanceVia`（默认 `auto`）决定：该账户存了 API Key 时用官方端点（`GET {balanceBaseUrl}/user/balance`），否则读**本应用已登录的平台钱包**——就是账户页显示的那个数，经 harness 的账户服务读取、完全不需要 API Key；`api` 或 `platform` 可各自固定一种来源。
 
 设置卡片和对话输入框下方的汇总条只显示这两项账户汇总；卡片顶部另有更新时间与时区提示。
 
@@ -43,6 +43,9 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
         provider: <llm provider route; '' means catch-all for unmatched routes>
         balanceBaseUrl: ''            # '' disables the balance endpoint
         credential: <credential ref name>
+        # auto (default): the endpoint above when a key is stored for this account,
+        # otherwise the Platform login this app holds. api / platform pin one source.
+        balanceVia: auto
         currency: CNY
         defaultRate: { input: 1, cacheHit: 0.02, output: 4 }
         # optional per-model override, keyed by the route model id:
@@ -66,9 +69,9 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 
 随附默认值：
 
-| account | provider | balanceBaseUrl | credential |
-|---|---|---|---|
-| deepseek-official | `''`（兜底所有未匹配路由） | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` |
+| account | provider | balanceBaseUrl | credential | balanceVia |
+|---|---|---|---|---|
+| deepseek-official | `''`（兜底所有未匹配路由） | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` | `auto` |
 
 ## 计价说明
 
@@ -91,4 +94,4 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 - 本地计量只覆盖流经本 DSH 实例的请求。
 - 官方余额比产生它的请求晚几分钟结算，因此余额差会短暂落后于本地计量值。
 - `assistant/attempt` 结算（已中断或报错、但仍上报了用量的流）不计入。
-- 官方 DeepSeek 账户需要把密钥存为 `DEEPSEEK_OFFICIAL_API_KEY` 凭据（例如通过模型页面或 `$DSH_HOME/.credentials.yaml`）。
+- 官方端点需要把密钥存为 `DEEPSEEK_OFFICIAL_API_KEY` 凭据（例如通过模型页面或 `$DSH_HOME/.credentials.yaml`）。平台来源不需要密钥，但它取决于本应用的登录状态：未登录时卡片会如实说明而不是显示 0；并且**可用状态**在平台来源下按「钱包里有钱」判断，因为平台汇总里没有 `is_available` 字段。

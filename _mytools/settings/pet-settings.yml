@@ -8,7 +8,7 @@
 
 version: 1
 exportedFrom: desktop
-exportedAt: 2026-10-08T08:06:51.419Z
+exportedAt: 2026-10-09T05:19:00.729Z
 name: "@local/dsh-little-icon"
 config:
   enabled: true
@@ -33,3 +33,10 @@ config:
     - name: 听歌
       url: https://www.bilibili.com/video/BV1MHeb6nEGx/?trackid=web_pegasus_0.router-web-pegasus-2479516-f6fct.1791446725184.1007&spm_id_from=333.1007.tianma.1-2-2.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
   coopAutoStart: false
+  musicLinks:
+    - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
+    - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.788.videopod.episodes&vd_source=f7cf7de90459b8c6a73cd9bdf2093596&p=2
+    - https://www.bilibili.com/video/BV1ANQqBTEVU/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
+    - https://www.bilibili.com/video/BV1ANQqBTEVU/?spm_id_from=333.788.videopod.episodes&vd_source=f7cf7de90459b8c6a73cd9bdf2093596&p=2
+  musicDir: D:\AI\Music
+  musicVolume: 19

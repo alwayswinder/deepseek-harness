@@ -94,6 +94,39 @@ window.__ModuleLoader__.load({
     const OPEN_PATH = '/api/little-icon/open'
 
     /**
+     * The Host routes behind the music section of this card. The page cannot list a
+     * folder, cannot reach Bilibili, and cannot play a file while the DSH window is
+     * hidden — the pet does that — so everything here reads what this machine has and
+     * asks the Host for the work.
+     */
+    const MUSIC_PATH = '/api/little-icon/music'
+    const MUSIC_SYNC_PATH = '/api/little-icon/music/sync'
+    const MUSIC_DOWNLOAD_PATH = '/api/little-icon/music/download'
+    const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
+    const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
+
+    /**
+     * How often the card re-reads the library while it is on screen: a download's
+     * progress and the pet's playback live on the Host, so the card follows them
+     * rather than being told. The request is a local one and the page is not busy.
+     */
+    const MUSIC_POLL_MS = 4_000
+
+    /** Volume a fresh install plays at; mirrors the Host schema default. */
+    const MUSIC_VOLUME_DEFAULT = 70
+
+    /**
+     * Clamp a volume the pet's menu reported to the range the player accepts.
+     * @param value - the number the frame carried.
+     * @returns the volume to write, or undefined when the frame named no number.
+     */
+    const clampMusicVolume = (value) => {
+      const number = Number(value)
+      if (!Number.isFinite(number)) return undefined
+      return Math.max(0, Math.min(100, Math.round(number)))
+    }
+
+    /**
      * What the Git page's button says into the conversation; the button itself
      * keeps the short `gitCommitAndPush` label. The message is a real user turn,
      * admitted exactly as the composer admits one, so the agent reads it as an
@@ -129,6 +162,9 @@ window.__ModuleLoader__.load({
       coopAddress: '192.168.1.3:15180',
       coopHotkey: 'ctrl+alt+f12',
       coopAutoStart: true,
+      musicLinks: [],
+      musicDir: '',
+      musicVolume: MUSIC_VOLUME_DEFAULT,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -142,6 +178,7 @@ window.__ModuleLoader__.load({
     const SLEEP_SECONDS = { min: 30, max: 86400, step: 30 }
     const HIDDEN_SECONDS = { min: 2, max: 600, step: 2 }
     const AUTO_HIDE_SECONDS = { min: 0, max: 600, step: 5 }
+    const MUSIC_VOLUME = { min: 0, max: 100, step: 1 }
 
     /** How long a slider drag settles before its writes are merged into one. */
     const WRITE_DELAY_MS = 250
@@ -202,6 +239,53 @@ window.__ModuleLoader__.load({
       siteAdd: '添加一个网站',
       siteRemove: '删除',
       siteBadAddress: '这个地址打不开（只支持 http/https，且不能带用户名密码），菜单里不会出现它。',
+      music: '听歌',
+      musicHint: '右键桌宠菜单的「听歌」用它：播放、暂停、换歌都在桌宠进程里，DSH 收起来也照样放。这里只保存 B站链接；音频文件下载到下面的目录，不放进仓库。换目录后已经下好的文件不会跟着搬，去新目录要重新补全。',
+      musicDir: '音乐目录',
+      musicDirHint: '音频文件的存放位置；留空就是 DSH 自己的 little-icon/music。指到仓库里的目录会被忽略、改用默认目录——那些文件会被一起提交。',
+      musicDirPlaceholder: '留空 = DSH 自己的 little-icon/music',
+      musicVolume: '音量',
+      musicVolumeHint: '桌宠播放的音量；这一项跟着设置文件走，每台机器共用。',
+      musicAddPlaceholder: '粘贴 B站链接（BV号 / av号 / b23.tv 短链都行）',
+      musicAdd: '添加',
+      musicAdding: '正在解析并下载，请稍候…',
+      musicAdded: '已添加：{title}',
+      musicAlready: '这条链接已经在列表里了。',
+      musicList: '歌曲列表',
+      musicListEmpty: '还没有链接。粘贴一条 B站视频地址，它会下载成人声/伴奏完整的音频文件。',
+      musicMissing: '未下载',
+      musicReady: '已下载',
+      musicDownloading: '下载中',
+      musicFailed: '下载失败',
+      musicRemove: '删除',
+      musicRemoveHint: '同时删掉这台机器上已下载的文件',
+      musicSync: '补全缺失（{count} 首）',
+      musicSyncing: '正在下载：{done}/{total}',
+      musicSyncNone: '没有缺失的歌曲',
+      musicSyncRunning: '已经在补全了，等它下完再试。',
+      musicNotPlaying: '桌宠没有在播放',
+      musicPlaying: '正在播放：{title}',
+      musicPaused: '已暂停：{title}',
+      musicPlay: '播放',
+      musicPause: '暂停',
+      musicNext: '下一首',
+      musicPrev: '上一首',
+      musicCount: '共 {count} 首可用',
+      musicExtras: '下面这些文件在这台机器上，但没有对应的链接——多半是链接删掉后文件留下了。',
+      musicExtrasRemove: '删除文件',
+      musicWarnInsideCheckout: '这个目录在仓库里，下载的音频会被提交进版本库；这一项被忽略，改用了默认目录。',
+      musicWarnUnwritable: '这个目录建不出来或不能写，下载会失败；换一个能写的目录。',
+      musicReasonEmpty: '链接是空的。',
+      musicReasonUnrecognized: '认不出这条链接，只支持 B站视频的 BV/av 号或 b23.tv 短链。',
+      musicReasonVideo: '取不到视频信息（{message}）。',
+      musicReasonAudio: '取不到音频流（{message}）。',
+      musicReasonNoAudio: '这个视频没有音频流，换一个。',
+      musicReasonNetwork: '网络请求失败：{message}',
+      musicReasonWrite: '音频写不进音乐目录：{message}',
+      musicReasonBusy: '文件正在被桌宠播放，先换一首再删。',
+      musicReasonRunning: '桌宠正在补全歌曲，等它下完再添加。',
+      musicReasonUnknown: '这条记录找不到了，刷新一下。',
+      musicReadFailed: '读不到音乐库：{message}',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} 秒',
@@ -329,6 +413,53 @@ window.__ModuleLoader__.load({
       siteAdd: 'Add a site',
       siteRemove: 'Remove',
       siteBadAddress: 'This address cannot open (HTTP/HTTPS only, and no user name or password), so the menu will not list it.',
+      music: 'Music',
+      musicHint: 'The right-click menu plays it under "Music": play, pause, and next all happen in the pet process, so it keeps playing while DSH is tucked away. Only the Bilibili links are kept here; the audio is downloaded into the folder below and never into the repository. Moving that folder does not move what is already downloaded — fill the new one in again.',
+      musicDir: 'Music folder',
+      musicDirHint: 'Where the audio files go; leave it empty for DSH\'s own little-icon/music. A folder inside the repository is ignored in favour of the default one, because those files would be committed with the links.',
+      musicDirPlaceholder: 'Empty = DSH\'s own little-icon/music',
+      musicVolume: 'Volume',
+      musicVolumeHint: 'What the pet plays at; this one travels with the settings file, so both machines share it.',
+      musicAddPlaceholder: 'Paste a Bilibili link (a BV id, an av id, or a b23.tv address)',
+      musicAdd: 'Add',
+      musicAdding: 'Resolving and downloading…',
+      musicAdded: 'Added: {title}',
+      musicAlready: 'That link is already in the list.',
+      musicList: 'Songs',
+      musicListEmpty: 'No links yet. Paste a Bilibili video address and its audio is downloaded as a file.',
+      musicMissing: 'not downloaded',
+      musicReady: 'downloaded',
+      musicDownloading: 'downloading',
+      musicFailed: 'download failed',
+      musicRemove: 'Remove',
+      musicRemoveHint: 'Also deletes the downloaded file on this machine',
+      musicSync: 'Download missing ({count})',
+      musicSyncing: 'Downloading: {done}/{total}',
+      musicSyncNone: 'Nothing is missing',
+      musicSyncRunning: 'A fill-in is already running; try again after it finishes.',
+      musicNotPlaying: 'The pet is not playing anything',
+      musicPlaying: 'Now playing: {title}',
+      musicPaused: 'Paused: {title}',
+      musicPlay: 'Play',
+      musicPause: 'Pause',
+      musicNext: 'Next',
+      musicPrev: 'Previous',
+      musicCount: '{count} playable',
+      musicExtras: 'These files are on this machine without a link — most likely a link was removed and its file stayed.',
+      musicExtrasRemove: 'Delete file',
+      musicWarnInsideCheckout: 'This folder is inside the repository, so the downloaded audio would be committed; it is ignored and the default folder is used instead.',
+      musicWarnUnwritable: 'This folder cannot be created or written to, so downloads would fail; pick one that can.',
+      musicReasonEmpty: 'The link is empty.',
+      musicReasonUnrecognized: 'That link was not recognized; only a Bilibili BV/av id or a b23.tv address works.',
+      musicReasonVideo: 'The video could not be read ({message}).',
+      musicReasonAudio: 'The audio stream could not be read ({message}).',
+      musicReasonNoAudio: 'That video carries no audio stream; try another one.',
+      musicReasonNetwork: 'The network request failed: {message}',
+      musicReasonWrite: 'The audio could not be written into the music folder: {message}',
+      musicReasonBusy: 'The pet is playing that file; switch song and remove it again.',
+      musicReasonRunning: 'The pet is filling the library in; try again once it finishes.',
+      musicReasonUnknown: 'That entry is gone; refresh the card.',
+      musicReadFailed: 'The library could not be read: {message}',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} s',
@@ -433,6 +564,25 @@ window.__ModuleLoader__.load({
         '.dli-site-problem{grid-column:1/-1;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:16px;}',
         '.dli-sites-foot{display:flex;align-items:center;gap:8px;}',
         '.dli-sites-foot .dli-hint{flex:1 1 auto;min-width:0;}',
+        // Music: one line for what the pet is playing and its transport buttons, one
+        // for the link being added, then one row per link — its title, the state of
+        // this machine's copy, and the button that removes both.
+        '.dli-music{display:flex;flex-direction:column;gap:8px;}',
+        '.dli-music-now{display:flex;align-items:center;gap:8px;}',
+        '.dli-music-now .dli-music-title{flex:1 1 auto;min-width:0;overflow:hidden;',
+        'text-overflow:ellipsis;white-space:nowrap;}',
+        '.dli-music-add{display:flex;gap:8px;align-items:center;}',
+        '.dli-music-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;}',
+        '.dli-music-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+        '.dli-music-state{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;}',
+        '.dli-music-state[data-state="ready"]{color:var(--dsw-alias-state-success-primary);}',
+        '.dli-music-state[data-state="failed"]{color:var(--dsw-alias-state-error-primary);}',
+        '.dli-music-foot{display:flex;align-items:center;gap:8px;}',
+        '.dli-music-foot .dli-hint{flex:1 1 auto;min-width:0;}',
+        '.dli-music-extras{display:flex;flex-direction:column;gap:6px;padding-top:8px;',
+        'border-top:0.5px solid rgba(127,127,127,.25);}',
+        '.dli-music-warning{color:var(--dsw-alias-state-warn-label);font-size:11px;line-height:16px;}',
+        '.dli-music-message{min-height:16px;}',
         '.dli-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary);}',
         '.dli-grid{display:flex;flex-direction:column;gap:14px;padding-top:12px;}',
         '.dli-status{font-size:11px;color:var(--dsw-alias-label-secondary);min-height:16px;}',
@@ -583,6 +733,291 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One row per configured link, with whatever this machine has for it. The rows
+     * come from the form, so adding or removing a link shows at once, and each one is
+     * matched to the Host's answer by its own link text — which is the identity the
+     * Host uses too, because one video has many spellings and only the pasted text
+     * survives all of them.
+     * @param library - the Host's view, or null before the first answer.
+     * @param links - the configured links, in the configured order.
+     * @returns the rows, and the files the Host found without a link.
+     */
+    function musicRows(library, links) {
+      const known = Array.isArray(library?.entries) ? library.entries : []
+      return {
+        rows: links.map(link => known.find(entry => entry.link === link) ?? {
+          link, id: '', state: 'unknown', title: '', owner: '', durationMs: 0, size: 0,
+        }),
+        extras: Array.isArray(library?.extras) ? library.extras : [],
+      }
+    }
+
+    /**
+     * Why a download did not happen, in the reader's words. The Host answers with a
+     * reason and the message the service gave it, so the reason picks the sentence and
+     * the message is shown inside it rather than instead of it.
+     * @param t - bound translator.
+     * @param result - the Host's answer.
+     * @returns one line of copy.
+     */
+    function musicReasonText(t, result) {
+      const message = typeof result?.message === 'string' ? result.message : ''
+      switch (result?.reason) {
+        case 'empty': return t('musicReasonEmpty')
+        case 'running': return t('musicReasonRunning')
+        case 'unrecognized': return t('musicReasonUnrecognized')
+        case 'video': return t('musicReasonVideo', { message })
+        case 'audio': return t('musicReasonAudio', { message })
+        case 'no-audio': return t('musicReasonNoAudio')
+        case 'network': return t('musicReasonNetwork', { message })
+        case 'write': return t('musicReasonWrite', { message })
+        case 'busy': return t('musicReasonBusy')
+        case 'unknown': return t('musicReasonUnknown')
+        default: return message
+      }
+    }
+
+    /**
+     * The music part of the pet's settings card.
+     *
+     * Three things live here because they are one decision each: the volume the pet
+     * plays at (a config field, shared through the settings file), the folder this
+     * machine downloads into (a config field too, but machine-shaped — a path that
+     * does not exist here is reported rather than obeyed), and the links themselves,
+     * which are the only part of the feature the repository carries. What this machine
+     * has for each link comes from the Host, which is also where every download runs,
+     * so the card never handles audio and never needs DSH to be in front.
+     * @param props - `t`, editability, the form draft, the config writer, the slider
+     *   factory the other rows use, and the directory picker.
+     * @returns the section.
+     */
+    function MusicSection(props) {
+      const { t, editable, draft, write, slider, pickDirectory } = props
+      const [library, setLibrary] = React.useState(null)
+      const [busy, setBusy] = React.useState('')
+      const [message, setMessage] = React.useState('')
+      const [libraryError, setLibraryError] = React.useState('')
+      const [link, setLink] = React.useState('')
+
+      /**
+       * Read what the Host knows: the links' files, the sync, the pet's playing.
+       * A read that fails after the card already has an answer says nothing — the
+       * library it shows is still the last thing this machine knew, and replacing an
+       * action's own message with "Failed to fetch" reads as that action failing.
+       * Only a card that never got an answer reports one.
+       * @param first - whether this is the card's first read.
+       */
+      const reload = async (first = false) => {
+        try {
+          const response = await fetch(MUSIC_PATH)
+          if (!response.ok) throw new Error(String(response.status))
+          setLibrary(await response.json())
+          setLibraryError('')
+        } catch (error) {
+          if (first) setLibraryError(String(error?.message ?? error))
+        }
+      }
+
+      React.useEffect(() => {
+        let cancelled = false
+        let seen = false
+        const load = async () => {
+          try {
+            const response = await fetch(MUSIC_PATH)
+            if (!response.ok) throw new Error(String(response.status))
+            const payload = await response.json()
+            if (cancelled) return
+            seen = true
+            setLibraryError('')
+            setLibrary(payload)
+          } catch (error) {
+            if (!cancelled && !seen) setLibraryError(String(error?.message ?? error))
+          }
+        }
+        void load()
+        const timer = setInterval(() => { void load() }, MUSIC_POLL_MS)
+        return () => { cancelled = true; clearInterval(timer) }
+      }, [])
+
+      const links = Array.isArray(draft.musicLinks) ? draft.musicLinks : []
+      const { rows, extras } = musicRows(library, links)
+      const ready = rows.filter(row => row.state === 'ready').length
+      // What the Host counted is authoritative once it answered — it also knows about
+      // a file a person deleted by hand — and the rows are the fallback before that.
+      const missing = library?.missing ?? rows.length - ready
+      const sync = library?.sync ?? null
+      const syncing = sync?.running === true
+      const player = library?.player ?? null
+      const playing = player?.playing === true
+      const playingTitle = typeof player?.title === 'string' ? player.title : ''
+      const nowText = playingTitle === ''
+        ? t('musicNotPlaying')
+        : playing ? t('musicPlaying', { title: playingTitle }) : t('musicPaused', { title: playingTitle })
+      const warning = library?.warning === 'inside-checkout' ? t('musicWarnInsideCheckout')
+        : library?.warning === 'unwritable' ? t('musicWarnUnwritable') : ''
+
+      const ask = async (path) => {
+        const response = await fetch(path, { method: 'POST' })
+        return await response.json()
+      }
+
+      const addLink = async () => {
+        const url = link.trim()
+        if (url === '' || busy !== '') return
+        if (links.includes(url)) { setMessage(t('musicAlready')); return }
+        setBusy('add')
+        setMessage(t('musicAdding'))
+        // The list is config and the file is this machine's, so both are written here:
+        // the list through the form (which is what the repository carries), the file
+        // through the Host route that resolves and downloads it.
+        write({ musicLinks: [...links, url] }, true)
+        try {
+          const result = await ask(`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(url)}`)
+          if (result.ok === true) {
+            setMessage(t('musicAdded', { title: typeof result.title === 'string' && result.title !== '' ? result.title : url }))
+            setLink('')
+          } else {
+            setMessage(musicReasonText(t, result))
+          }
+        } catch (error) {
+          setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+        }
+        setBusy('')
+        await reload()
+      }
+
+      /** Drop one link, and the file it names on this machine. */
+      const removeRow = async (row) => {
+        write({ musicLinks: links.filter(entry => entry !== row.link) }, true)
+        if (typeof row.id === 'string' && row.id !== '') {
+          try {
+            const result = await ask(`${MUSIC_REMOVE_PATH}?id=${encodeURIComponent(row.id)}`)
+            if (result.ok !== true) setMessage(musicReasonText(t, result))
+          } catch (error) {
+            setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+          }
+        }
+        await reload()
+      }
+
+      /** The one click that fills a machine in after it pulled the links. */
+      const syncAll = async () => {
+        setBusy('sync')
+        try {
+          const result = await ask(MUSIC_SYNC_PATH)
+          if (result.ok !== true) setMessage(result.reason === 'running' ? t('musicSyncRunning') : musicReasonText(t, result))
+          else if (result.started === 0) setMessage(t('musicSyncNone'))
+        } catch (error) {
+          setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+        }
+        setBusy('')
+        await reload()
+      }
+
+      /** Delete one file that no link claims; the Host may refuse it while the pet plays it. */
+      const removeFile = async (row) => {
+        try {
+          const result = await ask(`${MUSIC_REMOVE_PATH}?id=${encodeURIComponent(row.id)}`)
+          if (result.ok !== true) setMessage(musicReasonText(t, result))
+        } catch (error) {
+          setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+        }
+        await reload()
+      }
+
+      /** One playback command for the pet, which is the half that owns the audio. */
+      const command = async (action) => {
+        try { await ask(`${MUSIC_COMMAND_PATH}?action=${action}`) } catch { /* the next read shows the truth */ }
+        await reload()
+      }
+
+      const stateText = (state) => state === 'ready' ? t('musicReady')
+        : state === 'downloading' ? t('musicDownloading')
+          : state === 'failed' ? t('musicFailed')
+            : state === 'missing' ? t('musicMissing') : ''
+
+      const musicDirControl = h('div', { className: 'dli-path' },
+        h('input', {
+          className: 'dli-text', type: 'text', disabled: !editable,
+          value: draft.musicDir ?? '', placeholder: t('musicDirPlaceholder'),
+          onChange: (event) => props.echo({ musicDir: event.target.value }),
+          onBlur: (event) => write({ musicDir: event.target.value.trim() }, true),
+          onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+        }),
+        h('button', {
+          className: 'dli-button', type: 'button', disabled: !editable,
+          onClick: () => {
+            void pickDirectory().then((picked) => {
+              if (typeof picked === 'string' && picked !== '') write({ musicDir: picked }, true)
+            })
+          },
+        }, t('shotDirBrowse')))
+
+      const rowOf = (row, extra) => h('div', { className: 'dli-music-row', key: `${extra ? 'extra' : 'link'}-${row.id || row.link}` },
+        h('span', { className: 'dli-music-name', title: row.link }, row.title !== '' ? row.title : row.link),
+        h('span', { className: 'dli-music-state', 'data-state': row.state }, stateText(row.state)),
+        h('button', {
+          className: 'dli-button', type: 'button', disabled: !editable,
+          title: t('musicRemoveHint'),
+          onClick: () => { void (extra ? removeFile(row) : removeRow(row)) },
+        }, extra ? t('musicExtrasRemove') : t('musicRemove')))
+
+      const list = h('div', { className: 'dli-music' },
+        h('div', { className: 'dli-music-now' },
+          h('span', { className: 'dli-music-title' }, nowText),
+          h('button', { className: 'dli-button', type: 'button', disabled: !editable, onClick: () => { void command('play') } }, t('musicPlay')),
+          h('button', { className: 'dli-button', type: 'button', disabled: !editable, onClick: () => { void command('pause') } }, t('musicPause')),
+          h('button', { className: 'dli-button', type: 'button', disabled: !editable, onClick: () => { void command('prev') } }, t('musicPrev')),
+          h('button', { className: 'dli-button', type: 'button', disabled: !editable, onClick: () => { void command('next') } }, t('musicNext'))),
+        h('div', { className: 'dli-music-add' },
+          h('input', {
+            className: 'dli-text', type: 'text', disabled: !editable || busy !== '',
+            value: link, placeholder: t('musicAddPlaceholder'),
+            onChange: (event) => setLink(event.target.value),
+            onKeyDown: (event) => { if (event.key === 'Enter') void addLink() },
+          }),
+          h('button', {
+            className: 'dli-button', type: 'button',
+            disabled: !editable || busy !== '' || syncing || link.trim() === '',
+            onClick: () => { void addLink() },
+          }, busy === 'add' ? t('musicAdding') : t('musicAdd'))),
+        rows.length === 0 ? h('div', { className: 'dli-hint' }, t('musicListEmpty')) : rows.map(row => rowOf(row, false)),
+        h('div', { className: 'dli-music-foot' },
+          h('button', {
+            className: 'dli-button', type: 'button',
+            disabled: !editable || syncing || busy === 'sync' || missing === 0,
+            onClick: () => { void syncAll() },
+          }, syncing
+            ? t('musicSyncing', { done: sync?.done ?? 0, total: sync?.total ?? 0 })
+            : missing > 0 ? t('musicSync', { count: missing }) : t('musicSyncNone')),
+          h('span', { className: 'dli-hint' }, t('musicCount', { count: ready }))),
+        extras.length === 0 ? null : h('div', { className: 'dli-music-extras' },
+          h('div', { className: 'dli-hint' }, t('musicExtras')),
+          extras.map(row => rowOf(row, true))),
+        message === '' ? null : h('div', { className: 'dli-hint dli-music-message' }, message),
+        libraryError === '' ? null : h('div', { className: 'dli-music-warning' }, t('musicReadFailed', { message: libraryError })),
+        warning === '' ? null : h('div', { className: 'dli-music-warning' }, warning))
+
+      return h('div', null,
+        h(Row, {
+          label: t('musicVolume'), value: t('percent', { value: Math.round(draft.musicVolume ?? MUSIC_VOLUME_DEFAULT) }),
+          text: t('musicVolumeHint'), disabled: !editable,
+          control: h('input', {
+            min: MUSIC_VOLUME.min, max: MUSIC_VOLUME.max, step: MUSIC_VOLUME.step,
+            ...slider('musicVolume'),
+          }),
+        }),
+        h(Row, {
+          label: t('musicDir'), text: t('musicDirHint'), disabled: !editable,
+          control: musicDirControl,
+        }),
+        h(Row, {
+          label: t('musicList'), disabled: !editable,
+          control: list,
+        }))
+    }
+
+    /**
      * The pet's settings card.
      * @param props - slot props from `plugins.bundle.config` plus the inject face:
      *   the `usePetSettings` hook over the mirrored form and the `write` callback.
@@ -692,6 +1127,13 @@ window.__ModuleLoader__.load({
           }, t('siteAdd')),
           h('span', { className: 'dli-hint' }, t('sitesLogin'))))
 
+      /** Local echo for one form field, for a box that writes on leaving rather than per keystroke. */
+      const echo = (patch) => setDraft((current) => ({ ...current, ...patch }))
+
+      const musicSection = h(MusicSection, {
+        t, editable, draft, write, slider, pickDirectory: props.pickDirectory, echo,
+      })
+
       return h('div', { className: 'dli-page' },
         h(Row, {
           label: t('enable'), text: t('enableHint'), inline: true, disabled: !editable,
@@ -700,6 +1142,10 @@ window.__ModuleLoader__.load({
         h(Row, {
           label: t('sites'), text: t('sitesHint'), disabled: !editable,
           control: sitesControl,
+        }),
+        h(Row, {
+          label: t('music'), text: t('musicHint'), disabled: !editable,
+          control: musicSection,
         }),
         h(Row, {
           label: t('size'), value: t('pixels', { value: draft.size }), text: t('sizeHint'), disabled: !editable,
@@ -1600,6 +2046,42 @@ window.__ModuleLoader__.load({
           window.open(url, '_blank', 'noopener,noreferrer')
         }
 
+        /** The settings form this plugin's card edits: the Host document, mirrored here. */
+        const musicForm = () => ctx.configForms.get(NS)
+
+        /**
+         * Write music configuration the way the card writes it: one form edit, sent
+         * from this half. The Host cannot make this write, because the settings
+         * service refuses a write attempted inside an HMR transaction and the Host's
+         * timer runs in the context of the load that created it, so the menu's volume
+         * and link entries are carried out here. What the Host publishes afterwards -
+         * the notice above the pet included - follows from this write.
+         * @param patch - field values to set.
+         * @returns after the edit was accepted or refused.
+         */
+        const writeMusicConfig = (patch) => {
+          const form = musicForm()
+          if (form === undefined) {
+            console.warn('little-icon: this build has no settings form to write music configuration through')
+            return Promise.resolve()
+          }
+          const ops = Object.entries(patch).map(([field, value]) => ({ op: 'set', path: [field], value }))
+          return form.mutate(ops, form.getSnapshot().revision).then(
+            (accepted) => {
+              if (!accepted) console.warn('little-icon: the music configuration the menu changed was not saved')
+            },
+            (error) => {
+              console.warn('little-icon: the music configuration the menu changed failed to save', error)
+            },
+          )
+        }
+
+        /** The link list as the configuration holds it, which is what an added link joins. */
+        const musicLinksNow = () => {
+          const links = musicForm()?.getSnapshot()?.value?.musicLinks
+          return Array.isArray(links) ? links : []
+        }
+
         /**
          * Carry out one menu command the pet reported. The pet window belongs to
          * another process, so the page is what acts on a choice made there.
@@ -1670,6 +2152,31 @@ window.__ModuleLoader__.load({
               return
             }
             aquarium.open()
+          },
+          'music-volume': ({ value }) => {
+            // Configuration, so it is written from this half; the Host says the new
+            // number above the pet once the configuration carries it, because the menu
+            // that set it has already closed.
+            const percent = clampMusicVolume(value)
+            if (percent === undefined) {
+              console.warn('little-icon: a volume command named no volume: %s', String(value))
+              return
+            }
+            void writeMusicConfig({ musicVolume: percent })
+          },
+          'music-add-link': async ({ link }) => {
+            // The Host checked the link before forwarding it. What is left is the two
+            // steps the card's own add performs - write the list, then ask the Host to
+            // download it - and the Host answers the outcome above the pet, the way it
+            // answers the card in that row.
+            const url = String(link ?? '').trim()
+            const links = musicLinksNow()
+            if (!links.includes(url)) await writeMusicConfig({ musicLinks: [...links, url] })
+            try {
+              await fetch(`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(url)}`, { method: 'POST' })
+            } catch (error) {
+              console.warn('little-icon: the Host could not be asked to download the link', error)
+            }
           },
         }
 

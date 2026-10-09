@@ -50,11 +50,23 @@ import { homedir, networkInterfaces } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
+import { MusicLibrary, musicView, isInside, musicEntryId, parseBilibiliRef, resolveMusicDir, resolveMusicLinks } from './music.js'
 
 export const name = 'little-icon'
 
 /** One animation directory per state, built by `tools/build-assets.py`. */
 const STATES = ['idle', 'working', 'bored', 'sleep', 'happy', 'alert']
+
+/**
+ * The expression the pet wears while its own player runs and no task is in
+ * flight. The sampler below never returns it: listening is not a state of the
+ * agent but of the pet, so it is the one expression with frames on disk that
+ * {@link withMusic} selects.
+ */
+const MUSIC_STATE = 'music'
+
+/** Every expression with frames on disk: the sampler's states plus the one only playback selects. */
+const FRAME_STATES = [...STATES, MUSIC_STATE]
 
 /**
  * Same-origin route the browser half pings on user activity. "The pet sleeps
@@ -115,6 +127,32 @@ const GIT_PULL_PATH = '/api/little-icon/git/pull'
  * and starting a process is the Host's, so the page names the directory here.
  */
 const OPEN_PATH = '/api/little-icon/open'
+
+/**
+ * Same-origin routes behind the settings card's music section. The card can
+ * neither read a directory nor reach Bilibili, so the Host answers with the
+ * library as this machine has it and does the downloading itself: one route reads
+ * the view, one downloads a link the person just pasted, one fills in every link
+ * this machine has no file for, one forgets an entry, and one carries a playback
+ * command to the pet — which plays the audio, because the pet process outlives a
+ * hidden DSH window and a page's audio element does not.
+ */
+const MUSIC_PATH = '/api/little-icon/music'
+
+/** POST: download every configured link this machine has no file for. */
+const MUSIC_SYNC_PATH = '/api/little-icon/music/sync'
+
+/** POST `?url=`: download one link, for the one that was just added. */
+const MUSIC_DOWNLOAD_PATH = '/api/little-icon/music/download'
+
+/** POST `?id=`: forget one entry and delete its file. */
+const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
+
+/** POST `?action=`: ask the pet to play, pause, toggle, or step. */
+const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
+
+/** The playback commands that route accepts; anything else is refused. */
+const MUSIC_COMMANDS = new Set(['play', 'pause', 'toggle', 'next', 'prev'])
 
 /** The Git executable; a machine without one on PATH is reported, not guessed at. */
 const GIT_EXECUTABLE = 'git'
@@ -247,6 +285,22 @@ export const Config = z.object({
    * one keyboard and mouse, so the link is what the plugin is for on this machine.
    */
   coopAutoStart: z.boolean().default(true).volatile(),
+  /**
+   * Bilibili links the music library is built from, in the order the pet plays
+   * them. This list is the only part of the feature that travels between machines
+   * — the settings card writes it, and the repository's `pet-settings.yml` carries
+   * it — so a checkout holds links and never audio. Every machine downloads its
+   * own files into its own music directory.
+   */
+  musicLinks: z.array(z.string()).default([]).volatile(),
+  /**
+   * Where downloaded audio is written. Blank is this machine's own
+   * `little-icon/music` under the harness home; a directory inside the checkout is
+   * reported rather than used quietly, because those files would be committed.
+   */
+  musicDir: z.string().default('').volatile(),
+  /** Volume the pet plays at, 0-100. */
+  musicVolume: z.number().step(1).min(0).max(100).default(70).volatile(),
 })
 
 /**
@@ -534,6 +588,33 @@ function sampleState(work, activityAt, timeline, config, now) {
 }
 
 /**
+ * The expression the pet wears, after the one input the sampler cannot see: its
+ * own player. A person who started music is present and awake, so while audio
+ * plays the listening frames stand in for the idle family, while the run's own
+ * faces — working, the startle that holds while it waits on an answer, and the
+ * celebration that ends it — keep the frames that say so. Playback never
+ * outranks the run.
+ * @param base - the expression {@link sampleState} chose.
+ * @param playing - whether the pet reported itself playing, from `music-player.json`.
+ * @returns `music` while audio plays and the run has nothing of its own to show, otherwise `base`.
+ */
+function withMusic(base, playing) {
+  if (playing !== true) return base
+  return base === 'working' || base === 'alert' || base === 'happy' ? base : MUSIC_STATE
+}
+
+/**
+ * A volume the pet's menu asked for, as the configuration stores it.
+ * @param value - the requested volume, as the pet wrote it.
+ * @returns a whole percent between 0 and 100, or undefined when that is not a number.
+ */
+function clampVolume(value) {
+  const percent = Math.round(Number(value))
+  if (!Number.isFinite(percent)) return undefined
+  return Math.max(0, Math.min(100, percent))
+}
+
+/**
  * What the agents report right now: whether work is under way once the agents
  * blocked on a human answer are set aside, and whether one of them is waiting for
  * that answer. The two waterfalls that ask the user leave the agent `running`
@@ -605,7 +686,18 @@ function readCommand(path) {
     const reported = JSON.parse(readFileSync(path, 'utf8'))
     if (typeof reported.at !== 'number' || typeof reported.command !== 'string') return undefined
     const url = openableUrl(reported.url)
-    return { command: reported.command, at: reported.at, ...url === undefined ? {} : { url } }
+    // The volume entries carry a number; anything else the pet writes stays out.
+    const value = typeof reported.value === 'number' && Number.isFinite(reported.value) ? reported.value : undefined
+    // A music link is what the person typed rather than an address to open, so it
+    // keeps its own field: the guard above would rewrite a bare id into a host.
+    const link = typeof reported.link === 'string' ? reported.link.trim().slice(0, 2000) : undefined
+    return {
+      command: reported.command,
+      at: reported.at,
+      ...url === undefined ? {} : { url },
+      ...value === undefined ? {} : { value },
+      ...link === undefined || link === '' ? {} : { link },
+    }
   } catch {
     // No command yet, or a half-written one.
     return undefined
@@ -1218,6 +1310,52 @@ function sendJson(res, payload) {
 }
 
 /**
+ * Answer one request with the result of a step. A step that throws is reported to
+ * the waiting page as a refusal: an unanswered socket would leave the settings
+ * card loading forever, and an exception out of a route handler ends the host.
+ * @param res - the response to answer.
+ * @param step - the step, returning the JSON-serializable body.
+ */
+function serveJson(res, step) {
+  try {
+    sendJson(res, step())
+  } catch (error) {
+    refuseJson(res, error)
+  }
+}
+
+/**
+ * The same answer for a step that waits — a download takes seconds, and its
+ * outcome is the answer.
+ * @param res - the response to answer.
+ * @param step - the step, resolving to the body.
+ * @returns a promise for the answer having been sent.
+ */
+async function serveJsonAsync(res, step) {
+  try {
+    sendJson(res, await step())
+  } catch (error) {
+    refuseJson(res, error)
+  }
+}
+
+/**
+ * Report one failed step to the waiting page. Writing can fail by itself — the
+ * socket is gone, or the response was already ended — and a throw from here would
+ * be an unhandled rejection, which takes the whole host down.
+ * @param res - the response to answer.
+ * @param error - what the step threw.
+ */
+function refuseJson(res, error) {
+  try {
+    sendJson(res, { ok: false, reason: 'failed', message: String(error?.message ?? error) })
+  } catch {
+    // Nothing left to answer with: the socket is already gone.
+    res.destroy?.()
+  }
+}
+
+/**
  * Launch the pet process.
  * @param script - absolute `pet.ps1` path.
  * @param assets - absolute directory holding one folder per state.
@@ -1392,6 +1530,231 @@ export function apply(ctx, config) {
     ctx.logger.info('little-icon: multi-machine started as %s (%s)', role, address)
   }
 
+  // ---- music -----------------------------------------------------------------
+  //
+  // The link list travels and the audio does not: it is config, copied into the
+  // repository's `pet-settings.yml`, while each machine downloads its own files
+  // into the directory its own settings name. The pet is the half that plays them —
+  // a page's audio element belongs to a window that can be hidden, while the pet
+  // process stays on the desktop — so the tracks it may play arrive in a file of
+  // their own, written here on change rather than every sampling tick.
+  //
+  // The pet also carries out what the settings card asks: a playback command and a
+  // download request both arrive in that same file, and the download itself is this
+  // half's work, which is what lets the pet's own menu fill a fresh machine in with
+  // no page listening at all.
+  const musicFile = join(dataDir, 'music.json')
+  /** What the pet is playing; the pet writes it, the settings card reads it. */
+  const musicPlayerFile = join(dataDir, 'music-player.json')
+  const musicWriter = new StateFileWriter(musicFile, 4000, (error) => {
+    ctx.logger.warn('little-icon music: could not write %s: %s', musicFile, String(error))
+  })
+  /**
+   * The checkout this plugin lives in, when it lives in one. A music directory
+   * inside it would put the downloaded audio in the repository, which is the one
+   * thing this feature must not do, so it is reported instead.
+   */
+  const checkoutRoot = existsSync(fileURLToPath(new URL('../../../_mytools', import.meta.url)))
+    ? fileURLToPath(new URL('../../../', import.meta.url))
+    : undefined
+  /** Playback command the settings card asked for, waiting for the pet's next tick. */
+  let musicCommand
+  /** Download outcome the pet has not shown yet, as a notice above the pet. */
+  let musicNotice
+  /**
+   * The volume the pet was last told the configuration holds, so a change - from the
+   * card or from the menu's slider, which the page writes - is reported above the pet
+   * exactly once.
+   */
+  let lastConfiguredVolume
+  /**
+   * The volume the page was asked to write and has not written yet, published in the
+   * meantime so the number the menu just chose does not snap back while the write
+   * lands. Dropped when the configuration catches up, or after a few seconds, so a
+   * page that never wrote it cannot leave the pet on a volume no file holds.
+   */
+  let pendingVolume
+  let pendingVolumeUntil = 0
+  let library
+  let libraryDir = ''
+
+  /**
+   * The music directory as it is now, and what is wrong with it: `inside-checkout`
+   * when the configured folder is inside the repository, `unwritable` when a folder
+   * cannot be made.
+   *
+   * A configured folder inside the checkout is not used at all, only reported: the
+   * audio downloaded into it would be committed with the links, which is the one
+   * thing this feature is arranged to avoid. The machine's own default folder takes
+   * its place, so the setting is wrong rather than destructive, and the card says so.
+   * @returns the absolute directory and the warning code, empty when all is well.
+   */
+  const musicDirNow = () => {
+    const configured = resolveMusicDir(config.musicDir.get(), resolveDshHome())
+    const inside = checkoutRoot !== undefined && isInside(configured, checkoutRoot)
+    // Decided by where the setting points rather than by comparing the two paths: a
+    // harness home that itself sits in the checkout resolves both to the same folder,
+    // and that folder is still one the audio must not be written into.
+    const dir = inside ? resolveMusicDir('', resolveDshHome()) : configured
+    const warning = inside ? 'inside-checkout' : ''
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch (error) {
+      ctx.logger.warn('little-icon music: could not use %s: %s', dir, String(error))
+      return { dir, warning: 'unwritable' }
+    }
+    return { dir, warning }
+  }
+
+  /**
+   * The library over the configured directory. Changing that setting makes a new
+   * one over the same index: the index is per machine, and the entries it names are
+   * looked for in the directory in force, so files left in the old directory read
+   * as missing rather than as somebody else's.
+   * @returns the library.
+   */
+  const musicLibrary = () => {
+    const { dir } = musicDirNow()
+    if (library === undefined || dir !== libraryDir) {
+      library = new MusicLibrary({
+        dataDir,
+        dir,
+        logger: ctx.logger,
+        onChange: () => { guarded('music library publish', publishMusic) },
+      })
+      libraryDir = dir
+    }
+    return library
+  }
+
+  /**
+   * What the pet last reported about its own playback.
+   * @returns the state, or undefined when the pet has not reported one yet.
+   */
+  const readMusicPlayer = () => {
+    try {
+      const reported = JSON.parse(readFileSync(musicPlayerFile, 'utf8'))
+      return {
+        playing: reported.playing === true,
+        id: typeof reported.id === 'string' ? reported.id : '',
+        title: typeof reported.title === 'string' ? reported.title : '',
+        positionMs: Number.isFinite(reported.positionMs) ? reported.positionMs : 0,
+        error: typeof reported.error === 'string' ? reported.error : '',
+      }
+    } catch {
+      // No report yet, or a half-written one: the card shows "nothing playing".
+      return undefined
+    }
+  }
+
+  // The menu's volume and link entries are configuration, so they are written the way
+  // the settings card writes: through the settings service, from the page. This half
+  // cannot make that write. The service refuses any write attempted inside an HMR
+  // transaction, and this plugin's own timer runs in the context of the load that
+  // created it, so a write from a tick is refused as nested. Both commands are
+  // therefore forwarded to the page (see forwardCommand), whose request context is
+  // outside that transaction; the download they ask for stays here, on the route the
+  // card already uses, because a download is this half's own work.
+
+  /**
+   * Publish what the pet may play. Absolute paths travel because the pet opens the
+   * files itself; the id travels back so the settings card can name the row the pet
+   * is on. A link with no file is only counted, so the menu can offer to fill it in.
+   */
+  const publishMusic = () => {
+    // A download that finishes after the plugin unloaded would otherwise write a
+    // file for a pet that is already gone.
+    if (disposed) return
+    const configured = config.musicVolume.get()
+    // A volume that changed - from the card, or from the menu, which is the page's
+    // write - is said above the pet once. The first publish only records it: the
+    // value the run started with is not news.
+    if (lastConfiguredVolume !== undefined && configured !== lastConfiguredVolume) {
+      musicNotice = { at: Date.now(), kind: 'volume', percent: Math.round(configured) }
+    }
+    lastConfiguredVolume = configured
+    // A pending volume is published until the configuration carries it, or until the
+    // page has had long enough to write it: one that never did must not leave the pet
+    // on a volume no file holds.
+    if (pendingVolume !== undefined && (configured === pendingVolume || Date.now() > pendingVolumeUntil)) {
+      pendingVolume = undefined
+    }
+    const volume = pendingVolume ?? configured
+    const { dir, warning } = musicDirNow()
+    const current = musicLibrary()
+    const links = resolveMusicLinks(config.musicLinks.get())
+    const tracks = []
+    const seen = new Set()
+    /** Links this machine has no playable file for, counted per link rather than per
+     * video: two spellings of one link are one track but two rows to satisfy. */
+    let missing = 0
+    for (const link of links) {
+      const entry = current.entryForLink(link)
+      const path = entry === undefined ? undefined : current.filePath(entry.id)
+      if (path === undefined) {
+        missing += 1
+        continue
+      }
+      if (seen.has(entry.id)) continue
+      seen.add(entry.id)
+      tracks.push({ id: entry.id, title: entry.title, file: path })
+    }
+    musicWriter.write({
+      version: 1,
+      dir,
+      warning,
+      volume,
+      tracks,
+      missing,
+      sync: current.progress,
+      command: musicCommand,
+      notice: musicNotice,
+      updatedAt: Date.now(),
+    })
+  }
+
+  /**
+   * Download every link this machine has no file for, in the background. Asked for
+   * from the pet's menu or from the settings card, and safe to ask twice: a sync
+   * already running refuses the second call rather than downloading in parallel.
+   * @returns the started count, or why nothing started.
+   */
+  const startMusicSync = () => {
+    const links = resolveMusicLinks(config.musicLinks.get())
+    const current = musicLibrary()
+    const pending = links.filter((link) => {
+      const entry = current.entryForLink(link)
+      return entry === undefined || current.filePath(entry.id) === undefined
+    })
+    if (current.progress.running) return { ok: false, reason: 'running' }
+    if (pending.length === 0) return { ok: true, started: 0 }
+    ctx.logger.info('little-icon music: downloading %d link(s)', pending.length)
+    void current.sync(links).then((result) => {
+      if (disposed) return
+      musicNotice = result.ok === true
+        ? { at: Date.now(), kind: 'synced', added: result.added, failed: result.failed.length, total: result.total }
+        : { at: Date.now(), kind: 'refused', added: 0, failed: 0, total: 0 }
+      guarded('music publish', publishMusic)
+      ctx.logger.info('little-icon music: sync finished, %d added, %d failed', result.added ?? 0, result.failed?.length ?? 0)
+    }, (error) => {
+      ctx.logger.warn('little-icon music: sync failed: %s', String(error))
+    })
+    return { ok: true, started: pending.length }
+  }
+
+  /** Open the music directory in the system file manager, creating it first. */
+  const openMusicDir = () => {
+    const { dir } = musicDirNow()
+    const outcome = openWorkingDirectory(dir, (directory) => {
+      const child = spawn('explorer.exe', [directory], { detached: true, stdio: 'ignore' })
+      child.once('error', (error) => {
+        ctx.logger.warn('little-icon music: could not open %s: %s', directory, String(error))
+      })
+      child.unref()
+    })
+    if (!outcome.ok) musicNotice = { at: Date.now(), kind: 'no-dir', added: 0, failed: 0, total: 0 }
+  }
+
   // The desktop shell runs this host as an Electron process in Node mode, so the
   // host's parent is the Electron main process — the window the pet tucks away.
   // The running binary is what proves it: ELECTRON_RUN_AS_NODE is inherited by
@@ -1430,7 +1793,7 @@ export function apply(ctx, config) {
   let timer
   let disposed = false
 
-  for (const state of STATES) {
+  for (const state of FRAME_STATES) {
     const dir = join(assets, state)
     if (!existsSync(dir) || !existsSync(join(dir, '1.png'))) {
       ctx.logger.warn('little-icon: missing pet frames for state "%s" in %s', state, assets)
@@ -1514,7 +1877,10 @@ export function apply(ctx, config) {
     const config = dshWindow.visible ? current : { ...current, sleepAfterSeconds: current.sleepWhenHiddenSeconds }
     const activity = activityAt()
     const work = sampleWork(ctx, waitingForUser)
-    const state = sampleState(work, activity, timeline, config, now)
+    const sampled = sampleState(work, activity, timeline, config, now)
+    // The player belongs to the pet, and its report is the one place this half
+    // learns that audio is running.
+    const state = withMusic(sampled, readMusicPlayer()?.playing === true)
     writer.write({
       state,
       // Why the pet says "working", for the settings card and for anyone
@@ -1562,8 +1928,8 @@ export function apply(ctx, config) {
    * @param command - the menu entry's id, as the pet reported it.
    * @param url - the address that entry named, for the one id that carries one.
    */
-  const publishCommand = (command, url) => {
-    const frame = `data: ${JSON.stringify({ command, ...url === undefined ? {} : { url } })}\n\n`
+  const publishCommand = (command, payload = {}) => {
+    const frame = `data: ${JSON.stringify({ command, ...payload })}\n\n`
     for (const stream of commandStreams) {
       if (stream.writableEnded || stream.destroyed) {
         commandStreams.delete(stream)
@@ -1589,7 +1955,56 @@ export function apply(ctx, config) {
       guarded('multi-machine stop', () => { coopStop('menu'); publish() })
       return
     }
-    publishCommand(pressed.command, pressed.url)
+    // Filling the library in and opening its folder are this half's work too: both
+    // need a process and a filesystem, and neither needs the page, so a menu entry
+    // for them acts whether or not a window is listening.
+    if (pressed.command === 'music-sync') {
+      guarded('music sync', () => { startMusicSync(); publishMusic() })
+      return
+    }
+    if (pressed.command === 'music-open-dir') {
+      guarded('music folder', () => { openMusicDir(); publishMusic() })
+      return
+    }
+    // Volume and a pasted link are configuration, which the settings card owns, and
+    // only the page can write it: the settings service refuses a write made inside an
+    // HMR transaction, which is the context this timer runs in. The page then writes
+    // the same fields the card writes, and the download a link asks for comes back
+    // here through the route the card already uses.
+    if (pressed.command === 'music-volume') {
+      const value = clampVolume(pressed.value)
+      if (value === undefined) return
+      pendingVolume = value
+      pendingVolumeUntil = Date.now() + 5000
+      publishMusic()
+      publishCommand('music-volume', { value })
+      return
+    }
+    if (pressed.command === 'music-add-link') {
+      const link = String(pressed.link ?? '').trim()
+      const ref = parseBilibiliRef(link)
+      if (link === '' || ref === undefined) {
+        // Nothing here names a video, so nothing is written and nothing is
+        // downloaded: the pet is told what the card would have told a person.
+        musicNotice = { at: Date.now(), kind: 'add-failed', reason: 'unrecognized' }
+        publishMusic()
+        return
+      }
+      const known = resolveMusicLinks(config.musicLinks.get())
+        .map(entry => parseBilibiliRef(entry))
+        .filter(entry => entry !== undefined)
+        .map(entry => musicEntryId(entry))
+      if (known.includes(musicEntryId(ref))) {
+        // One video, however it is spelled, is one row: the same answer the card
+        // gets from the download route.
+        musicNotice = { at: Date.now(), kind: 'duplicate' }
+        publishMusic()
+        return
+      }
+      publishCommand('music-add-link', { link })
+      return
+    }
+    publishCommand(pressed.command, pressed.url === undefined ? {} : { url: pressed.url })
   }
 
   /**
@@ -1922,6 +2337,127 @@ export function apply(ctx, config) {
     }), `little-icon: POST ${OPEN_PATH}`)
   })
 
+  // The music routes: the settings card reads the library here and asks for work
+  // here, because the page can neither list a directory nor reach Bilibili. The
+  // pet's own menu does not use them — it plays local files and asks this half for
+  // a download through the command file, which works with no page listening.
+  ctx.inject(['webServer'], (webCtx) => {
+    /**
+     * Whether a request may be answered: the connection's own check, then the
+     * method. A refusal is written here rather than left to the caller.
+     * @param req - the request.
+     * @param res - the response.
+     * @param method - the method this route accepts.
+     * @returns whether the handler should continue.
+     */
+    const allowed = (req, res, method) => {
+      const connection = ctx.get('connection')
+      const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+      if (rejection !== undefined) {
+        res.writeHead(rejection)
+        res.end()
+        return false
+      }
+      if (req.method !== method) {
+        res.writeHead(405)
+        res.end()
+        return false
+      }
+      return true
+    }
+    const queryOf = (req) => new URL(req.url ?? '', 'http://localhost').searchParams
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'GET')) return
+        serveJson(res, () => {
+          const { dir, warning } = musicDirNow()
+          const current = musicLibrary()
+          return musicView({
+            links: resolveMusicLinks(config.musicLinks.get()),
+            entries: current.entries,
+            dir,
+            warning,
+            volume: config.musicVolume.get(),
+            sync: current.progress,
+            player: readMusicPlayer(),
+          })
+        })
+      },
+    }), `little-icon: GET ${MUSIC_PATH}`)
+
+    // Filling the whole library in is one click on a machine that just pulled the
+    // link list, and it is this half's own work: the answer says how many started,
+    // and the page follows the progress on the view route.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_SYNC_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        serveJson(res, () => startMusicSync())
+      },
+    }), `little-icon: POST ${MUSIC_SYNC_PATH}`)
+
+    // One link, the one just pasted. It is answered when the download is done, so
+    // the card can report the title or the reason without polling for a first time.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_DOWNLOAD_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        void serveJsonAsync(res, async () => {
+          const outcome = await musicLibrary().download(queryOf(req).get('url') ?? '')
+          // Both ends report through this one route, so the outcome is said above the
+          // pet as well: the menu has no page of its own to report in, and the card's
+          // own notice is the same event seen from the same place.
+          musicNotice = outcome.ok !== true
+            ? { at: Date.now(), kind: 'add-failed', reason: String(outcome.reason ?? 'unknown') }
+            : outcome.duplicate === true
+              ? { at: Date.now(), kind: 'duplicate' }
+              : { at: Date.now(), kind: 'added', title: String(outcome.title ?? '') }
+          publishMusic()
+          return outcome
+        })
+      },
+    }), `little-icon: POST ${MUSIC_DOWNLOAD_PATH}`)
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_REMOVE_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        serveJson(res, () => {
+          const outcome = musicLibrary().remove(queryOf(req).get('id') ?? '')
+          // The pet is playing from a list that just lost a row, so it is told now
+          // rather than at the next download: a file that went away under it would
+          // otherwise keep failing until something else published.
+          if (outcome.ok === true) publishMusic()
+          return outcome
+        })
+      },
+    }), `little-icon: POST ${MUSIC_REMOVE_PATH}`)
+
+    // The card's own playback controls. The command travels in the music file and
+    // the pet applies it on its next tick, which is the same path the pet's menu
+    // uses in the other direction.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_COMMAND_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        serveJson(res, () => {
+          const action = queryOf(req).get('action') ?? ''
+          if (!MUSIC_COMMANDS.has(action)) return { ok: false, reason: 'unknown' }
+          musicCommand = { action, at: Date.now() }
+          publishMusic()
+          return { ok: true, action }
+        })
+      },
+    }), `little-icon: POST ${MUSIC_COMMAND_PATH}`)
+  })
+
   const startPet = () => {
     if (child !== undefined || disposed) return
     if (process.platform !== 'win32') {
@@ -2016,6 +2552,10 @@ export function apply(ctx, config) {
     wasEnabled = enabled
     followCoopAutoStart()
     guarded('publish', publish)
+    // The link list, the music directory, and the volume all reach the pet through
+    // its own file, so a settings write is what tells a pet that is already running
+    // about a new song or a new volume — neither half restarts for it.
+    guarded('music publish', publishMusic)
     schedule()
     scheduleSettingsSync()
   })
@@ -2025,6 +2565,9 @@ export function apply(ctx, config) {
     clearInterval(timer)
     clearTimeout(syncTimer)
     stopPet()
+    // A download already in flight is left to finish rather than aborted: the file it
+    // writes and the index entry naming it stay valid for the next start, and the
+    // publish that would follow is refused above (see publishMusic).
     // The multi-machine process ends with DSH: it holds a listening port and global
     // input hooks, so leaving it behind would be a service nobody asked for.
     coopStop('DSH exit')
@@ -2035,6 +2578,7 @@ export function apply(ctx, config) {
   }, 'little-icon: pet lifetime')
 
   publish()
+  guarded('music publish', publishMusic)
   wasEnabled = values().enabled
   if (wasEnabled) startPet()
   followCoopAutoStart()
@@ -2047,6 +2591,9 @@ export const internals = {
   createTimeline,
   sampleWork,
   shouldTuck,
+  withMusic,
+  clampVolume,
+  MUSIC_STATE,
   resolveDshHome,
   resolveShotDir,
   resolveSites,
@@ -2075,6 +2622,11 @@ export const internals = {
   GIT_REMOTE_PATH,
   GIT_PULL_PATH,
   OPEN_PATH,
+  MUSIC_PATH,
+  MUSIC_SYNC_PATH,
+  MUSIC_DOWNLOAD_PATH,
+  MUSIC_REMOVE_PATH,
+  MUSIC_COMMAND_PATH,
   GIT_DIFF_MAX_CHARS,
   GIT_LOG_PAGE,
 }

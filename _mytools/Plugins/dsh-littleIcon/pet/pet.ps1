@@ -30,6 +30,16 @@
     of that process's top-level windows that skips IME helper windows. The handle
     is cached, because MainWindowHandle reports 0 once the window is hidden.
 
+    Music plays here rather than in the DSH window: a page's audio element belongs
+    to a window that can be tucked away, while this process stays on the desktop,
+    so the right-click menu's "music" submenu plays, pauses, and steps through the
+    tracks the host published in music.json (the tracks it has files for, the
+    volume, a download running, and whatever the settings card asked for). The
+    audio itself is a WPF MediaPlayer over the local file, which is why the host
+    downloads AAC streams and nothing here decodes anything by itself. This
+    process reports what it is playing back into music-player.json, which is what
+    the settings card and the next start resume from.
+
     This script is deliberately ASCII-only so Windows PowerShell 5.1 decodes it
     the same way whatever encoding an editor saves: the localized menu labels
     live in labels.json and are read as UTF-8.
@@ -56,6 +66,13 @@
     exit. The selection sheet is not drawn and nobody drags: this is the bitmap,
     the encoder, and the shots directory on their own, so a machine whose screen
     cannot be read fails here instead of at the first menu click.
+
+.PARAMETER MusicProbe
+    Open one audio file through the media player the music uses, print what it
+    found, and exit. No window, no menu, and no library are involved: this is the
+    decoder, the sound device, and a file the host downloaded on their own, so a
+    machine that cannot play what was downloaded fails here instead of at the
+    first menu click.
 #>
 [CmdletBinding()]
 param(
@@ -64,7 +81,8 @@ param(
     [Parameter(Mandatory = $true)][string]$PositionFile,
     [int]$DshPid = 0,
     [switch]$SelfTest,
-    [switch]$ShotProbe
+    [switch]$ShotProbe,
+    [string]$MusicProbe = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -306,6 +324,28 @@ namespace DshPet
                         graphics.DrawArc(pen, R(bounds, 2f, 3f, 16f, 16f), 45f, 270f);
                         graphics.DrawLine(pen, P(bounds, 10f, 1f), P(bounds, 10f, 10f));
                         break;
+                    case "music":
+                        graphics.DrawEllipse(pen, R(bounds, 2f, 12.4f, 5.2f, 4.4f));
+                        graphics.DrawLine(pen, P(bounds, 7.2f, 14.6f), P(bounds, 7.2f, 3.8f));
+                        graphics.DrawBezier(pen, P(bounds, 7.2f, 3.8f), P(bounds, 11.4f, 4.6f), P(bounds, 14.6f, 6.4f), P(bounds, 15.4f, 9.6f));
+                        graphics.DrawLine(pen, P(bounds, 15.4f, 9.6f), P(bounds, 15.4f, 13.6f));
+                        graphics.DrawEllipse(pen, R(bounds, 10.2f, 13.6f, 5.2f, 4.4f));
+                        break;
+                    case "play":
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 6f, 3.4f), P(bounds, 16f, 10f), P(bounds, 6f, 16.6f), P(bounds, 6f, 3.4f) });
+                        break;
+                    case "pause":
+                        graphics.DrawLine(pen, P(bounds, 7f, 3.6f), P(bounds, 7f, 16.4f));
+                        graphics.DrawLine(pen, P(bounds, 13f, 3.6f), P(bounds, 13f, 16.4f));
+                        break;
+                    case "next":
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 4f, 4f), P(bounds, 11.6f, 10f), P(bounds, 4f, 16f), P(bounds, 4f, 4f) });
+                        graphics.DrawLine(pen, P(bounds, 14.6f, 4f), P(bounds, 14.6f, 16f));
+                        break;
+                    case "prev":
+                        graphics.DrawLine(pen, P(bounds, 5.4f, 4f), P(bounds, 5.4f, 16f));
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 16f, 4f), P(bounds, 8.4f, 10f), P(bounds, 16f, 16f), P(bounds, 16f, 4f) });
+                        break;
                 }
             }
         }
@@ -344,6 +384,13 @@ $SCRIPT:CommandFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:Stat
 # then re-enable the menu and name the log, while a later build stops this process.
 $SCRIPT:BuildResultFile = Join-Path ([System.IO.Path]::GetDirectoryName(
     [System.IO.Path]::GetDirectoryName($SCRIPT:StateFile))) 'build\last-build.json'
+# The music library the host publishes - tracks it has files for, the volume, the
+# progress of a download, and whatever the settings card asked this process to do -
+# and this process's own answer to it: what is playing. They are separate files
+# because they move on separate clocks: the state file is a tick-by-tick snapshot,
+# while the library changes only when somebody downloads or edits the settings.
+$SCRIPT:MusicFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'music.json'
+$SCRIPT:MusicPlayerFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'music-player.json'
 # The host's request for this pet to quit, written when the plugin is switched off
 # or DSH is shutting down. Answering it lets the pet store its position and close
 # its window in order; a pet that does not answer is killed as the fallback.
@@ -418,6 +465,33 @@ function Get-Labels {
         CoopNoExe             = 'MouseShare.exe is missing; run _mytools\MouseShare\build.bat once.'
         CoopNoAddress         = 'The host address is empty; set it under Settings first.'
         CoopSpawnFailed       = 'Multi-machine could not be started; see the DSH log.'
+        Music                 = 'Music'
+        MusicPlay             = 'Play'
+        MusicPause            = 'Pause'
+        MusicNext             = 'Next song'
+        MusicPrev             = 'Previous song'
+        MusicNowPlaying       = 'Now playing: {0}'
+        MusicPaused           = 'Paused: {0}'
+        MusicReady            = 'Ready: {0}'
+        MusicEmpty            = 'No songs downloaded yet'
+        MusicEmptyHint        = 'Paste a Bilibili link under Settings, or fill them in below'
+        MusicMissing          = '{0} not downloaded yet'
+        MusicSync             = 'Download missing songs'
+        MusicSyncCount        = 'Download missing songs ({0})'
+        MusicSyncing          = 'Downloading: {0}/{1}'
+        MusicSyncNone         = 'Every song is downloaded'
+        MusicSynced           = 'Done: {0} added, {1} failed'
+        MusicSyncRunning      = 'A download is already running'
+        MusicOpenDir          = 'Open the music folder'
+        MusicOpenFailed       = 'The music folder could not be opened.'
+        MusicFailed           = 'Playback failed: {0}'
+        MusicVolume           = 'Volume ({0}%)'
+        MusicAddLink          = 'Add a Bilibili link...'
+        MusicAddPrompt        = 'Paste a Bilibili link (a BV id or an address):'
+        MusicVolumeSet        = 'Volume: {0}%'
+        MusicAdded            = 'Added: {0}'
+        MusicDuplicate        = 'That link is already in the list.'
+        MusicAddFailed        = 'Could not add it ({0})'
     }
     $path = Join-Path $SCRIPT:ScriptDir 'labels.json'
     if (-not (Test-Path -LiteralPath $path)) { return $fallback }
@@ -526,6 +600,49 @@ $SCRIPT:SiteMenu = $null
 # and the run state change while it is closed.
 $SCRIPT:Coop = $null
 $SCRIPT:CoopMenu = $null
+# Music: the library the host published, the MediaPlayer that owns the audio, what
+# this process last reported about it, and the submenu itself. The submenu is
+# rebuilt at every open because a download that finished in between, a volume the
+# settings card changed, and a track that started playing all change what it says.
+$SCRIPT:MusicLibrary = $null
+$SCRIPT:MusicTracks = @()
+$SCRIPT:MusicVolume = 70
+$SCRIPT:MusicDir = ''
+$SCRIPT:MusicMissing = 0
+$SCRIPT:MusicSync = $null
+$SCRIPT:MusicMenu = $null
+$SCRIPT:Music = $null
+$SCRIPT:MusicIndex = -1
+$SCRIPT:MusicCurrentId = ''
+$SCRIPT:MusicCurrentFile = ''
+$SCRIPT:MusicPlaying = $false
+$SCRIPT:MusicStarted = $false
+$SCRIPT:MusicOpened = $false
+# Which open the current media is, and which one actually opened: MediaPlayer reports
+# the media it replaced as having ended, so a track whose open never completed must
+# not be treated as a finished one (see Get-MusicPlayer).
+$SCRIPT:MusicGeneration = 0
+$SCRIPT:MusicOpenGeneration = -1
+$SCRIPT:MusicResumeMs = 0
+$SCRIPT:MusicError = ''
+$SCRIPT:MusicCommandAt = 0
+$SCRIPT:MusicNoticeAt = 0
+# The volume slider is hosted inside the music submenu, which is rebuilt at every
+# open: these point at the current row's controls. A drag moves the value many times
+# and each step is audible at once, so only the settled value is written to the
+# configuration (see Update-MusicVolumeCommit).
+$SCRIPT:MusicVolumeSlider = $null
+$SCRIPT:MusicVolumeLabel = $null
+$SCRIPT:MusicVolumePending = $null
+$SCRIPT:MusicVolumeDueAt = 0
+# The track and position this machine last played, taken from music-player.json
+# before the first library arrives: a restart of DSH brings the pet back where the
+# person left off rather than at the top of the list.
+$SCRIPT:MusicRestore = $false
+$SCRIPT:MusicSavedId = ''
+$SCRIPT:MusicSavedPositionMs = 0
+$SCRIPT:MusicSavedPlaying = $false
+$SCRIPT:MusicStamp = [DateTime]::MinValue
 $SCRIPT:BuildStartedAt = 0
 $SCRIPT:Exiting = $false
 
@@ -927,14 +1044,18 @@ function Save-ShotBitmap($Bitmap, [string]$Path) {
 # Write the pet's menu choice where the host reads it. The host watches this file
 # the way this pet watches the state file, and the timestamp is what tells a fresh
 # choice from the one it already forwarded. The address rides along for the one
-# entry that opens a configured site; the host checks it again before the page sees
-# it, because this file is a file.
-function Send-MenuCommand([string]$Command, [string]$Url = '') {
+# entry that opens a configured site; the number rides along for the volume entries,
+# and a music link rides in its own field because the host reads `url` as an address
+# to open, and would rewrite a bare BV id into a host name. The host checks all of
+# it again before it acts, because this file is a file.
+function Send-MenuCommand([string]$Command, [string]$Url = '', $Value = $null, [string]$Link = '') {
     $payload = [ordered]@{
         command = $Command
         at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     }
     if (-not [string]::IsNullOrWhiteSpace($Url)) { $payload.url = $Url }
+    if ($null -ne $Value) { $payload.value = $Value }
+    if (-not [string]::IsNullOrWhiteSpace($Link)) { $payload.link = $Link }
     Write-Json $SCRIPT:CommandFile $payload
 }
 
@@ -1050,7 +1171,7 @@ function Get-CoopStatusText {
     return $text
 }
 
-function Add-CoopLine($Menu, [string]$Text) {
+function Add-MenuLine($Menu, [string]$Text) {
     # A fact, not a choice: shown for reading, never clickable.
     $item = New-Object System.Windows.Forms.ToolStripMenuItem
     $item.Text = $Text
@@ -1072,12 +1193,12 @@ function Update-CoopMenu {
         $stale.Dispose()
     }
     $coop = $SCRIPT:Coop
-    [void](Add-CoopLine $SCRIPT:CoopMenu (Get-CoopStatusText))
+    [void](Add-MenuLine $SCRIPT:CoopMenu (Get-CoopStatusText))
     if ($null -ne $coop -and -not [string]::IsNullOrWhiteSpace([string]$coop.address)) {
-        [void](Add-CoopLine $SCRIPT:CoopMenu ($SCRIPT:Labels.CoopAddress -f [string]$coop.address))
+        [void](Add-MenuLine $SCRIPT:CoopMenu ($SCRIPT:Labels.CoopAddress -f [string]$coop.address))
     }
     if ($null -ne $coop -and -not [string]::IsNullOrWhiteSpace([string]$coop.hotkey)) {
-        [void](Add-CoopLine $SCRIPT:CoopMenu ($SCRIPT:Labels.CoopHotkey -f [string]$coop.hotkey))
+        [void](Add-MenuLine $SCRIPT:CoopMenu ($SCRIPT:Labels.CoopHotkey -f [string]$coop.hotkey))
     }
     [void]$SCRIPT:CoopMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     $running = $null -ne $coop -and [bool]$coop.running
@@ -1108,12 +1229,514 @@ function Update-CoopMenu {
     [void]$SCRIPT:CoopMenu.DropDownItems.Add($manage)
 }
 
+# ---- music ------------------------------------------------------------------
+# The audio is a WPF MediaPlayer: one instance owned by this process, opened on a
+# track the host published, told the volume the settings card holds. Nothing here
+# decodes anything by itself - the streams the host downloads are AAC in an MP4 box
+# and Windows decodes them - so the only failure this half can meet is the player's
+# own, which arrives as MediaFailed for the track and is reported in the menu.
+
+function Get-MusicPlayer {
+    # Built on first use rather than at startup: a machine with no track downloaded
+    # yet never creates one, and a machine with no sound device still opens the menu
+    # and the settings.
+    if ($null -eq $SCRIPT:Music) {
+        $player = New-Object System.Windows.Media.MediaPlayer
+        $player.add_MediaOpened({
+            param($sender, $eventArgs)
+            try {
+                # Which open this is, recorded before anything that can fail: MediaPlayer
+                # reports the media it replaced as having ended, without an open of its
+                # own, so only a track that really opened may advance the list when it
+                # ends (see Test-MusicEndedAdvance).
+                $SCRIPT:MusicOpenGeneration = $SCRIPT:MusicGeneration
+                if ($SCRIPT:MusicResumeMs -gt 0) {
+                    $sender.Position = [TimeSpan]::FromMilliseconds([double]$SCRIPT:MusicResumeMs)
+                    $SCRIPT:MusicResumeMs = 0
+                }
+                $SCRIPT:MusicOpened = $true
+                $SCRIPT:MusicError = ''
+                # Stored again now that the position can be read: the resume it was
+                # opened with is a fact about this track, and a start that ended right
+                # here must not come back at the top of the file.
+                Save-MusicPlayerState
+            } catch { Write-Log "applying the resume position failed: $($_.Exception.Message)" }
+        })
+        $player.add_MediaEnded({
+            try {
+                if (Test-MusicEndedAdvance) { Step-MusicTrack 1 $true }
+            } catch { Write-Log "advancing past a finished track failed: $($_.Exception.Message)" }
+        })
+        $player.add_MediaFailed({
+            param($sender, $eventArgs)
+            try {
+                $SCRIPT:MusicPlaying = $false
+                $SCRIPT:MusicOpened = $false
+                $SCRIPT:MusicError = [string]$eventArgs.ErrorException.Message
+                Save-MusicPlayerState
+            } catch { Write-Log "reporting a playback failure failed: $($_.Exception.Message)" }
+        })
+        $SCRIPT:Music = $player
+    }
+    return $SCRIPT:Music
+}
+
+function Set-MusicVolume([double]$Percent) {
+    $value = [Math]::Min(100, [Math]::Max(0, $Percent))
+    $SCRIPT:MusicVolume = $value
+    if ($null -ne $SCRIPT:Music) {
+        try { $SCRIPT:Music.Volume = $value / 100 } catch { }
+    }
+}
+
+function Get-MusicTitle {
+    if ($SCRIPT:MusicIndex -lt 0 -or $SCRIPT:MusicIndex -ge $SCRIPT:MusicTracks.Count) { return '' }
+    return [string]$SCRIPT:MusicTracks[$SCRIPT:MusicIndex].Title
+}
+
+# Whether the media that just ended is the one that opened: Open() reports the media
+# it replaced as having ended, without an open of its own, so a track opened while
+# paused must not be treated as a finished one - that would skip a song and start
+# playing something nobody asked for. See Get-MusicPlayer for both generations.
+function Test-MusicEndedAdvance {
+    return ($SCRIPT:MusicTracks.Count -gt 0 -and $SCRIPT:MusicOpenGeneration -eq $SCRIPT:MusicGeneration)
+}
+
+# What this process is playing, in the file the host reads for the settings card and
+# this process reads back at the next start. The command and notice timestamps ride
+# along so a restart neither replays the last command from the page nor shows the
+# same toast twice.
+function Save-MusicPlayerState {
+    $position = 0
+    if ($null -ne $SCRIPT:Music) {
+        try { $position = [long][Math]::Max(0, $SCRIPT:Music.Position.TotalMilliseconds) } catch { }
+    }
+    Write-Json $SCRIPT:MusicPlayerFile ([ordered]@{
+        playing    = [bool]$SCRIPT:MusicPlaying
+        id         = [string]$SCRIPT:MusicCurrentId
+        title      = (Get-MusicTitle)
+        positionMs = $position
+        error      = [string]$SCRIPT:MusicError
+        commandAt  = [long]$SCRIPT:MusicCommandAt
+        noticeAt   = [long]$SCRIPT:MusicNoticeAt
+        updatedAt  = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    })
+}
+
+function Restore-MusicPlayerState {
+    $saved = Read-Json $SCRIPT:MusicPlayerFile
+    if ($null -eq $saved) { return }
+    if ($null -ne $saved.commandAt) { $SCRIPT:MusicCommandAt = [long]$saved.commandAt }
+    if ($null -ne $saved.noticeAt) { $SCRIPT:MusicNoticeAt = [long]$saved.noticeAt }
+    $SCRIPT:MusicSavedId = [string]$saved.id
+    if ($null -ne $saved.positionMs) { $SCRIPT:MusicSavedPositionMs = [long]$saved.positionMs }
+    $SCRIPT:MusicSavedPlaying = [bool]$saved.playing
+    # Whether that track is still in the library is the host's answer, so the wish
+    # waits until the first library arrives rather than being acted on here.
+    $SCRIPT:MusicRestore = -not [string]::IsNullOrWhiteSpace($SCRIPT:MusicSavedId)
+}
+
+function Open-MusicTrack([int]$Index, [bool]$Play, [long]$PositionMs = 0) {
+    if ($Index -lt 0 -or $Index -ge $SCRIPT:MusicTracks.Count) { return }
+    $track = $SCRIPT:MusicTracks[$Index]
+    $SCRIPT:MusicIndex = $Index
+    $SCRIPT:MusicCurrentId = [string]$track.Id
+    $SCRIPT:MusicCurrentFile = [string]$track.File
+    $SCRIPT:MusicResumeMs = $PositionMs
+    $SCRIPT:MusicError = ''
+    $SCRIPT:MusicOpened = $false
+    $SCRIPT:MusicPlaying = $false
+    $SCRIPT:MusicStarted = $Play
+    $SCRIPT:MusicGeneration++
+    try {
+        $player = Get-MusicPlayer
+        $player.Open([Uri]::new([string]$track.File))
+        Set-MusicVolume $SCRIPT:MusicVolume
+        if ($Play) {
+            # Playing before the stream is open is what the media player supports: it
+            # starts as soon as the file is, and the position is applied at
+            # MediaOpened, which is the first moment it can be.
+            $player.Play()
+            $SCRIPT:MusicPlaying = $true
+        }
+    } catch {
+        $SCRIPT:MusicError = $_.Exception.Message
+        $SCRIPT:MusicPlaying = $false
+    }
+    Save-MusicPlayerState
+}
+
+function Step-MusicTrack([int]$Delta, [bool]$Play) {
+    $count = $SCRIPT:MusicTracks.Count
+    if ($count -eq 0) { return }
+    $index = $SCRIPT:MusicIndex
+    if ($index -lt 0) { $index = if ($Delta -ge 0) { 0 } else { $count - 1 } }
+    else { $index = ((($index + $Delta) % $count) + $count) % $count }
+    Open-MusicTrack $index $Play 0
+}
+
+function Toggle-MusicPlay {
+    if ($SCRIPT:MusicPlaying) {
+        if ($null -ne $SCRIPT:Music) { try { $SCRIPT:Music.Pause() } catch { } }
+        $SCRIPT:MusicPlaying = $false
+        Save-MusicPlayerState
+        return
+    }
+    if ($SCRIPT:MusicTracks.Count -eq 0) { return }
+    # A track that is still open is picked up where it stopped; one the host no
+    # longer publishes, or whose file moved, is opened again from the top.
+    $same = $SCRIPT:MusicIndex -ge 0 -and $SCRIPT:MusicIndex -lt $SCRIPT:MusicTracks.Count `
+        -and [string]$SCRIPT:MusicTracks[$SCRIPT:MusicIndex].File -eq $SCRIPT:MusicCurrentFile
+    if (-not $same) { Step-MusicTrack 1 $true; return }
+    $player = Get-MusicPlayer
+    try {
+        $player.Play()
+        $SCRIPT:MusicPlaying = $true
+        $SCRIPT:MusicError = ''
+    } catch { $SCRIPT:MusicError = $_.Exception.Message }
+    Save-MusicPlayerState
+}
+
+function Stop-MusicPlayback {
+    # Pause rather than Stop: WPF reports a Stop as the media having ended, which
+    # would send this process looking for the next track of an empty library.
+    if ($null -ne $SCRIPT:Music) { try { $SCRIPT:Music.Pause() } catch { } }
+    $SCRIPT:MusicIndex = -1
+    $SCRIPT:MusicCurrentId = ''
+    $SCRIPT:MusicCurrentFile = ''
+    $SCRIPT:MusicPlaying = $false
+    $SCRIPT:MusicStarted = $false
+    Save-MusicPlayerState
+}
+
+function Apply-MusicLibrary {
+    # The host publishes only the tracks whose files it has, so this list is what may
+    # be played. Holding on to the current track by id is what lets a download finish
+    # or a volume change reach this process without interrupting the music.
+    if ($SCRIPT:MusicTracks.Count -eq 0) {
+        if ($SCRIPT:MusicIndex -ge 0 -or $SCRIPT:MusicPlaying) { Stop-MusicPlayback }
+        return
+    }
+    $index = -1
+    for ($i = 0; $i -lt $SCRIPT:MusicTracks.Count; $i++) {
+        if ($SCRIPT:MusicCurrentId -ne '' -and [string]$SCRIPT:MusicTracks[$i].Id -eq $SCRIPT:MusicCurrentId) { $index = $i; break }
+    }
+    if ($index -ge 0 -and [string]$SCRIPT:MusicTracks[$index].File -eq $SCRIPT:MusicCurrentFile) {
+        $SCRIPT:MusicIndex = $index
+        return
+    }
+    $position = 0
+    $play = $false
+    if ($SCRIPT:MusicRestore) {
+        for ($i = 0; $i -lt $SCRIPT:MusicTracks.Count; $i++) {
+            if ([string]$SCRIPT:MusicTracks[$i].Id -eq $SCRIPT:MusicSavedId) {
+                $index = $i
+                $position = $SCRIPT:MusicSavedPositionMs
+                $play = $SCRIPT:MusicSavedPlaying
+                break
+            }
+        }
+        $SCRIPT:MusicRestore = $false
+    }
+    if ($index -lt 0) {
+        # The track that was loaded is gone: carry on from the same place in the list,
+        # playing if it was playing, and otherwise wait to be asked.
+        $index = [Math]::Min([Math]::Max($SCRIPT:MusicIndex, 0), $SCRIPT:MusicTracks.Count - 1)
+        $position = 0
+        $play = $SCRIPT:MusicPlaying
+    }
+    Open-MusicTrack $index $play $position
+}
+
+function Read-MusicLibrary {
+    $data = Read-Json $SCRIPT:MusicFile
+    if ($null -eq $data) { return $false }
+    $tracks = @()
+    foreach ($track in @($data.tracks)) {
+        if ($null -eq $track) { continue }
+        $file = [string]$track.file
+        if ([string]::IsNullOrWhiteSpace($file)) { continue }
+        $tracks += [pscustomobject]@{ Id = [string]$track.id; Title = [string]$track.title; File = $file }
+    }
+    $SCRIPT:MusicLibrary = $data
+    $SCRIPT:MusicTracks = $tracks
+    $SCRIPT:MusicDir = [string]$data.dir
+    $SCRIPT:MusicMissing = 0
+    if ($null -ne $data.missing) { $SCRIPT:MusicMissing = [int]$data.missing }
+    $SCRIPT:MusicSync = $data.sync
+    if ($null -ne $data.volume) { Set-MusicVolume ([double]$data.volume) }
+    return $true
+}
+
+function Apply-MusicCommand($data) {
+    # What the settings card asked for, which is the one path that reaches the audio
+    # from the page: the page cannot play a file, and this process cannot be clicked
+    # through from there.
+    if ($null -eq $data -or $null -eq $data.command) { return }
+    $at = [long]$data.command.at
+    if ($at -le $SCRIPT:MusicCommandAt) { return }
+    $SCRIPT:MusicCommandAt = $at
+    switch ([string]$data.command.action) {
+        'play' { if (-not $SCRIPT:MusicPlaying) { Toggle-MusicPlay } }
+        'pause' { if ($SCRIPT:MusicPlaying) { Toggle-MusicPlay } }
+        'toggle' { Toggle-MusicPlay }
+        'next' { Step-MusicTrack 1 $true }
+        'prev' { Step-MusicTrack -1 $true }
+        default { }
+    }
+    Save-MusicPlayerState
+}
+
+function Apply-MusicNotice($data) {
+    # What a download did, said above the pet: the request came from this menu or from
+    # the settings card, and a request that ends silently reads as one that did nothing.
+    if ($null -eq $data -or $null -eq $data.notice -or $null -eq $data.notice.at) { return }
+    $at = [long]$data.notice.at
+    if ($at -le $SCRIPT:MusicNoticeAt) { return }
+    $SCRIPT:MusicNoticeAt = $at
+    $text = ''
+    switch ([string]$data.notice.kind) {
+        'synced' { $text = $SCRIPT:Labels.MusicSynced -f [int]$data.notice.added, [int]$data.notice.failed }
+        'refused' { $text = $SCRIPT:Labels.MusicSyncRunning }
+        'no-dir' { $text = $SCRIPT:Labels.MusicOpenFailed }
+        'volume' { $text = $SCRIPT:Labels.MusicVolumeSet -f [int]$data.notice.percent }
+        'added' { $text = $SCRIPT:Labels.MusicAdded -f [string]$data.notice.title }
+        'duplicate' { $text = $SCRIPT:Labels.MusicDuplicate }
+        'add-failed' { $text = $SCRIPT:Labels.MusicAddFailed -f [string]$data.notice.reason }
+        default { }
+    }
+    Save-MusicPlayerState
+    if ($text -ne '') { Show-PetNotice $SCRIPT:Labels.Music $text }
+}
+
+function Get-MusicStatusText {
+    # The grey line at the top of the submenu: what is playing, or why nothing is.
+    if ($SCRIPT:MusicError -ne '') { return ($SCRIPT:Labels.MusicFailed -f $SCRIPT:MusicError) }
+    $title = Get-MusicTitle
+    if ($title -eq '') {
+        if ($SCRIPT:MusicMissing -gt 0) { return ($SCRIPT:Labels.MusicMissing -f $SCRIPT:MusicMissing) }
+        return $SCRIPT:Labels.MusicEmpty
+    }
+    if ($SCRIPT:MusicPlaying) { return ($SCRIPT:Labels.MusicNowPlaying -f $title) }
+    if ($SCRIPT:MusicStarted) { return ($SCRIPT:Labels.MusicPaused -f $title) }
+    return ($SCRIPT:Labels.MusicReady -f $title)
+}
+
+# The link a person is adding. The clipboard is how one usually arrives, so the box
+# starts with it: a context menu holds no text field, and this is the one dialog
+# Windows already ships.
+function Read-LinkDraft {
+    try {
+        if (-not [System.Windows.Forms.Clipboard]::ContainsText()) { return '' }
+        $text = [string][System.Windows.Forms.Clipboard]::GetText()
+        if ([string]::IsNullOrWhiteSpace($text)) { return '' }
+        return (($text -split "\r?\n")[0]).Trim()
+    } catch {
+        Write-Log "reading the clipboard failed: $($_.Exception.Message)"
+        return ''
+    }
+}
+
+function Show-LinkInput([string]$Initial) {
+    try {
+        if ($null -eq ('Microsoft.VisualBasic.Interaction' -as [type])) {
+            Add-Type -AssemblyName Microsoft.VisualBasic
+        }
+        return [string][Microsoft.VisualBasic.Interaction]::InputBox($SCRIPT:Labels.MusicAddPrompt, $SCRIPT:Labels.Music, $Initial)
+    } catch {
+        Write-Log "the link box failed: $($_.Exception.Message)"
+        return ''
+    }
+}
+
+function Add-MusicLink {
+    # Cancelling, or a box that could not be shown, adds nothing rather than
+    # something empty: the host refuses an empty link anyway.
+    $link = Show-LinkInput (Read-LinkDraft)
+    if ([string]::IsNullOrWhiteSpace($link)) { return }
+    Send-MenuCommand 'music-add-link' -Link $link.Trim()
+}
+
+function Send-MusicVolume([int]$Percent) {
+    # Clamped here as well as on the host: this half applies it to the running player
+    # at once, so an out-of-range request would be audible before the host could
+    # refuse it. The host writes the same number into the configuration, which is
+    # what makes it survive the next start.
+    $value = [Math]::Max(0, [Math]::Min(100, $Percent))
+    Set-MusicVolume $value
+    Send-MenuCommand 'music-volume' -Value $value
+}
+
+# A drag fires a value change per step, and this half makes each one audible at once;
+# the configuration is written once, after the drag settles. The main timer calls
+# this, so a slider the person is still holding writes nothing yet.
+function Update-MusicVolumeCommit {
+    if ($null -eq $SCRIPT:MusicVolumePending) { return }
+    if ([Environment]::TickCount -lt $SCRIPT:MusicVolumeDueAt) { return }
+    $value = [int]$SCRIPT:MusicVolumePending
+    $SCRIPT:MusicVolumePending = $null
+    Send-MenuCommand 'music-volume' -Value $value
+}
+
+# The volume row: a track bar with the number beside it, hosted in the submenu. A
+# context menu draws its own item text and keeps no room for a slider, so the row is
+# a control rather than an item - and it is rebuilt at every open like the rest, which
+# is also what makes an edit elsewhere reach a running pet.
+function New-MusicVolumeRow([int]$Percent) {
+    # The card the renderer paints, so the hosted row sits on the same surface.
+    $canvas = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $ink = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    $panel = New-Object System.Windows.Forms.Panel
+    $panel.Width = 190
+    $panel.Height = 30
+    $panel.BackColor = $canvas
+    $label = New-Object System.Windows.Forms.Label
+    $label.Text = "$Percent%"
+    $label.Width = 44
+    $label.Height = 30
+    $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleRight
+    $label.ForeColor = $ink
+    $label.BackColor = [System.Drawing.Color]::Transparent
+    $slider = New-Object System.Windows.Forms.TrackBar
+    $slider.Minimum = 0
+    $slider.Maximum = 100
+    # Ticks on the presets below it: ten of them read as a scale nobody asked for.
+    $slider.TickFrequency = 25
+    $slider.SmallChange = 5
+    $slider.LargeChange = 10
+    $slider.Value = [Math]::Max(0, [Math]::Min(100, $Percent))
+    $slider.Width = 140
+    $slider.Height = 30
+    $slider.Location = New-Object System.Drawing.Point(46, 0)
+    $slider.BackColor = $canvas
+    $panel.Controls.Add($label)
+    $panel.Controls.Add($slider)
+    $SCRIPT:MusicVolumeSlider = $slider
+    $SCRIPT:MusicVolumeLabel = $label
+    # Wired after the value is in place, so building the row writes nothing.
+    $slider.add_ValueChanged({
+            try {
+                $value = [int]$SCRIPT:MusicVolumeSlider.Value
+                Set-MusicVolume $value
+                if ($null -ne $SCRIPT:MusicVolumeLabel) { $SCRIPT:MusicVolumeLabel.Text = "$value%" }
+                $SCRIPT:MusicVolumePending = $value
+                $SCRIPT:MusicVolumeDueAt = [Environment]::TickCount + 400
+            } catch { Write-Log $_.Exception.Message }
+        })
+    return $panel
+}
+
+# Move the slider from a pinned menu handler. A `GetNewClosure` script block runs in a
+# scope of its own, where `$SCRIPT:` names nothing this pet set, so those handlers call
+# this function with their number instead of touching the control themselves.
+function Set-MusicVolumeFromSlider([int]$Percent) {
+    $value = [Math]::Max(0, [Math]::Min(100, $Percent))
+    if ($null -eq $SCRIPT:MusicVolumeSlider) { Send-MusicVolume $value; return }
+    $SCRIPT:MusicVolumeSlider.Value = $value
+}
+
+function Add-MusicItem($Menu, [string]$Text, [string]$Icon, [bool]$Enabled, $OnClick) {
+    $item = New-Object System.Windows.Forms.ToolStripMenuItem
+    $item.Text = $Text
+    $item.Tag = $Icon
+    $item.Enabled = $Enabled
+    $item.AutoSize = $true
+    $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    if ($null -ne $OnClick) { $item.add_Click($OnClick) }
+    [void]$Menu.DropDownItems.Add($item)
+    return $item
+}
+
+function Update-MusicMenu {
+    # Rebuilt whole at every open, the way the sites and multi-machine submenus are:
+    # the tracks, the volume, and a download's progress all move while it is closed,
+    # and reading the library here is also what makes an edit in the settings card
+    # reach a pet that is already running.
+    if ($null -eq $SCRIPT:MusicMenu) { return }
+    if (Read-MusicLibrary) {
+        Apply-MusicLibrary
+        Apply-MusicNotice $SCRIPT:MusicLibrary
+    }
+    while ($SCRIPT:MusicMenu.DropDownItems.Count -gt 0) {
+        $stale = $SCRIPT:MusicMenu.DropDownItems[0]
+        $SCRIPT:MusicMenu.DropDownItems.RemoveAt(0)
+        $stale.Dispose()
+    }
+    [void](Add-MenuLine $SCRIPT:MusicMenu (Get-MusicStatusText))
+    $syncing = $null -ne $SCRIPT:MusicSync -and [bool]$SCRIPT:MusicSync.running
+    $canPlay = $SCRIPT:MusicTracks.Count -gt 0
+    if ($canPlay) {
+        [void](Add-MusicItem $SCRIPT:MusicMenu ($(if ($SCRIPT:MusicPlaying) { $SCRIPT:Labels.MusicPause } else { $SCRIPT:Labels.MusicPlay })) `
+            $(if ($SCRIPT:MusicPlaying) { 'pause' } else { 'play' }) $true {
+                try { Toggle-MusicPlay } catch { Write-Log $_.Exception.Message }
+            })
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicNext 'next' $true {
+            try { Step-MusicTrack 1 $true } catch { Write-Log $_.Exception.Message }
+        })
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicPrev 'prev' $true {
+            try { Step-MusicTrack -1 $true } catch { Write-Log $_.Exception.Message }
+        })
+    } else {
+        [void](Add-MenuLine $SCRIPT:MusicMenu $SCRIPT:Labels.MusicEmptyHint)
+    }
+    # Volume and adding a link live here rather than only on the settings page: both
+    # are what a person reaches for while listening, and neither needs a page. A
+    # context menu hosts no slider worth trusting, so the parent line names the volume
+    # in force and the presets below it set one.
+    $volume = [int][Math]::Round($SCRIPT:MusicVolume)
+    $volumeItem = New-Object System.Windows.Forms.ToolStripMenuItem
+    $volumeItem.Text = $SCRIPT:Labels.MusicVolume -f $volume
+    $volumeItem.Tag = 'music'
+    $volumeItem.AutoSize = $true
+    $volumeItem.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $volumeHost = New-Object System.Windows.Forms.ToolStripControlHost((New-MusicVolumeRow $volume))
+    $volumeHost.AutoSize = $false
+    $volumeHost.Size = New-Object System.Drawing.Size(190, 34)
+    [void]$volumeItem.DropDownItems.Add($volumeHost)
+    [void]$volumeItem.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    foreach ($preset in @(0, 25, 50, 75, 100)) {
+        # A preset moves the slider rather than sending its own command: the slider's
+        # handler is what applies the volume and books the configuration write, so both
+        # routes behave the same. GetNewClosure pins this row's own number into its
+        # handler, the way the sites submenu pins its address.
+        $percent = [int]$preset
+        $presetClick = { try { Set-MusicVolumeFromSlider $percent } catch { Write-Log $_.Exception.Message } }.GetNewClosure()
+        [void](Add-MusicItem $volumeItem "$percent%" 'music' $true $presetClick)
+    }
+    [void]$SCRIPT:MusicMenu.DropDownItems.Add($volumeItem)
+    [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicAddLink 'music' $true {
+            try { Add-MusicLink } catch { Write-Log $_.Exception.Message }
+        })
+    [void]$SCRIPT:MusicMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    if ($syncing) {
+        $progress = $SCRIPT:Labels.MusicSyncing -f [int]$SCRIPT:MusicSync.done, [int]$SCRIPT:MusicSync.total
+        [void](Add-MusicItem $SCRIPT:MusicMenu $progress 'music' $false $null)
+    } elseif ($SCRIPT:MusicMissing -gt 0) {
+        [void](Add-MusicItem $SCRIPT:MusicMenu ($SCRIPT:Labels.MusicSyncCount -f $SCRIPT:MusicMissing) 'music' $true {
+            try { Send-MenuCommand 'music-sync' } catch { Write-Log $_.Exception.Message }
+        })
+    } else {
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicSyncNone 'music' $false $null)
+    }
+    [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicOpenDir 'folder' $true {
+        try { Send-MenuCommand 'music-open-dir' } catch { Write-Log $_.Exception.Message }
+    })
+    # The volume, the links, and the music directory belong to the settings card, so
+    # the way to them is the same page entry the main menu's own Settings opens.
+    [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.Settings 'gear' $true {
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'settings'
+        } catch { Write-Log $_.Exception.Message }
+    })
+}
+
 # ---- self test --------------------------------------------------------------
 if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.Coop)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.Coop) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -1194,6 +1817,151 @@ if ($SelfTest) {
     $SCRIPT:CoopMenu = $null
     $SCRIPT:Coop = $null
     Write-Output "coop-menu: $($coopProbe -join ' >> ')"
+    # Music is rebuilt from the library the host publishes at every open, so what is
+    # worth checking here is what each library turns into: the status line, the three
+    # transport entries, the download entry's count, and the one entry that leaves
+    # this process. A transport entry is never clicked here - that would build a media
+    # player and open a file this probe does not have - but the two entries that only
+    # write a command are, because a handler reading the wrong scope still shows the
+    # right text (the same trap the sites probe describes above).
+    # Whether an ended media moves the list on is decided by the generation that
+    # opened, because a replaced media reports an end without an open: that decision
+    # is printed here, with the three states it can be in.
+    $SCRIPT:MusicTracks = @([pscustomobject]@{ Id = 'probe'; Title = 'probe'; File = 'C:\probe.m4a' })
+    $SCRIPT:MusicGeneration = 3
+    $SCRIPT:MusicOpenGeneration = 3
+    $endedProbe = "opened=$(Test-MusicEndedAdvance)"
+    $SCRIPT:MusicOpenGeneration = 2
+    $endedProbe = "$endedProbe replaced=$(Test-MusicEndedAdvance)"
+    $SCRIPT:MusicTracks = @()
+    $endedProbe = "$endedProbe empty=$(Test-MusicEndedAdvance)"
+    Write-Output "music-ended: $endedProbe"
+    $SCRIPT:MusicMenu = New-Object System.Windows.Forms.ToolStripMenuItem
+    $musicProbeLines = New-Object System.Collections.Generic.List[string]
+    # A probe writes, reads, and deletes the files it works on, so it uses its own:
+    # the library and the playback state beside a real state file belong to a running
+    # pet, and a diagnostic must not take away its position, the watermark that keeps
+    # an already-applied command from being applied twice, or the library the host
+    # published.
+    $SCRIPT:MusicFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'music-probe.json'
+    $SCRIPT:MusicPlayerFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'music-player-probe.json'
+    $musicProbeFile = $SCRIPT:MusicFile
+    $writeLibrary = {
+        param($Tracks, [int]$Missing, $Sync, [int]$Volume = 40)
+        $payload = [ordered]@{
+            version = 1
+            dir     = 'C:\music'
+            volume  = $Volume
+            tracks  = $Tracks
+            missing = $Missing
+            sync    = $Sync
+        }
+        [System.IO.File]::WriteAllText($musicProbeFile, ($payload | ConvertTo-Json -Depth 6 -Compress), (New-Object System.Text.UTF8Encoding($false)))
+    }
+    # Each case names the track it is already on, which is what a running pet looks
+    # like: the library is applied without opening anything, so the probe never builds
+    # a media player and never reads a file it does not have.
+    $loadFirst = {
+        param($Tracks)
+        if (@($Tracks).Count -gt 0) {
+            $SCRIPT:MusicIndex = 0
+            $SCRIPT:MusicCurrentId = [string]$Tracks[0].id
+            $SCRIPT:MusicCurrentFile = [string]$Tracks[0].file
+        }
+    }
+    $twoTracks = @(
+        [ordered]@{ id = 'BV1'; title = 'Song A'; file = 'C:\music\a.m4a' }
+        [ordered]@{ id = 'BV2'; title = 'Song B'; file = 'C:\music\b.m4a' }
+    )
+    & $writeLibrary $twoTracks 2 ([ordered]@{ running = $false; done = 0; total = 0; current = '' })
+    & $loadFirst $twoTracks
+    Update-MusicMenu
+    [void]$musicProbeLines.Add((@($SCRIPT:MusicMenu.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)[$($_.Enabled)]" }) -join '|')
+    # Playing flips the transport entry and the status line together; both come from
+    # this process's own state rather than from the host.
+    $SCRIPT:MusicPlaying = $true
+    $SCRIPT:MusicStarted = $true
+    Update-MusicMenu
+    [void]$musicProbeLines.Add((@($SCRIPT:MusicMenu.DropDownItems) | ForEach-Object { "$($_.Text)[$($_.Enabled)]" }) -join '|')
+    # A download in flight is a disabled progress line instead of the count.
+    $SCRIPT:MusicPlaying = $false
+    & $writeLibrary $twoTracks 2 ([ordered]@{ running = $true; done = 1; total = 3; current = 'https://b23.tv/x' })
+    & $loadFirst $twoTracks
+    Update-MusicMenu
+    [void]$musicProbeLines.Add((@($SCRIPT:MusicMenu.DropDownItems) | ForEach-Object { "$($_.Text)[$($_.Enabled)]" }) -join '|')
+    # Nothing downloaded at all is the state a machine that just pulled the links
+    # starts in, and the state a library with no links starts in.
+    & $writeLibrary @() 3 ([ordered]@{ running = $false; done = 0; total = 0; current = '' })
+    Update-MusicMenu
+    [void]$musicProbeLines.Add((@($SCRIPT:MusicMenu.DropDownItems) | ForEach-Object { "$($_.Text)[$($_.Enabled)]" }) -join '|')
+    & $writeLibrary @() 0 ([ordered]@{ running = $false; done = 0; total = 0; current = '' })
+    Update-MusicMenu
+    [void]$musicProbeLines.Add((@($SCRIPT:MusicMenu.DropDownItems) | ForEach-Object { "$($_.Text)[$($_.Enabled)]" }) -join '|')
+    # The host-side entries, fired: each must reach the host as its own command.
+    if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
+    ($SCRIPT:MusicMenu.DropDownItems | Where-Object { $_.Text -eq $SCRIPT:Labels.MusicOpenDir })[0].PerformClick()
+    $musicClicked = Read-Json $probeCommand
+    if ($null -eq $musicClicked) { [void]$musicProbeLines.Add('folder=no-command') }
+    else { [void]$musicProbeLines.Add("folder=$($musicClicked.command)") }
+    & $writeLibrary $twoTracks 2 ([ordered]@{ running = $false; done = 0; total = 0; current = '' })
+    & $loadFirst $twoTracks
+    Update-MusicMenu
+    if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
+    ($SCRIPT:MusicMenu.DropDownItems | Where-Object { $_.Text -eq ($SCRIPT:Labels.MusicSyncCount -f 2) })[0].PerformClick()
+    $musicClicked = Read-Json $probeCommand
+    if ($null -eq $musicClicked) { [void]$musicProbeLines.Add('sync=no-command') }
+    else { [void]$musicProbeLines.Add("sync=$($musicClicked.command)") }
+    # The volume row is a hosted control rather than an item, so its own rows are
+    # printed and the slider is asked for its range and value. The link entry opens a
+    # modal box, so it is asserted by its presence and never fired - a probe must not
+    # take whatever the clipboard holds.
+    & $writeLibrary $twoTracks 2 ([ordered]@{ running = $false; done = 0; total = 0; current = '' }) 25
+    & $loadFirst $twoTracks
+    Update-MusicMenu
+    $volumeItem = @($SCRIPT:MusicMenu.DropDownItems | Where-Object { $_.Text -eq ($SCRIPT:Labels.MusicVolume -f 25) })[0]
+    if ($null -eq $volumeItem) { [void]$musicProbeLines.Add('volume=missing') }
+    else {
+        $rows = @($volumeItem.DropDownItems | ForEach-Object { "$($_.Text)[$($_.Enabled)]" })
+        [void]$musicProbeLines.Add("volume=$($rows -join ',')")
+    }
+    $slider = $SCRIPT:MusicVolumeSlider
+    if ($null -eq $slider) { [void]$musicProbeLines.Add('slider=missing') }
+    else {
+        [void]$musicProbeLines.Add("slider=$($slider.GetType().Name):$($slider.Minimum)-$($slider.Maximum):$($slider.Value):tick=$($slider.TickFrequency)")
+    }
+    # Moving the slider is what a drag does; the write itself is the timer's job, so
+    # the probe calls the commit the way the timer would once the drag has settled.
+    if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
+    if ($null -ne $slider) {
+        $slider.Value = 55
+        $SCRIPT:MusicVolumeDueAt = 0
+        Update-MusicVolumeCommit
+        $musicClicked = Read-Json $probeCommand
+        if ($null -eq $musicClicked) { [void]$musicProbeLines.Add('slider=no-command') }
+        else { [void]$musicProbeLines.Add("slider-commit=$($musicClicked.command):$($musicClicked.value)") }
+        [void]$musicProbeLines.Add("slider-label=$($SCRIPT:MusicVolumeLabel.Text)")
+        # A preset is the same route: it moves the slider and the slider's own handler
+        # books the write, so the pinning a loop needs is still exercised.
+        if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
+        @($volumeItem.DropDownItems | Where-Object { $_.Text -eq '0%' })[0].PerformClick()
+        $SCRIPT:MusicVolumeDueAt = 0
+        Update-MusicVolumeCommit
+        $musicClicked = Read-Json $probeCommand
+        if ($null -eq $musicClicked) { [void]$musicProbeLines.Add('preset=no-command') }
+        else { [void]$musicProbeLines.Add("preset-commit=$($musicClicked.command):$($musicClicked.value)") }
+    }
+    $SCRIPT:MusicMenu.Dispose()
+    $SCRIPT:MusicMenu = $null
+    $SCRIPT:MusicLibrary = $null
+    $SCRIPT:MusicTracks = @()
+    $SCRIPT:MusicIndex = -1
+    $SCRIPT:MusicCurrentId = ''
+    $SCRIPT:MusicCurrentFile = ''
+    $SCRIPT:MusicStarted = $false
+    $SCRIPT:MusicPlaying = $false
+    Remove-Item -LiteralPath $musicProbeFile -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $SCRIPT:MusicPlayerFile -Force -ErrorAction SilentlyContinue
+    Write-Output "music-menu: $($musicProbeLines -join ' >> ')"
     # Where a capture lands, and what a backwards drag selects: both are built
     # here, and neither needs a screen to be read.
     Write-Output "shot-file: $(New-ShotPath)"
@@ -1251,6 +2019,40 @@ if ($ShotProbe) {
     Write-Output "shot-probe: $probePath"
     Write-Output "shot-probe-bytes: $((Get-Item -LiteralPath $probePath).Length)"
     exit 0
+}
+
+if (-not [string]::IsNullOrWhiteSpace($MusicProbe)) {
+    # The audio path on its own: the media player, the decoder, the sound device, and
+    # one file, with no window and no menu. The library is filled in directly, so the
+    # same Open-MusicTrack the menu uses is what runs here, and the playback state it
+    # writes goes to a scratch file: a diagnostic must not overwrite what a running
+    # pet would resume from.
+    $SCRIPT:MusicPlayerFile = Join-Path $env:TEMP 'dsh-little-icon-music-probe.json'
+    $SCRIPT:MusicTracks = @([pscustomobject]@{ Id = 'probe'; Title = 'probe'; File = $MusicProbe })
+    Set-MusicVolume 0
+    Open-MusicTrack 0 $true 0
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    while (-not $SCRIPT:MusicOpened -and $SCRIPT:MusicError -eq '' -and [DateTime]::UtcNow -lt $deadline) {
+        $probeFrame = New-Object System.Windows.Threading.DispatcherFrame
+        $probeTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $probeTimer.Interval = [TimeSpan]::FromMilliseconds(200)
+        $probeTimer.Add_Tick({ $probeFrame.Continue = $false; $probeTimer.Stop() })
+        $probeTimer.Start()
+        [System.Windows.Threading.Dispatcher]::PushFrame($probeFrame)
+    }
+    if ($SCRIPT:MusicOpened) {
+        $duration = ''
+        try {
+            if ($SCRIPT:Music.NaturalDuration.HasTimeSpan) { $duration = $SCRIPT:Music.NaturalDuration.TimeSpan.ToString() }
+        } catch { }
+        Write-Output "music-probe: opened duration=$duration"
+        try { $SCRIPT:Music.Pause() } catch { }
+        Remove-Item -LiteralPath $SCRIPT:MusicPlayerFile -Force -ErrorAction SilentlyContinue
+        exit 0
+    }
+    Write-Output "music-probe: failed error=$SCRIPT:MusicError"
+    Remove-Item -LiteralPath $SCRIPT:MusicPlayerFile -Force -ErrorAction SilentlyContinue
+    exit 1
 }
 
 # ---- single instance --------------------------------------------------------
@@ -1897,6 +2699,7 @@ function Exit-Pet {
     if ($SCRIPT:Exiting) { return }
     $SCRIPT:Exiting = $true
     Save-Position
+    Save-MusicPlayerState
     # The request answers itself: whatever is left of it belongs to no pet, and a
     # marker nobody removes would end the next one the moment it starts.
     try { if (Test-Path -LiteralPath $SCRIPT:QuitFile) { Remove-Item -LiteralPath $SCRIPT:QuitFile -Force } } catch { }
@@ -2001,6 +2804,20 @@ function New-PetMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     [void]$gamesItem.DropDownItems.Add($aquariumItem)
+    # Music is this process's own capability, the way the capture is: the audio plays
+    # here rather than in the page, so the entries act on this process - except the
+    # two that need the host (filling the library in, and opening its folder) and the
+    # one that opens DSH's own settings page. The submenu is rebuilt from the library
+    # at every open, because a download that finished in between changes what it says
+    # (see Update-MusicMenu).
+    $musicItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Music 'music'
+    $musicItem.DropDown.ShowImageMargin = $false
+    $musicItem.DropDown.BackColor = $menu.BackColor
+    $musicItem.DropDown.ForeColor = $menu.ForeColor
+    $musicItem.add_DropDownOpening({
+        try { Update-MusicMenu } catch { Write-Log $_.Exception.Message }
+    })
+    $SCRIPT:MusicMenu = $musicItem
     # A capture belongs to this process rather than to the page: the pet is the half
     # that can draw over the whole desktop, and the file needs nothing of DSH. It
     # therefore raises no window either - the sheet covers whatever is there.
@@ -2191,6 +3008,29 @@ $timer.Add_Tick({
             }
         } catch { }
 
+        # Music: the library the host publishes moves on its own clock - a download
+        # that finished, a volume the settings card changed, a command from that card
+        # - so it is read when its file moves rather than on the state file's tick.
+        try {
+            $musicItem = Get-Item -LiteralPath $SCRIPT:MusicFile -ErrorAction Stop
+            if ($musicItem.LastWriteTime -ne $SCRIPT:MusicStamp) {
+                $SCRIPT:MusicStamp = $musicItem.LastWriteTime
+                if (Read-MusicLibrary) {
+                    Apply-MusicLibrary
+                    Apply-MusicCommand $SCRIPT:MusicLibrary
+                    Apply-MusicNotice $SCRIPT:MusicLibrary
+                }
+            }
+        } catch { }
+
+        # Keep the resume position fresh while something plays: this file is both what
+        # the settings card shows and what the next start picks up from.
+        if ($SCRIPT:MusicPlaying -and ($SCRIPT:Ticks % 25) -eq 0) { Save-MusicPlayerState }
+
+        # A volume the slider is still being dragged through writes nothing until it
+        # settles; this is where the settled value becomes a command.
+        Update-MusicVolumeCommit
+
         if ($SCRIPT:FrameCount -gt 1 -and $SCRIPT:Expression -ne '') {
             $now = [Environment]::TickCount
             if (($now - $SCRIPT:LastFrameAt) -ge $SCRIPT:FrameMs) {
@@ -2225,6 +3065,9 @@ try { $SCRIPT:PetMenu = New-PetMenu } catch { Write-Log "pet menu unavailable: $
 # clamp it onto a screen.
 Apply-State (Read-Json $SCRIPT:StateFile)
 Restore-Position
+# What this machine was playing, read before the first tick so the library that
+# arrives next can be resumed rather than started from the top.
+Restore-MusicPlayerState
 Save-WindowState
 
 # WPF's ShowInTaskbar=false does not put WS_EX_TOOLWINDOW on the real handle, so

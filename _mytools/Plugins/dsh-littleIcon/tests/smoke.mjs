@@ -15,12 +15,13 @@ import { spawnSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { homedir, tmpdir } from 'node:os'
-import { join, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 
 const { internals, apply } = await import('../index.js')
 const {
-  sampleState, createTimeline, sampleWork, shouldTuck, STATES, ACTIVITY_PATH, COMMANDS_PATH,
+  sampleState, createTimeline, sampleWork, shouldTuck, withMusic, clampVolume, MUSIC_STATE, STATES, ACTIVITY_PATH, COMMANDS_PATH,
   GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH, OPEN_PATH,
+  MUSIC_PATH, MUSIC_SYNC_PATH, MUSIC_DOWNLOAD_PATH, MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH,
   GIT_DIFF_MAX_CHARS, GIT_LOG_PAGE,
   parseGitStatus, parseGitLog, parseGitAuthors, parseGitCommitFiles,
   readGitRepository, readGitCommits, readGitRemoteStatus,
@@ -28,8 +29,322 @@ const {
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
   coopRoleFor, coopPortFor, coopAutoAction,
 } = internals
+const {
+  MusicLibrary, musicView, parseBilibiliRef, musicEntryId, sanitizeFileStem,
+  resolveMusicDir, resolveMusicLinks, isInside, audioPayload,
+} = await import('../music.js')
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+
+// ---- music library ----------------------------------------------------------
+//
+// The library holds what one machine derived from the link list: the audio files in
+// the configured directory, and the index naming them. The link list itself is config
+// and travels; nothing here does. These checks run the resolution rules first, then
+// the download pipeline against a fetch double, so no test reaches Bilibili.
+
+// One video has many spellings and they all have to name the same entry: a watch
+// address with its part number, a bare id, an `av` id, and nothing at all.
+assert.deepEqual(parseBilibiliRef('https://www.bilibili.com/video/BV1GJ411x7h7?p=3&t=1'),
+  { kind: 'bvid', id: 'BV1GJ411x7h7', page: 3 })
+assert.deepEqual(parseBilibiliRef('BV1GJ411x7h7'), { kind: 'bvid', id: 'BV1GJ411x7h7', page: 1 })
+assert.deepEqual(parseBilibiliRef('av12345'), { kind: 'aid', id: '12345', page: 1 })
+assert.equal(parseBilibiliRef('https://example.com/watch?v=abc'), undefined)
+assert.equal(parseBilibiliRef('   '), undefined)
+assert.equal(musicEntryId({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 1 }), 'BV1GJ411x7h7')
+assert.equal(musicEntryId({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 2 }), 'BV1GJ411x7h7-p2',
+  'two parts of one video are two entries, because they are two audio streams')
+
+// File names: Windows refuses some characters, a title can be longer than a file name
+// should be, and a title of nothing but those characters still has to leave a name.
+assert.equal(sanitizeFileStem('a/b:c*d?e"f<g>h|i'), 'a_b_c_d_e_f_g_h_i')
+assert.equal(sanitizeFileStem('   '), 'bilibili')
+assert.equal(sanitizeFileStem('trailing dots...'), 'trailing dots')
+assert.equal(sanitizeFileStem('x'.repeat(200)).length, 80)
+
+// The directory: blank is the harness home, `~` is the user directory, and a relative
+// path resolves there too rather than against whatever this process was started in.
+assert.equal(resolveMusicDir('', 'D:\\dsh'), join('D:\\dsh', 'little-icon', 'music'))
+assert.equal(resolveMusicDir('   ', 'D:\\dsh'), join('D:\\dsh', 'little-icon', 'music'))
+assert.equal(resolveMusicDir('E:\\media', 'D:\\dsh'), 'E:\\media')
+assert.equal(resolveMusicDir('media', 'D:\\dsh'), resolve('D:\\dsh', 'media'))
+assert.equal(resolveMusicDir('~/media', 'D:\\dsh'), join(homedir(), 'media'))
+
+// A music directory inside the checkout would put the audio in the repository, which
+// is the one thing this feature must not do; the check is what the card reports on.
+assert.equal(isInside('E:\\AI\\DSH\\_mytools\\music', 'E:\\AI\\DSH'), true)
+assert.equal(isInside('E:\\AI\\DSH', 'E:\\AI\\DSH'), true)
+assert.equal(isInside('E:\\AI\\DSH2\\music', 'E:\\AI\\DSH'), false)
+assert.equal(isInside('E:\\media', 'E:\\AI\\DSH'), false)
+
+// The link list: blank rows are not links, and the order the settings hold is the
+// order the pet plays.
+assert.deepEqual(resolveMusicLinks(['  BV1  ', '', '   ', 'av2']), ['BV1', 'av2'])
+assert.deepEqual(resolveMusicLinks(undefined), [])
+
+// A payload whose leading box is not the media box is cut back to the `ftyp` box —
+// its own size field included, or the file would be malformed in a different way.
+const ledPayload = Buffer.concat([
+  Buffer.from([0, 0, 0, 0]), Buffer.from('junk', 'latin1'),
+  Buffer.from([0, 0, 0, 20]), Buffer.from('ftypmp42body', 'latin1'),
+])
+assert.deepEqual(audioPayload(ledPayload),
+  Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from('ftypmp42body', 'latin1')]))
+const cleanPayload = Buffer.concat([Buffer.from([0, 0, 0, 20]), Buffer.from('ftypmp42body', 'latin1')])
+assert.deepEqual(audioPayload(cleanPayload), cleanPayload)
+
+// The view: one row per configured link, in order; a link with no file is missing; a
+// file with no link is kept apart rather than silently listed as one; and only files
+// that are there count as ready.
+const viewEntries = {
+  BV1: { id: 'BV1', source: 'BV1', url: 'u', title: 'One', owner: 'o', durationMs: 1000, file: 'one.m4a', size: 10 },
+  BV9: { id: 'BV9', source: 'BV9', url: 'u', title: 'Orphan', owner: 'o', durationMs: 1000, file: 'orphan.m4a', size: 10 },
+}
+const view = musicView({
+  links: ['BV1', 'BV2'],
+  entries: viewEntries,
+  dir: join(tmpdir(), 'little-icon-music-view'),
+  warning: '',
+  volume: 55,
+  sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
+  player: undefined,
+  exists: (path) => path.endsWith('one.m4a'),
+})
+assert.deepEqual(view.entries.map(row => [row.link, row.state, row.title]),
+  [['BV1', 'ready', 'One'], ['BV2', 'missing', '']])
+assert.deepEqual(view.extras.map(row => row.id), ['BV9'])
+assert.equal(view.missing, 1)
+assert.equal(view.volume, 55)
+assert.equal(view.player.playing, false, 'a pet that never reported one is shown as not playing')
+// A link the last fill-in could not download is reported as failed rather than as one
+// nobody has tried yet, and it still counts as missing.
+const failedView = musicView({
+  links: ['BV1', 'BV2'],
+  entries: viewEntries,
+  dir: join(tmpdir(), 'little-icon-music-view'),
+  volume: 55,
+  sync: { running: false, done: 1, total: 1, current: '', added: 0, failed: [{ link: 'BV2', reason: 'video', message: '稿件不可见' }] },
+  exists: (path) => path.endsWith('one.m4a'),
+})
+assert.deepEqual(failedView.entries.map(row => [row.link, row.state, row.reason]),
+  [['BV1', 'ready', ''], ['BV2', 'failed', 'video']])
+assert.equal(failedView.missing, 1, 'a failed link is still one to fill in')
+// The row a running fill-in is on says so, so a long list shows where it got to.
+const runningView = musicView({
+  links: ['BV1', 'BV2'],
+  entries: viewEntries,
+  dir: join(tmpdir(), 'little-icon-music-view'),
+  volume: 55,
+  sync: { running: true, done: 1, total: 2, current: 'BV2', added: 0, failed: [] },
+  exists: (path) => path.endsWith('one.m4a'),
+})
+assert.deepEqual(runningView.entries.map(row => [row.link, row.state]), [['BV1', 'ready'], ['BV2', 'downloading']])
+
+// The download pipeline. The view API, the playurl API, the short address, and the
+// audio body are all answered here, so these checks cover what this half does with
+// them: which stream is taken, where the file lands, what the index records, and what
+// happens when the same video is added again or cannot be read at all.
+const audioBody = Buffer.concat([Buffer.alloc(4, 0), Buffer.from('ftypmp42audio-bytes', 'latin1')])
+const musicCalls = []
+const musicFetch = async (url) => {
+  const text = String(url)
+  musicCalls.push(text)
+  const video = /bvid=([^&]+)/u.exec(text)?.[1] ?? ''
+  if (text.includes('/x/web-interface/view')) {
+    if (video === 'BV1fail00000') return { ok: true, status: 200, json: async () => ({ code: -404, message: '稿件不可见' }) }
+    const short = video === 'BV1short0000'
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: {
+          title: short ? 'Short Song' : 'Song One',
+          owner: { name: 'Uploader' },
+          duration: 12,
+          cid: 99,
+          pages: [{ cid: 99, duration: 12, part: 'P1' }],
+        },
+      }),
+    }
+  }
+  if (text.includes('/x/player/playurl')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { dash: { audio: [
+        { id: 30216, baseUrl: 'https://audio.example/low.m4a' },
+        { id: 30280, baseUrl: 'https://audio.example/best.m4a' },
+      ] } } }),
+    }
+  }
+  if (text.startsWith('https://audio.example/')) {
+    return { ok: true, status: 200, arrayBuffer: async () => audioBody.buffer.slice(audioBody.byteOffset, audioBody.byteOffset + audioBody.byteLength) }
+  }
+  if (text.startsWith('https://b23.tv/')) {
+    return { ok: true, status: 200, url: 'https://www.bilibili.com/video/BV1short0000' }
+  }
+  return { ok: true, status: 200, url: text }
+}
+
+const musicHome = mkdtempSync(join(tmpdir(), 'little-icon-music-'))
+const musicDir = join(musicHome, 'audio')
+const musicLogger = { warns: [], warn(...args) { this.warns.push(args.join(' ')) } }
+const library = new MusicLibrary({ dataDir: musicHome, dir: musicDir, logger: musicLogger, fetchImpl: musicFetch })
+const firstLink = 'https://www.bilibili.com/video/BV1GJ411x7h7'
+const downloaded = await library.download(firstLink)
+assert.equal(downloaded.ok, true)
+assert.equal(downloaded.title, 'Song One')
+assert.ok(musicCalls.includes('https://audio.example/best.m4a'), 'the 30280 stream is the one taken')
+assert.equal(readFileSync(join(musicDir, 'Song One.m4a'), 'latin1'), audioBody.toString('latin1'),
+  'the payload lands in the music directory under the title')
+const entry = library.entries[downloaded.id]
+assert.equal(entry.owner, 'Uploader')
+assert.equal(entry.durationMs, 12_000)
+assert.equal(entry.source, firstLink, 'the link text is kept, because that is what a short address has to match on')
+assert.equal(existsSync(join(musicHome, 'music-index.json')), true, 'and the index names the file')
+
+// The same video through a different spelling is a duplicate, not a second file.
+assert.deepEqual(await library.download('BV1GJ411x7h7'), { ok: true, duplicate: true, id: downloaded.id, title: 'Song One', size: audioBody.length })
+
+// A short address is followed to the video it names, and the entry remembers the
+// address it was downloaded from so the link list can still find it.
+const short = await library.download('https://b23.tv/abcdefg')
+assert.equal(short.ok, true)
+assert.equal(short.id, 'BV1short0000')
+assert.equal(library.entryForLink('https://b23.tv/abcdefg').id, 'BV1short0000')
+
+// A link this half cannot recognize, and a video it can read but whose stream fails,
+// are reported as reasons the card localizes rather than as thrown errors.
+assert.equal((await library.download('')).reason, 'empty')
+assert.equal((await library.download('https://example.com/nothing')).reason, 'unrecognized')
+assert.equal((await library.download('BV1fail00000')).reason, 'video')
+assert.equal((await library.download('BV1fail00000')).message, '稿件不可见')
+
+// Removing an entry deletes its file and its record; an id nobody recorded is
+// refused rather than silently accepted.
+assert.deepEqual(library.remove(downloaded.id), { ok: true })
+assert.equal(existsSync(join(musicDir, 'Song One.m4a')), false)
+assert.equal(library.entries[downloaded.id], undefined)
+assert.deepEqual(library.remove('BV1nope'), { ok: false, reason: 'unknown' })
+
+// The one-click fill-in of a machine that pulled the link list: the links it has no
+// file for are downloaded, one whose video cannot be read is reported and does not
+// stop the rest, and the progress ends where it started — not running.
+const fillHome = mkdtempSync(join(tmpdir(), 'little-icon-music-fill-'))
+const fillLibrary = new MusicLibrary({ dataDir: fillHome, dir: join(fillHome, 'audio'), logger: musicLogger, fetchImpl: musicFetch })
+const fillLinks = ['BV1GJ411x7h7', 'BV1fail00000', 'https://b23.tv/abcdefg']
+const filled = await fillLibrary.sync(fillLinks)
+assert.equal(filled.ok, true)
+assert.equal(filled.total, 3)
+assert.equal(filled.added, 2, 'every readable video is downloaded')
+assert.deepEqual(filled.failed.map(item => item.link), ['BV1fail00000'], 'and the one that could not be is named')
+assert.equal(filled.running, false, 'the progress is not left running')
+assert.equal(fillLibrary.missingFiles().length, 0, 'every record it kept has its file')
+// Asking again retries only what is still missing: a link with a file is not
+// downloaded twice, and one whose download failed is offered again.
+const again = await fillLibrary.sync(fillLinks)
+assert.equal(again.total, 1, 'a second fill-in finds only the one that never arrived')
+assert.deepEqual(again.failed.map(item => item.link), ['BV1fail00000'])
+
+// A single download is refused while the fill-in owns the library. Two downloads
+// naming their file at the same time would pick the same name — uniqueFileName only
+// sees files that are already on disk — and the second would overwrite the first.
+const busyHome = mkdtempSync(join(tmpdir(), 'little-icon-music-busy-'))
+const busyLibrary = new MusicLibrary({ dataDir: busyHome, dir: join(busyHome, 'audio'), logger: musicLogger, fetchImpl: musicFetch })
+const runningSync = busyLibrary.sync(['BV1GJ411x7h7'])
+assert.deepEqual(await busyLibrary.download('https://b23.tv/abcdefg'), { ok: false, reason: 'running' },
+  'a single download must not run beside the fill-in')
+await runningSync
+
+// Downloads run one at a time, in arrival order, so two requests for the same video
+// become one download and one duplicate answer rather than two downloads recording
+// the same entry (the first file would be left unclaimed).
+const chainHome = mkdtempSync(join(tmpdir(), 'little-icon-music-chain-'))
+const chainViews = new Map()
+const chainFetch = async (url) => {
+  const text = String(url)
+  const video = /bvid=([^&]+)/u.exec(text)?.[1] ?? ''
+  if (text.includes('/x/web-interface/view')) {
+    chainViews.set(video, (chainViews.get(video) ?? 0) + 1)
+    return { ok: true, status: 200, json: async () => ({ code: 0, data: { title: 'Chain Song', owner: { name: 'o' }, duration: 1, cid: 7, pages: [] } }) }
+  }
+  if (text.includes('/x/player/playurl')) {
+    return { ok: true, status: 200, json: async () => ({ code: 0, data: { dash: { audio: [{ id: 30280, baseUrl: 'https://audio.example/chain.m4a' }] } } }) }
+  }
+  if (text.startsWith('https://audio.example/')) {
+    return { ok: true, status: 200, arrayBuffer: async () => audioBody.buffer.slice(audioBody.byteOffset, audioBody.byteOffset + audioBody.byteLength) }
+  }
+  return { ok: true, status: 200, url: text }
+}
+const chainLibrary = new MusicLibrary({ dataDir: chainHome, dir: join(chainHome, 'audio'), logger: musicLogger, fetchImpl: chainFetch })
+const chained = await Promise.all([chainLibrary.download('BV1chain0001'), chainLibrary.download('BV1chain0001')])
+assert.deepEqual(chained.map(result => result.ok), [true, true])
+assert.equal(chained[0].duplicate, undefined, 'the first request downloads')
+assert.equal(chained[1].duplicate, true, 'the second lands on the entry the first recorded')
+assert.deepEqual([...chainViews.entries()], [['BV1chain0001', 1]], 'and the video is read once')
+assert.equal(Object.keys(chainLibrary.entries).length, 1, 'one video is one entry, however often it is asked for')
+rmSync(chainHome, { recursive: true, force: true })
+
+// Two videos that carry the same title still get one file each. The chain above
+// serializes the public entry point, so this drives the two downloads past it — the
+// last line of defence is the name being claimed for the write rather than looked up
+// twice, and both bodies are held until each download is ready to name its file.
+const raceHome = mkdtempSync(join(tmpdir(), 'little-icon-music-race-'))
+const bodyCalls = { count: 0 }
+const bothBodies = Promise.withResolvers()
+const bodyGate = Promise.withResolvers()
+const raceFetch = async (url) => {
+  const text = String(url)
+  const video = /bvid=([^&]+)/u.exec(text)?.[1] ?? ''
+  if (text.includes('/x/web-interface/view')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: { title: 'Same Title', owner: { name: 'o' }, duration: 1, cid: video === 'BV1race00001' ? 11 : 22, pages: [] },
+      }),
+    }
+  }
+  if (text.includes('/x/player/playurl')) {
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { dash: { audio: [{ id: 30280, baseUrl: `https://audio.example/${video}.m4a` }] } } }),
+    }
+  }
+  if (text.startsWith('https://audio.example/')) {
+    bodyCalls.count += 1
+    if (bodyCalls.count === 2) bothBodies.resolve()
+    await bodyGate.promise
+    return { ok: true, status: 200, arrayBuffer: async () => audioBody.buffer.slice(audioBody.byteOffset, audioBody.byteOffset + audioBody.byteLength) }
+  }
+  return { ok: true, status: 200, url: text }
+}
+const raceLibrary = new MusicLibrary({ dataDir: raceHome, dir: join(raceHome, 'audio'), logger: musicLogger, fetchImpl: raceFetch })
+const raceFirst = raceLibrary.downloadNow('BV1race00001')
+const raceSecond = raceLibrary.downloadNow('BV1race00002')
+await bothBodies.promise
+bodyGate.resolve()
+const raced = await Promise.all([raceFirst, raceSecond])
+assert.deepEqual(raced.map(result => result.ok), [true, true])
+const racedFiles = Object.values(raceLibrary.entries).map(entry => entry.file).sort()
+assert.deepEqual(racedFiles, ['Same Title.m4a', 'Same Title_2.m4a'],
+  'two videos with one title must not be written over one another')
+assert.deepEqual(racedFiles.map(file => existsSync(join(raceHome, 'audio', file))), [true, true])
+
+// Asking for the same video twice in a row is a duplicate rather than an error: the
+// card says "already in the list" and nothing is downloaded again.
+assert.deepEqual(await raceLibrary.download('BV1race00001'), {
+  ok: true, duplicate: true, id: 'BV1race00001', title: 'Same Title', size: audioBody.length,
+})
+rmSync(raceHome, { recursive: true, force: true })
+rmSync(busyHome, { recursive: true, force: true })
+
+rmSync(musicHome, { recursive: true, force: true })
+rmSync(fillHome, { recursive: true, force: true })
+console.log('little-icon smoke: music library ok')
 
 // ---- multi-machine side and port --------------------------------------------
 
@@ -186,6 +501,27 @@ const moved = asleep + 500 + 20_000
 assert.equal(sampleState(quietWork, moved, timeline, DEFAULTS, moved + 200), 'idle')
 assert.equal(sampleState(working, moved, timeline, DEFAULTS, moved + 1000), 'working')
 
+// Listening is layered on the sampled expression rather than sampled itself: the
+// pet's player is the input, so it plays over the idle family and never over a task
+// in flight.
+assert.equal(withMusic('idle', true), MUSIC_STATE, 'music plays over idle')
+assert.equal(withMusic('bored', true), MUSIC_STATE, 'music plays over a bored interruption')
+assert.equal(withMusic('sleep', true), MUSIC_STATE, 'music plays over sleep')
+assert.equal(withMusic('happy', true), 'happy', 'the end-of-run celebration keeps its own frames')
+assert.equal(withMusic('working', true), 'working', 'a running task keeps its own frames')
+assert.equal(withMusic('alert', true), 'alert', 'waiting for an answer keeps the startle')
+assert.equal(withMusic('idle', false), 'idle', 'silence leaves the sampled expression alone')
+assert.equal(withMusic('working', false), 'working', 'and it never invents a state of its own')
+
+// A volume the menu asked for is a whole percent inside the range; anything that is
+// not a number at all is dropped rather than clamped into a value nobody asked for.
+assert.equal(clampVolume(35), 35, 'a menu volume is kept as asked')
+assert.equal(clampVolume(35.4), 35, 'and rounded to the step the slider and the card use')
+assert.equal(clampVolume(-5), 0, 'below silence is silence')
+assert.equal(clampVolume(140), 100, 'and above full is full')
+assert.equal(clampVolume('80'), 80, 'a number written as text still counts')
+assert.equal(clampVolume('loud'), undefined, 'a value that is not a number changes nothing')
+
 // Tucking DSH away follows what is in front rather than the activity clock: DSH
 // itself in front is never tucked away, and another application in front is what
 // asks for the tuck after the configured stretch — zero by default, so it lands on
@@ -208,10 +544,12 @@ assert.equal(shouldTuck(behind, { ...DEFAULTS, autoHideSeconds: 30 }, behindAt +
 
 // Every state the host can publish has frames on disk, and the generator's
 // frames.json agrees with the files: the art decides the count per state (the
-// working sheet holds six figures, the others four), and the pet probes it.
+// working sheet holds six figures, the others four), and the pet probes it. The
+// listening frames are counted here too: the sampler never returns them, but the
+// host publishes them while the pet plays, so they must exist like the rest.
 const frameCounts = JSON.parse(readFileSync(join(root, 'assets', 'frames.json'), 'utf8'))
-assert.deepEqual(Object.keys(frameCounts).sort(), [...STATES].sort())
-for (const state of STATES) {
+assert.deepEqual(Object.keys(frameCounts).sort(), [...STATES, MUSIC_STATE].sort())
+for (const state of [...STATES, MUSIC_STATE]) {
   const count = frameCounts[state]
   assert.ok(Number.isInteger(count) && count >= 2, `frames.json has no frame count for ${state}`)
   for (let frame = 1; frame <= count; frame += 1) {
@@ -245,14 +583,28 @@ assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang unde
 assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens the aquarium')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 assert.equal(labels.Sites, '常用网站', 'the menu entry the configured sites hang under')
+assert.equal(labels.Music, '听歌', 'the menu entry the music hangs under')
+assert.equal(labels.MusicPlay, '开始', 'the music entry that starts playing')
+assert.equal(labels.MusicPause, '暂停', 'the music entry that pauses')
+assert.equal(labels.MusicNext, '换歌', 'the music entry that steps to the next song')
 assert.equal(labels.System, '系统', 'the menu entry the DSH lifecycle entries hang under')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
   'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved',
   'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
+  'Music', 'MusicPlay', 'MusicPause', 'MusicNext', 'MusicPrev', 'MusicNowPlaying', 'MusicPaused',
+  'MusicReady', 'MusicEmpty', 'MusicEmptyHint', 'MusicMissing', 'MusicSync', 'MusicSyncCount',
+  'MusicSyncing', 'MusicSyncNone', 'MusicSynced', 'MusicSyncRunning', 'MusicOpenDir', 'MusicOpenFailed',
+  'MusicFailed',
   'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
+}
+// Every music label in the pet's fallback must exist in labels.json too, or a
+// missing file would silently mix English into a Chinese menu.
+for (const key of Object.keys(labels).filter(name => name.startsWith('Music'))) {
+  assert.match(petSource, new RegExp(`^\\s+${key}\\s+=`, 'm'),
+    `pet/pet.ps1 has no English fallback for ${key}`)
 }
 // The mini-games submenu is drawn by the pet process, so the two halves only meet
 // on the command id: the pet must send the one the page carries out.
@@ -404,7 +756,7 @@ if (process.platform === 'win32') {
   assert.equal(selfTest.status, 0, `pet.ps1 -SelfTest failed: ${selfTest.stderr}`)
   // The self test counts frames by probing the directories, so its output is the
   // pet's own view; it must agree with what the generator recorded.
-  for (const state of STATES) assert.match(selfTest.stdout, new RegExp(`${state}=${frameCounts[state]}`))
+  for (const state of [...STATES, MUSIC_STATE]) assert.match(selfTest.stdout, new RegExp(`${state}=${frameCounts[state]}`))
   // The self test prints the labels it loaded from labels.json, so this proves
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
@@ -468,6 +820,71 @@ if (process.platform === 'win32') {
   assert.ok(coopHost.includes(`ToolStripMenuItem=${labels.CoopStop}`),
     'a running submenu offers the stop entry instead')
   assert.equal(coopClicked, 'click=coop-start', 'clicking the start entry writes its command')
+  // Music is the third submenu rebuilt at every open, and the odd one out: the
+  // transport entries act on this process (the pet owns the audio, so it keeps
+  // playing while DSH is tucked away), while filling the library in and opening its
+  // folder need the host and the settings page is DSH's own. What each library turns
+  // into is what this checks: the status line, the three transport entries, the
+  // download entry's count, and the two commands that leave this process.
+  const musicMenu = /music-menu: (.*)/.exec(selfTest.stdout)
+  assert.ok(musicMenu !== null, 'the self test must report the music submenu')
+  const [musicReady, musicPlaying, musicSyncing, musicMissing, musicEmpty, musicFolder, musicSyncClick, musicVolume, musicSlider, musicSliderCommit, musicSliderLabel, musicPresetCommit] =
+    musicMenu[1].trim().split(' >> ')
+  assert.equal(musicReady.split('|')[0], `ToolStripMenuItem=${labels.MusicReady.replace('{0}', 'Song A')}[False]`,
+    'a track that has not been started says which one it is and that it is ready')
+  assert.ok(musicReady.includes(`ToolStripMenuItem=${labels.MusicPlay}[True]`), 'and offers to start it')
+  assert.ok(musicReady.includes(`ToolStripMenuItem=${labels.MusicNext}[True]`), 'the next entry is offered')
+  assert.ok(musicReady.includes(`ToolStripMenuItem=${labels.MusicPrev}[True]`), 'and so is the previous one')
+  assert.ok(musicReady.includes(`ToolStripMenuItem=${labels.MusicSyncCount.replace('{0}', '2')}[True]`),
+    'a machine missing two of them offers to fill them in')
+  assert.ok(musicPlaying.includes(`${labels.MusicNowPlaying.replace('{0}', 'Song A')}`),
+    'playing changes the status line')
+  assert.ok(musicPlaying.includes(`${labels.MusicPause}[True]`),
+    'and the transport entry becomes the pause one')
+  assert.ok(musicSyncing.includes(`${labels.MusicSyncing.replace('{0}', '1').replace('{1}', '3')}[False]`),
+    'a download in flight is a disabled progress line')
+  assert.ok(musicMissing.includes(`${labels.MusicMissing.replace('{0}', '3')}`),
+    'nothing downloaded yet is reported as that many links to fill in')
+  assert.ok(musicMissing.includes(`${labels.MusicEmptyHint}[False]`),
+    'and the empty submenu says where songs come from')
+  assert.ok(musicEmpty.includes(`${labels.MusicSyncNone}[False]`),
+    'a library with nothing missing says so instead of offering a download')
+  assert.equal(musicFolder, 'folder=music-open-dir', 'the folder entry asks the host to open it')
+  assert.equal(musicSyncClick, 'sync=music-sync', 'and the fill-in entry asks the host to download')
+  // Volume and the link entry are configuration, so they are checked as such: the
+  // volume row is a hosted track bar with the number beside it, its presets move that
+  // same slider, and a move reaches the host as one number once the drag settles; the
+  // link entry needs a modal box and the clipboard, so it is asserted by its presence
+  // rather than fired.
+  assert.equal(musicVolume, 'volume=[True],[True],0%[True],25%[True],50%[True],75%[True],100%[True]',
+    'the volume submenu hosts its row and keeps the presets under it')
+  assert.equal(musicSlider, 'slider=TrackBar:0-100:25:tick=25',
+    'the hosted row is a track bar covering the range, at the value in force')
+  assert.equal(musicSliderCommit, 'slider-commit=music-volume:55',
+    'a moved slider reaches the host as one number')
+  assert.equal(musicSliderLabel, 'slider-label=55%', 'and the row shows the value it is on')
+  assert.equal(musicPresetCommit, 'preset-commit=music-volume:0',
+    'a preset moves the same slider and is written the same way')
+  assert.ok(musicReady.includes(`ToolStripMenuItem=${labels.MusicAddLink}[True]`),
+    'the submenu offers to add a link without the settings page')
+  // An ended media only moves the list on when it is the one that opened: a replaced
+  // media reports an end of its own, and acting on that would skip a song and start
+  // playing one nobody asked for.
+  assert.match(selfTest.stdout, /music-ended: opened=True replaced=False empty=False/,
+    'only a track that really opened may advance the list when it ends')
+  // The pet keeps playing across a restart of DSH, so the pieces that make that work
+  // are pinned here: the file the host publishes is read at every open, the library
+  // is applied without interrupting the current track, and the state the next start
+  // resumes from is stored on the way out.
+  assert.match(petSource, /function Update-MusicMenu/, 'the music submenu needs its rebuild step')
+  assert.match(petSource, /Read-MusicLibrary|if \(Read-MusicLibrary\)/, 'and it reads the published library')
+  assert.match(petSource, /function Apply-MusicLibrary/, 'and applies it without restarting the track')
+  assert.match(petSource, /MediaPlayer/, 'the audio itself is played by this process')
+  assert.match(petSource, /Save-MusicPlayerState/, 'and what it is playing is stored for the next start')
+  assert.match(petSource, /\$SCRIPT:MusicFile = Join-Path/, 'the library file sits beside the state file')
+  assert.match(petSource, /Add-PetMenuItem \$menu\.Items \$SCRIPT:Labels\.Music 'music'/,
+    'the music submenu hangs off the pet menu')
+  assert.match(petSource, /case "music":/, 'the music submenu needs its own icon, like every other entry')
   // A capture lands beside the state file, in the harness home rather than the
   // repository, and its name is what tells two captures in one second apart.
   const shotFile = /shot-file: (.*)/.exec(selfTest.stdout)
@@ -551,6 +968,24 @@ if (process.platform === 'win32') {
   const shotReported = /shot-probe-bytes: (\d+)/.exec(shotProbe.stdout)
   assert.ok(shotReported !== null, 'the capture probe must report the bytes it wrote')
   assert.equal(Number(shotReported[1]), shotBytes.length, 'the reported size is the file that landed')
+
+  // The audio path on its own, with no window, no menu, and no library: what is
+  // under test is the media player, the decoder, and one file. A file that is not
+  // there must come back as a reported failure rather than as a crash, which is the
+  // half of this probe a keyless test can check — whether a sound device exists is
+  // the machine's business, and the real file is what the live check plays.
+  const musicProbeDir = mkdtempSync(join(tmpdir(), 'little-icon-music-probe-'))
+  const musicProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(musicProbeDir, 'state.json'),
+    '-PositionFile', join(musicProbeDir, 'position.json'),
+    '-MusicProbe', join(musicProbeDir, 'not-here.m4a'),
+  ], { encoding: 'utf8' })
+  assert.equal(musicProbe.status, 1, 'a file that is not there must be reported, not played')
+  assert.match(musicProbe.stdout, /music-probe: failed error=/, 'and the probe must say so in one line')
+  rmSync(musicProbeDir, { recursive: true, force: true })
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')
 }
@@ -1238,6 +1673,32 @@ try {
   commands.onmessage({ data: '{"command":"nonsense"}' })
   commands.onmessage({ data: 'not json' })
   assert.equal(openedTabs.length, 2, 'only known commands open anything')
+  // The menu's volume and link entries are configuration, and the Host cannot write
+  // configuration from its own timer: the settings service refuses a write made inside
+  // an HMR transaction. The page writes it instead, at the revision it read, the way
+  // the card writes every other field - and the download it asks for stays with the
+  // Host, on the route the card already uses.
+  const menuLink = 'https://www.bilibili.com/video/BV1MHeb6nEGx'
+  const formBefore = form.snapshot
+  form.snapshot = { ...form.snapshot, revision: 7, value: { musicLinks: [firstLink] } }
+  form.writes.length = 0
+  commands.onmessage({ data: '{"command":"music-volume","value":33}' })
+  assert.deepEqual(form.writes[0], { ops: [{ op: 'set', path: ['musicVolume'], value: 33 }], revision: 7 },
+    'a volume the menu set is written to the configuration the way the card writes it')
+  commands.onmessage({ data: `{"command":"music-add-link","link":"${menuLink}"}` })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(form.writes[1], { ops: [{ op: 'set', path: ['musicLinks'], value: [firstLink, menuLink] }], revision: 7 },
+    'an added link joins the list rather than replacing it')
+  assert.deepEqual(pings.at(-1), { url: `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(menuLink)}`, method: 'POST' },
+    'the Host is asked to download what was added')
+  // A frame that names no volume is refused here rather than written as a number
+  // nothing can use.
+  commands.onmessage({ data: '{"command":"music-volume","value":"loud"}' })
+  assert.equal(form.writes.length, 2, 'a volume that is not a number changes nothing')
+  // The card's own writes are counted from the first one, so this probe leaves the
+  // form as it found it.
+  form.snapshot = formBefore
+  form.writes.length = 0
   // A Web profile may leave the Browser tab disabled and a build without the right
   // Sidebar provides no service at all. The preference still asked for the in-app
   // tab, so the address goes to the system browser — the same fallback ui-chat's
@@ -1281,10 +1742,10 @@ try {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
-// One unknown command, the two refusals above in each of their two forms, the
-// settings entry with no Plugins page to reach, and the aquarium entry with no
-// aquarium plugin installed.
-assert.equal(warned.length, 7, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// One unknown command, a volume frame naming no number, the two refusals above in
+// each of their two forms, the settings entry with no Plugins page to reach, and the
+// aquarium entry with no aquarium plugin installed.
+assert.equal(warned.length, 8, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // The "sites" entry is the one menu command that carries its own address: the
 // frame names it, and the page opens it where the chat entry would open one. A
@@ -1633,8 +2094,13 @@ assert.deepEqual(siteProblems([{ name: 'Local', url: 'file:///C:/notes.txt' }]).
 assert.equal(siteProblems([{ name: 'ok', url: 'ok.test' }, { name: 'blank', url: '' }]).length, 0,
   'a usable address, and a row nobody filled in yet, are both left alone')
 
-// The Git page draws two columns from one Host answer. The load effect normally
-// sets that answer; the test seeds it instead, so only the render is under test.
+// ---- music section of the card ----------------------------------------------
+//
+// The section is a component of its own, so the card test above never runs it; it is
+// called here with the props the card passes. Its rows come from the form (a link
+// added or removed shows at once) and their state comes from the Host (downloaded
+// means the file is on this machine), and every action that touches audio, the
+// network, or a file goes through a route rather than through the page.
 /** Every string a stub tree shows, including control props such as `title`. */
 const strings = (node, found = []) => {
   if (typeof node === 'string') { found.push(node); return found }
@@ -1644,6 +2110,159 @@ const strings = (node, found = []) => {
   strings(node.children, found)
   return found
 }
+const musicSectionType = flatten(render({ musicLinks: ['BV1'] }))
+  .find(node => typeof node.type === 'function' && node.props?.slider !== undefined)?.type
+assert.equal(typeof musicSectionType, 'function', 'the card must render the music section')
+
+const musicWrites = []
+const musicFetches = []
+const musicAnswers = []
+const answeredFetch = globalThis.fetch
+globalThis.fetch = async (url, options) => {
+  musicFetches.push({ url: String(url), method: options?.method ?? 'GET' })
+  const answer = musicAnswers.length > 0 ? musicAnswers.shift() : { ok: true }
+  return { ok: true, json: async () => answer }
+}
+/** One render of the section with the Host's answer and the form seeded, as above. */
+const renderMusic = (library, draft, extra = {}) => {
+  // In the order the component reads them: the library, the busy flag, its message,
+  // the read error, and the box being typed in.
+  seeded.push(library, extra.busy ?? '', extra.message ?? '', extra.libraryError ?? '', extra.link ?? '')
+  return flatten(musicSectionType({
+    t,
+    editable: extra.editable ?? true,
+    draft,
+    write: (patch, immediate) => musicWrites.push({ patch, immediate }),
+    slider: (field) => ({ className: 'dli-slider', type: 'range', value: draft[field] }),
+    pickDirectory: () => Promise.resolve(null),
+    echo: () => {},
+  }))
+}
+
+const sampleLibrary = {
+  dir: 'D:\\audio',
+  warning: '',
+  volume: 40,
+  sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
+  player: { playing: false, id: '', title: '', positionMs: 0, error: '' },
+  entries: [
+    { link: 'BV1', id: 'BV1', state: 'ready', title: 'Song One', owner: 'Uploader', durationMs: 1000, size: 10 },
+    { link: 'BV2', id: 'BV2', state: 'missing', title: '', owner: '', durationMs: 0, size: 0 },
+  ],
+  extras: [{ link: 'BV9', id: 'BV9', state: 'ready', title: 'Orphan', owner: '', durationMs: 0, size: 0 }],
+  missing: 1,
+}
+
+// The volume and the folder are config fields like any other, so they are written
+// the way the rest of the card writes them: the slider through the field writer, the
+// path once the box is left, and the picker with what it answered.
+const musicElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDir: '', musicVolume: 40 })
+const volumeSlider = musicElements.find(node => node.type === 'input' && node.props.type === 'range' && node.props.min === 0 && node.props.max === 100)
+assert.ok(volumeSlider !== undefined, 'the volume slider is missing')
+assert.equal(volumeSlider.props.value, 40, 'the slider starts from the stored volume')
+const musicDirField = musicElements.find(node => node.type === 'input' && node.props.type === 'text'
+  && node.props.placeholder === t('musicDirPlaceholder'))
+assert.ok(musicDirField !== undefined, 'the music folder field is missing')
+const writesBeforeMusicDir = musicWrites.length
+musicDirField.props.onChange({ target: { value: 'E:\\songs' } })
+assert.equal(musicWrites.length, writesBeforeMusicDir, 'typing a folder must not write per keystroke')
+musicDirField.props.onBlur({ target: { value: '  E:\\songs  ' } })
+assert.deepEqual(musicWrites.at(-1), { patch: { musicDir: 'E:\\songs' }, immediate: true },
+  'leaving the folder box writes the trimmed path')
+
+// One row per link, in the configured order, each named by its title when this
+// machine has it and by the link when it does not; the state is the Host's answer.
+const musicRows = musicElements.filter(node => node.props?.className === 'dli-music-row')
+const rowText = (row) => row.children.map(child => child.children?.join('') ?? '')
+assert.equal(musicRows.length, 3, 'one row per link, plus the file that has no link')
+assert.deepEqual(rowText(musicRows[0]), ['Song One', t('musicReady'), t('musicRemove')],
+  'a downloaded link shows its title, its state, and its remove button')
+assert.deepEqual(rowText(musicRows[1]), ['BV2', t('musicMissing'), t('musicRemove')],
+  'a link with no file is named by the link and reported as missing')
+assert.deepEqual(rowText(musicRows[2]), ['Orphan', t('musicReady'), t('musicExtrasRemove')],
+  'a file without a link is listed apart from the links')
+
+// The transport buttons ask the pet, which is the half that owns the audio.
+musicFetches.length = 0
+await musicElements.filter(node => node.type === 'button' && node.children?.includes(t('musicNext')))[0].props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 20))
+/** The requests that are not the card re-reading the library, which every action also does. */
+const askedUrls = () => musicFetches.filter(call => call.url !== MUSIC_PATH).map(call => call.url)
+assert.deepEqual(askedUrls(), [`${MUSIC_COMMAND_PATH}?action=next`],
+  'the next button asks the pet to step')
+assert.equal(musicFetches.find(call => call.url !== MUSIC_PATH).method, 'POST')
+
+// Removing a link writes the list without it and deletes this machine's file.
+musicWrites.length = 0
+musicFetches.length = 0
+await musicRows[0].children.find(node => node.type === 'button').props.onClick()
+assert.deepEqual(musicWrites.at(-1).patch, { musicLinks: ['BV2'] }, 'removing drops exactly that link')
+assert.deepEqual(askedUrls(), [`${MUSIC_REMOVE_PATH}?id=BV1`],
+  'and deletes the file the link names')
+
+// A file no link claims is removed by its own id and leaves the link list alone, and
+// a library that could not be read at all says that instead of an action's message.
+musicWrites.length = 0
+musicFetches.length = 0
+await musicRows[2].children.find(node => node.type === 'button').props.onClick()
+assert.deepEqual(musicWrites, [], 'removing a file that no link claims does not touch the link list')
+assert.deepEqual(askedUrls(), [`${MUSIC_REMOVE_PATH}?id=BV9`], 'it deletes the file by its own id')
+assert.ok(strings(renderMusic(sampleLibrary, { musicLinks: [] }, { libraryError: 'Failed to fetch' }))
+  .includes(t('musicReadFailed', { message: 'Failed to fetch' })),
+'a card that never read the library says so, with the reason')
+
+// Adding a link writes the list with it and downloads it through the Host.
+musicWrites.length = 0
+musicFetches.length = 0
+musicAnswers.push({ ok: true, id: 'BV3', title: 'Song Three' })
+const addElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'] }, { link: '  https://b23.tv/xyz  ' })
+addElements.find(node => node.type === 'button' && node.children?.includes(t('musicAdd'))).props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 50))
+assert.deepEqual(musicWrites.at(-1).patch, { musicLinks: ['BV1', 'BV2', 'https://b23.tv/xyz'] },
+  'adding appends the trimmed link')
+assert.deepEqual(askedUrls(),
+  [`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent('https://b23.tv/xyz')}`],
+  "and downloads it, because the file is this machine's")
+
+// A link that is already configured is refused without a request, and the one-click
+// fill-in is offered only while something is missing.
+musicFetches.length = 0
+const duplicateElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'] }, { link: 'BV1' })
+duplicateElements.find(node => node.type === 'button' && node.children?.includes(t('musicAdd'))).props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 20))
+assert.deepEqual(askedUrls(), [], 'a link already in the list is refused without asking the Host')
+musicFetches.length = 0
+await duplicateElements.find(node => node.type === 'button'
+  && node.children?.includes(t('musicSync', { count: 1 }))).props.onClick()
+assert.deepEqual(askedUrls(), [MUSIC_SYNC_PATH], 'the fill-in button asks the Host to sync')
+assert.equal(musicFetches.find(call => call.url !== MUSIC_PATH).method, 'POST')
+
+// A download in flight is reported as progress, and the button that started it is
+// not offered again; what the pet is playing is the pet's own report.
+const syncingElements = renderMusic({
+  ...sampleLibrary,
+  sync: { running: true, done: 2, total: 5, current: 'BV4', added: 1, failed: [] },
+  player: { playing: true, id: 'BV1', title: 'Song One', positionMs: 1000, error: '' },
+}, { musicLinks: ['BV1', 'BV2'] })
+const syncButton = syncingElements.find(node => node.type === 'button'
+  && node.children?.includes(t('musicSyncing', { done: 2, total: 5 })))
+assert.ok(syncButton !== undefined, 'a running download is shown as its own progress')
+assert.equal(syncButton.props.disabled, true, 'and it cannot be started twice')
+assert.equal(syncingElements.find(node => node.type === 'button' && node.children?.includes(t('musicAdd'))).props.disabled,
+  true, 'and nothing may be added while it owns the library')
+assert.ok(strings(syncingElements).includes(t('musicPlaying', { title: 'Song One' })),
+  'what the pet is playing comes from the pet')
+
+// A folder inside the checkout, or one that cannot be written, is said on the card
+// rather than obeyed: those files would be committed, and that download would fail.
+assert.ok(strings(renderMusic({ ...sampleLibrary, warning: 'inside-checkout' }, { musicLinks: [] }))
+  .includes(t('musicWarnInsideCheckout')), 'a folder inside the repository is reported')
+assert.ok(strings(renderMusic({ ...sampleLibrary, warning: 'unwritable' }, { musicLinks: [] }))
+  .includes(t('musicWarnUnwritable')), 'a folder that cannot be written is reported too')
+globalThis.fetch = answeredFetch
+
+// The Git page draws two columns from one Host answer. The load effect normally
+// sets that answer; the test seeds it instead, so only the render is under test.
 const commitPages = []
 const gitProps = {
   t,
@@ -2013,6 +2632,13 @@ if (process.argv.includes('--pet')) {
     clickAction: ref('toggle'),
     gitPullTimeoutMs: ref(60_000),
     sites: ref([]),
+    // Where the capture menu writes, and the music section's own fields: the host
+    // reads every one of them on each publish, so this double has to carry them even
+    // where the lifecycle test does not exercise them.
+    shotDir: ref(''),
+    musicLinks: ref([]),
+    musicDir: ref(''),
+    musicVolume: ref(70),
     coopAddress: ref('192.168.1.3:15180'),
     coopHotkey: ref('ctrl+alt+f12'),
     // Off: this suite must not start the multi-machine process on a machine that
@@ -2105,12 +2731,16 @@ $found
     // jobs, and it would sleep while the person is using DSH. The second route is
     // the stream the pet's menu commands come back on, the next four are what
     // the Git page reads, checks, and fast-forwards a Session's repository
-    // through, and the last is the menu's open-directory entry.
+    // through, the next is the menu's open-directory entry, and the rest are the
+    // music library, its downloads, and the playback commands the card sends.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
       [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
-        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_REMOTE_PATH}`,
+        `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_COMMITS_PATH}`,
+        `exact ${GIT_REMOTE_PATH}`,
         `exact ${GIT_PULL_PATH}`,
-        `exact ${OPEN_PATH}`])
+        `exact ${OPEN_PATH}`,
+        `exact ${MUSIC_PATH}`, `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
+        `exact ${MUSIC_REMOVE_PATH}`, `exact ${MUSIC_COMMAND_PATH}`])
 
     // The Git routes answer JSON for one directory and refuse everything else.
     // The directory is checked here rather than inferred from a spawn failure, so
@@ -2201,6 +2831,121 @@ $found
     assert.deepEqual(noPullCwd.body, { ok: false, reason: 'no-cwd' })
     assert.equal(noPullCwd.headers['cache-control'], 'no-store', 'a pull result must not be cached')
 
+    // The music routes: the link list is config that travels, and everything derived
+    // from it — the audio file, the index naming it, the file the pet plays from — is
+    // this machine's. A download is the Host's own work, so these routes answer with
+    // no page involved, which is what lets a machine that just pulled the link list
+    // fill itself in from the pet's own menu.
+    const musicRoute = routes.find((route) => route.path === MUSIC_PATH)
+    const musicSyncRoute = routes.find((route) => route.path === MUSIC_SYNC_PATH)
+    const musicDownloadRoute = routes.find((route) => route.path === MUSIC_DOWNLOAD_PATH)
+    const musicRemoveRoute = routes.find((route) => route.path === MUSIC_REMOVE_PATH)
+    const musicCommandRoute = routes.find((route) => route.path === MUSIC_COMMAND_PATH)
+    const pluginHome = join(home, 'little-icon')
+    const musicFolder = join(home, 'audio')
+    const musicId = 'BV1GJ411x7h7'
+    const readMusicFile = () => JSON.parse(readFileSync(join(pluginHome, 'music.json'), 'utf8'))
+    const readPlayerFile = () => {
+      try { return JSON.parse(readFileSync(join(pluginHome, 'music-player.json'), 'utf8')) } catch { return {} }
+    }
+    config.musicDir.set(musicFolder)
+    config.musicVolume.set(33)
+    config.musicLinks.set([firstLink])
+    handlers.get('loader/volatile-update')()
+    const musicViewAnswer = await askGit(musicRoute, 'GET', MUSIC_PATH)
+    assert.equal(musicViewAnswer.status, 200)
+    assert.equal(musicViewAnswer.body.dir, musicFolder)
+    assert.equal(musicViewAnswer.body.volume, 33)
+    assert.deepEqual(musicViewAnswer.body.entries.map(row => [row.link, row.state]), [[firstLink, 'missing']],
+      'a link with no file yet is reported as missing')
+    assert.equal(musicViewAnswer.body.missing, 1)
+    assert.equal(musicViewAnswer.body.warning, '', 'the default music folder is a plain machine-local one')
+    // Nothing downloaded yet: the file the pet plays from names no tracks, and the
+    // count of what is missing is what its menu offers to fill in.
+    assert.deepEqual(readMusicFile().tracks, [])
+    assert.equal(readMusicFile().missing, 1)
+    assert.equal(readMusicFile().volume, 33)
+
+    const hostFetch = globalThis.fetch
+    globalThis.fetch = musicFetch
+    try {
+      // The card's one-link download is answered once the file is written, so the page
+      // can report the title without polling for a first answer.
+      const added = await askGit(musicDownloadRoute, 'POST',
+        `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(firstLink)}`)
+      assert.deepEqual([added.body.ok, added.body.title], [true, 'Song One'])
+      assert.equal(existsSync(join(musicFolder, 'Song One.m4a')), true, 'the audio lands in the configured folder')
+      // And the track reaches the pet through its own file, with the absolute path the
+      // pet opens: it plays local files rather than asking this half for them.
+      const published = readMusicFile()
+      assert.deepEqual(published.tracks.map(track => [track.id, track.title]), [[musicId, 'Song One']])
+      assert.equal(published.tracks[0].file, join(musicFolder, 'Song One.m4a'))
+      assert.equal(published.missing, 0)
+
+      // A playback command from the card rides in that same file, and the pet — the
+      // half that owns the audio — applies it on its next tick and records that it
+      // did, so a restart does not replay it.
+      const command = await askGit(musicCommandRoute, 'POST', `${MUSIC_COMMAND_PATH}?action=pause`)
+      assert.deepEqual(command.body, { ok: true, action: 'pause' })
+      const sentAt = readMusicFile().command.at
+      assert.equal(readMusicFile().command.action, 'pause')
+      const untilApplied = Date.now() + 20_000
+      while (readPlayerFile().commandAt !== sentAt && Date.now() < untilApplied) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      assert.equal(readPlayerFile().commandAt, sentAt, 'the pet must apply the command the card sent')
+      // An action nobody defined is refused rather than written for the pet to guess.
+      const unknownAction = await askGit(musicCommandRoute, 'POST', `${MUSIC_COMMAND_PATH}?action=explode`)
+      assert.deepEqual(unknownAction.body, { ok: false, reason: 'unknown' })
+
+      // Filling the library in is the one click a machine that just pulled the links
+      // needs: the links with no file are downloaded in the background, and what is
+      // running is readable on the view route while it runs.
+      config.musicLinks.set([firstLink, 'BV1fail00000'])
+      handlers.get('loader/volatile-update')()
+      const started = await askGit(musicSyncRoute, 'POST', MUSIC_SYNC_PATH)
+      assert.equal(started.body.ok, true)
+      assert.equal(started.body.started, 1, 'only the link this machine has no file for is downloaded')
+      const untilFilled = Date.now() + 30_000
+      let syncView = await askGit(musicRoute, 'GET', MUSIC_PATH)
+      while (syncView.body.sync.running && Date.now() < untilFilled) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        syncView = await askGit(musicRoute, 'GET', MUSIC_PATH)
+      }
+      assert.equal(syncView.body.sync.running, false, 'the fill-in must finish')
+      assert.equal(syncView.body.sync.added, 0, 'the link already downloaded is not fetched again')
+      assert.deepEqual(syncView.body.sync.failed.map(item => item.link), ['BV1fail00000'],
+        'and the one that cannot be read is reported without stopping the rest')
+      assert.equal(existsSync(join(musicFolder, 'Song One.m4a')), true)
+
+      // Removing a link deletes this machine's file with its record: the audio is
+      // derived, and nothing derived is kept for a link nobody lists.
+      const removed = await askGit(musicRemoveRoute, 'POST', `${MUSIC_REMOVE_PATH}?id=${musicId}`)
+      assert.deepEqual(removed.body, { ok: true })
+      assert.equal(existsSync(join(musicFolder, 'Song One.m4a')), false)
+      assert.deepEqual(readMusicFile().tracks, [])
+
+      // A music folder inside the checkout is not used at all, only reported: those
+      // files would be committed with the links, so the machine's own default folder
+      // takes its place and both halves say what happened.
+      config.musicDir.set(join(root, 'audio'))
+      handlers.get('loader/volatile-update')()
+      const warnedView = await askGit(musicRoute, 'GET', MUSIC_PATH)
+      assert.equal(warnedView.body.warning, 'inside-checkout')
+      assert.equal(warnedView.body.dir, join(home, 'little-icon', 'music'),
+        'a folder inside the checkout is reported, not used')
+      assert.equal(readMusicFile().warning, 'inside-checkout', 'and the pet is told as well')
+      assert.equal(readMusicFile().dir, join(home, 'little-icon', 'music'))
+      config.musicDir.set(musicFolder)
+      handlers.get('loader/volatile-update')()
+    } finally {
+      globalThis.fetch = hostFetch
+    }
+    // The whole feature stays on the machine the person is on: the repository's own
+    // settings file carries the links, and nothing else.
+    config.musicLinks.set([])
+    handlers.get('loader/volatile-update')()
+
     // The pet's right-click menu is drawn in another process, so the host relays
     // what it chooses: the page holds one stream open and receives a frame per
     // command. A command from before this host started is history, not a request.
@@ -2230,6 +2975,52 @@ $found
     }
     assert.equal(stream.frames.length, 2, 'a menu command must reach the open stream')
     assert.match(stream.frames[1], /^data: \{"command":"chat"\}\n\n$/)
+
+    // The menu's volume and link entries are configuration, and configuration is
+    // written through the settings service - which refuses any write made inside an
+    // HMR transaction, the context this Host's own timer runs in. Both commands
+    // therefore travel to the page, which writes them the way the card does, and the
+    // Host only answers for the links it can judge itself.
+    /** Write one menu command; wait for it to reach the page, or for this half to answer. */
+    const menuCommand = async (payload, forwarded) => {
+      const before = stream.frames.length
+      writeFileSync(join(home, 'little-icon', 'command.json'), `${JSON.stringify(payload)}\n`, 'utf8')
+      const deadline = Date.now() + (forwarded ? 5000 : 900)
+      while (stream.frames.length === before && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
+      return stream.frames.length > before ? stream.frames.at(-1) : undefined
+    }
+
+    const volumeBefore = config.musicVolume.get()
+    const volumeFrame = await menuCommand({ command: 'music-volume', at: Date.now() + 20, value: 21 }, true)
+    assert.equal(volumeFrame, 'data: {"command":"music-volume","value":21}\n\n',
+      'a volume the menu set must reach the page as a number')
+    assert.equal(config.musicVolume.get(), volumeBefore, 'the Host must not write the volume itself')
+    assert.equal(readMusicFile().volume, 21,
+      'the pet keeps the number the menu chose while the page writes it')
+    assert.notEqual(readMusicFile().notice?.kind, 'volume',
+      'and nothing is announced until the configuration carries it')
+
+    // A link nothing can parse, and a video the list already holds, are answered here:
+    // neither is written and neither is downloaded.
+    config.musicLinks.set([firstLink])
+    handlers.get('loader/volatile-update')()
+    assert.equal(await menuCommand({ command: 'music-add-link', at: Date.now() + 40, link: 'not a link' }, false),
+      undefined, 'a link that names no video must not reach the page')
+    assert.deepEqual(readMusicFile().notice,
+      { at: readMusicFile().notice.at, kind: 'add-failed', reason: 'unrecognized' })
+    const alreadyListed = `https://www.bilibili.com/video/${musicId}/?spm_id_from=333.1007`
+    assert.equal(await menuCommand({ command: 'music-add-link', at: Date.now() + 60, link: alreadyListed }, false),
+      undefined, 'a video the list already holds must not reach the page')
+    assert.equal(readMusicFile().notice.kind, 'duplicate', 'and the pet is told why')
+    assert.deepEqual(config.musicLinks.get(), [firstLink], 'the Host must not write the link list itself')
+
+    const added = 'https://www.bilibili.com/video/BV1MHeb6nEGx'
+    assert.equal(await menuCommand({ command: 'music-add-link', at: Date.now() + 80, link: added }, true),
+      `data: {"command":"music-add-link","link":"${added}"}\n\n`,
+      'a link the list does not hold must reach the page, which writes it')
+    assert.deepEqual(config.musicLinks.get(), [firstLink], 'and the Host still writes nothing itself')
 
     // An unchanged state must not rewrite the file on every poll (300ms here):
     // only the 4s heartbeat refreshes it, so 2.5s of sampling sees at most one

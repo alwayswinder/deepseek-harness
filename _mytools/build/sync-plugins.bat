@@ -89,7 +89,7 @@ set "SYNC_ATTR="
 for %%A in ("%SYNC_DEST%") do set "SYNC_ATTR=%%~aA"
 if not "%SYNC_ATTR:l=%"=="%SYNC_ATTR%" goto :eof
 
-for %%F in (index.js client.js cordis.patch.yml package.json README.md README.zh.md README.i18n.yaml bg.jpg) do (
+for %%F in (index.js music.js client.js cordis.patch.yml package.json README.md README.zh.md README.i18n.yaml bg.jpg) do (
     if exist "%SYNC_SRC%\%%F" (
         rem Comparing first keeps an unchanged plugin's timestamps alone, so a
         rem launch that changed nothing writes nothing.

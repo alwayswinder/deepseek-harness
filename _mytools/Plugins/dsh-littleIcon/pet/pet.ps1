@@ -490,6 +490,7 @@ function Get-Labels {
         MusicAddPrompt        = 'Paste a Bilibili link (a BV id or an address):'
         MusicVolumeSet        = 'Volume: {0}%'
         MusicAdded            = 'Added: {0}'
+        MusicAddedMany        = 'Added {0} songs; use Download missing to fetch them'
         MusicDuplicate        = 'That link is already in the list.'
         MusicAddFailed        = 'Could not add it ({0})'
     }
@@ -1501,6 +1502,7 @@ function Apply-MusicNotice($data) {
         'no-dir' { $text = $SCRIPT:Labels.MusicOpenFailed }
         'volume' { $text = $SCRIPT:Labels.MusicVolumeSet -f [int]$data.notice.percent }
         'added' { $text = $SCRIPT:Labels.MusicAdded -f [string]$data.notice.title }
+        'added-many' { $text = $SCRIPT:Labels.MusicAddedMany -f [int]$data.notice.count }
         'duplicate' { $text = $SCRIPT:Labels.MusicDuplicate }
         'add-failed' { $text = $SCRIPT:Labels.MusicAddFailed -f [string]$data.notice.reason }
         default { }

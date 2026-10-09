@@ -73,6 +73,7 @@
   "MusicAddPrompt": "粘贴 B站链接（BV 号或地址）：",
   "MusicVolumeSet": "音量：{0}%",
   "MusicAdded": "已添加：{0}",
+  "MusicAddedMany": "已加入 {0} 首；用「补全缺失歌曲」开始下载",
   "MusicDuplicate": "这条链接已经在列表里了。",
   "MusicAddFailed": "添加失败（{0}）"
 }

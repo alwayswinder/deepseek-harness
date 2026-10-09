@@ -145,7 +145,13 @@ const MUSIC_SYNC_PATH = '/api/little-icon/music/sync'
 /** POST `?url=`: download one link, for the one that was just added. */
 const MUSIC_DOWNLOAD_PATH = '/api/little-icon/music/download'
 
-/** POST `?id=`: forget one entry and delete its file. */
+/** POST `?url=`: every link one pasted link stands for, without downloading any. */
+const MUSIC_EXPAND_PATH = '/api/little-icon/music/expand'
+
+/** POST `?count=`: a set the page has just added, for the pet to say how many. */
+const MUSIC_ADDED_PATH = '/api/little-icon/music/added'
+
+/** POST `?id=`, or `?ids=` for a whole set: forget entries and delete their files. */
 const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
 
 /** POST `?action=`: ask the pet to play, pause, toggle, or step. */
@@ -2423,18 +2429,72 @@ export function apply(ctx, config) {
       },
     }), `little-icon: POST ${MUSIC_DOWNLOAD_PATH}`)
 
+    // What one pasted link stands for, before the page writes it into the settings.
+    // The reading of the link and the video's own facts stay on this side, which is
+    // the half that talks to Bilibili; the write stays on the page, because the
+    // settings service refuses a write made from this half's timer context.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_EXPAND_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        void serveJsonAsync(res, async () => {
+          const outcome = await musicLibrary().expand(queryOf(req).get('url') ?? '')
+          if (outcome.ok !== true) return outcome
+          // Only the links the settings do not already hold: one video has many
+          // spellings, and its id is what decides whether it is the same song.
+          const known = new Set(resolveMusicLinks(config.musicLinks.get())
+            .map(link => parseBilibiliRef(link))
+            .filter(ref => ref !== undefined)
+            .map(ref => musicEntryId(ref)))
+          const fresh = outcome.links.filter((link) => {
+            const ref = parseBilibiliRef(link)
+            return ref !== undefined && !known.has(musicEntryId(ref))
+          })
+          return { ...outcome, fresh, known: outcome.links.length - fresh.length }
+        })
+      },
+    }), `little-icon: POST ${MUSIC_EXPAND_PATH}`)
+
+    // A set the page added without downloading it: the pet says how many, so a paste
+    // that turned into a hundred rows does not look like nothing happened until the
+    // fill-in runs.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_ADDED_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        serveJson(res, () => {
+          const count = Number.parseInt(queryOf(req).get('count') ?? '', 10)
+          if (!Number.isSafeInteger(count) || count < 1) return { ok: false, reason: 'count' }
+          musicNotice = { at: Date.now(), kind: 'added-many', count }
+          publishMusic()
+          return { ok: true, count }
+        })
+      },
+    }), `little-icon: POST ${MUSIC_ADDED_PATH}`)
+
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
       path: MUSIC_REMOVE_PATH,
       handler: (req, res) => {
         if (!allowed(req, res, 'POST')) return
         serveJson(res, () => {
-          const outcome = musicLibrary().remove(queryOf(req).get('id') ?? '')
-          // The pet is playing from a list that just lost a row, so it is told now
+          const query = queryOf(req)
+          // One id, or a whole set's worth: dropping a hundred-part video a link at a
+          // time would be a hundred round trips for one decision.
+          const ids = [query.get('id') ?? '', ...(query.get('ids') ?? '').split(',')]
+            .map(text => text.trim())
+            .filter(text => text !== '')
+          if (ids.length === 0) return { ok: false, reason: 'empty' }
+          const outcomes = ids.map(id => musicLibrary().remove(id))
+          // The pet is playing from a list that just lost rows, so it is told now
           // rather than at the next download: a file that went away under it would
           // otherwise keep failing until something else published.
-          if (outcome.ok === true) publishMusic()
-          return outcome
+          if (outcomes.some(outcome => outcome.ok === true)) publishMusic()
+          if (outcomes.length === 1) return outcomes[0]
+          const removed = outcomes.filter(outcome => outcome.ok === true).length
+          return { ok: removed > 0, removed, failed: outcomes.length - removed }
         })
       },
     }), `little-icon: POST ${MUSIC_REMOVE_PATH}`)
@@ -2625,6 +2685,8 @@ export const internals = {
   MUSIC_PATH,
   MUSIC_SYNC_PATH,
   MUSIC_DOWNLOAD_PATH,
+  MUSIC_EXPAND_PATH,
+  MUSIC_ADDED_PATH,
   MUSIC_REMOVE_PATH,
   MUSIC_COMMAND_PATH,
   GIT_DIFF_MAX_CHARS,

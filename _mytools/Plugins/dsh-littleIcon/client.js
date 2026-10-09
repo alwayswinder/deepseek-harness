@@ -102,6 +102,10 @@ window.__ModuleLoader__.load({
     const MUSIC_PATH = '/api/little-icon/music'
     const MUSIC_SYNC_PATH = '/api/little-icon/music/sync'
     const MUSIC_DOWNLOAD_PATH = '/api/little-icon/music/download'
+    /** POST `?url=`: every link one pasted link stands for, without downloading any. */
+    const MUSIC_EXPAND_PATH = '/api/little-icon/music/expand'
+    /** POST `?count=`: a set this half just added, so the pet can say how many. */
+    const MUSIC_ADDED_PATH = '/api/little-icon/music/added'
     const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
     const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
 
@@ -124,6 +128,28 @@ window.__ModuleLoader__.load({
       const number = Number(value)
       if (!Number.isFinite(number)) return undefined
       return Math.max(0, Math.min(100, Math.round(number)))
+    }
+
+    /**
+     * The links one pasted link stands for, asked of the Host so that the parsing and
+     * the video's own facts stay on the half that talks to Bilibili. A bare video link
+     * covers its whole set — every part of a multi-part video, or the episodes of the
+     * collection it belongs to — while a link that names a part stays that part.
+     * Nothing is downloaded here: a set of a hundred songs is added long before it is
+     * fetched.
+     * @param request - fetches one Host path and answers its JSON.
+     * @param raw - the link as pasted.
+     * @returns `{ ok: true, title, links, fresh, total, known }`, or the Host's failure.
+     */
+    const expandMusicLink = async (request, raw) => {
+      const text = String(raw ?? '').trim()
+      if (text === '') return { ok: false, reason: 'empty' }
+      try {
+        return await request(`${MUSIC_EXPAND_PATH}?url=${encodeURIComponent(text)}`)
+      } catch (error) {
+        console.warn('little-icon: the Host could not expand the link', error)
+        return { ok: false, reason: 'network' }
+      }
     }
 
     /**
@@ -250,6 +276,13 @@ window.__ModuleLoader__.load({
       musicAdd: '添加',
       musicAdding: '正在解析并下载，请稍候…',
       musicAdded: '已添加：{title}',
+      musicSetAdded: '已加入 {count} 首；点上面的「补全缺失」开始下载',
+      musicSetCount: '{count} 首 · 已下载 {ready} 首',
+      musicSetOpen: '展开',
+      musicSetClose: '收起',
+      musicSetRemove: '删除整组',
+      musicSetRemoveFiles: '删除整组（{count} 个文件）',
+      musicSetRemovePartial: '有 {count} 个文件没能删除（可能正在播放）。',
       musicAlready: '这条链接已经在列表里了。',
       musicList: '歌曲列表',
       musicListEmpty: '还没有链接。粘贴一条 B站视频地址，它会下载成人声/伴奏完整的音频文件。',
@@ -424,6 +457,13 @@ window.__ModuleLoader__.load({
       musicAdd: 'Add',
       musicAdding: 'Resolving and downloading…',
       musicAdded: 'Added: {title}',
+      musicSetAdded: 'Added {count} songs; use Download missing to fetch them',
+      musicSetCount: '{count} songs · {ready} here',
+      musicSetOpen: 'Show songs',
+      musicSetClose: 'Hide songs',
+      musicSetRemove: 'Remove the set',
+      musicSetRemoveFiles: 'Remove the set ({count} files)',
+      musicSetRemovePartial: '{count} files were left in place (one may be playing).',
       musicAlready: 'That link is already in the list.',
       musicList: 'Songs',
       musicListEmpty: 'No links yet. Paste a Bilibili video address and its audio is downloaded as a file.',
@@ -573,6 +613,11 @@ window.__ModuleLoader__.load({
         'text-overflow:ellipsis;white-space:nowrap;}',
         '.dli-music-add{display:flex;gap:8px;align-items:center;}',
         '.dli-music-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;}',
+        '.dli-music-set{display:flex;flex-direction:column;gap:6px;padding-top:8px;',
+        'border-top:0.5px solid rgba(127,127,127,.25);}',
+        '.dli-music-set .dli-music-name{font-weight:600;}',
+        '.dli-music-set-buttons{display:flex;gap:6px;}',
+        '.dli-music-row-child{padding-left:14px;}',
         '.dli-music-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
         '.dli-music-state{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;}',
         '.dli-music-state[data-state="ready"]{color:var(--dsw-alias-state-success-primary);}',
@@ -753,6 +798,43 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The link rows folded into the sets they came from: a hundred parts of one video
+     * are one group rather than a hundred lines. A group of one stays a line, because a
+     * header above a single song is more to read, not less.
+     * @param rows - one row per link, in the configured order.
+     * @returns one group per source, in the order its first row appeared.
+     */
+    function musicGroups(rows) {
+      const groups = new Map()
+      for (const row of rows) {
+        // The entry id names the part — `BV…-p7` is the seventh part of `BV…` — and a
+        // row the Host has not answered about yet falls back to its own link.
+        const base = String(row.id !== '' ? row.id : row.link).replace(/-p\d+$/u, '')
+        const group = groups.get(base)
+        if (group === undefined) groups.set(base, { base, rows: [row] })
+        else group.rows.push(row)
+      }
+      return [...groups.values()]
+    }
+
+    /**
+     * What a set is called in the card: the video's own title, which every part of it
+     * repeats with ` - <part>` appended. A set with nothing readable left falls back to
+     * the link it came from.
+     * @param group - one `musicGroups` entry.
+     * @returns the title, never empty.
+     */
+    function musicSetTitle(group) {
+      for (const row of group.rows) {
+        const title = typeof row.title === 'string' ? row.title.trim() : ''
+        if (title === '') continue
+        const cut = title.lastIndexOf(' - ')
+        return cut > 0 ? title.slice(0, cut) : title
+      }
+      return group.base
+    }
+
+    /**
      * Why a download did not happen, in the reader's words. The Host answers with a
      * reason and the message the service gave it, so the reason picks the sentence and
      * the message is shown inside it rather than instead of it.
@@ -798,6 +880,9 @@ window.__ModuleLoader__.load({
       const [message, setMessage] = React.useState('')
       const [libraryError, setLibraryError] = React.useState('')
       const [link, setLink] = React.useState('')
+      // Which sets are unfolded. The songs are the detail behind a set's own line, so a
+      // hundred-part video does not push everything else off the card.
+      const [openSets, setOpenSets] = React.useState(() => ({}))
 
       /**
        * Read what the Host knows: the links' files, the sync, the pet's playing.
@@ -841,6 +926,9 @@ window.__ModuleLoader__.load({
 
       const links = Array.isArray(draft.musicLinks) ? draft.musicLinks : []
       const { rows, extras } = musicRows(library, links)
+      // One line per source rather than one per song: a set is what a person added, and
+      // the songs inside it are what they open when they want them.
+      const groups = musicGroups(rows)
       const ready = rows.filter(row => row.state === 'ready').length
       // What the Host counted is authoritative once it answered — it also knows about
       // a file a person deleted by hand — and the rows are the fallback before that.
@@ -869,19 +957,44 @@ window.__ModuleLoader__.load({
         setMessage(t('musicAdding'))
         // The list is config and the file is this machine's, so both are written here:
         // the list through the form (which is what the repository carries), the file
-        // through the Host route that resolves and downloads it.
-        write({ musicLinks: [...links, url] }, true)
-        try {
-          const result = await ask(`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(url)}`)
-          if (result.ok === true) {
-            setMessage(t('musicAdded', { title: typeof result.title === 'string' && result.title !== '' ? result.title : url }))
-            setLink('')
-          } else {
-            setMessage(musicReasonText(t, result))
-          }
-        } catch (error) {
-          setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+        // through the Host route that resolves and downloads it. One link can stand
+        // for a whole set, so the Host is asked what it means first and only the links
+        // the list does not already hold are added.
+        const outcome = await expandMusicLink(ask, url)
+        if (outcome?.ok !== true) {
+          setMessage(musicReasonText(t, outcome ?? { reason: 'network' }))
+          setBusy('')
+          return
         }
+        const fresh = Array.isArray(outcome.fresh) ? outcome.fresh : []
+        if (fresh.length === 0) {
+          setMessage(t('musicAlready'))
+          setBusy('')
+          return
+        }
+        write({ musicLinks: [...links, ...fresh] }, true)
+        if (fresh.length === 1) {
+          try {
+            const result = await ask(`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(fresh[0])}`)
+            if (result.ok === true) {
+              setMessage(t('musicAdded', { title: typeof result.title === 'string' && result.title !== '' ? result.title : fresh[0] }))
+            } else {
+              setMessage(musicReasonText(t, result))
+            }
+          } catch (error) {
+            setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+          }
+        } else {
+          // Added whole rather than fetched whole: the pet says how many, and the
+          // fill-in button above is what starts the downloads.
+          setMessage(t('musicSetAdded', { count: fresh.length }))
+          try {
+            await ask(`${MUSIC_ADDED_PATH}?count=${fresh.length}`)
+          } catch (error) {
+            console.warn('little-icon: the pet could not be told about the added songs', error)
+          }
+        }
+        setLink('')
         setBusy('')
         await reload()
       }
@@ -953,7 +1066,10 @@ window.__ModuleLoader__.load({
           },
         }, t('shotDirBrowse')))
 
-      const rowOf = (row, extra) => h('div', { className: 'dli-music-row', key: `${extra ? 'extra' : 'link'}-${row.id || row.link}` },
+      const rowOf = (row, extra, child = false) => h('div', {
+        className: child ? 'dli-music-row dli-music-row-child' : 'dli-music-row',
+        key: `${extra ? 'extra' : 'link'}-${row.id || row.link}`,
+      },
         h('span', { className: 'dli-music-name', title: row.link }, row.title !== '' ? row.title : row.link),
         h('span', { className: 'dli-music-state', 'data-state': row.state }, stateText(row.state)),
         h('button', {
@@ -961,6 +1077,47 @@ window.__ModuleLoader__.load({
           title: t('musicRemoveHint'),
           onClick: () => { void (extra ? removeFile(row) : removeRow(row)) },
         }, extra ? t('musicExtrasRemove') : t('musicRemove')))
+
+      /** Drop every link of one set, and this machine's files for the rows that have one. */
+      const removeSet = async (group) => {
+        const setLinks = group.rows.map(row => row.link)
+        write({ musicLinks: links.filter(entry => !setLinks.includes(entry)) }, true)
+        const ids = group.rows.map(row => row.id).filter(id => typeof id === 'string' && id !== '')
+        if (ids.length === 0) return
+        try {
+          const result = await ask(`${MUSIC_REMOVE_PATH}?ids=${encodeURIComponent(ids.join(','))}`)
+          if (result.ok !== true) setMessage(musicReasonText(t, result))
+          // One file the Host refused to delete — the one the pet is playing — leaves the
+          // rest of the set gone, so the line says what stayed rather than looking clean.
+          else if (result.failed > 0) setMessage(t('musicSetRemovePartial', { count: result.failed }))
+        } catch (error) {
+          setMessage(musicReasonText(t, { reason: 'network', message: String(error?.message ?? error) }))
+        }
+        await reload()
+      }
+
+      /**
+       * One set as a line of its own: what it is, how much of it is here, and the two
+       * things a set needs — opening, and going away in one step rather than a hundred.
+       */
+      const setRowOf = (group) => {
+        const open = openSets[group.base] === true
+        const ready = group.rows.filter(row => row.state === 'ready').length
+        return h('div', { className: 'dli-music-set', key: `set-${group.base}` },
+          h('div', { className: 'dli-music-row' },
+            h('span', { className: 'dli-music-name', title: group.base }, musicSetTitle(group)),
+            h('span', { className: 'dli-music-state' }, t('musicSetCount', { count: group.rows.length, ready })),
+            h('span', { className: 'dli-music-set-buttons' },
+              h('button', {
+                className: 'dli-button', type: 'button',
+                onClick: () => setOpenSets({ ...openSets, [group.base]: !open }),
+              }, open ? t('musicSetClose') : t('musicSetOpen')),
+              h('button', {
+                className: 'dli-button', type: 'button', disabled: !editable,
+                onClick: () => { void removeSet(group) },
+              }, ready > 0 ? t('musicSetRemoveFiles', { count: ready }) : t('musicSetRemove')))),
+          open ? group.rows.map(row => rowOf(row, false, true)) : null)
+      }
 
       const list = h('div', { className: 'dli-music' },
         h('div', { className: 'dli-music-now' },
@@ -981,7 +1138,8 @@ window.__ModuleLoader__.load({
             disabled: !editable || busy !== '' || syncing || link.trim() === '',
             onClick: () => { void addLink() },
           }, busy === 'add' ? t('musicAdding') : t('musicAdd'))),
-        rows.length === 0 ? h('div', { className: 'dli-hint' }, t('musicListEmpty')) : rows.map(row => rowOf(row, false)),
+        rows.length === 0 ? h('div', { className: 'dli-hint' }, t('musicListEmpty'))
+          : groups.map((group) => (group.rows.length === 1 ? rowOf(group.rows[0], false) : setRowOf(group))),
         h('div', { className: 'dli-music-foot' },
           h('button', {
             className: 'dli-button', type: 'button',
@@ -2082,6 +2240,12 @@ window.__ModuleLoader__.load({
           return Array.isArray(links) ? links : []
         }
 
+        /** Ask one music route on the Host and answer its JSON. */
+        const fetchMusicPath = async (path) => {
+          const response = await fetch(path, { method: 'POST' })
+          return await response.json()
+        }
+
         /**
          * Carry out one menu command the pet reported. The pet window belongs to
          * another process, so the page is what acts on a choice made there.
@@ -2165,17 +2329,27 @@ window.__ModuleLoader__.load({
             void writeMusicConfig({ musicVolume: percent })
           },
           'music-add-link': async ({ link }) => {
-            // The Host checked the link before forwarding it. What is left is the two
-            // steps the card's own add performs - write the list, then ask the Host to
-            // download it - and the Host answers the outcome above the pet, the way it
-            // answers the card in that row.
-            const url = String(link ?? '').trim()
-            const links = musicLinksNow()
-            if (!links.includes(url)) await writeMusicConfig({ musicLinks: [...links, url] })
+            // The Host checked the link before forwarding it. What is left is what the
+            // card's own add does: ask what the link stands for, write the links the
+            // list does not hold yet, and download it when it is a single one. A set is
+            // only added - the menu's fill-in entry starts those downloads.
+            const outcome = await expandMusicLink(fetchMusicPath, link)
+            if (outcome?.ok !== true) {
+              console.warn('little-icon: the menu link was not added: %s', String(outcome?.reason ?? 'network'))
+              return
+            }
+            const fresh = Array.isArray(outcome.fresh) ? outcome.fresh : []
+            if (fresh.length === 0) {
+              console.warn('little-icon: that link is already in the list: %s', String(link))
+              return
+            }
+            await writeMusicConfig({ musicLinks: [...musicLinksNow(), ...fresh] })
             try {
-              await fetch(`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(url)}`, { method: 'POST' })
+              await fetchMusicPath(fresh.length === 1
+                ? `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(fresh[0])}`
+                : `${MUSIC_ADDED_PATH}?count=${fresh.length}`)
             } catch (error) {
-              console.warn('little-icon: the Host could not be asked to download the link', error)
+              console.warn('little-icon: the Host could not be told about the added link', error)
             }
           },
         }

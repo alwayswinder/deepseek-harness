@@ -21,7 +21,8 @@ const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, withMusic, clampVolume, MUSIC_STATE, STATES, ACTIVITY_PATH, COMMANDS_PATH,
   GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH, OPEN_PATH,
-  MUSIC_PATH, MUSIC_SYNC_PATH, MUSIC_DOWNLOAD_PATH, MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH,
+  MUSIC_PATH, MUSIC_SYNC_PATH, MUSIC_DOWNLOAD_PATH, MUSIC_EXPAND_PATH, MUSIC_ADDED_PATH,
+  MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH,
   GIT_DIFF_MAX_CHARS, GIT_LOG_PAGE,
   parseGitStatus, parseGitLog, parseGitAuthors, parseGitCommitFiles,
   readGitRepository, readGitCommits, readGitRemoteStatus,
@@ -32,6 +33,7 @@ const {
 const {
   MusicLibrary, musicView, parseBilibiliRef, musicEntryId, sanitizeFileStem,
   resolveMusicDir, resolveMusicLinks, isInside, audioPayload,
+  videoLink, expandVideoLinks,
 } = await import('../music.js')
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -44,16 +46,41 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 // the download pipeline against a fetch double, so no test reaches Bilibili.
 
 // One video has many spellings and they all have to name the same entry: a watch
-// address with its part number, a bare id, an `av` id, and nothing at all.
+// address with its part number, a bare id, an `av` id, and nothing at all. Whether the
+// text named a part itself matters, because a bare link means the whole set.
 assert.deepEqual(parseBilibiliRef('https://www.bilibili.com/video/BV1GJ411x7h7?p=3&t=1'),
-  { kind: 'bvid', id: 'BV1GJ411x7h7', page: 3 })
-assert.deepEqual(parseBilibiliRef('BV1GJ411x7h7'), { kind: 'bvid', id: 'BV1GJ411x7h7', page: 1 })
-assert.deepEqual(parseBilibiliRef('av12345'), { kind: 'aid', id: '12345', page: 1 })
+  { kind: 'bvid', id: 'BV1GJ411x7h7', page: 3, named: true })
+assert.deepEqual(parseBilibiliRef('BV1GJ411x7h7'), { kind: 'bvid', id: 'BV1GJ411x7h7', page: 1, named: false })
+assert.deepEqual(parseBilibiliRef('https://www.bilibili.com/video/BV1GJ411x7h7?p=1'),
+  { kind: 'bvid', id: 'BV1GJ411x7h7', page: 1, named: true },
+  'a link that names the first part is still a link that named a part')
+assert.deepEqual(parseBilibiliRef('av12345'), { kind: 'aid', id: '12345', page: 1, named: false })
 assert.equal(parseBilibiliRef('https://example.com/watch?v=abc'), undefined)
 assert.equal(parseBilibiliRef('   '), undefined)
 assert.equal(musicEntryId({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 1 }), 'BV1GJ411x7h7')
 assert.equal(musicEntryId({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 2 }), 'BV1GJ411x7h7-p2',
   'two parts of one video are two entries, because they are two audio streams')
+
+// What one link stands for. A bare link covers the whole set it belongs to — every
+// part of a multi-part video, or the episodes of the collection it is in — and a link
+// that names a part stays that one part, which is the escape hatch from a set of a
+// hundred songs. This is what makes a collection one paste instead of a hundred.
+assert.deepEqual(videoLink({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 1 }), 'https://www.bilibili.com/video/BV1GJ411x7h7')
+assert.deepEqual(videoLink({ kind: 'aid', id: '12345', page: 4 }), 'https://www.bilibili.com/video/av12345?p=4')
+assert.deepEqual(expandVideoLinks(parseBilibiliRef('BV1GJ411x7h7'), { pages: 3 }),
+  ['https://www.bilibili.com/video/BV1GJ411x7h7',
+    'https://www.bilibili.com/video/BV1GJ411x7h7?p=2',
+    'https://www.bilibili.com/video/BV1GJ411x7h7?p=3'],
+  'a bare link to a multi-part video covers every part')
+assert.deepEqual(expandVideoLinks(parseBilibiliRef('BV1GJ411x7h7?p=2'), { pages: 3 }),
+  ['https://www.bilibili.com/video/BV1GJ411x7h7?p=2'],
+  'a link that names a part stays that part')
+assert.deepEqual(expandVideoLinks(parseBilibiliRef('BV1GJ411x7h7'), { pages: 1 }),
+  ['https://www.bilibili.com/video/BV1GJ411x7h7'], 'a single video is only itself')
+assert.deepEqual(expandVideoLinks(parseBilibiliRef('BV1GJ411x7h7'),
+  { pages: 2, season: { title: '专辑', episodes: [{ id: 'BV1xx411c7mD', title: '一' }, { id: 'BV1yy411c7mE', title: '二' }] } }),
+  ['https://www.bilibili.com/video/BV1xx411c7mD', 'https://www.bilibili.com/video/BV1yy411c7mE'],
+  'a video in a collection stands for the collection\'s episodes, not its own parts')
 
 // File names: Windows refuses some characters, a title can be longer than a file name
 // should be, and a title of nothing but those characters still has to leave a name.
@@ -1523,6 +1550,17 @@ globalThis.document = {
 }
 globalThis.fetch = (url, init) => {
   pings.push({ url, method: init?.method })
+  const path = String(url)
+  if (path.startsWith(MUSIC_EXPAND_PATH)) {
+    // A link that names a part stands for that part; a bare one stands for its whole
+    // set, which is what a multi-part video or a collection is.
+    const raw = decodeURIComponent(path.slice(path.indexOf('url=') + 4))
+    const links = raw.includes('?p=') ? [raw] : [raw, `${raw}?p=2`]
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, title: 'Set', links, fresh: links, total: links.length, known: 0 }),
+    })
+  }
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, root: '/repo', branch: 'main', changes: [], commits: [] }) })
 }
 /** Event streams the page opens; the test dispatches the Host's frames itself. */
@@ -1687,14 +1725,20 @@ try {
     'a volume the menu set is written to the configuration the way the card writes it')
   commands.onmessage({ data: `{"command":"music-add-link","link":"${menuLink}"}` })
   await new Promise((resolve) => setTimeout(resolve, 20))
-  assert.deepEqual(form.writes[1], { ops: [{ op: 'set', path: ['musicLinks'], value: [firstLink, menuLink] }], revision: 7 },
-    'an added link joins the list rather than replacing it')
-  assert.deepEqual(pings.at(-1), { url: `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(menuLink)}`, method: 'POST' },
-    'the Host is asked to download what was added')
+  assert.deepEqual(form.writes[1],
+    { ops: [{ op: 'set', path: ['musicLinks'], value: [firstLink, menuLink, `${menuLink}?p=2`] }], revision: 7 },
+    'a link that stands for a set joins the list whole rather than replacing it')
+  assert.deepEqual(pings.at(-1), { url: `${MUSIC_ADDED_PATH}?count=2`, method: 'POST' },
+    'a set is added rather than fetched: the Host is only told how many songs arrived')
+  // One song keeps the old behaviour: it is fetched as soon as it is added.
+  commands.onmessage({ data: `{"command":"music-add-link","link":"${menuLink}?p=2"}` })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(pings.at(-1), { url: `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(`${menuLink}?p=2`)}`, method: 'POST' },
+    'a single song is still downloaded at once')
   // A frame that names no volume is refused here rather than written as a number
   // nothing can use.
   commands.onmessage({ data: '{"command":"music-volume","value":"loud"}' })
-  assert.equal(form.writes.length, 2, 'a volume that is not a number changes nothing')
+  assert.equal(form.writes.length, 3, 'a volume that is not a number changes nothing')
   // The card's own writes are counted from the first one, so this probe leaves the
   // form as it found it.
   form.snapshot = formBefore
@@ -2126,8 +2170,8 @@ globalThis.fetch = async (url, options) => {
 /** One render of the section with the Host's answer and the form seeded, as above. */
 const renderMusic = (library, draft, extra = {}) => {
   // In the order the component reads them: the library, the busy flag, its message,
-  // the read error, and the box being typed in.
-  seeded.push(library, extra.busy ?? '', extra.message ?? '', extra.libraryError ?? '', extra.link ?? '')
+  // the read error, the box being typed in, and which sets are unfolded.
+  seeded.push(library, extra.busy ?? '', extra.message ?? '', extra.libraryError ?? '', extra.link ?? '', extra.openSets ?? {})
   return flatten(musicSectionType({
     t,
     editable: extra.editable ?? true,
@@ -2211,18 +2255,97 @@ assert.ok(strings(renderMusic(sampleLibrary, { musicLinks: [] }, { libraryError:
   .includes(t('musicReadFailed', { message: 'Failed to fetch' })),
 'a card that never read the library says so, with the reason')
 
-// Adding a link writes the list with it and downloads it through the Host.
+// Adding a link asks the Host what it stands for first, writes the list, and then
+// downloads it — one song here, because this link turned out to be one.
 musicWrites.length = 0
 musicFetches.length = 0
+musicAnswers.push({ ok: true, title: 'Set', links: ['https://b23.tv/xyz'], fresh: ['https://b23.tv/xyz'], total: 1, known: 0 })
 musicAnswers.push({ ok: true, id: 'BV3', title: 'Song Three' })
 const addElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'] }, { link: '  https://b23.tv/xyz  ' })
 addElements.find(node => node.type === 'button' && node.children?.includes(t('musicAdd'))).props.onClick()
 await new Promise((resolve) => setTimeout(resolve, 50))
 assert.deepEqual(musicWrites.at(-1).patch, { musicLinks: ['BV1', 'BV2', 'https://b23.tv/xyz'] },
   'adding appends the trimmed link')
-assert.deepEqual(askedUrls(),
-  [`${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent('https://b23.tv/xyz')}`],
-  "and downloads it, because the file is this machine's")
+assert.deepEqual(askedUrls(), [
+  `${MUSIC_EXPAND_PATH}?url=${encodeURIComponent('https://b23.tv/xyz')}`,
+  `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent('https://b23.tv/xyz')}`,
+], "so the link is resolved first and the one song it names is downloaded, because the file is this machine's")
+
+// A link that stands for a set — a multi-part video, or a collection — is added whole
+// and fetched by nobody yet: a hundred songs are one paste, and the fill-in button is
+// what starts those downloads.
+musicWrites.length = 0
+musicFetches.length = 0
+const setLink = 'https://www.bilibili.com/video/BV1BDk2YCEHF'
+musicAnswers.push({ ok: true, title: 'Set', links: [setLink, `${setLink}?p=2`], fresh: [setLink, `${setLink}?p=2`], total: 2, known: 0 })
+const setElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'] }, { link: setLink })
+setElements.find(node => node.type === 'button' && node.children?.includes(t('musicAdd'))).props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 50))
+assert.deepEqual(musicWrites.at(-1).patch, { musicLinks: ['BV1', 'BV2', setLink, `${setLink}?p=2`] },
+  'every part of the set joins the list in one write')
+assert.deepEqual(askedUrls(), [
+  `${MUSIC_EXPAND_PATH}?url=${encodeURIComponent(setLink)}`,
+  `${MUSIC_ADDED_PATH}?count=2`,
+], 'nothing is downloaded yet, and the pet is told how many songs arrived')
+
+// Long lists stay readable: the parts of one video are folded into the set they came
+// from — one line with how many songs it holds and how many are here — and its songs
+// are behind the toggle. A single song is left as the line it always was.
+const setLibrary = {
+  ...sampleLibrary,
+  // The files no link claims are covered above; here the list holds links only, so the
+  // line count is the links' own.
+  extras: [],
+  entries: [
+    { link: 'BV1', id: 'BV1', state: 'ready', title: '专辑 - 一', owner: 'up', durationMs: 1000, size: 10 },
+    { link: 'BV1?p=2', id: 'BV1-p2', state: 'missing', title: '专辑 - 二', owner: 'up', durationMs: 0, size: 0 },
+    { link: 'BV2', id: 'BV2', state: 'missing', title: '', owner: '', durationMs: 0, size: 0 },
+  ],
+}
+const setLinks = { musicLinks: ['BV1', 'BV1?p=2', 'BV2'] }
+const folded = renderMusic(setLibrary, setLinks)
+const setLine = folded.find(node => node.props?.className === 'dli-music-set')
+assert.ok(setLine !== undefined, 'a set of two songs is drawn as a set')
+assert.equal(folded.filter(node => node.props?.className === 'dli-music-row').length, 2,
+  'the set is one line and the single song is the other')
+assert.equal(folded.some(node => node.props?.className === 'dli-music-row-child'), false,
+  'a folded set shows none of its songs')
+const setText = strings(setLine)
+assert.ok(setText.includes('专辑'), 'the set is named by its own title, not by a part')
+assert.ok(setText.includes(t('musicSetCount', { count: 2, ready: 1 })), 'and says how much of it is here')
+assert.ok(setText.includes(t('musicSetOpen')), 'and offers to open it')
+
+// Open, its songs are the rows they always were — and the set's own button drops all of
+// them in one configuration write and one Host request, rather than a hundred.
+musicWrites.length = 0
+musicFetches.length = 0
+const opened = renderMusic(setLibrary, setLinks, { openSets: { BV1: true } })
+assert.equal(opened.filter(node => node.props?.className?.includes('dli-music-row-child')).length, 2,
+  'an open set shows its songs')
+const openText = strings(opened.find(node => node.props?.className === 'dli-music-set'))
+assert.ok(openText.includes(t('musicSetClose')), 'and offers to fold it again')
+await opened.find(node => node.props?.className === 'dli-music-set-buttons')
+  .children.find(node => node.type === 'button' && strings(node).includes(t('musicSetRemoveFiles', { count: 1 })))
+  .props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 20))
+assert.deepEqual(musicWrites.at(-1).patch, { musicLinks: ['BV2'] },
+  'removing a set drops every link of it')
+assert.deepEqual(askedUrls(), [`${MUSIC_REMOVE_PATH}?ids=${encodeURIComponent('BV1,BV1-p2')}`],
+  "and deletes this machine's files for the set in one request")
+
+// The size this exists for: what one pasted link can bring is a hundred and fifty
+// songs, and the card still shows one line for them.
+const manyEntries = Array.from({ length: 150 }, (_row, index) => ({
+  link: index === 0 ? 'BVbig' : `BVbig?p=${index + 1}`,
+  id: index === 0 ? 'BVbig' : `BVbig-p${index + 1}`,
+  state: 'missing', title: `专辑 - ${index + 1}`, owner: 'up', durationMs: 0, size: 0,
+}))
+const manyFolded = renderMusic({ ...sampleLibrary, extras: [], entries: manyEntries },
+  { musicLinks: manyEntries.map(row => row.link) })
+assert.equal(manyFolded.filter(node => node.props?.className === 'dli-music-row').length, 1,
+  'a hundred and fifty parts of one video are one line')
+assert.ok(strings(manyFolded).includes(t('musicSetCount', { count: 150, ready: 0 })),
+  'and the line says how many songs the set holds and how many are here')
 
 // A link that is already configured is refused without a request, and the one-click
 // fill-in is offered only while something is missing.
@@ -2563,6 +2686,109 @@ assert.equal(commands.closed, true, 'disposal must close the command stream')
 
 console.log('little-icon smoke: browser half ok')
 
+// ---- host half: one link, a whole set ---------------------------------------
+//
+// The pet's menu and the card hand the Host one pasted link and ask what it stands
+// for; the Host reads Bilibili and answers every link it means, which of those the
+// settings do not already hold, and how many songs arrived when the page adds them.
+// These run by default: neither needs a pet window, and the Bilibili answer is a
+// fetch double, so no test reaches the network.
+{
+  const home = mkdtempSync(join(tmpdir(), 'little-icon-expand-'))
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  const answeredFetch = globalThis.fetch
+  // One video of three parts, as `view` answers it. No test reaches the network.
+  const threeParts = {
+    code: 0,
+    data: {
+      title: '合集', cid: 1, owner: { name: 'up' }, duration: 10,
+      pages: [
+        { cid: 1, page: 1, part: '一', duration: 10 },
+        { cid: 2, page: 2, part: '二', duration: 10 },
+        { cid: 3, page: 3, part: '三', duration: 10 },
+      ],
+    },
+  }
+  /** Mount the host half with one `musicLinks` value and hand back its route answers. */
+  const mount = async (musicLinks) => {
+    const disposers = []
+    const routes = []
+    const fixed = (value) => ({ get: () => value })
+    const context = {
+      get: () => undefined,
+      logger: { info: () => {}, warn: () => {} },
+      on: () => () => {},
+      effect: (factory) => { disposers.push(factory()) },
+      inject: (_services, callback) => callback({
+        effect: (factory) => { disposers.push(factory()) },
+        settings: { configure: () => () => {} },
+        webServer: { register: (route) => { routes.push(route); return () => {} } },
+      }),
+    }
+    const refs = {
+      enabled: fixed(false), size: fixed(160), translucent: fixed(true), idleOpacity: fixed(0.5),
+      frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3_000), boredEverySeconds: fixed(60),
+      boredMs: fixed(60_000), sleepAfterSeconds: fixed(600), tuckWhenBehind: fixed(false),
+      shotDir: fixed(''), clickAction: fixed('toggle'), sites: fixed([]),
+      coopAddress: fixed(''), coopHotkey: fixed(''), coopAutoStart: fixed(false),
+      musicLinks: fixed(musicLinks), musicDir: fixed(''), musicVolume: fixed(70),
+    }
+    // A field this test does not name is read as unset rather than missing: the sample
+    // only needs the settings the routes and the publisher touch.
+    const config = new Proxy(refs, { get: (target, key) => target[key] ?? fixed(undefined) })
+    globalThis.fetch = () => Promise.resolve({ ok: true, json: () => Promise.resolve(threeParts) })
+    await apply(context, config)
+    return {
+      answer: (path, query) => new Promise((resolve) => {
+        const route = routes.find((row) => row.path === path)
+        assert.ok(route !== undefined, `the Host must register ${path}`)
+        route.handler({ method: 'POST', url: `${path}?${query}`, on: () => {} }, {
+          writeHead: () => {},
+          write: () => {},
+          end: (body) => resolve(typeof body === 'string' ? JSON.parse(body) : body),
+        })
+      }),
+      dispose: () => { for (const disposer of disposers.splice(0)) disposer() },
+    }
+  }
+  const link = 'https://www.bilibili.com/video/BV1GJ411x7h7'
+  try {
+    const empty = await mount([])
+    const expanded = await empty.answer(MUSIC_EXPAND_PATH, `url=${encodeURIComponent(link)}`)
+    assert.equal(expanded.ok, true, 'a link the Host can read must expand')
+    assert.equal(expanded.total, 3, 'a bare link covers every part of the video')
+    assert.deepEqual(expanded.fresh, expanded.links, 'and every part is new to an empty list')
+    assert.deepEqual(expanded.links, [link, `${link}?p=2`, `${link}?p=3`])
+    assert.equal(expanded.known, 0)
+
+    assert.deepEqual(await empty.answer(MUSIC_ADDED_PATH, 'count=150'), { ok: true, count: 150 })
+    const published = JSON.parse(readFileSync(join(home, 'little-icon', 'music.json'), 'utf8'))
+    assert.equal(published.notice?.kind, 'added-many', 'the pet is told a set arrived')
+    assert.equal(published.notice.count, 150, 'with how many songs came with it')
+    assert.deepEqual(await empty.answer(MUSIC_ADDED_PATH, 'count=0'), { ok: false, reason: 'count' },
+      'a count that is not a positive number is refused')
+    empty.dispose()
+
+    // One video has many spellings: the first part under a bare id is the same song as
+    // the same part with tracking parameters, and a part the list does not hold is new.
+    const held = await mount([link])
+    const already = await held.answer(MUSIC_EXPAND_PATH, `url=${encodeURIComponent(`${link}?p=1&spm_id_from=333`)}`)
+    assert.equal(already.total, 1, 'a link that names a part stays that part')
+    assert.deepEqual(already.fresh, [], 'a song the settings already hold is not offered again')
+    assert.equal(already.known, 1)
+    const second = await held.answer(MUSIC_EXPAND_PATH, `url=${encodeURIComponent(`${link}?p=2`)}`)
+    assert.deepEqual(second.fresh, [`${link}?p=2`], 'a part the settings do not hold is new')
+    held.dispose()
+  } finally {
+    globalThis.fetch = answeredFetch
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(home, { recursive: true, force: true })
+  }
+  console.log('little-icon smoke: link expansion ok')
+}
+
 // ---- host half, end to end (opt-in: it shows a real pet window) -------------
 
 if (process.argv.includes('--pet')) {
@@ -2740,6 +2966,7 @@ $found
         `exact ${GIT_PULL_PATH}`,
         `exact ${OPEN_PATH}`,
         `exact ${MUSIC_PATH}`, `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
+        `exact ${MUSIC_EXPAND_PATH}`, `exact ${MUSIC_ADDED_PATH}`,
         `exact ${MUSIC_REMOVE_PATH}`, `exact ${MUSIC_COMMAND_PATH}`])
 
     // The Git routes answer JSON for one directory and refuse everything else.

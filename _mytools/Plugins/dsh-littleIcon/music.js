@@ -69,18 +69,55 @@ const PAGE_PATTERN = /[?&]p=(\d+)/u
 /**
  * A Bilibili link or id as it identifies one playable item.
  * @param raw - the text a person pasted, or a resolved address.
- * @returns the id kind, the id itself, and the 1-based part of a multi-part video;
- *   undefined when the text names no video.
+ * @returns the id kind, the id itself, the 1-based part of a multi-part video, and
+ *   whether the text named that part itself (`?p=N`); undefined when the text names
+ *   no video. The distinction matters because a bare link means the whole set the
+ *   video belongs to (see expandVideoLinks).
  */
 export function parseBilibiliRef(raw) {
   const text = typeof raw === 'string' ? raw.trim() : ''
   if (text === '') return undefined
+  const named = PAGE_PATTERN.test(text)
   const page = Number.parseInt(PAGE_PATTERN.exec(text)?.[1] ?? '1', 10)
+  const part = Number.isSafeInteger(page) && page > 0 ? page : 1
   const bv = BV_PATTERN.exec(text)
-  if (bv !== null) return { kind: 'bvid', id: bv[0], page: Number.isSafeInteger(page) && page > 0 ? page : 1 }
+  if (bv !== null) return { kind: 'bvid', id: bv[0], page: part, named }
   const av = AV_PATTERN.exec(text)
-  if (av !== null) return { kind: 'aid', id: av[1], page: Number.isSafeInteger(page) && page > 0 ? page : 1 }
+  if (av !== null) return { kind: 'aid', id: av[1], page: part, named }
   return undefined
+}
+
+/**
+ * The canonical address of one parsed reference, so one item has one spelling no
+ * matter how it was pasted: what the settings hold and what the card shows.
+ * @param ref - parsed reference.
+ * @returns the address.
+ */
+export function videoLink(ref) {
+  const base = ref.kind === 'bvid'
+    ? `https://www.bilibili.com/video/${ref.id}`
+    : `https://www.bilibili.com/video/av${ref.id}`
+  return ref.page > 1 ? `${base}?p=${ref.page}` : base
+}
+
+/**
+ * Every item one link stands for. A link that named a part is that part alone; a
+ * bare link covers the whole set the video belongs to — the episodes of the UGC
+ * collection it is in when it is in one, otherwise every part of a multi-part video,
+ * and a single video is only itself.
+ * @param ref - parsed reference.
+ * @param info - the same reference's `videoInfo` result.
+ * @returns canonical links, in the set's own order, the first link last first.
+ */
+export function expandVideoLinks(ref, info) {
+  if (ref.named === true) return [videoLink(ref)]
+  const episodes = info?.season?.episodes ?? []
+  if (episodes.length > 0) {
+    return episodes.map(episode => videoLink({ kind: 'bvid', id: episode.id, page: 1, named: false }))
+  }
+  const total = Number.isSafeInteger(info?.pages) && info.pages > 1 ? info.pages : 1
+  if (total === 1) return [videoLink(ref)]
+  return Array.from({ length: total }, (_row, index) => videoLink({ ...ref, page: index + 1 }))
 }
 
 /**
@@ -335,6 +372,36 @@ export class MusicLibrary {
   }
 
   /**
+   * Resolve one pasted link to every item it stands for, so a collection or a
+   * multi-part video is added in a single step instead of a part at a time. Nothing
+   * is downloaded and nothing is written: the caller decides what to do with the
+   * links, and a set of a hundred songs is added long before it is fetched.
+   * @param raw - link text, or a bare `BV`/`av` id.
+   * @returns `{ ok: true, title, links, total, collection }`, or the same failure
+   *   reasons {@link MusicLibrary#download} reports.
+   */
+  async expand(raw) {
+    const link = typeof raw === 'string' ? raw.trim() : ''
+    if (link === '') return { ok: false, reason: 'empty' }
+    let ref = parseBilibiliRef(link)
+    if (ref === undefined) {
+      const resolved = await this.followLink(link)
+      if (!resolved.ok) return resolved
+      ref = resolved.ref
+    }
+    const info = await this.videoInfo(ref)
+    if (info.ok !== true) return info
+    const links = expandVideoLinks(ref, info)
+    return {
+      ok: true,
+      title: info.title,
+      links,
+      total: links.length,
+      collection: info.season?.title ?? '',
+    }
+  }
+
+  /**
    * The download itself, without the fill-in guard, for callers that own the
    * library while they run — the fill-in does.
    * @param raw - link text, or a bare `BV`/`av` id.
@@ -543,13 +610,26 @@ export class MusicLibrary {
     const title = typeof page?.part === 'string' && page.part.trim() !== '' && pages.length > 1
       ? `${String(data.title ?? '')} - ${page.part.trim()}`
       : String(data.title ?? '')
+    // A video that belongs to a UGC collection carries that whole collection in the
+    // same answer, its episodes grouped into sections; a bare link then covers all of
+    // them (see expandVideoLinks).
+    const season = data.ugc_season
+    const episodes = Array.isArray(season?.sections)
+      ? season.sections.flatMap(section => (Array.isArray(section?.episodes) ? section.episodes : []))
+      : []
+    const collection = episodes.filter(episode => typeof episode?.bvid === 'string' && BV_PATTERN.test(episode.bvid))
     return {
       ok: true,
       title,
       owner: String(data.owner?.name ?? ''),
       durationMs: Number.isFinite(page?.duration) ? page.duration * 1000 : Number(data.duration ?? 0) * 1000,
       cid,
-      url: `https://www.bilibili.com/video/${ref.kind === 'bvid' ? ref.id : `av${ref.id}`}${ref.page > 1 ? `?p=${ref.page}` : ''}`,
+      pages: pages.length,
+      season: collection.length === 0 ? null : {
+        title: String(season?.title ?? ''),
+        episodes: collection.map(episode => ({ id: BV_PATTERN.exec(episode.bvid)[0], title: String(episode.title ?? '') })),
+      },
+      url: videoLink(ref),
     }
   }
 

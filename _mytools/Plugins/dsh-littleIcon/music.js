@@ -101,6 +101,44 @@ export function videoLink(ref) {
 }
 
 /**
+ * The playlist one item belongs to. An episode of a collection belongs to the
+ * collection, everything else to its own video, so every part of one video — or every
+ * episode of one collection — is one playlist, which is what a single pasted link
+ * brings.
+ * @param ref - parsed reference.
+ * @param info - that reference's `videoInfo` result, when its video has been read.
+ * @returns the playlist id the index keys on, and the name it shows.
+ */
+export function playlistOf(ref, info) {
+  const season = info?.season
+  if (season !== undefined && season !== null && String(season.id ?? '') !== '') {
+    const title = String(season.title ?? '').trim()
+    return { id: `season-${season.id}`, title: title !== '' ? title : `season-${season.id}` }
+  }
+  // The video's own title when the answer carried it, which is exact. Otherwise the part
+  // is named `<video> - <part>`, sometimes `<video> - <part> - <artist>`, so the video is
+  // what is left of the FIRST separator: a part's own name may hold more of them, and
+  // stripping the last would make a playlist out of every single part.
+  const own = String(info?.videoTitle ?? '').trim()
+  if (own !== '') return { id: ref.id, title: own }
+  const title = String(info?.title ?? '').trim()
+  const cut = title.indexOf(' - ')
+  const name = cut > 0 ? title.slice(0, cut) : title
+  return { id: ref.id, title: name !== '' ? name : ref.id }
+}
+
+/**
+ * The folder one playlist's audio lives in, as a single path segment under the music
+ * directory: a playlist is a folder, so a hundred songs of one video sit together and
+ * can be moved or copied as one.
+ * @param playlist - a `playlistOf` result.
+ * @returns the directory name.
+ */
+export function playlistDirName(playlist) {
+  return sanitizeFileStem(playlist.title, playlist.id)
+}
+
+/**
  * Every item one link stands for. A link that named a part is that part alone; a
  * bare link covers the whole set the video belongs to — the episodes of the UGC
  * collection it is in when it is in one, otherwise every part of a multi-part video,
@@ -162,6 +200,27 @@ export function resolveMusicDir(raw, dshHome) {
 }
 
 /**
+ * The playlist an index entry belongs to. Entries recorded before playlists existed
+ * carry no name, so theirs comes from the title they already hold; the item's next
+ * download records the collection when its video is an episode of one.
+ * @param entry - one index entry.
+ * @returns the playlist id and the name it shows.
+ */
+export function playlistOfEntry(entry) {
+  if (typeof entry.playlist === 'string' && entry.playlist !== '') {
+    return { id: entry.playlist, title: String(entry.playlistTitle ?? entry.playlist) }
+  }
+  const video = String(entry.id ?? '').replace(/-p\d+$/u, '')
+  const title = String(entry.title ?? '').trim()
+  // The FIRST separator, not the last: a part's own name may carry more of them
+  // (`<video> - <part> - <artist>`), and stripping the last would name a playlist per
+  // part — a hundred folders for one video.
+  const cut = title.indexOf(' - ')
+  const name = cut > 0 ? title.slice(0, cut) : title
+  return { id: video !== '' ? video : String(entry.id ?? ''), title: name !== '' ? name : video }
+}
+
+/**
  * Whether a path is inside a directory tree, both being absolute and already
  * resolved. Used to refuse a music directory inside the checkout, where the files
  * would be committed; the comparison is case-insensitive because Windows is.
@@ -215,9 +274,11 @@ export function audioPayload(buffer) {
  * @property {string} title - video title.
  * @property {string} owner - uploader name.
  * @property {number} durationMs - video duration in milliseconds.
- * @property {string} file - file name inside the music directory.
+ * @property {string} file - path inside the music directory, playlist folder included.
  * @property {number} size - file size in bytes.
  * @property {string} addedAt - ISO timestamp of the download.
+ * @property {string} [playlist] - playlist id this entry belongs to.
+ * @property {string} [playlistTitle] - the playlist's name as it is shown.
  */
 
 /**
@@ -257,6 +318,7 @@ export class MusicLibrary {
     this.queue = Promise.resolve()
     this.indexStamp = -1
     this.load()
+    this.migrate()
   }
 
   /**
@@ -434,12 +496,14 @@ export class MusicLibrary {
       return { ok: false, reason: 'network', message: String(error?.message ?? error) }
     }
     const data = audioPayload(body)
-    const file = this.uniqueFileName(sanitizeFileStem(info.title, id))
+    const playlist = playlistOf(ref, info)
+    const folder = playlistDirName(playlist)
+    const file = this.uniqueFileName(sanitizeFileStem(info.title, id), folder)
     // Named and written with no await between them: two downloads that got this far
     // cannot both name the same file, because the first reserves it here.
     this.reserved.add(file)
     try {
-      mkdirSync(this.dir, { recursive: true })
+      mkdirSync(folder === '' ? this.dir : join(this.dir, folder), { recursive: true })
       writeFileSync(join(this.dir, file), data)
     } catch (error) {
       return { ok: false, reason: 'write', message: String(error?.message ?? error) }
@@ -457,6 +521,10 @@ export class MusicLibrary {
       file,
       size: data.length,
       addedAt: new Date().toISOString(),
+      // The playlist travels with the entry, so the card can group and the pet can be
+      // pointed at one without reading Bilibili again.
+      playlist: playlist.id,
+      playlistTitle: playlist.title,
     }
     this.entries[id] = entry
     this.save()
@@ -539,20 +607,49 @@ export class MusicLibrary {
   }
 
   /**
-   * A file name no entry uses yet, `_2`, `_3` and so on for a title that is already
+   * A file path no entry uses yet, `_2`, `_3` and so on for a title that is already
    * there — two videos may carry the same title, and neither may overwrite the
-   * other's audio.
+   * other's audio. The name is returned relative to the music directory, playlist
+   * folder included, which is exactly what the index stores.
    * @param stem - the sanitized title.
-   * @returns the file name.
+   * @param folder - the playlist's folder, or empty for the music directory itself.
+   * @returns the relative path.
    */
-  uniqueFileName(stem) {
+  uniqueFileName(stem, folder = '') {
+    const placed = (name) => (folder === '' ? name : `${folder}/${name}`)
     let file = `${stem}${MUSIC_AUDIO_EXTENSION}`
     let count = 2
-    while (existsSync(join(this.dir, file)) || this.reserved.has(file)) {
+    while (existsSync(join(this.dir, placed(file))) || this.reserved.has(placed(file))) {
       file = `${stem}_${count}${MUSIC_AUDIO_EXTENSION}`
       count += 1
     }
-    return file
+    return placed(file)
+  }
+
+  /**
+   * Move files recorded before playlists existed into their playlist folders: a rename
+   * inside one directory tree, so no audio is copied. A file that cannot be moved stays
+   * where it is and is served from there, and a file that is already gone is left for
+   * the next download to place correctly.
+   * @returns how many files were moved.
+   */
+  migrate() {
+    let moved = 0
+    for (const entry of Object.values(this.entries)) {
+      const folder = playlistDirName(playlistOfEntry(entry))
+      if (folder === '' || entry.file.includes('/') || !existsSync(join(this.dir, entry.file))) continue
+      if (existsSync(join(this.dir, folder, entry.file))) continue
+      try {
+        mkdirSync(join(this.dir, folder), { recursive: true })
+        renameSync(join(this.dir, entry.file), join(this.dir, folder, entry.file))
+        entry.file = `${folder}/${entry.file}`
+        moved += 1
+      } catch (error) {
+        this.logger?.warn('little-icon music: could not move %s into its playlist: %s', entry.file, String(error))
+      }
+    }
+    if (moved > 0) this.save()
+    return moved
   }
 
   /**
@@ -621,11 +718,14 @@ export class MusicLibrary {
     return {
       ok: true,
       title,
+      // The video's own title, before the part was appended: what names its playlist.
+      videoTitle: String(data.title ?? ''),
       owner: String(data.owner?.name ?? ''),
       durationMs: Number.isFinite(page?.duration) ? page.duration * 1000 : Number(data.duration ?? 0) * 1000,
       cid,
       pages: pages.length,
       season: collection.length === 0 ? null : {
+        id: season?.id ?? '',
         title: String(season?.title ?? ''),
         episodes: collection.map(episode => ({ id: BV_PATTERN.exec(episode.bvid)[0], title: String(episode.title ?? '') })),
       },
@@ -717,6 +817,7 @@ export function musicView({ links, entries, dir, warning = '', volume, sync, pla
     }
     claimed.add(entry.id)
     const ready = exists(join(dir, entry.file))
+    const playlist = playlistOfEntry(entry)
     rows.push({
       link,
       id: entry.id,
@@ -727,22 +828,29 @@ export function musicView({ links, entries, dir, warning = '', volume, sync, pla
       size: entry.size,
       url: entry.url,
       file: entry.file,
+      playlist: playlist.id,
+      playlistTitle: playlist.title,
       reason: failures.get(link)?.reason ?? '',
     })
   }
   const extras = Object.values(entries)
     .filter(entry => !claimed.has(entry.id))
-    .map(entry => ({
-      link: entry.source,
-      id: entry.id,
-      state: exists(join(dir, entry.file)) ? 'ready' : 'missing',
-      title: entry.title,
-      owner: entry.owner,
-      durationMs: entry.durationMs,
-      size: entry.size,
-      url: entry.url,
-      file: entry.file,
-    }))
+    .map((entry) => {
+      const playlist = playlistOfEntry(entry)
+      return {
+        link: entry.source,
+        id: entry.id,
+        state: exists(join(dir, entry.file)) ? 'ready' : 'missing',
+        title: entry.title,
+        owner: entry.owner,
+        durationMs: entry.durationMs,
+        size: entry.size,
+        url: entry.url,
+        file: entry.file,
+        playlist: playlist.id,
+        playlistTitle: playlist.title,
+      }
+    })
   return {
     dir,
     warning,

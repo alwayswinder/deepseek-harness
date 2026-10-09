@@ -272,6 +272,20 @@ window.__ModuleLoader__.load({
       musicDirPlaceholder: '留空 = DSH 自己的 little-icon/music',
       musicVolume: '音量',
       musicVolumeHint: '桌宠播放的音量；这一项跟着设置文件走，每台机器共用。',
+      groupPet: '桌宠',
+      groupSites: '常用网站',
+      groupMusic: '听歌',
+      groupLook: '外观',
+      groupBehavior: '行为',
+      groupShot: '截图',
+      groupCoop: '多机协同',
+      musicPlaylist: '歌单',
+      musicPlaylistHint: '桌宠播放哪个歌单；一条链接就是一个歌单，「全部」按库里所有歌的顺序放。',
+      musicPlaylistAll: '全部（{count} 个歌单）',
+      musicPlaylistAllValue: '全部',
+      musicPlaylistOption: '{title}（{count} 首）',
+      musicShuffle: '随机播放',
+      musicShuffleHint: '勾选后换歌在选中的歌单里随机挑一首，不按顺序。',
       musicAddPlaceholder: '粘贴 B站链接（BV号 / av号 / b23.tv 短链都行）',
       musicAdd: '添加',
       musicAdding: '正在解析并下载，请稍候…',
@@ -453,6 +467,20 @@ window.__ModuleLoader__.load({
       musicDirPlaceholder: 'Empty = DSH\'s own little-icon/music',
       musicVolume: 'Volume',
       musicVolumeHint: 'What the pet plays at; this one travels with the settings file, so both machines share it.',
+      groupPet: 'The pet',
+      groupSites: 'Sites',
+      groupMusic: 'Music',
+      groupLook: 'Appearance',
+      groupBehavior: 'Behaviour',
+      groupShot: 'Screenshots',
+      groupCoop: 'Multi-machine',
+      musicPlaylist: 'Playlist',
+      musicPlaylistHint: 'Which playlist the pet plays. One link is one playlist; All plays every song in the library.',
+      musicPlaylistAll: 'All ({count} playlists)',
+      musicPlaylistAllValue: 'All',
+      musicPlaylistOption: '{title} ({count} songs)',
+      musicShuffle: 'Shuffle',
+      musicShuffleHint: 'When ticked, the next song is drawn from the chosen playlist rather than being the next in line.',
       musicAddPlaceholder: 'Paste a Bilibili link (a BV id, an av id, or a b23.tv address)',
       musicAdd: 'Add',
       musicAdding: 'Resolving and downloading…',
@@ -581,8 +609,10 @@ window.__ModuleLoader__.load({
         'color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px;}',
         '.dli-row{display:flex;flex-direction:column;gap:6px;}',
         '.dli-head{display:flex;align-items:center;gap:8px;}',
-        '.dli-label{font-weight:600;}',
-        '.dli-value{margin-left:auto;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;}',
+        // Neither half of a row may be squeezed: a flex item that is allowed to shrink
+        // wraps one character per line, which is what a Chinese label then does.
+        '.dli-label{font-weight:600;flex:0 0 auto;white-space:nowrap;}',
+        '.dli-value{margin-left:auto;flex:0 0 auto;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;}',
         '.dli-hint{color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px;}',
         '.dli-slider{width:100%;}',
         '.dli-row[data-disabled="true"]{opacity:.5;}',
@@ -628,7 +658,19 @@ window.__ModuleLoader__.load({
         'border-top:0.5px solid rgba(127,127,127,.25);}',
         '.dli-music-warning{color:var(--dsw-alias-state-warn-label);font-size:11px;line-height:16px;}',
         '.dli-music-message{min-height:16px;}',
+        '.dli-details{padding-top:14px;border-top:0.5px solid rgba(127,127,127,.28);}',
         '.dli-details summary{cursor:pointer;color:var(--dsw-alias-label-secondary);}',
+        '.dli-section{display:flex;flex-direction:column;gap:6px;margin-top:2px;padding-top:14px;',
+        'border-top:0.5px solid rgba(127,127,127,.28);}',
+        // The card already starts below a divider of its own; the first group's rule would
+        // be a second line in the same place.
+        '.dli-section:first-child{border-top:0;padding-top:0;margin-top:0;}',
+        '.dli-section-head{display:flex;align-items:baseline;gap:8px;}',
+        '.dli-section-head .dli-hint{flex:1 1 auto;min-width:0;}',
+        // A group's name is a heading: larger than the rows under it, and it never shares
+        // its width with the hint beside it.
+        '.dli-section-title{font-size:15px;font-weight:600;letter-spacing:.01em;flex:0 0 auto;',
+        'white-space:nowrap;color:var(--dsw-alias-label-primary);}',
         '.dli-grid{display:flex;flex-direction:column;gap:14px;padding-top:12px;}',
         '.dli-status{font-size:11px;color:var(--dsw-alias-label-secondary);min-height:16px;}',
         '.dli-git{display:flex;flex:1 1 auto;flex-direction:column;gap:8px;height:100%;min-height:0;',
@@ -738,6 +780,20 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * The heading of one group of settings: a hairline, the group's name, and what the
+     * group is for. Nineteen rows in one column read as one setting each only until
+     * they are grouped; this is the line that says where one group ends.
+     * @param props - the group's name and its one-line explanation.
+     * @returns the heading element.
+     */
+    function Section(props) {
+      return h('div', { className: 'dli-section' },
+        h('div', { className: 'dli-section-head' },
+          h('span', { className: 'dli-section-title' }, props.title),
+          props.hint === undefined ? null : h('span', { className: 'dli-hint' }, props.hint)))
+    }
+
+    /**
      * One labelled control row.
      * @param props - label, hint, formatted value, the control itself, and whether
      *   a switch sits on the label's own line.
@@ -798,33 +854,38 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The link rows folded into the sets they came from: a hundred parts of one video
-     * are one group rather than a hundred lines. A group of one stays a line, because a
-     * header above a single song is more to read, not less.
+     * The link rows folded into the playlists they came from: a hundred parts of one
+     * video, or the episodes of one collection, are one line rather than a hundred. A
+     * playlist of one stays a line, because a header above a single song is more to
+     * read, not less.
      * @param rows - one row per link, in the configured order.
-     * @returns one group per source, in the order its first row appeared.
+     * @returns one group per playlist, in the order its first row appeared.
      */
     function musicGroups(rows) {
       const groups = new Map()
       for (const row of rows) {
-        // The entry id names the part — `BV…-p7` is the seventh part of `BV…` — and a
-        // row the Host has not answered about yet falls back to its own link.
-        const base = String(row.id !== '' ? row.id : row.link).replace(/-p\d+$/u, '')
+        // The playlist the Host recorded is what a person added; a row it has not
+        // answered about yet falls back to the video its id names.
+        const named = typeof row.playlist === 'string' && row.playlist !== ''
+        const base = String(named ? row.playlist : row.id !== '' ? row.id : row.link)
+          .replace(/-p\d+$/u, '')
         const group = groups.get(base)
-        if (group === undefined) groups.set(base, { base, rows: [row] })
-        else group.rows.push(row)
+        if (group !== undefined) group.rows.push(row)
+        else groups.set(base, { base, title: String(row.playlistTitle ?? ''), rows: [row] })
       }
       return [...groups.values()]
     }
 
     /**
-     * What a set is called in the card: the video's own title, which every part of it
-     * repeats with ` - <part>` appended. A set with nothing readable left falls back to
-     * the link it came from.
+     * What a playlist is called in the card: the name the Host recorded — a collection's
+     * own title, or the video's, which every part of it repeats with ` - <part>`
+     * appended. One with nothing readable left falls back to the link it came from.
      * @param group - one `musicGroups` entry.
      * @returns the title, never empty.
      */
     function musicSetTitle(group) {
+      const named = typeof group.title === 'string' ? group.title.trim() : ''
+      if (named !== '') return named
       for (const row of group.rows) {
         const title = typeof row.title === 'string' ? row.title.trim() : ''
         if (title === '') continue
@@ -926,9 +987,18 @@ window.__ModuleLoader__.load({
 
       const links = Array.isArray(draft.musicLinks) ? draft.musicLinks : []
       const { rows, extras } = musicRows(library, links)
-      // One line per source rather than one per song: a set is what a person added, and
-      // the songs inside it are what they open when they want them.
+      // One line per source rather than one per song: a playlist is what a person added,
+      // and the songs inside it are what they open when they want them.
       const groups = musicGroups(rows)
+      const playlistChoice = typeof draft.musicPlaylist === 'string'
+        && groups.some(group => group.base === draft.musicPlaylist) ? draft.musicPlaylist : ''
+      const selectedGroup = groups.find(group => group.base === playlistChoice)
+      /** What the playlist picker offers: everything, then one row per playlist. */
+      const playlistOptions = [
+        h('option', { value: '', key: 'all' }, t('musicPlaylistAll', { count: groups.length })),
+        ...groups.map(group => h('option', { value: group.base, key: group.base },
+          t('musicPlaylistOption', { title: musicSetTitle(group), count: group.rows.length }))),
+      ]
       const ready = rows.filter(row => row.state === 'ready').length
       // What the Host counted is authoritative once it answered — it also knows about
       // a file a person deleted by hand — and the rows are the fallback before that.
@@ -1138,6 +1208,25 @@ window.__ModuleLoader__.load({
             disabled: !editable || busy !== '' || syncing || link.trim() === '',
             onClick: () => { void addLink() },
           }, busy === 'add' ? t('musicAdding') : t('musicAdd'))),
+        // Which playlist the pet plays, and whether it draws from it at random. A
+        // selection whose links are gone falls back to everything rather than leaving
+        // the pet with nothing, and the Host does the same on its side.
+        h(Row, {
+          label: t('musicPlaylist'),
+          value: playlistChoice === '' ? t('musicPlaylistAllValue') : musicSetTitle(selectedGroup ?? { base: playlistChoice, title: '', rows: [] }),
+          text: t('musicPlaylistHint'), disabled: !editable,
+          control: h('select', {
+            className: 'dli-select', disabled: !editable, value: playlistChoice,
+            onChange: (event) => write({ musicPlaylist: event.target.value }, true),
+          }, playlistOptions),
+        }),
+        h(Row, {
+          label: t('musicShuffle'), text: t('musicShuffleHint'), inline: true, disabled: !editable,
+          control: h('input', {
+            type: 'checkbox', disabled: !editable, checked: draft.musicShuffle === true,
+            onChange: (event) => write({ musicShuffle: event.target.checked }, true),
+          }),
+        }),
         rows.length === 0 ? h('div', { className: 'dli-hint' }, t('musicListEmpty'))
           : groups.map((group) => (group.rows.length === 1 ? rowOf(group.rows[0], false) : setRowOf(group))),
         h('div', { className: 'dli-music-foot' },
@@ -1293,18 +1382,16 @@ window.__ModuleLoader__.load({
       })
 
       return h('div', { className: 'dli-page' },
+        Section({ title: t('groupPet') }),
         h(Row, {
           label: t('enable'), text: t('enableHint'), inline: true, disabled: !editable,
           control: h('input', toggle('enabled')),
         }),
-        h(Row, {
-          label: t('sites'), text: t('sitesHint'), disabled: !editable,
-          control: sitesControl,
-        }),
-        h(Row, {
-          label: t('music'), text: t('musicHint'), disabled: !editable,
-          control: musicSection,
-        }),
+        Section({ title: t('groupSites'), hint: t('sitesHint') }),
+        sitesControl,
+        Section({ title: t('groupMusic'), hint: t('musicHint') }),
+        musicSection,
+        Section({ title: t('groupLook') }),
         h(Row, {
           label: t('size'), value: t('pixels', { value: draft.size }), text: t('sizeHint'), disabled: !editable,
           control: h('input', { min: SIZE.min, max: SIZE.max, step: SIZE.step, ...slider('size') }),
@@ -1326,6 +1413,7 @@ window.__ModuleLoader__.load({
           label: t('topmost'), text: t('topmostHint'), inline: true, disabled: !editable,
           control: h('input', toggle('topmost')),
         }),
+        Section({ title: t('groupBehavior') }),
         h(Row, {
           label: t('click'), text: t('clickHint'), disabled: !editable,
           control: h('select', {
@@ -1353,28 +1441,28 @@ window.__ModuleLoader__.load({
           label: t('pace'), value: t('milliseconds', { value: draft.frameMs }), text: t('paceHint'), disabled: !editable,
           control: h('input', { min: FRAME_MS.min, max: FRAME_MS.max, step: FRAME_MS.step, ...slider('frameMs') }),
         }),
+        Section({ title: t('groupShot') }),
         h(Row, {
           label: t('shotDir'), text: t('shotDirHint'), disabled: !editable,
           control: shotDirControl,
         }),
-        h(Row, {
-          label: t('coop'), text: t('coopHint'), disabled: !editable,
-          control: h('div', { className: 'dli-pair' },
-            h('input', {
-              className: 'dli-text', type: 'text', disabled: !editable,
-              value: draft.coopAddress ?? '', placeholder: t('coopAddressPlaceholder'),
-              onChange: (event) => setDraft((current) => ({ ...current, coopAddress: event.target.value })),
-              onBlur: (event) => write({ coopAddress: event.target.value.trim() }, true),
-              onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
-            }),
-            h('input', {
-              className: 'dli-text', type: 'text', disabled: !editable,
-              value: draft.coopHotkey ?? '', placeholder: 'ctrl+alt+f12',
-              title: t('coopHotkeyHint'),
-              onChange: (event) => setDraft((current) => ({ ...current, coopHotkey: event.target.value })),
-              onBlur: (event) => write({ coopHotkey: event.target.value.trim() }, true),
-              onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
-            }))}),
+        Section({ title: t('groupCoop'), hint: t('coopHint') }),
+        h('div', { className: 'dli-pair' },
+          h('input', {
+            className: 'dli-text', type: 'text', disabled: !editable,
+            value: draft.coopAddress ?? '', placeholder: t('coopAddressPlaceholder'),
+            onChange: (event) => setDraft((current) => ({ ...current, coopAddress: event.target.value })),
+            onBlur: (event) => write({ coopAddress: event.target.value.trim() }, true),
+            onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+          }),
+          h('input', {
+            className: 'dli-text', type: 'text', disabled: !editable,
+            value: draft.coopHotkey ?? '', placeholder: 'ctrl+alt+f12',
+            title: t('coopHotkeyHint'),
+            onChange: (event) => setDraft((current) => ({ ...current, coopHotkey: event.target.value })),
+            onBlur: (event) => write({ coopHotkey: event.target.value.trim() }, true),
+            onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+          })),
         h(Row, {
           label: t('coopAutoStart'), text: t('coopAutoStartHint'), inline: true, disabled: !editable,
           control: h('input', toggle('coopAutoStart')),

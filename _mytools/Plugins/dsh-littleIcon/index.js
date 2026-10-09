@@ -50,7 +50,7 @@ import { homedir, networkInterfaces } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
-import { MusicLibrary, musicView, isInside, musicEntryId, parseBilibiliRef, resolveMusicDir, resolveMusicLinks } from './music.js'
+import { MusicLibrary, musicView, isInside, musicEntryId, parseBilibiliRef, playlistOf, playlistOfEntry, resolveMusicDir, resolveMusicLinks } from './music.js'
 
 export const name = 'little-icon'
 
@@ -307,6 +307,14 @@ export const Config = z.object({
   musicDir: z.string().default('').volatile(),
   /** Volume the pet plays at, 0-100. */
   musicVolume: z.number().step(1).min(0).max(100).default(70).volatile(),
+  /**
+   * Which playlist the pet plays: blank plays every downloaded song, a playlist id
+   * plays that one. One link is one playlist — every part of a video, or every episode
+   * of a collection — and its files sit together in that playlist's own folder.
+   */
+  musicPlaylist: z.string().default('').volatile(),
+  /** Whether the next song is drawn at random from the playlist being played. */
+  musicShuffle: z.boolean().default(false).volatile(),
 })
 
 /**
@@ -1685,28 +1693,54 @@ export function apply(ctx, config) {
     const { dir, warning } = musicDirNow()
     const current = musicLibrary()
     const links = resolveMusicLinks(config.musicLinks.get())
+    const selected = config.musicPlaylist.get()
+    const shuffle = config.musicShuffle.get() === true
+    // The playlist being played is the list the pet gets, so "next" steps inside it.
+    // Every playlist the links name is published too, whether or not its songs are here
+    // yet, because the card offers what a person can choose.
     const tracks = []
     const seen = new Set()
-    /** Links this machine has no playable file for, counted per link rather than per
-     * video: two spellings of one link are one track but two rows to satisfy. */
+    const playlists = new Map()
+    /** Links this machine has no playable file for, counted per song rather than per
+     * link spelling: two spellings of one song are one thing to download. */
     let missing = 0
     for (const link of links) {
+      const ref = parseBilibiliRef(link)
       const entry = current.entryForLink(link)
+      const playlist = entry === undefined
+        ? playlistOf(ref ?? { kind: 'bvid', id: link }, undefined)
+        : playlistOfEntry(entry)
+      const row = playlists.get(playlist.id)
+        ?? { id: playlist.id, title: playlist.title, tracks: 0, ready: 0 }
+      playlists.set(playlist.id, row)
+      const key = entry === undefined ? (ref === undefined ? link : musicEntryId(ref)) : entry.id
+      if (seen.has(key)) continue
+      seen.add(key)
       const path = entry === undefined ? undefined : current.filePath(entry.id)
+      row.tracks += 1
       if (path === undefined) {
+        // Counted for the library, not the playlist: the fill-in downloads every missing
+        // link, whichever playlist is being played.
         missing += 1
         continue
       }
-      if (seen.has(entry.id)) continue
-      seen.add(entry.id)
-      tracks.push({ id: entry.id, title: entry.title, file: path })
+      row.ready += 1
+      tracks.push({ id: entry.id, title: entry.title, file: path, playlist: playlist.id })
     }
+    // The playlist the pet gets, and the one a person picked when it still exists: a
+    // selection whose links were all removed falls back to everything rather than
+    // leaving the pet with nothing to play.
+    const selectedKnown = selected === '' || playlists.has(selected)
+    const scoped = selectedKnown ? tracks.filter(track => selected === '' || track.playlist === selected) : tracks
     musicWriter.write({
       version: 1,
       dir,
       warning,
       volume,
-      tracks,
+      tracks: scoped,
+      playlists: [...playlists.values()],
+      playlist: selectedKnown ? selected : '',
+      shuffle,
       missing,
       sync: current.progress,
       command: musicCommand,

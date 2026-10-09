@@ -33,7 +33,7 @@ const {
 const {
   MusicLibrary, musicView, parseBilibiliRef, musicEntryId, sanitizeFileStem,
   resolveMusicDir, resolveMusicLinks, isInside, audioPayload,
-  videoLink, expandVideoLinks,
+  videoLink, expandVideoLinks, playlistOf, playlistOfEntry, playlistDirName,
 } = await import('../music.js')
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -81,6 +81,36 @@ assert.deepEqual(expandVideoLinks(parseBilibiliRef('BV1GJ411x7h7'),
   { pages: 2, season: { title: '专辑', episodes: [{ id: 'BV1xx411c7mD', title: '一' }, { id: 'BV1yy411c7mE', title: '二' }] } }),
   ['https://www.bilibili.com/video/BV1xx411c7mD', 'https://www.bilibili.com/video/BV1yy411c7mE'],
   'a video in a collection stands for the collection\'s episodes, not its own parts')
+
+// One link is one playlist: an episode belongs to its collection, everything else to its
+// own video — so a part's playlist is its video, and the folder is named after whichever
+// it is. This is what the card groups by and what the picker offers.
+assert.deepEqual(playlistOf({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 3, named: true }, { title: '专辑 - 三' }),
+  { id: 'BV1GJ411x7h7', title: '专辑' }, 'a part belongs to its video, named without the part')
+assert.deepEqual(playlistOf({ kind: 'bvid', id: 'BV1GJ411x7h7', page: 1, named: false }, { title: '一首歌' }),
+  { id: 'BV1GJ411x7h7', title: '一首歌' }, 'a video of one part is named by its own title')
+// A part's own name may hold a separator of its own, which is why the video is what is
+// left of the FIRST one: stripping the last would give one playlist per part.
+assert.deepEqual(playlistOf({ kind: 'bvid', id: 'BV1many00000', page: 5, named: true },
+  { title: '一百首 - 005. 歌名 - 歌手' }),
+{ id: 'BV1many00000', title: '一百首' }, 'a part named with an artist still belongs to its video')
+assert.deepEqual(playlistOf({ kind: 'bvid', id: 'BV1many00000', page: 5, named: true },
+  { title: '一百首 - 005. 歌名 - 歌手', videoTitle: '一百首' }),
+{ id: 'BV1many00000', title: '一百首' }, 'and the video title the answer carried is exact')
+assert.deepEqual(playlistOfEntry({ id: 'BV1many00000-p5', title: '一百首 - 005. 歌名 - 歌手' }),
+  { id: 'BV1many00000', title: '一百首' },
+  'an entry recorded earlier is named the same way, or one video becomes a hundred folders')
+assert.deepEqual(playlistOf({ kind: 'bvid', id: 'BV1ep000000', page: 1, named: false },
+  { title: '第一集', season: { id: 4210, title: '整套合集', episodes: [] } }),
+{ id: 'season-4210', title: '整套合集' }, 'an episode belongs to its collection, not to itself')
+assert.deepEqual(playlistDirName({ id: 'BV1GJ411x7h7', title: '专辑/名: 字' }), '专辑_名_ 字',
+  'a playlist folder is a safe file name')
+assert.deepEqual(playlistDirName({ id: 'BV1GJ411x7h7', title: '' }), 'BV1GJ411x7h7',
+  'and a playlist with no readable name falls back to its id')
+assert.deepEqual(playlistOfEntry({ id: 'BV1o-p7', title: 'Old Video - 7' }), { id: 'BV1o', title: 'Old Video' },
+  'an entry recorded before playlists existed is named from the title it holds')
+assert.deepEqual(playlistOfEntry({ id: 'BV1o', title: 'Kept', playlist: 'season-9', playlistTitle: '合集' }),
+  { id: 'season-9', title: '合集' }, 'and one that recorded its playlist keeps it')
 
 // File names: Windows refuses some characters, a title can be longer than a file name
 // should be, and a title of nothing but those characters still has to leave a name.
@@ -223,11 +253,14 @@ const downloaded = await library.download(firstLink)
 assert.equal(downloaded.ok, true)
 assert.equal(downloaded.title, 'Song One')
 assert.ok(musicCalls.includes('https://audio.example/best.m4a'), 'the 30280 stream is the one taken')
-assert.equal(readFileSync(join(musicDir, 'Song One.m4a'), 'latin1'), audioBody.toString('latin1'),
-  'the payload lands in the music directory under the title')
+assert.equal(readFileSync(join(musicDir, 'Song One', 'Song One.m4a'), 'latin1'), audioBody.toString('latin1'),
+  'the payload lands in the playlist folder under the title')
 const entry = library.entries[downloaded.id]
 assert.equal(entry.owner, 'Uploader')
 assert.equal(entry.durationMs, 12_000)
+assert.equal(entry.file, 'Song One/Song One.m4a', 'and the index names the path inside that folder')
+assert.equal(entry.playlist, 'BV1GJ411x7h7', 'the video is the playlist this song came from')
+assert.equal(entry.playlistTitle, 'Song One', 'and the playlist is named after it')
 assert.equal(entry.source, firstLink, 'the link text is kept, because that is what a short address has to match on')
 assert.equal(existsSync(join(musicHome, 'music-index.json')), true, 'and the index names the file')
 
@@ -251,9 +284,39 @@ assert.equal((await library.download('BV1fail00000')).message, '稿件不可见'
 // Removing an entry deletes its file and its record; an id nobody recorded is
 // refused rather than silently accepted.
 assert.deepEqual(library.remove(downloaded.id), { ok: true })
-assert.equal(existsSync(join(musicDir, 'Song One.m4a')), false)
+assert.equal(existsSync(join(musicDir, 'Song One', 'Song One.m4a')), false)
 assert.equal(library.entries[downloaded.id], undefined)
 assert.deepEqual(library.remove('BV1nope'), { ok: false, reason: 'unknown' })
+
+// A library recorded before playlists existed keeps its files: they move into the
+// playlist folder on the next look, with no audio copied and the index naming the new
+// path, and one whose file is already gone is left for the next download to place.
+const legacyHome = mkdtempSync(join(tmpdir(), 'little-icon-music-legacy-'))
+const legacyDir = join(legacyHome, 'audio')
+mkdirSync(legacyDir, { recursive: true })
+writeFileSync(join(legacyDir, 'Old Song.m4a'), 'audio')
+writeFileSync(join(legacyHome, 'music-index.json'), `${JSON.stringify({
+  version: 1,
+  entries: {
+    BV1old000000: {
+      id: 'BV1old000000', source: 'BV1old000000', url: '', title: 'Old Song', owner: '',
+      durationMs: 0, file: 'Old Song.m4a', size: 5, addedAt: '2026-01-01T00:00:00.000Z',
+    },
+    BV1gone00000: {
+      id: 'BV1gone00000', source: 'BV1gone00000', url: '', title: 'Gone Song', owner: '',
+      durationMs: 0, file: 'Gone Song.m4a', size: 5, addedAt: '2026-01-01T00:00:00.000Z',
+    },
+  },
+}, null, 2)}\n`, 'utf8')
+const migrated = new MusicLibrary({ dataDir: legacyHome, dir: legacyDir, logger: musicLogger, fetchImpl: musicFetch })
+assert.equal(existsSync(join(legacyDir, 'Old Song', 'Old Song.m4a')), true,
+  'a file recorded before playlists existed moves into its playlist folder')
+assert.equal(existsSync(join(legacyDir, 'Old Song.m4a')), false, 'and is not left behind as a copy')
+assert.equal(migrated.entries.BV1old000000.file, 'Old Song/Old Song.m4a', 'the index names where it went')
+assert.equal(migrated.entries.BV1old000000.playlist, undefined, 'an old entry is named from what it holds')
+assert.equal(migrated.filePath('BV1old000000'), join(legacyDir, 'Old Song', 'Old Song.m4a'),
+  'and the library serves it from there')
+assert.equal(migrated.entries.BV1gone00000.file, 'Gone Song.m4a', 'a file that is already gone is left alone')
 
 // The one-click fill-in of a machine that pulled the link list: the links it has no
 // file for are downloaded, one whose video cannot be read is reported and does not
@@ -357,9 +420,13 @@ bodyGate.resolve()
 const raced = await Promise.all([raceFirst, raceSecond])
 assert.deepEqual(raced.map(result => result.ok), [true, true])
 const racedFiles = Object.values(raceLibrary.entries).map(entry => entry.file).sort()
-assert.deepEqual(racedFiles, ['Same Title.m4a', 'Same Title_2.m4a'],
+// Two videos that happen to share a title also share the folder that title names, which
+// is why the file name itself still has to be unique.
+assert.deepEqual(racedFiles, ['Same Title/Same Title.m4a', 'Same Title/Same Title_2.m4a'],
   'two videos with one title must not be written over one another')
 assert.deepEqual(racedFiles.map(file => existsSync(join(raceHome, 'audio', file))), [true, true])
+assert.deepEqual(Object.values(raceLibrary.entries).map(entry => entry.playlist).sort(),
+  ['BV1race00001', 'BV1race00002'], 'and each stays in its own playlist')
 
 // Asking for the same video twice in a row is a duplicate rather than an error: the
 // card says "already in the list" and nothing is downloaded again.
@@ -855,7 +922,7 @@ if (process.platform === 'win32') {
   // download entry's count, and the two commands that leave this process.
   const musicMenu = /music-menu: (.*)/.exec(selfTest.stdout)
   assert.ok(musicMenu !== null, 'the self test must report the music submenu')
-  const [musicReady, musicPlaying, musicSyncing, musicMissing, musicEmpty, musicFolder, musicSyncClick, musicVolume, musicSlider, musicSliderCommit, musicSliderLabel, musicPresetCommit] =
+  const [musicReady, musicPlaying, musicSyncing, musicMissing, musicEmpty, musicFolder, musicSyncClick, musicVolume, musicSlider, musicSliderCommit, musicSliderLabel, musicPresetCommit, musicShuffle, musicOrder] =
     musicMenu[1].trim().split(' >> ')
   assert.equal(musicReady.split('|')[0], `ToolStripMenuItem=${labels.MusicReady.replace('{0}', 'Song A')}[False]`,
     'a track that has not been started says which one it is and that it is ready')
@@ -892,6 +959,12 @@ if (process.platform === 'win32') {
   assert.equal(musicSliderLabel, 'slider-label=55%', 'and the row shows the value it is on')
   assert.equal(musicPresetCommit, 'preset-commit=music-volume:0',
     'a preset moves the same slider and is written the same way')
+  // Shuffled, "next" draws a song rather than stepping to one, and never the song
+  // already playing; unshuffled the same two presses walk the list in order. Both are
+  // read from the picker, because a probe must not open a file it does not have.
+  assert.equal(musicShuffle, 'shuffle=read=on:1,0 changed=True',
+    'a shuffled playlist is read from the host and its next song is never the current one')
+  assert.equal(musicOrder, 'order=1,0', 'and without shuffle the list is walked in order')
   // Adding and removing links belongs to the settings card, where a text field and a
   // list can be shown; the pet's submenu carries playback and the volume only, so the
   // entry and the label it needed are both gone.
@@ -2122,6 +2195,18 @@ assert.deepEqual(siteProblems([{ name: 'Local', url: 'file:///C:/notes.txt' }]).
 assert.equal(siteProblems([{ name: 'ok', url: 'ok.test' }, { name: 'blank', url: '' }]).length, 0,
   'a usable address, and a row nobody filled in yet, are both left alone')
 
+// The card's settings are grouped: nineteen rows in one column read as one setting each,
+// so every group is named by a heading with a hairline above it, in the order a person
+// reads them. The advanced group keeps its own collapsible summary instead.
+const pageNodes = flatten(render({ musicLinks: ['BV1'] }))
+assert.deepEqual(pageNodes
+  .filter(node => node.props?.className === 'dli-section')
+  .map(node => node.children[0].children[0].children[0]),
+[t('groupPet'), t('groupSites'), t('groupMusic'), t('groupLook'), t('groupBehavior'), t('groupShot'), t('groupCoop')],
+'the card names each group of settings')
+assert.ok(pageNodes.some(node => node.props?.className === 'dli-details'),
+  'and the advanced group is still a group of its own')
+
 // ---- music section of the card ----------------------------------------------
 //
 // The section is a component of its own, so the card test above never runs it; it is
@@ -2330,6 +2415,36 @@ assert.equal(manyFolded.filter(node => node.props?.className === 'dli-music-row'
   'a hundred and fifty parts of one video are one line')
 assert.ok(strings(manyFolded).includes(t('musicSetCount', { count: 150, ready: 0 })),
   'and the line says how many songs the set holds and how many are here')
+
+// The playlist picker and the shuffle switch: the picker offers All and one entry per
+// playlist with its size, and each control writes through the form like every field.
+const setupElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: '', musicShuffle: false })
+const picker = setupElements.find(node => node.type === 'select')
+assert.ok(picker !== undefined, 'the playlist picker is missing')
+assert.equal(picker.props.value, '', 'it starts on All')
+const pickerOptions = picker.children.flat()
+assert.deepEqual(pickerOptions.map(option => option.props.value), ['', 'BV1', 'BV2'],
+  'and offers All plus one entry per playlist')
+assert.deepEqual(pickerOptions.map(option => option.children[0]), [
+  t('musicPlaylistAll', { count: 2 }),
+  t('musicPlaylistOption', { title: 'Song One', count: 1 }),
+  t('musicPlaylistOption', { title: 'BV2', count: 1 }),
+])
+const shuffleBox = setupElements.find(node => node.type === 'input' && node.props.type === 'checkbox')
+assert.ok(shuffleBox !== undefined, 'the shuffle switch is missing')
+assert.equal(shuffleBox.props.checked, false, 'and starts unticked')
+musicWrites.length = 0
+picker.props.onChange({ target: { value: 'BV1' } })
+assert.deepEqual(musicWrites.at(-1), { patch: { musicPlaylist: 'BV1' }, immediate: true },
+  'picking a playlist writes it at once')
+shuffleBox.props.onChange({ target: { checked: true } })
+assert.deepEqual(musicWrites.at(-1), { patch: { musicShuffle: true }, immediate: true },
+  'and ticking shuffle writes that')
+// A selection whose playlist is no longer in the list shows All rather than a stale name,
+// which is the same fallback the Host makes when it publishes the pet's list.
+const staleElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: 'BVgone' })
+assert.equal(staleElements.find(node => node.type === 'select').props.value, '',
+  'a playlist that is gone falls back to All')
 
 // A link that is already configured is refused without a request, and the one-click
 // fill-in is offered only while something is missing.
@@ -2695,7 +2810,7 @@ console.log('little-icon smoke: browser half ok')
     },
   }
   /** Mount the host half with one `musicLinks` value and hand back its route answers. */
-  const mount = async (musicLinks) => {
+  const mount = async (musicLinks, options = {}) => {
     const disposers = []
     const routes = []
     const fixed = (value) => ({ get: () => value })
@@ -2717,6 +2832,7 @@ console.log('little-icon smoke: browser half ok')
       shotDir: fixed(''), clickAction: fixed('toggle'), sites: fixed([]),
       coopAddress: fixed(''), coopHotkey: fixed(''), coopAutoStart: fixed(false),
       musicLinks: fixed(musicLinks), musicDir: fixed(''), musicVolume: fixed(70),
+      musicPlaylist: fixed(options.playlist ?? ''), musicShuffle: fixed(options.shuffle ?? false),
     }
     // A field this test does not name is read as unset rather than missing: the sample
     // only needs the settings the routes and the publisher touch.
@@ -2764,6 +2880,49 @@ console.log('little-icon smoke: browser half ok')
     const second = await held.answer(MUSIC_EXPAND_PATH, `url=${encodeURIComponent(`${link}?p=2`)}`)
     assert.deepEqual(second.fresh, [`${link}?p=2`], 'a part the settings do not hold is new')
     held.dispose()
+
+    // One link is one playlist, and the pet is handed the playlist a person picked:
+    // two videos, one of them a two-part set, all three files on this machine.
+    const libraryEntries = [
+      { id: 'BVp', source: 'BVp', title: '专辑 - 一', owner: '', durationMs: 0, file: '专辑/一.m4a', size: 5, playlist: 'BVp', playlistTitle: '专辑' },
+      { id: 'BVp-p2', source: 'BVp?p=2', title: '专辑 - 二', owner: '', durationMs: 0, file: '专辑/二.m4a', size: 5, playlist: 'BVp', playlistTitle: '专辑' },
+      { id: 'BVs', source: 'BVs', title: '单曲', owner: '', durationMs: 0, file: '单曲/单曲.m4a', size: 5, playlist: 'BVs', playlistTitle: '单曲' },
+    ]
+    const musicRoot = join(home, 'little-icon', 'music')
+    for (const row of libraryEntries) {
+      mkdirSync(join(musicRoot, row.file.split('/')[0]), { recursive: true })
+      writeFileSync(join(musicRoot, row.file), 'audio')
+    }
+    writeFileSync(join(home, 'little-icon', 'music-index.json'),
+      `${JSON.stringify({ version: 1, entries: Object.fromEntries(libraryEntries.map(row => [row.id, row])) }, null, 2)}\n`, 'utf8')
+    const publishedWith = async (options) => {
+      const host = await mount(['BVp', 'BVp?p=2', 'BVs'], options)
+      // The mount publishes on load; the added route publishes again, which is the same
+      // work and needs no waiting.
+      await host.answer(MUSIC_ADDED_PATH, 'count=1')
+      const music = JSON.parse(readFileSync(join(home, 'little-icon', 'music.json'), 'utf8'))
+      host.dispose()
+      return music
+    }
+    const everything = await publishedWith({})
+    assert.deepEqual(everything.tracks.map(track => track.id), ['BVp', 'BVp-p2', 'BVs'],
+      'with no playlist picked the pet is handed every song')
+    assert.deepEqual(everything.playlists.map(row => [row.id, row.title, row.tracks, row.ready]),
+      [['BVp', '专辑', 2, 2], ['BVs', '单曲', 1, 1]],
+      'and every playlist the links name is published, with what is here')
+    assert.equal(everything.playlist, '', 'nothing is selected to begin with')
+    assert.equal(everything.shuffle, false, 'and shuffle is off unless it is ticked')
+    const chosen = await publishedWith({ playlist: 'BVp' })
+    assert.deepEqual(chosen.tracks.map(track => track.id), ['BVp', 'BVp-p2'],
+      'a picked playlist is the list the pet gets, so "next" steps inside it')
+    assert.equal(chosen.playlist, 'BVp', 'and the choice is published with it')
+    const shuffled = await publishedWith({ playlist: 'BVs', shuffle: true })
+    assert.equal(shuffled.shuffle, true, 'shuffle reaches the pet, which draws the next song')
+    assert.deepEqual(shuffled.tracks.map(track => track.id), ['BVs'], 'inside the picked playlist')
+    const stale = await publishedWith({ playlist: 'BVgone00000' })
+    assert.deepEqual(stale.tracks.map(track => track.id), ['BVp', 'BVp-p2', 'BVs'],
+      'a selection whose links are gone falls back to everything rather than playing nothing')
+    assert.equal(stale.playlist, '', 'and is published as no selection, which is what the card shows')
   } finally {
     globalThis.fetch = answeredFetch
     if (previousHome === undefined) delete process.env.DSH_HOME

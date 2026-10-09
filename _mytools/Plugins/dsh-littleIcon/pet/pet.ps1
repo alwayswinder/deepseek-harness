@@ -605,6 +605,8 @@ $SCRIPT:CoopMenu = $null
 # settings card changed, and a track that started playing all change what it says.
 $SCRIPT:MusicLibrary = $null
 $SCRIPT:MusicTracks = @()
+# Whether the playlist being played is shuffled, as the host published it.
+$SCRIPT:MusicShuffle = $false
 $SCRIPT:MusicVolume = 70
 $SCRIPT:MusicDir = ''
 $SCRIPT:MusicMissing = 0
@@ -1364,12 +1366,25 @@ function Open-MusicTrack([int]$Index, [bool]$Play, [long]$PositionMs = 0) {
     Save-MusicPlayerState
 }
 
-function Step-MusicTrack([int]$Delta, [bool]$Play) {
+# The index one step lands on. Shuffled, it is drawn rather than stepped to and never
+# the one already playing, so a press always changes the song; otherwise it walks the
+# list in the direction pressed, wrapping at either end.
+function Get-StepMusicIndex([int]$Delta) {
     $count = $SCRIPT:MusicTracks.Count
-    if ($count -eq 0) { return }
+    if ($count -eq 0) { return -1 }
     $index = $SCRIPT:MusicIndex
-    if ($index -lt 0) { $index = if ($Delta -ge 0) { 0 } else { $count - 1 } }
-    else { $index = ((($index + $Delta) % $count) + $count) % $count }
+    if ($SCRIPT:MusicShuffle -and $count -gt 1) {
+        $current = $index
+        do { $index = Get-Random -Minimum 0 -Maximum $count } while ($index -eq $current)
+        return $index
+    }
+    if ($index -lt 0) { return $(if ($Delta -ge 0) { 0 } else { $count - 1 }) }
+    return (((($index + $Delta) % $count) + $count) % $count)
+}
+
+function Step-MusicTrack([int]$Delta, [bool]$Play) {
+    $index = Get-StepMusicIndex $Delta
+    if ($index -lt 0) { return }
     Open-MusicTrack $index $Play 0
 }
 
@@ -1459,6 +1474,7 @@ function Read-MusicLibrary {
     $SCRIPT:MusicLibrary = $data
     $SCRIPT:MusicTracks = $tracks
     $SCRIPT:MusicDir = [string]$data.dir
+    $SCRIPT:MusicShuffle = $data.shuffle -eq $true
     $SCRIPT:MusicMissing = 0
     if ($null -ne $data.missing) { $SCRIPT:MusicMissing = [int]$data.missing }
     $SCRIPT:MusicSync = $data.sync
@@ -1811,7 +1827,7 @@ if ($SelfTest) {
     $SCRIPT:MusicPlayerFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'music-player-probe.json'
     $musicProbeFile = $SCRIPT:MusicFile
     $writeLibrary = {
-        param($Tracks, [int]$Missing, $Sync, [int]$Volume = 40)
+        param($Tracks, [int]$Missing, $Sync, [int]$Volume = 40, [bool]$Shuffle = $false)
         $payload = [ordered]@{
             version = 1
             dir     = 'C:\music'
@@ -1819,6 +1835,7 @@ if ($SelfTest) {
             tracks  = $Tracks
             missing = $Missing
             sync    = $Sync
+            shuffle = $Shuffle
         }
         [System.IO.File]::WriteAllText($musicProbeFile, ($payload | ConvertTo-Json -Depth 6 -Compress), (New-Object System.Text.UTF8Encoding($false)))
     }
@@ -1914,6 +1931,28 @@ if ($SelfTest) {
         if ($null -eq $musicClicked) { [void]$musicProbeLines.Add('preset=no-command') }
         else { [void]$musicProbeLines.Add("preset-commit=$($musicClicked.command):$($musicClicked.value)") }
     }
+    # Shuffled, the next song is drawn rather than stepped to, and never the one already
+    # playing; unshuffled the same presses walk the list in order. The picker is read
+    # rather than played, so no media player is built here.
+    & $writeLibrary $twoTracks 0 ([ordered]@{ running = $false; done = 0; total = 0; current = '' }) 40 $true
+    & $loadFirst $twoTracks
+    # The tick reads the library before it steps, so the probe does too: without it the
+    # shuffle flag would still be the one the previous case left behind.
+    $null = Read-MusicLibrary
+    $shuffleRead = $SCRIPT:MusicShuffle
+    $SCRIPT:MusicIndex = 0
+    $first = Get-StepMusicIndex 1
+    $SCRIPT:MusicIndex = $first
+    $second = Get-StepMusicIndex 1
+    $shuffleText = if ($shuffleRead) { 'on' } else { 'off' }
+    $shuffleChanged = ($first -ne 0 -and $second -ne $first)
+    [void]$musicProbeLines.Add("shuffle=read=${shuffleText}:$first,$second changed=$shuffleChanged")
+    & $writeLibrary $twoTracks 0 ([ordered]@{ running = $false; done = 0; total = 0; current = '' })
+    & $loadFirst $twoTracks
+    $SCRIPT:MusicIndex = 0
+    $forward = Get-StepMusicIndex 1
+    $SCRIPT:MusicIndex = $forward
+    [void]$musicProbeLines.Add("order=$forward,$(Get-StepMusicIndex -1)")
     $SCRIPT:MusicMenu.Dispose()
     $SCRIPT:MusicMenu = $null
     $SCRIPT:MusicLibrary = $null

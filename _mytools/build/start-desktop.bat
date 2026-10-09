@@ -75,6 +75,12 @@ if errorlevel 1 (
     node "%SETTINGS_SYNC_DIR%\sync-settings.mjs" apply --profile desktop --quiet
 )
 
+rem Back up this machine's DSH and Codex conversation records once per launch. The
+rem worker keeps one snapshot per day, so a second start the same day only
+rem refreshes it; a missing node or a failed copy is reported and never blocks
+rem the launch.
+call "%~dp0..\backup\backup-chats.bat"
+
 rem Carry over the browser data earlier launchers kept inside the build tree, so
 rem this launch starts signed in instead of asking again.
 call "%~dp0migrate-desktop-user-data.bat"

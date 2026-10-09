@@ -87,6 +87,12 @@ rem page and the fish-tank aquarium overlay. Space-separated directory names
 rem under Plugins\; add one here when a new profile plugin joins.
 set "DSH_LOCAL_PLUGINS=deepseek-usage dsh-fish-tank dsh-littleIcon"
 
+rem Back up this machine's DSH and Codex conversation records once per launch. The
+rem worker keeps one snapshot per day, so a second start the same day only
+rem refreshes it; a missing node or a failed copy is reported and never blocks
+rem the launch.
+call "%~dp0..\backup\backup-chats.bat"
+
 rem The out-of-tree plugins import @deepseek-ai/schemastery from their own
 rem directory; link the vendored copy so a profile can load them on this machine.
 call "%~dp0ensure-plugin-modules.bat"

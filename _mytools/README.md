@@ -153,6 +153,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\resolve-dsh-home.ps1` | 按 harness 的规则解析 `$DSH_HOME`（空白=未设置、展开开头的 `~`、转绝对路径），供上面几个 PS1 共用。 |
 | `build\migrate-desktop-user-data.bat` | 把 Electron 的浏览器数据从 `apps\desktop\.desktop-build\development\electron-user-data` 搬到 `$DSH_HOME\desktop\electron-user-data`（`Partitions` 与解密 Cookie 用的 `Local State` 一起搬）。由 `build\build.bat` 在 `clean` 前、`build\start-desktop.bat` 在启动前调用；只在旧目录还在、且新目录还没有 `Partitions` 时动手，失败就整份丢弃等下次，任何情况下都退出 0。 |
 | `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `build\start-desktop.bat`，失败时弹带日志尾巴的对话框。 |
+| `backup\backup-chats.bat` / `backup\backup-chats.mjs` | **会话备份**：把本机的 DSH `sessions` + `storages`、Codex `sessions` + `history.jsonl` 增量拷进 `%DSH_BACKUP_DIR%`（默认 `D:\AI\备份`）里当天的快照目录，写 `manifest.txt`，并在 `_backup.log` 追加一行；`DSH_BACKUP_KEEP`（默认 14，`0` = 全留）按天保留，只删带本脚本 manifest 的日期目录，源目录一律不动。由 `build\start-desktop.bat`、`build\start-dsh.bat` 在启动前，以及桌宠菜单重启走的 `settings\sync-pet-settings.mjs` 调用；找不到 node、目标盘不存在或某个文件正被应用占用都只报一行，不拦启动。 | 只备份对话记录：凭证（`.credentials.yaml`）与 `settings.yaml` **不**进备份。目标盘不存在时退回 `<用户目录>\dsh-home-backups`。 |
 | `build\install-shortcut.ps1` | 建/删那两个快捷方式；`build\make-shortcut.bat` 的实体。 |
 | `build\make-app-icon.mjs` | 从 `apps\desktop\resources\icon-windows.svg` 光栅化 9 个尺寸的 `.ico` 到 `$DSH_HOME\build\dsh.ico`。 |
 | `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build\build.bat`（desktop/repair）调用。 |

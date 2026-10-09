@@ -69,8 +69,6 @@
   "MusicOpenFailed": "打不开音乐文件夹。",
   "MusicFailed": "播放失败：{0}",
   "MusicVolume": "音量（{0}%）",
-  "MusicAddLink": "添加 B站链接…",
-  "MusicAddPrompt": "粘贴 B站链接（BV 号或地址）：",
   "MusicVolumeSet": "音量：{0}%",
   "MusicAdded": "已添加：{0}",
   "MusicAddedMany": "已加入 {0} 首；用「补全缺失歌曲」开始下载",

@@ -694,15 +694,11 @@ function readCommand(path) {
     const url = openableUrl(reported.url)
     // The volume entries carry a number; anything else the pet writes stays out.
     const value = typeof reported.value === 'number' && Number.isFinite(reported.value) ? reported.value : undefined
-    // A music link is what the person typed rather than an address to open, so it
-    // keeps its own field: the guard above would rewrite a bare id into a host.
-    const link = typeof reported.link === 'string' ? reported.link.trim().slice(0, 2000) : undefined
     return {
       command: reported.command,
       at: reported.at,
       ...url === undefined ? {} : { url },
       ...value === undefined ? {} : { value },
-      ...link === undefined || link === '' ? {} : { link },
     }
   } catch {
     // No command yet, or a half-written one.
@@ -1972,11 +1968,11 @@ export function apply(ctx, config) {
       guarded('music folder', () => { openMusicDir(); publishMusic() })
       return
     }
-    // Volume and a pasted link are configuration, which the settings card owns, and
-    // only the page can write it: the settings service refuses a write made inside an
-    // HMR transaction, which is the context this timer runs in. The page then writes
-    // the same fields the card writes, and the download a link asks for comes back
-    // here through the route the card already uses.
+    // The menu's volume is configuration, which the settings card owns, and only the
+    // page can write it: the settings service refuses a write made inside an HMR
+    // transaction, which is the context this timer runs in. The link list is not here
+    // at all — adding and removing links belongs to the card, where a text field and a
+    // list can be shown.
     if (pressed.command === 'music-volume') {
       const value = clampVolume(pressed.value)
       if (value === undefined) return
@@ -1984,30 +1980,6 @@ export function apply(ctx, config) {
       pendingVolumeUntil = Date.now() + 5000
       publishMusic()
       publishCommand('music-volume', { value })
-      return
-    }
-    if (pressed.command === 'music-add-link') {
-      const link = String(pressed.link ?? '').trim()
-      const ref = parseBilibiliRef(link)
-      if (link === '' || ref === undefined) {
-        // Nothing here names a video, so nothing is written and nothing is
-        // downloaded: the pet is told what the card would have told a person.
-        musicNotice = { at: Date.now(), kind: 'add-failed', reason: 'unrecognized' }
-        publishMusic()
-        return
-      }
-      const known = resolveMusicLinks(config.musicLinks.get())
-        .map(entry => parseBilibiliRef(entry))
-        .filter(entry => entry !== undefined)
-        .map(entry => musicEntryId(entry))
-      if (known.includes(musicEntryId(ref))) {
-        // One video, however it is spelled, is one row: the same answer the card
-        // gets from the download route.
-        musicNotice = { at: Date.now(), kind: 'duplicate' }
-        publishMusic()
-        return
-      }
-      publishCommand('music-add-link', { link })
       return
     }
     publishCommand(pressed.command, pressed.url === undefined ? {} : { url: pressed.url })

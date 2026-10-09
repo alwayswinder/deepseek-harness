@@ -892,8 +892,13 @@ if (process.platform === 'win32') {
   assert.equal(musicSliderLabel, 'slider-label=55%', 'and the row shows the value it is on')
   assert.equal(musicPresetCommit, 'preset-commit=music-volume:0',
     'a preset moves the same slider and is written the same way')
-  assert.ok(musicReady.includes(`ToolStripMenuItem=${labels.MusicAddLink}[True]`),
-    'the submenu offers to add a link without the settings page')
+  // Adding and removing links belongs to the settings card, where a text field and a
+  // list can be shown; the pet's submenu carries playback and the volume only, so the
+  // entry and the label it needed are both gone.
+  assert.equal(Object.keys(labels).includes('MusicAddLink'), false,
+    'the submenu must offer no way to add a link')
+  assert.equal(Object.keys(labels).includes('MusicAddPrompt'), false,
+    'and no box to type one in')
   // An ended media only moves the list on when it is the one that opened: a replaced
   // media reports an end of its own, and acting on that would skip a song and start
   // playing one nobody asked for.
@@ -1550,17 +1555,6 @@ globalThis.document = {
 }
 globalThis.fetch = (url, init) => {
   pings.push({ url, method: init?.method })
-  const path = String(url)
-  if (path.startsWith(MUSIC_EXPAND_PATH)) {
-    // A link that names a part stands for that part; a bare one stands for its whole
-    // set, which is what a multi-part video or a collection is.
-    const raw = decodeURIComponent(path.slice(path.indexOf('url=') + 4))
-    const links = raw.includes('?p=') ? [raw] : [raw, `${raw}?p=2`]
-    return Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ ok: true, title: 'Set', links, fresh: links, total: links.length, known: 0 }),
-    })
-  }
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, root: '/repo', branch: 'main', changes: [], commits: [] }) })
 }
 /** Event streams the page opens; the test dispatches the Host's frames itself. */
@@ -1711,34 +1705,23 @@ try {
   commands.onmessage({ data: '{"command":"nonsense"}' })
   commands.onmessage({ data: 'not json' })
   assert.equal(openedTabs.length, 2, 'only known commands open anything')
-  // The menu's volume and link entries are configuration, and the Host cannot write
-  // configuration from its own timer: the settings service refuses a write made inside
-  // an HMR transaction. The page writes it instead, at the revision it read, the way
-  // the card writes every other field - and the download it asks for stays with the
-  // Host, on the route the card already uses.
-  const menuLink = 'https://www.bilibili.com/video/BV1MHeb6nEGx'
+  // The menu's volume is configuration, and the Host cannot write configuration from
+  // its own timer: the settings service refuses a write made inside an HMR transaction.
+  // The page writes it instead, at the revision it read, the way the card writes every
+  // other field. Links are not in this menu at all: the card owns the list.
   const formBefore = form.snapshot
   form.snapshot = { ...form.snapshot, revision: 7, value: { musicLinks: [firstLink] } }
   form.writes.length = 0
   commands.onmessage({ data: '{"command":"music-volume","value":33}' })
   assert.deepEqual(form.writes[0], { ops: [{ op: 'set', path: ['musicVolume'], value: 33 }], revision: 7 },
     'a volume the menu set is written to the configuration the way the card writes it')
-  commands.onmessage({ data: `{"command":"music-add-link","link":"${menuLink}"}` })
+  commands.onmessage({ data: `{"command":"music-add-link","link":"${firstLink}"}` })
   await new Promise((resolve) => setTimeout(resolve, 20))
-  assert.deepEqual(form.writes[1],
-    { ops: [{ op: 'set', path: ['musicLinks'], value: [firstLink, menuLink, `${menuLink}?p=2`] }], revision: 7 },
-    'a link that stands for a set joins the list whole rather than replacing it')
-  assert.deepEqual(pings.at(-1), { url: `${MUSIC_ADDED_PATH}?count=2`, method: 'POST' },
-    'a set is added rather than fetched: the Host is only told how many songs arrived')
-  // One song keeps the old behaviour: it is fetched as soon as it is added.
-  commands.onmessage({ data: `{"command":"music-add-link","link":"${menuLink}?p=2"}` })
-  await new Promise((resolve) => setTimeout(resolve, 20))
-  assert.deepEqual(pings.at(-1), { url: `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(`${menuLink}?p=2`)}`, method: 'POST' },
-    'a single song is still downloaded at once')
+  assert.equal(form.writes.length, 1, "a link command is no longer this half's to act on")
   // A frame that names no volume is refused here rather than written as a number
   // nothing can use.
   commands.onmessage({ data: '{"command":"music-volume","value":"loud"}' })
-  assert.equal(form.writes.length, 3, 'a volume that is not a number changes nothing')
+  assert.equal(form.writes.length, 1, 'a volume that is not a number changes nothing')
   // The card's own writes are counted from the first one, so this probe leaves the
   // form as it found it.
   form.snapshot = formBefore
@@ -1786,10 +1769,11 @@ try {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
-// One unknown command, a volume frame naming no number, the two refusals above in
-// each of their two forms, the settings entry with no Plugins page to reach, and the
-// aquarium entry with no aquarium plugin installed.
-assert.equal(warned.length, 8, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// One unknown command, the retired link command the card now owns, a volume frame
+// naming no number, the two refusals above in each of their two forms, the settings
+// entry with no Plugins page to reach, and the aquarium entry with no aquarium plugin
+// installed.
+assert.equal(warned.length, 9, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // The "sites" entry is the one menu command that carries its own address: the
 // frame names it, and the page opens it where the chat entry would open one. A
@@ -3229,25 +3213,13 @@ $found
     assert.notEqual(readMusicFile().notice?.kind, 'volume',
       'and nothing is announced until the configuration carries it')
 
-    // A link nothing can parse, and a video the list already holds, are answered here:
-    // neither is written and neither is downloaded.
+    // A link command the menu no longer offers reaches nothing: the card owns the list,
+    // so this half neither judges a link nor forwards one.
     config.musicLinks.set([firstLink])
     handlers.get('loader/volatile-update')()
     assert.equal(await menuCommand({ command: 'music-add-link', at: Date.now() + 40, link: 'not a link' }, false),
-      undefined, 'a link that names no video must not reach the page')
-    assert.deepEqual(readMusicFile().notice,
-      { at: readMusicFile().notice.at, kind: 'add-failed', reason: 'unrecognized' })
-    const alreadyListed = `https://www.bilibili.com/video/${musicId}/?spm_id_from=333.1007`
-    assert.equal(await menuCommand({ command: 'music-add-link', at: Date.now() + 60, link: alreadyListed }, false),
-      undefined, 'a video the list already holds must not reach the page')
-    assert.equal(readMusicFile().notice.kind, 'duplicate', 'and the pet is told why')
+      undefined, 'a link command must not reach the page')
     assert.deepEqual(config.musicLinks.get(), [firstLink], 'the Host must not write the link list itself')
-
-    const added = 'https://www.bilibili.com/video/BV1MHeb6nEGx'
-    assert.equal(await menuCommand({ command: 'music-add-link', at: Date.now() + 80, link: added }, true),
-      `data: {"command":"music-add-link","link":"${added}"}\n\n`,
-      'a link the list does not hold must reach the page, which writes it')
-    assert.deepEqual(config.musicLinks.get(), [firstLink], 'and the Host still writes nothing itself')
 
     // An unchanged state must not rewrite the file on every poll (300ms here):
     // only the 4s heartbeat refreshes it, so 2.5s of sampling sees at most one

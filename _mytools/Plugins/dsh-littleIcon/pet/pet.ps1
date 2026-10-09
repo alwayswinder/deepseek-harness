@@ -486,8 +486,6 @@ function Get-Labels {
         MusicOpenFailed       = 'The music folder could not be opened.'
         MusicFailed           = 'Playback failed: {0}'
         MusicVolume           = 'Volume ({0}%)'
-        MusicAddLink          = 'Add a Bilibili link...'
-        MusicAddPrompt        = 'Paste a Bilibili link (a BV id or an address):'
         MusicVolumeSet        = 'Volume: {0}%'
         MusicAdded            = 'Added: {0}'
         MusicAddedMany        = 'Added {0} songs; use Download missing to fetch them'
@@ -1049,14 +1047,13 @@ function Save-ShotBitmap($Bitmap, [string]$Path) {
 # and a music link rides in its own field because the host reads `url` as an address
 # to open, and would rewrite a bare BV id into a host name. The host checks all of
 # it again before it acts, because this file is a file.
-function Send-MenuCommand([string]$Command, [string]$Url = '', $Value = $null, [string]$Link = '') {
+function Send-MenuCommand([string]$Command, [string]$Url = '', $Value = $null) {
     $payload = [ordered]@{
         command = $Command
         at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     }
     if (-not [string]::IsNullOrWhiteSpace($Url)) { $payload.url = $Url }
     if ($null -ne $Value) { $payload.value = $Value }
-    if (-not [string]::IsNullOrWhiteSpace($Link)) { $payload.link = $Link }
     Write-Json $SCRIPT:CommandFile $payload
 }
 
@@ -1524,40 +1521,8 @@ function Get-MusicStatusText {
     return ($SCRIPT:Labels.MusicReady -f $title)
 }
 
-# The link a person is adding. The clipboard is how one usually arrives, so the box
-# starts with it: a context menu holds no text field, and this is the one dialog
-# Windows already ships.
-function Read-LinkDraft {
-    try {
-        if (-not [System.Windows.Forms.Clipboard]::ContainsText()) { return '' }
-        $text = [string][System.Windows.Forms.Clipboard]::GetText()
-        if ([string]::IsNullOrWhiteSpace($text)) { return '' }
-        return (($text -split "\r?\n")[0]).Trim()
-    } catch {
-        Write-Log "reading the clipboard failed: $($_.Exception.Message)"
-        return ''
-    }
-}
-
-function Show-LinkInput([string]$Initial) {
-    try {
-        if ($null -eq ('Microsoft.VisualBasic.Interaction' -as [type])) {
-            Add-Type -AssemblyName Microsoft.VisualBasic
-        }
-        return [string][Microsoft.VisualBasic.Interaction]::InputBox($SCRIPT:Labels.MusicAddPrompt, $SCRIPT:Labels.Music, $Initial)
-    } catch {
-        Write-Log "the link box failed: $($_.Exception.Message)"
-        return ''
-    }
-}
-
-function Add-MusicLink {
-    # Cancelling, or a box that could not be shown, adds nothing rather than
-    # something empty: the host refuses an empty link anyway.
-    $link = Show-LinkInput (Read-LinkDraft)
-    if ([string]::IsNullOrWhiteSpace($link)) { return }
-    Send-MenuCommand 'music-add-link' -Link $link.Trim()
-}
+# The link a person is adding lives on the settings card, not in this menu: the card
+# owns the link list, and a context menu is no place for a text field.
 
 function Send-MusicVolume([int]$Percent) {
     # Clamped here as well as on the host: this half applies it to the running player
@@ -1706,9 +1671,6 @@ function Update-MusicMenu {
         [void](Add-MusicItem $volumeItem "$percent%" 'music' $true $presetClick)
     }
     [void]$SCRIPT:MusicMenu.DropDownItems.Add($volumeItem)
-    [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicAddLink 'music' $true {
-            try { Add-MusicLink } catch { Write-Log $_.Exception.Message }
-        })
     [void]$SCRIPT:MusicMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
     if ($syncing) {
         $progress = $SCRIPT:Labels.MusicSyncing -f [int]$SCRIPT:MusicSync.done, [int]$SCRIPT:MusicSync.total

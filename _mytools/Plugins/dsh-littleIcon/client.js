@@ -2234,18 +2234,6 @@ window.__ModuleLoader__.load({
           )
         }
 
-        /** The link list as the configuration holds it, which is what an added link joins. */
-        const musicLinksNow = () => {
-          const links = musicForm()?.getSnapshot()?.value?.musicLinks
-          return Array.isArray(links) ? links : []
-        }
-
-        /** Ask one music route on the Host and answer its JSON. */
-        const fetchMusicPath = async (path) => {
-          const response = await fetch(path, { method: 'POST' })
-          return await response.json()
-        }
-
         /**
          * Carry out one menu command the pet reported. The pet window belongs to
          * another process, so the page is what acts on a choice made there.
@@ -2327,30 +2315,6 @@ window.__ModuleLoader__.load({
               return
             }
             void writeMusicConfig({ musicVolume: percent })
-          },
-          'music-add-link': async ({ link }) => {
-            // The Host checked the link before forwarding it. What is left is what the
-            // card's own add does: ask what the link stands for, write the links the
-            // list does not hold yet, and download it when it is a single one. A set is
-            // only added - the menu's fill-in entry starts those downloads.
-            const outcome = await expandMusicLink(fetchMusicPath, link)
-            if (outcome?.ok !== true) {
-              console.warn('little-icon: the menu link was not added: %s', String(outcome?.reason ?? 'network'))
-              return
-            }
-            const fresh = Array.isArray(outcome.fresh) ? outcome.fresh : []
-            if (fresh.length === 0) {
-              console.warn('little-icon: that link is already in the list: %s', String(link))
-              return
-            }
-            await writeMusicConfig({ musicLinks: [...musicLinksNow(), ...fresh] })
-            try {
-              await fetchMusicPath(fresh.length === 1
-                ? `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(fresh[0])}`
-                : `${MUSIC_ADDED_PATH}?count=${fresh.length}`)
-            } catch (error) {
-              console.warn('little-icon: the Host could not be told about the added link', error)
-            }
           },
         }
 

@@ -21,8 +21,10 @@
  * registry is the extension point for exactly that, so the page needs neither the
  * product's Browser tab nor any other shipped viewer. It draws what the Host's
  * Git route answers for the Session's working directory. Listings and details
- * are reads; the remote status check refreshes one tracking ref, and only Pull
- * moves the local branch or working tree.
+ * are reads; the remote status check refreshes one tracking ref, Pull moves the
+ * local branch, and Discard — which the changes column's Select button turns on,
+ * acts on the rows picked there, and asks once more before it does — restores
+ * those changes to what `HEAD` holds.
  */
 
 window.__ModuleLoader__.load({
@@ -84,6 +86,13 @@ window.__ModuleLoader__.load({
 
     /** The Host route that fast-forwards the current branch from its upstream. */
     const GIT_PULL_PATH = '/api/little-icon/git/pull'
+
+    /**
+     * The Host route that restores the changes a selection names. The selection
+     * travels in the request body: it is a list, and a path may hold any
+     * punctuation, so neither a query parameter nor a joined one would do.
+     */
+    const GIT_DISCARD_PATH = '/api/little-icon/git/discard'
 
     /**
      * The Host route that opens a directory in the system file manager. Which
@@ -369,6 +378,19 @@ window.__ModuleLoader__.load({
       gitPullFailed: '拉取失败：{message}',
       gitLoading: '读取中…',
       gitStaged: '已暂存',
+      gitPickAll: '全选',
+      gitPickFile: '选中 {path}',
+      gitSelect: '选择',
+      gitSelectExit: '取消选择',
+      gitDiscard: '丢弃改动',
+      gitDiscardCount: '丢弃 {count} 项',
+      gitDiscarding: '丢弃中…',
+      gitDiscardConfirm: '丢弃选中的 {count} 个改动？工作区里的修改会永久丢失，未跟踪的新文件会被删除，已暂存的改动会被撤回',
+      gitDiscardYes: '确认丢弃',
+      gitDiscardCancel: '取消',
+      gitDiscarded: '已丢弃 {count} 个改动。',
+      gitDiscardedClean: '另有 {count} 个已经没有改动了。',
+      gitDiscardFailed: '丢弃失败：{message}',
       gitBranch: '分支 {name}',
       gitEmptyChanges: '没有未提交的改动。',
       gitEmptyCommits: '还没有提交记录。',
@@ -393,7 +415,7 @@ window.__ModuleLoader__.load({
       gitQueued: '已排队',
       gitSendNoChannel: '这个会话当前没有输入通道，这句话发不出去。',
       gitSendFailed: '发送失败：{message}',
-      gitDiffHint: '双击查看改动详情',
+      gitDiffHint: '单击选中，双击查看改动详情',
       gitDiffBack: '返回',
       gitDiffLoading: '读取差异中…',
       gitDiffEmpty: '这个文件没有可显示的差异。',
@@ -564,6 +586,19 @@ window.__ModuleLoader__.load({
       gitPullFailed: 'Could not pull: {message}',
       gitLoading: 'Reading…',
       gitStaged: 'staged',
+      gitPickAll: 'Select all',
+      gitPickFile: 'Select {path}',
+      gitSelect: 'Select',
+      gitSelectExit: 'Cancel selection',
+      gitDiscard: 'Discard',
+      gitDiscardCount: 'Discard {count}',
+      gitDiscarding: 'Discarding…',
+      gitDiscardConfirm: 'Discard the {count} selected changes? The working-tree edits are lost for good, untracked files are deleted, and staged changes are unstaged',
+      gitDiscardYes: 'Discard them',
+      gitDiscardCancel: 'Cancel',
+      gitDiscarded: 'Discarded {count} changes.',
+      gitDiscardedClean: '{count} more had no change left.',
+      gitDiscardFailed: 'Could not discard: {message}',
       gitBranch: 'branch {name}',
       gitEmptyChanges: 'No uncommitted changes.',
       gitEmptyCommits: 'No commits yet.',
@@ -588,7 +623,7 @@ window.__ModuleLoader__.load({
       gitQueued: 'Queued',
       gitSendNoChannel: 'This session has no input channel right now, so the message cannot be sent.',
       gitSendFailed: 'Could not send: {message}',
-      gitDiffHint: 'Double-click to see the diff',
+      gitDiffHint: 'Click to select, double-click to see the diff',
       gitDiffBack: 'Back',
       gitDiffLoading: 'Reading the diff…',
       gitDiffEmpty: 'This file has no diff to show.',
@@ -680,7 +715,12 @@ window.__ModuleLoader__.load({
         'color:var(--dsw-alias-label-secondary);font-size:11px;}',
         '.dli-git-branch{flex:0 0 auto;font-size:11px;padding:1px 8px;border-radius:999px;',
         'background:rgba(127,127,127,.14);}',
-        '.dli-git-refresh,.dli-git-pull{flex:0 0 auto;font:inherit;color:inherit;cursor:pointer;',
+        // One button for the whole page: the toolbar, the changes heading, the row
+        // selection mode adds, and the confirm line all carry the same shape and
+        // take their size from where they sit, so a control reads as the same kind
+        // of thing wherever it appears.
+        '.dli-git-refresh,.dli-git-pull,.dli-git-select,.dli-git-discard,',
+        '.dli-git-confirm-yes,.dli-git-confirm-no{flex:0 0 auto;font:inherit;color:inherit;cursor:pointer;',
         'background:transparent;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:2px 10px;}',
         '.dli-git-refresh{margin-left:auto;}',
         '.dli-git-refresh:disabled,.dli-git-pull:disabled{opacity:.5;cursor:default;}',
@@ -729,6 +769,31 @@ window.__ModuleLoader__.load({
         '.dli-git-more-note{color:var(--dsw-alias-label-secondary);font-size:11px;text-align:center;}',
         '.dli-git-row{display:flex;align-items:center;gap:6px;padding:2px 10px;}',
         '.dli-git-row:hover{background:rgba(127,127,127,.10);}',
+        // A picked row is one that "discard" would act on, so it carries the
+        // warning treatment rather than the neutral hover fill.
+        '.dli-git-row[data-picked="true"]{background:rgba(248,81,73,.12);}',
+        '.dli-git-pick{flex:0 0 auto;margin:0;cursor:pointer;}',
+        // The column is a listing by default; one button in its heading — the same
+        // button the toolbar carries — turns the boxes on, and the row that then
+        // appears under the heading is what they lead to. That row wraps rather
+        // than squeezing, because a narrow Sidebar is the normal case and the
+        // three controls do not fit on one line there.
+        '.dli-git-picks{flex-wrap:wrap;row-gap:6px;}',
+        '.dli-git-pick-label{display:flex;flex:0 0 auto;align-items:center;gap:4px;cursor:pointer;}',
+        '.dli-git-picks .dli-git-discard{margin-left:auto;}',
+        // The one action here that throws work away wears the page's button with a
+        // danger color rather than a second shape of its own.
+        '.dli-git-discard{color:#f85149;border-color:rgba(248,81,73,.45);}',
+        '.dli-git-discard:disabled{color:inherit;border-color:rgba(127,127,127,.35);opacity:.5;cursor:default;}',
+        // Discarding cannot be undone, so the one click arms and the second one
+        // performs: the line under the toolbar says what is about to go.
+        '.dli-git-confirm{display:flex;flex:0 0 auto;align-items:center;gap:8px;padding:6px 10px;',
+        'font-size:12px;line-height:18px;border-radius:8px;color:var(--dsw-alias-state-error-primary);',
+        'background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);',
+        'border:1px solid rgba(248,81,73,.35);}',
+        '.dli-git-confirm-text{flex:1 1 auto;min-width:0;}',
+        '.dli-git-confirm-yes{color:#f85149;border-color:rgba(248,81,73,.5);background:rgba(248,81,73,.12);}',
+        '.dli-git-confirm-no{color:var(--dsw-alias-label-primary);}',
         '.dli-git-badge{flex:0 0 auto;font-size:11px;padding:0 5px;border-radius:4px;',
         'color:var(--dsw-alias-label-secondary);background:rgba(127,127,127,.16);}',
         '.dli-git-badge-new{color:#3fb950;}',
@@ -1604,6 +1669,22 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Why discarding the selected changes did not happen.
+     * @param t - namespace-bound translate.
+     * @param result - the Host's refusal.
+     * @returns the line shown below the toolbar.
+     */
+    function gitDiscardReason(t, result) {
+      switch (result.reason) {
+        case 'no-cwd':
+        case 'no-dir':
+        case 'no-git':
+        case 'not-a-repo': return gitReason(t, result)
+        default: return t('gitDiscardFailed', { message: result.message ?? result.reason ?? '' })
+      }
+    }
+
+    /**
      * A commit's date as this machine writes dates; the Host sends ISO 8601.
      * @param iso - the author date as Git reported it.
      * @returns the date to show, or the raw value when it cannot be parsed.
@@ -1660,13 +1741,15 @@ window.__ModuleLoader__.load({
      * refresh has replaced is dropped rather than appended.
      *
      * The upstream badge refreshes one remote-tracking ref without moving local
-     * work. Pull is the only action that changes the branch or working tree: the
-     * Host accepts it only as a fast-forward and returns the refreshed listing.
-     * Nothing here stages, commits, pushes, or discards work. The working
-     * directory comes from the Session rather than from a setting, so the page
-     * follows whichever project the conversation is in.
+     * work. Pull is the only action that changes the branch, and discarding the
+     * picked rows is the only one that throws work away: the column's Select
+     * button is what puts the boxes on screen, the discard restores those rows
+     * from what `HEAD` holds, and it arms on the first click and acts on the
+     * second. Nothing here stages, commits, or pushes. The working directory
+     * comes from the Session rather than from a setting, so the page follows
+     * whichever project the conversation is in.
      * @param props - slot props plus the injected `load`, `loadCommits`,
-     *   `loadRemote`, `pull`, `loadDiff`, and `loadCommit` callbacks.
+     *   `loadRemote`, `pull`, `discard`, `loadDiff`, and `loadCommit` callbacks.
      * @returns the two columns, the open detail, or the line explaining why there
      *   is neither.
      */
@@ -1682,6 +1765,7 @@ window.__ModuleLoader__.load({
       const [send, setSend] = React.useState({ phase: 'idle' })
       const [pull, setPull] = React.useState({ phase: 'idle' })
       const pullController = React.useRef(undefined)
+      const discardController = React.useRef(undefined)
       // What has taken the two columns' place: `undefined` is the listing, and
       // anything else names one row's subject and how its read is going.
       const [detail, setDetail] = React.useState(undefined)
@@ -1698,6 +1782,18 @@ window.__ModuleLoader__.load({
       React.useEffect(() => { authorRef.current = author }, [author])
       /** A listing that settled: every read of the column belongs to it from here. */
       const [listingRev, setListingRev] = React.useState(0)
+      // Which changed files the person picked, by path, the discard that is
+      // waiting for its confirmation or running, and whether the column is in
+      // selection mode at all. Selecting belongs to the listing on screen rather
+      // than to the repository: a path the refreshed listing no longer holds is
+      // not a row any more, so it is never discarded either. The mode is off by
+      // default — the column is a listing first — and the heading's Select button
+      // is what turns the boxes on.
+      const [picked, setPicked] = React.useState(new Set())
+      const [discard, setDiscard] = React.useState({ phase: 'idle' })
+      const [picking, setPicking] = React.useState(false)
+      // The row a Shift-click measures the range it extends from.
+      const pickAnchor = React.useRef(undefined)
 
       /**
        * Put the history column back on the listing's own first page.
@@ -1843,14 +1939,24 @@ window.__ModuleLoader__.load({
       }, [detail?.kind, detail?.path, detail?.hash, detail?.phase])
 
       // A different working directory is a different repository: a detail that
-      // belonged to the last one says nothing about this one.
+      // belonged to the last one says nothing about this one, and neither does a
+      // selection — the rows it named are not on screen any more, and the column
+      // goes back to being a plain listing.
       React.useEffect(() => {
         pullController.current?.abort()
         pullController.current = undefined
+        discardController.current?.abort()
+        discardController.current = undefined
         setPull({ phase: 'idle' })
+        setDiscard({ phase: 'idle' })
+        setPicked(new Set())
+        setPicking(false)
         setDetail(undefined)
       }, [cwd])
-      React.useEffect(() => () => { pullController.current?.abort() }, [])
+      React.useEffect(() => () => {
+        pullController.current?.abort()
+        discardController.current?.abort()
+      }, [])
 
       const reload = () => {
         // Refreshing re-reads what is on screen, which is the detail while one is open.
@@ -1861,6 +1967,12 @@ window.__ModuleLoader__.load({
       const result = state.phase === 'settled' ? state.result : undefined
       const loaded = result?.ok === true ? result : undefined
       const note = (text) => h('p', { className: 'dli-git-note' }, text)
+      // The rows the changes column draws, and the ones the person picked out of
+      // them. The picked set is filtered through the listing rather than trusted:
+      // a path a refresh or a discard took off the screen is not a row any more,
+      // so it is neither counted nor named on the route.
+      const changes = loaded?.changes ?? []
+      const pickedChanges = changes.filter((change) => picked.has(change.path))
 
       /** Fast-forward the current branch, then replace the listing with the Host's fresh answer. */
       const pullLatest = () => {
@@ -1989,21 +2101,174 @@ window.__ModuleLoader__.load({
       const pullNote = pull.phase === 'failed' ? note(gitPullReason(t, pull.result)) : null
 
       /**
+       * Add or drop one changed file, or — with Shift held — the run of rows
+       * between it and the row that was clicked last.
+       * @param change - the row's own entry from the listing.
+       * @param index - the row's position in the listing, which is what a range counts.
+       * @param extend - whether the click held Shift.
+       */
+      const pickChange = (change, index, extend) => {
+        setDiscard({ phase: 'idle' })
+        setPicked((current) => {
+          const next = new Set(current)
+          const on = !next.has(change.path)
+          const anchor = extend ? pickAnchor.current ?? index : index
+          const [from, to] = anchor <= index ? [anchor, index] : [index, anchor]
+          for (let at = from; at <= to; at += 1) {
+            const path = changes[at]?.path
+            if (path === undefined) continue
+            if (on) next.add(path)
+            else next.delete(path)
+          }
+          pickAnchor.current = index
+          return next
+        })
+      }
+
+      /** Pick every changed file, or drop the whole selection. */
+      const pickAll = () => {
+        setDiscard({ phase: 'idle' })
+        const every = changes.map((change) => change.path)
+        setPicked((current) => (every.every((path) => current.has(path)) ? new Set() : new Set(every)))
+      }
+
+      /** Restore the picked changes, which is the only action here that throws work away. */
+      const discardChanges = () => {
+        if (loaded === undefined || discard.phase === 'discarding' || pickedChanges.length === 0) return
+        const controller = new AbortController()
+        discardController.current?.abort()
+        discardController.current = controller
+        // A rename is named by both of its ends: the Host restores the path it
+        // came from and removes the one it has now.
+        const entries = pickedChanges.map((change) => (change.from === undefined
+          ? { path: change.path }
+          : { path: change.path, from: change.from }))
+        setDiscard({ phase: 'discarding' })
+        void props.discard(loaded.root, entries, controller.signal).then(
+          (outcome) => {
+            if (controller.signal.aborted) return
+            discardController.current = undefined
+            if (!outcome.ok) {
+              setDiscard({ phase: 'failed', result: outcome })
+              return
+            }
+            // The answer is the refreshed listing, so the column shows what is
+            // left rather than what this half believes it discarded. A discard
+            // leaves the history and the upstream comparison where they were.
+            setState((current) => (current.result === undefined ? current : { ...current, result: outcome }))
+            setPicked(new Set())
+            // The action is done, so the column goes back to the plain listing it
+            // is by default; the note below says what happened.
+            setPicking(false)
+            setDiscard({
+              phase: 'done',
+              count: (outcome.discarded ?? []).length,
+              clean: (outcome.clean ?? []).length,
+            })
+          },
+          (error) => {
+            if (controller.signal.aborted) return
+            discardController.current = undefined
+            setDiscard({ phase: 'failed', result: { reason: 'failed', message: String(error?.message ?? error) } })
+          })
+      }
+
+      /**
+       * Enter selection mode, or leave it. Leaving drops the selection with the
+       * boxes, so the column cannot come back with rows already picked out.
+       * @param on - whether the boxes are to be shown.
+       */
+      const togglePicking = (on) => {
+        setPicking(on)
+        setPicked(new Set())
+        setDiscard({ phase: 'idle' })
+      }
+
+      /** The heading's pick-everything box, which is neither on nor off while only some rows are picked. */
+      const pickAllBox = () => {
+        if (changes.length === 0) return null
+        const all = pickedChanges.length === changes.length
+        return h('input', {
+          type: 'checkbox',
+          className: 'dli-git-pick dli-git-pick-all',
+          checked: all,
+          title: t('gitPickAll'),
+          'aria-label': t('gitPickAll'),
+          ref: (node) => { if (node !== null) node.indeterminate = pickedChanges.length > 0 && !all },
+          onChange: pickAll,
+        })
+      }
+
+      /** The control that discards the picked rows: it arms on the click, and the confirm line acts. */
+      const discardButton = () => (loaded === undefined ? null : h('button', {
+        type: 'button', className: 'dli-git-discard',
+        disabled: pickedChanges.length === 0 || discard.phase === 'discarding',
+        onClick: () => { setDiscard({ phase: 'confirm' }) },
+      }, discard.phase === 'discarding' ? t('gitDiscarding')
+        : pickedChanges.length === 0 ? t('gitDiscard')
+          : t('gitDiscardCount', { count: pickedChanges.length })))
+
+      /** The heading's one way into selection mode, while the column is a listing. */
+      const selectButton = () => h('button', {
+        type: 'button', className: 'dli-git-select',
+        onClick: () => { togglePicking(true) },
+      }, t('gitSelect'))
+
+      /**
+       * What selection mode puts under the changes heading: the box that picks
+       * every row at once, the action that discards what is picked, and the way
+       * back to the plain listing. It is a row of its own rather than part of the
+       * heading because a narrow column has no room for all three there — the
+       * same reason the history column keeps its author filter on one.
+       */
+      const pickRow = () => h('div', { className: 'dli-git-filter dli-git-picks' },
+        h('label', { className: 'dli-git-pick-label' }, pickAllBox(), h('span', null, t('gitPickAll'))),
+        discardButton(),
+        h('button', {
+          type: 'button', className: 'dli-git-select',
+          onClick: () => { togglePicking(false) },
+        }, t('gitSelectExit')))
+
+      /** What the discard is asking, doing, or has just done. */
+      const discardNote = () => {
+        switch (discard.phase) {
+          case 'idle': return null
+          case 'discarding': return note(t('gitDiscarding'))
+          case 'done': return note(discard.clean === 0
+            ? t('gitDiscarded', { count: discard.count })
+            : `${t('gitDiscarded', { count: discard.count })}${t('gitDiscardedClean', { count: discard.clean })}`)
+          case 'confirm': return h('div', { className: 'dli-git-confirm' },
+            h('span', { className: 'dli-git-confirm-text' }, t('gitDiscardConfirm', { count: pickedChanges.length })),
+            h('button', {
+              type: 'button', className: 'dli-git-confirm-yes',
+              disabled: pickedChanges.length === 0, onClick: discardChanges,
+            }, t('gitDiscardYes')),
+            h('button', {
+              type: 'button', className: 'dli-git-confirm-no',
+              onClick: () => { setDiscard({ phase: 'idle' }) },
+            }, t('gitDiscardCancel')))
+          default: return note(gitDiscardReason(t, discard.result))
+        }
+      }
+
+      /**
        * One of the two columns: its heading, what sits under the heading, and the
        * rows in their own scrollport.
        * @param title - the column's name.
        * @param count - how many rows it currently holds.
        * @param rows - the rows, or the line explaining why there are none.
        * @param status - the upstream badge, when the column carries one.
-       * @param options - the heading's filter row and the scrollport's own ref,
-       *   which the history column needs for the next page.
+       * @param options - the heading's own action, the row under the heading, and
+       *   the scrollport's own ref, which the history column needs for the next
+       *   page.
        * @returns the column.
        */
       const column = (title, count, rows, status, options = {}) => h('section', { className: 'dli-git-col' },
         h('div', { className: 'dli-git-head' },
           h('span', { className: 'dli-git-title' }, title),
           status,
-          h('span', { className: 'dli-git-count' }, String(count))),
+          h('span', { className: 'dli-git-count' }, String(count)),
+          options.action ?? null),
         options.filter ?? null,
         h('div', { className: 'dli-git-list', ref: options.listRef }, rows))
 
@@ -2177,17 +2442,37 @@ window.__ModuleLoader__.load({
         }
         if (result === undefined) return note(t('gitLoading'))
         if (loaded === undefined) return note(gitReason(t, result))
-        const changes = loaded.changes.map((change, index) => {
+        const changeRows = changes.map((change, index) => {
           const view = describeChange(t, change.status)
+          const isPicked = picked.has(change.path)
           return h('div', {
             className: 'dli-git-row',
             key: `${index}:${change.path}`,
+            'data-picked': isPicked ? 'true' : undefined,
             // The path stays in the tooltip because the column is narrow enough to
-            // shorten it; the second line says what a double-click does, which is
-            // the only thing on this page that is not visible at a glance.
+            // shorten it; the second line says what a click and a double-click do,
+            // which is the only thing on this page that is not visible at a glance.
             title: `${change.path}\n${t('gitDiffHint')}`,
+            // Outside selection mode a click picks nothing — the boxes are not on
+            // screen, so a selection nobody can see would be a trap. In it the
+            // whole row is the target, which is what makes picking several rows
+            // quick, and a double-click still opens the diff because the two
+            // clicks of it cancel each other out.
+            onClick: picking ? (event) => { pickChange(change, index, event?.shiftKey === true) } : undefined,
             onDoubleClick: () => { openDiff(change) },
           },
+          picking
+            ? h('input', {
+              type: 'checkbox',
+              className: 'dli-git-pick',
+              checked: isPicked,
+              'aria-label': t('gitPickFile', { path: change.path }),
+              // The row's own click does the picking, so the box must not toggle
+              // it a second time; its change is the keyboard-and-screen-reader path.
+              onClick: (event) => { event?.stopPropagation?.() },
+              onChange: () => { pickChange(change, index, false) },
+            })
+            : null,
           h('span', { className: `dli-git-badge dli-git-badge-${view.tone}` }, view.label),
           h('span', { className: 'dli-git-path' }, change.path),
           view.staged ? h('span', { className: 'dli-git-staged' }, t('gitStaged')) : null)
@@ -2214,13 +2499,19 @@ window.__ModuleLoader__.load({
               : author === '' ? t('gitEmptyCommits') : t('gitEmptyAuthor'))
         return h('div', { className: 'dli-git-cols' },
           column(t('gitChanges'), changes.length,
-            changes.length === 0 ? note(t('gitEmptyChanges')) : changes),
+            changeRows.length === 0 ? note(t('gitEmptyChanges')) : changeRows,
+            undefined, {
+              // The way in stays in the heading; everything the mode needs sits on
+              // the row it adds below, where a narrow column has room for it.
+              action: picking ? null : selectButton(),
+              filter: picking ? pickRow() : null,
+            }),
           column(t('gitCommits'), commitRows.length, commitBody, remoteBadge(), {
             filter: authorFilter(), listRef: listNode,
           }))
       }
 
-      return h('div', { className: 'dli-git' }, bar, pullNote, sendNote, body())
+      return h('div', { className: 'dli-git' }, bar, pullNote, sendNote, discardNote(), body())
     }
 
     // ---- plugin -------------------------------------------------------------
@@ -2446,9 +2737,9 @@ window.__ModuleLoader__.load({
             key: GIT_TYPE_ID,
             locale: NS,
             // The component reaches no service itself: these callbacks read the
-            // repository, compare or fast-forward its upstream, read one detail,
-            // or put a message in the conversation; all are bound to the Session
-            // this tab belongs to.
+            // repository, compare or fast-forward its upstream, restore a
+            // selection, read one detail, or put a message in the conversation;
+            // all are bound to the Session this tab belongs to.
             inject: (sessionId) => ({
               load: async (cwd, signal) => {
                 const response = await fetch(`${GIT_PATH}?cwd=${encodeURIComponent(cwd)}`, { signal })
@@ -2499,6 +2790,32 @@ window.__ModuleLoader__.load({
                   method: 'POST', signal,
                 })
                 if (!response.ok) throw new Error(`little-icon: the Git pull route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Restore the selected changes.
+               *
+               * The paths travel in the body rather than the query: a selection is
+               * a list, and a changed path may hold any punctuation, so neither a
+               * query parameter nor one joined value would name them. The Host
+               * reads each path's status again before touching it, and answers with
+               * the refreshed listing.
+               * @param root - the repository root from the listing.
+               * @param entries - the selected changes, each `{ path }` plus `from`
+               *   on a rename.
+               * @param signal - aborts the page's wait when it closes or changes
+               *   repository.
+               * @returns the Host's answer: the refreshed listing, the paths it
+               *   discarded, and the ones that had no change left.
+               */
+              discard: async (root, entries, signal) => {
+                const response = await fetch(GIT_DISCARD_PATH, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ root, paths: entries }),
+                  signal,
+                })
+                if (!response.ok) throw new Error(`little-icon: the Git discard route answered ${response.status}`)
                 return response.json()
               },
               /**

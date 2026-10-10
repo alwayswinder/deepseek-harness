@@ -20,13 +20,14 @@ import { join, resolve, sep } from 'node:path'
 const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, withMusic, clampVolume, MUSIC_STATE, STATES, ACTIVITY_PATH, COMMANDS_PATH,
-  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH, OPEN_PATH,
+  GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH,
+  GIT_DISCARD_PATH, OPEN_PATH,
   MUSIC_PATH, MUSIC_SYNC_PATH, MUSIC_DOWNLOAD_PATH, MUSIC_EXPAND_PATH, MUSIC_ADDED_PATH,
   MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH,
-  GIT_DIFF_MAX_CHARS, GIT_LOG_PAGE,
+  GIT_DIFF_MAX_CHARS, GIT_DISCARD_MAX_BYTES, GIT_LOG_PAGE,
   parseGitStatus, parseGitLog, parseGitAuthors, parseGitCommitFiles,
   readGitRepository, readGitCommits, readGitRemoteStatus,
-  pullGitRepository, readGitDiff, readGitCommit,
+  pullGitRepository, discardGitChanges, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
   coopRoleFor, coopPortFor, coopAutoAction,
 } = internals
@@ -1598,6 +1599,101 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
   } finally {
     rmSync(pullWorld, { recursive: true, force: true })
   }
+
+  // Discarding a selection is the one write the Git page performs on the working
+  // tree, and what Git says about a path decides which command restores it: a
+  // tracked edit goes back to what HEAD holds on both sides, a staged addition
+  // and an untracked file are removed, a staged rename puts its old path back,
+  // and a path someone else already cleaned is answered rather than acted on.
+  const discardRepo = mkdtempSync(join(tmpdir(), 'little-icon-discard-'))
+  try {
+    const run = (...args) => spawnSync('git', args, { cwd: discardRepo, encoding: 'utf8' })
+    const must = (...args) => {
+      const outcome = run(...args)
+      assert.equal(outcome.status, 0, `git ${args.join(' ')} failed: ${outcome.stderr}`)
+      return outcome
+    }
+    must('init', '-q', '-b', 'main')
+    must('config', 'user.email', 'smoke@example.test')
+    must('config', 'user.name', 'smoke')
+    writeFileSync(join(discardRepo, 'kept.txt'), 'one\n')
+    writeFileSync(join(discardRepo, 'both.txt'), 'both\n')
+    writeFileSync(join(discardRepo, 'gone.txt'), 'gone\n')
+    writeFileSync(join(discardRepo, 'move-me.txt'), 'move\n')
+    must('add', '.')
+    must('commit', '-q', '-m', 'first commit')
+    // One change of each kind, which is what the command is chosen by: an
+    // unstaged edit, an edit staged and then edited again, a staged addition, an
+    // untracked file, a deletion in the working tree, and a staged rename.
+    writeFileSync(join(discardRepo, 'kept.txt'), 'two\n')
+    writeFileSync(join(discardRepo, 'both.txt'), 'staged\n')
+    must('add', 'both.txt')
+    writeFileSync(join(discardRepo, 'both.txt'), 'staged then edited\n')
+    writeFileSync(join(discardRepo, 'staged.txt'), 'staged\n')
+    must('add', 'staged.txt')
+    writeFileSync(join(discardRepo, 'untracked.txt'), 'new\n')
+    rmSync(join(discardRepo, 'gone.txt'))
+    must('mv', 'move-me.txt', 'moved.txt')
+    const statusOf = (listing) => Object.fromEntries(listing.changes.map(change => [change.path, change.status]))
+    const before = await readGitRepository(discardRepo)
+    assert.equal(before.ok, true, JSON.stringify(before))
+    assert.deepEqual(statusOf(before), {
+      'both.txt': 'MM', 'gone.txt': ' D', 'kept.txt': ' M',
+      'moved.txt': 'R ', 'staged.txt': 'A ', 'untracked.txt': '??',
+    }, 'the fixture holds one change of every kind the discard has to answer')
+
+    // An empty selection is refused before Git runs, and a directory that is not
+    // a repository answers the listing's own reason.
+    assert.deepEqual(await discardGitChanges(discardRepo, []), { ok: false, reason: 'no-paths' })
+    assert.deepEqual(await discardGitChanges(join(tmpdir(), 'little-icon-no-such-directory'), [{ path: 'a.txt' }]),
+      { ok: false, reason: 'no-dir' })
+
+    const discarded = await discardGitChanges(discardRepo, [
+      { path: 'kept.txt' },
+      { path: 'both.txt' },
+      { path: 'staged.txt' },
+      { path: 'untracked.txt' },
+      { path: 'gone.txt' },
+      { path: 'moved.txt', from: 'move-me.txt' },
+      { path: 'never-changed.txt' },
+    ])
+    assert.equal(discarded.ok, true, JSON.stringify(discarded))
+    assert.deepEqual(discarded.discarded,
+      ['kept.txt', 'both.txt', 'staged.txt', 'untracked.txt', 'gone.txt', 'moved.txt'],
+      'every path the listing still held is discarded, in the order the page named them')
+    assert.deepEqual(discarded.clean, ['never-changed.txt'],
+      'a path with nothing left to discard is answered, not acted on')
+    assert.deepEqual(discarded.changes, [], 'and the answer is the refreshed, now clean listing')
+    const content = (name) => readFileSync(join(discardRepo, name), 'utf8').replaceAll('\r\n', '\n')
+    assert.equal(content('kept.txt'), 'one\n', 'an edit is restored to what HEAD holds')
+    assert.equal(content('both.txt'), 'both\n', 'and so is one that was staged and then edited again')
+    assert.equal(existsSync(join(discardRepo, 'staged.txt')), false,
+      'a path only the index held is dropped from it and deleted')
+    assert.equal(existsSync(join(discardRepo, 'untracked.txt')), false, 'a path Git never tracked is deleted')
+    assert.equal(content('gone.txt'), 'gone\n', 'a deletion in the working tree is restored')
+    assert.equal(existsSync(join(discardRepo, 'moved.txt')), false, 'a rename is not left behind')
+    assert.equal(content('move-me.txt'), 'move\n', 'and its old path is back with what HEAD holds')
+    assert.equal(must('status', '--porcelain').stdout, '', 'the repository is as clean as the answer said')
+
+    // A repository whose first commit has not been made yet holds staged
+    // additions only, where `HEAD` resolves to nothing: discarding one drops it
+    // from the index and deletes the file.
+    const unborn = mkdtempSync(join(tmpdir(), 'little-icon-discard-unborn-'))
+    try {
+      spawnSync('git', ['init', '-q'], { cwd: unborn })
+      writeFileSync(join(unborn, 'first.txt'), 'first\n')
+      spawnSync('git', ['add', 'first.txt'], { cwd: unborn })
+      const dropped = await discardGitChanges(unborn, [{ path: 'first.txt' }])
+      assert.equal(dropped.ok, true, JSON.stringify(dropped))
+      assert.deepEqual(dropped.discarded, ['first.txt'])
+      assert.equal(existsSync(join(unborn, 'first.txt')), false, 'the staged addition is gone')
+      assert.equal(spawnSync('git', ['status', '--porcelain'], { cwd: unborn, encoding: 'utf8' }).stdout, '')
+    } finally {
+      rmSync(unborn, { recursive: true, force: true })
+    }
+  } finally {
+    rmSync(discardRepo, { recursive: true, force: true })
+  }
   console.log('little-icon smoke: git readers ok')
 } else {
   console.log('skipping the real-repository read: no git on PATH')
@@ -1627,7 +1723,9 @@ globalThis.document = {
   removeEventListener: (name) => { documentListeners.delete(name) },
 }
 globalThis.fetch = (url, init) => {
-  pings.push({ url, method: init?.method })
+  // A body is recorded only when the request carried one, so the calls that name
+  // their arguments in the query are compared as they always were.
+  pings.push({ url, method: init?.method, ...(init?.body === undefined ? {} : { body: init.body }) })
   return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, root: '/repo', branch: 'main', changes: [], commits: [] }) })
 }
 /** Event streams the page opens; the test dispatches the Host's frames itself. */
@@ -1992,6 +2090,16 @@ await gitFace.loadCommits('D:\\work\\proj', 20, 'Ada Lovelace <ada@example.test>
 assert.deepEqual(pings.at(-1),
   { url: `${GIT_COMMITS_PATH}?cwd=D%3A%5Cwork%5Cproj&skip=20&author=Ada%20Lovelace%20%3Cada%40example.test%3E`, method: undefined },
   'a further page carries the offset and the author identity the Host listed')
+// The discard face is the one Git request whose selection travels in the body: a
+// list of paths cannot be a query parameter, and a path may hold any punctuation,
+// so neither one value nor a joined one would name them. A rename carries both of
+// its ends, because the Host restores the old path before removing the new one.
+await gitFace.discard('/repo', [{ path: 'src/a.ts' }, { path: 'src/new.ts', from: 'src/old.ts' }], undefined)
+assert.deepEqual(pings.at(-1), {
+  url: GIT_DISCARD_PATH,
+  method: 'POST',
+  body: JSON.stringify({ root: '/repo', paths: [{ path: 'src/a.ts' }, { path: 'src/new.ts', from: 'src/old.ts' }] }),
+}, 'the selection travels as a JSON body naming the repository and every picked entry')
 const answerFetch = globalThis.fetch
 globalThis.fetch = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
 await assert.rejects(() => gitFace.load('/repo', undefined), /answered 500/)
@@ -2000,6 +2108,7 @@ await assert.rejects(() => gitFace.loadRemote('/repo', undefined), /answered 500
 await assert.rejects(() => gitFace.loadDiff('/repo', 'a.txt', undefined), /answered 500/)
 await assert.rejects(() => gitFace.loadCommit('/repo', 'abc123', undefined), /answered 500/)
 await assert.rejects(() => gitFace.pull('/repo', undefined), /answered 500/)
+await assert.rejects(() => gitFace.discard('/repo', [{ path: 'a.txt' }], undefined), /answered 500/)
 globalThis.fetch = answerFetch
 
 // The button's message is a real user turn: the page goes through the Session's
@@ -2486,6 +2595,9 @@ globalThis.fetch = answeredFetch
 // The Git page draws two columns from one Host answer. The load effect normally
 // sets that answer; the test seeds it instead, so only the render is under test.
 const commitPages = []
+const discardRequests = []
+/** A refusal a test wants the next discard to answer with, instead of the refreshed listing. */
+let discardRefusal
 const gitProps = {
   t,
   sessionId: 'session',
@@ -2498,6 +2610,15 @@ const gitProps = {
   },
   loadRemote: () => Promise.resolve({}),
   pull: async (cwd) => { pullRequests.push(cwd); return { ...listing, updated: true } },
+  discard: async (root, entries) => {
+    discardRequests.push({ root, entries })
+    return discardRefusal ?? {
+      ...listing,
+      changes: listing.changes.filter((change) => !entries.some((entry) => entry.path === change.path)),
+      discarded: entries.map((entry) => entry.path),
+      clean: [],
+    }
+  },
   loadDiff: () => Promise.resolve({}),
   loadCommit: () => Promise.resolve({}),
   sendPrompt: gitFace.sendPrompt,
@@ -2650,6 +2771,109 @@ assert.notEqual(pullButton.props.disabled, true, 'a readable repository can pull
 pullButton.props.onClick()
 await new Promise((resolve) => setTimeout(resolve, 0))
 assert.deepEqual(pullRequests, ['/repo'], 'pull uses the current Session repository')
+
+// The changes column is the one part of this page that acts on several rows at
+// once: the heading's Select button turns the boxes on, a row (or the box in the
+// heading) picks it, and "discard" restores the picked ones. The selection mode,
+// the picked set, and the discard line are seeded here, because the stub's
+// setters are no-ops: what is under test is what a render draws from the state
+// the page can be in, in the order the component reads its own state.
+const renderPicked = (pickedPaths, discard, picking) => {
+  seeded.push(
+    { phase: 'settled', result: listing, remote: { phase: 'settled', result: { ok: true, relation: 'up-to-date', behind: 0 } } },
+    0, { phase: 'idle' }, { phase: 'idle' }, undefined,
+    '', { author: '', list: undefined, more: false, phase: 'idle' }, 0,
+    new Set(pickedPaths), discard, picking,
+  )
+  return gitRender()
+}
+const pickBoxes = (view) => flatten(view).filter(node => typeof node.props?.className === 'string'
+  && node.props.className.split(' ').includes('dli-git-pick'))
+const discardControl = (view) => flatten(view).find(node => node.props?.className === 'dli-git-discard')
+const selectControl = (view) => flatten(view).find(node => node.props?.className === 'dli-git-select')
+
+// The column is a plain listing until somebody asks otherwise: no row carries a
+// box, the heading carries the one way in, and nothing about discarding is on
+// screen — an invisible selection would be a trap, so a row click picks nothing
+// here either.
+const notPicking = renderPicked([], { phase: 'idle' }, false)
+assert.equal(selectControl(notPicking.view).children[0], t('gitSelect'),
+  'the changes heading offers the way into selection mode')
+assert.equal(pickBoxes(notPicking.view).length, 0, 'and no box is drawn before it is used')
+assert.equal(discardControl(notPicking.view), undefined, 'nor is the action that needs a selection')
+const unpickedRow = flatten(notPicking.view).filter(node => node.props?.className === 'dli-git-row')[0]
+assert.equal(unpickedRow.props.onClick, undefined, 'a row click picks nothing while the boxes are off')
+assert.equal(typeof unpickedRow.props.onDoubleClick, 'function', 'and a double-click still opens the diff')
+
+// In selection mode every row carries its box, none of them picked yet: the row
+// under the heading holds the box that picks them all, the action is offered but
+// disabled, and nothing has been asked until it is used.
+const unpicked = renderPicked([], { phase: 'idle' }, true)
+const allBox = pickBoxes(unpicked.view).find(node => node.props.className.includes('dli-git-pick-all'))
+assert.ok(allBox !== undefined, 'selection mode puts the pick-everything box under the heading')
+assert.equal(allBox.props.checked, false, 'which is off while no row is picked')
+assert.equal(allBox.props['aria-label'], t('gitPickAll'), 'and names itself')
+assert.equal(pickBoxes(unpicked.view).length, listing.changes.length + 1,
+  'every changed row gets a box of its own, beside the heading one')
+assert.equal(discardControl(unpicked.view).children[0], t('gitDiscard'),
+  'with nothing picked the control names the action alone')
+assert.equal(discardControl(unpicked.view).props.disabled, true, 'and cannot be used')
+assert.equal(selectControl(unpicked.view).children[0], t('gitSelectExit'),
+  'the way back out of selection mode is beside it')
+assert.equal(flatten(unpicked.view).some(node => node.props?.className === 'dli-git-confirm'), false,
+  'nothing is asked before the control is used')
+const allPicked = renderPicked(listing.changes.map(change => change.path), { phase: 'idle' }, true)
+assert.equal(pickBoxes(allPicked.view).find(node => node.props.className.includes('dli-git-pick-all')).props.checked,
+  true, 'picking every row turns the heading box on')
+
+// Picked rows are marked and counted, and the confirmation names how many are
+// about to go: this is the one action here that cannot be undone, so it asks
+// with a line of its own rather than acting on the first click.
+const twoPicked = renderPicked(['src/a.ts', 'src/old.ts'], { phase: 'confirm' }, true)
+const pickedRows = flatten(twoPicked.view).filter(node => node.props?.className === 'dli-git-row')
+assert.deepEqual(pickedRows.map(row => row.props['data-picked'] ?? 'false'), ['true', 'false', 'false', 'true'],
+  'only the picked rows carry the picked marker')
+assert.deepEqual(pickedRows.map(row => row.children[0].props.checked), [true, false, false, true],
+  'and every row carries its own box')
+assert.equal(pickedRows[0].children[0].props['aria-label'], t('gitPickFile', { path: 'src/a.ts' }),
+  'a box names the row it picks, for a reader that cannot see the row')
+assert.equal(discardControl(twoPicked.view).children[0], t('gitDiscardCount', { count: 2 }),
+  'the control counts what it would discard')
+const confirm = flatten(twoPicked.view).find(node => node.props?.className === 'dli-git-confirm')
+assert.ok(confirm !== undefined, 'the confirmation stands under the toolbar')
+assert.equal(confirm.children[0].children[0], t('gitDiscardConfirm', { count: 2 }),
+  'and it says how many changes are about to be lost')
+assert.equal(confirm.children[1].children[0], t('gitDiscardYes'), 'the first button performs it')
+assert.equal(confirm.children[2].children[0], t('gitDiscardCancel'), 'the second one backs out')
+
+// Confirming sends exactly the picked entries, a rename carrying both of its ends
+// so the Host can put the old path back before removing the new one.
+discardRequests.length = 0
+await confirm.children[1].props.onClick()
+await new Promise((resolve) => setTimeout(resolve, 0))
+assert.deepEqual(discardRequests, [{
+  root: '/repo',
+  entries: [{ path: 'src/a.ts' }, { path: 'src/old.ts', from: 'src/older.ts' }],
+}], 'the picked entries travel to the Host, named by the repository root')
+
+// The line reports the outcome instead of the question once the Host has
+// answered, and a refusal says why in the Host's own words.
+const done = renderPicked([], { phase: 'done', count: 2, clean: 1 }, false)
+assert.ok(strings(done.view).includes(`${t('gitDiscarded', { count: 2 })}${t('gitDiscardedClean', { count: 1 })}`),
+  'a finished discard says how many changes went, and how many had nothing left to discard')
+assert.equal(discardControl(done.view), undefined,
+  'and the column is back to its plain listing, since the action is done')
+const refusedDiscard = renderPicked(['src/a.ts'], {
+  phase: 'failed', result: { ok: false, reason: 'failed', message: 'index.lock exists' },
+}, true)
+assert.ok(strings(refusedDiscard.view).includes(t('gitDiscardFailed', { message: 'index.lock exists' })),
+  'a refused discard reports the reason the Host gave')
+const unreadableDiscard = renderPicked(['src/a.ts'], { phase: 'failed', result: { ok: false, reason: 'no-git' } }, true)
+assert.ok(strings(unreadableDiscard.view).includes(t('gitNoGit')),
+  'a repository that cannot be read reuses the listing explanations')
+const discarding = renderPicked(['src/a.ts'], { phase: 'discarding' }, true)
+assert.ok(strings(discarding.view).includes(t('gitDiscarding')), 'a discard in flight says so')
+assert.equal(discardControl(discarding.view).props.disabled, true, 'and cannot be started a second time')
 
 // Each refusal has its own line, and the page names no repository in any of them.
 for (const [reason, copy] of [['not-a-repo', t('gitNotARepo')], ['no-git', t('gitNoGit')],
@@ -2849,6 +3073,28 @@ console.log('little-icon smoke: browser half ok')
           end: (body) => resolve(typeof body === 'string' ? JSON.parse(body) : body),
         })
       }),
+      /**
+       * One request whose body travels in chunks and then ends, the way a real
+       * one does; the handler subscribes before this emits, so the body is
+       * delivered to the reader that is waiting for it.
+       * @param path - the route to call.
+       * @param method - the request method.
+       * @param payload - the JSON body, or undefined for a request that carries none.
+       * @returns the route's answer body.
+       */
+      answerBody: (path, method, payload) => new Promise((resolve) => {
+        const route = routes.find((row) => row.path === path)
+        assert.ok(route !== undefined, `the Host must register ${path}`)
+        const listeners = new Map()
+        route.handler({ method, url: path, on: (name, handler) => { listeners.set(name, handler) } }, {
+          writeHead: () => {},
+          write: () => {},
+          end: (body) => resolve(body === undefined ? undefined : JSON.parse(body)),
+        })
+        if (payload === undefined) return
+        listeners.get('data')?.(Buffer.from(JSON.stringify(payload), 'utf8'))
+        listeners.get('end')?.()
+      }),
       dispose: () => { for (const disposer of disposers.splice(0)) disposer() },
     }
   }
@@ -2868,6 +3114,22 @@ console.log('little-icon smoke: browser half ok')
     assert.equal(published.notice.count, 150, 'with how many songs came with it')
     assert.deepEqual(await empty.answer(MUSIC_ADDED_PATH, 'count=0'), { ok: false, reason: 'count' },
       'a count that is not a positive number is refused')
+
+    // The discard route is the one Git route whose request is a list, so its
+    // selection travels in a JSON body: a method that is not POST is refused, a
+    // body past the cap is refused instead of read into memory, and a root that
+    // names nothing, is gone, or is outside every repository gets the listing's
+    // own explanations rather than a bare failure.
+    assert.equal(await empty.answerBody(GIT_DISCARD_PATH, 'GET'),
+      undefined, 'discarding is a POST, so a read is refused without an answer body')
+    assert.deepEqual(await empty.answerBody(GIT_DISCARD_PATH, 'POST', { paths: [{ path: 'a.txt' }] }),
+      { ok: false, reason: 'no-root' }, 'a request that names no repository is refused')
+    assert.deepEqual(await empty.answerBody(GIT_DISCARD_PATH, 'POST', { root: join(home, 'gone'), paths: [{ path: 'a.txt' }] }),
+      { ok: false, reason: 'no-dir' }, 'a repository root that is gone is answered, not attempted')
+    assert.deepEqual(await empty.answerBody(GIT_DISCARD_PATH, 'POST', { root: home, paths: [{ path: 'a.txt' }] }),
+      { ok: false, reason: 'not-a-repo' }, 'a directory outside every repository answers the same way')
+    assert.deepEqual(await empty.answerBody(GIT_DISCARD_PATH, 'POST', { root: 'x'.repeat(GIT_DISCARD_MAX_BYTES + 1) }),
+      { ok: false, reason: 'no-root' }, 'a body past the cap is refused, not buffered')
     empty.dispose()
 
     // One video has many spellings: the first part under a bare id is the same song as
@@ -3098,15 +3360,17 @@ $found
     assert.deepEqual(autoFormOff, [false], 'apply() did not disable the automatic settings page')
     // The page reports input here; without it the pet could only see agents and
     // jobs, and it would sleep while the person is using DSH. The second route is
-    // the stream the pet's menu commands come back on, the next four are what
-    // the Git page reads, checks, and fast-forwards a Session's repository
-    // through, the next is the menu's open-directory entry, and the rest are the
-    // music library, its downloads, and the playback commands the card sends.
+    // the stream the pet's menu commands come back on, the next seven are what
+    // the Git page reads, checks, fast-forwards, and restores a Session's
+    // repository through, the next is the menu's open-directory entry, and the
+    // rest are the music library, its downloads, and the playback commands the
+    // card sends.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
       [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
         `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_COMMITS_PATH}`,
         `exact ${GIT_REMOTE_PATH}`,
         `exact ${GIT_PULL_PATH}`,
+        `exact ${GIT_DISCARD_PATH}`,
         `exact ${OPEN_PATH}`,
         `exact ${MUSIC_PATH}`, `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
         `exact ${MUSIC_EXPAND_PATH}`, `exact ${MUSIC_ADDED_PATH}`,
@@ -3121,6 +3385,7 @@ $found
     const commitRoute = routes.find((route) => route.path === GIT_COMMIT_PATH)
     const remoteRoute = routes.find((route) => route.path === GIT_REMOTE_PATH)
     const pullRoute = routes.find((route) => route.path === GIT_PULL_PATH)
+    const discardRoute = routes.find((route) => route.path === GIT_DISCARD_PATH)
     const answered = () => {
       const response = {
         status: 0,
@@ -3131,9 +3396,22 @@ $found
       }
       return response
     }
-    const askGit = async (route, method, url) => {
+    /**
+     * Ask one Git route, with a JSON body when the route reads one. The body is
+     * emitted in chunks and then ended, after the handler has subscribed, so the
+     * reader receives it the way a real request would deliver it.
+     */
+    const askGit = async (route, method, url, payload) => {
       const response = answered()
-      route.handler({ method, url, on: () => {} }, response)
+      const listeners = new Map()
+      const request = payload === undefined
+        ? { method, url, on: () => {} }
+        : { method, url, on: (name, handler) => { listeners.set(name, handler) } }
+      route.handler(request, response)
+      if (payload !== undefined) {
+        listeners.get('data')?.(Buffer.from(JSON.stringify(payload), 'utf8'))
+        listeners.get('end')?.()
+      }
       // Successful handlers answer through a promise. Wait for that observable
       // response rather than assuming the machine will settle it within one
       // fixed delay; method refusals need no body.
@@ -3200,6 +3478,20 @@ $found
     assert.equal(noPullCwd.status, 200)
     assert.deepEqual(noPullCwd.body, { ok: false, reason: 'no-cwd' })
     assert.equal(noPullCwd.headers['cache-control'], 'no-store', 'a pull result must not be cached')
+
+    // Discarding is the one route that throws work away, so it is also the one
+    // whose selection arrives in the body: a re-read cannot trigger it, and a
+    // request that names no repository is answered before Git is started.
+    assert.equal((await askGit(discardRoute, 'GET', GIT_DISCARD_PATH)).status, 405,
+      'the discard route must require POST')
+    const noRoot = await askGit(discardRoute, 'POST', GIT_DISCARD_PATH, { paths: [{ path: 'a.txt' }] })
+    assert.equal(noRoot.status, 200)
+    assert.deepEqual(noRoot.body, { ok: false, reason: 'no-root' })
+    assert.equal(noRoot.headers['cache-control'], 'no-store', 'a discard result must not be cached')
+    const outsideDiscard = await askGit(discardRoute, 'POST', GIT_DISCARD_PATH,
+      { root: home, paths: [{ path: 'a.txt' }] })
+    assert.deepEqual(outsideDiscard.body, { ok: false, reason: 'not-a-repo' },
+      'a root outside every repository answers the listing\'s own reason')
 
     // The music routes: the link list is config that travels, and everything derived
     // from it — the audio file, the index naming it, the file the pet plays from — is

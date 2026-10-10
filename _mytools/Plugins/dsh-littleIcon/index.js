@@ -121,6 +121,14 @@ const GIT_REMOTE_PATH = '/api/little-icon/git/remote'
 const GIT_PULL_PATH = '/api/little-icon/git/pull'
 
 /**
+ * Same-origin POST route that restores the uncommitted changes a selection
+ * names. It is the one Git route here that throws work away, and the only one
+ * whose request is a list rather than one path, so the paths travel in a JSON
+ * body instead of the query.
+ */
+const GIT_DISCARD_PATH = '/api/little-icon/git/discard'
+
+/**
  * Same-origin route that opens the Session's working directory in the system
  * file manager. Neither half can do it alone: which directory the person is
  * working in is the page's knowledge — it is the Session the main view holds —
@@ -171,6 +179,14 @@ const GIT_PULL_TIMEOUT_MS = 60_000
 
 /** Ceiling on one command's output; a larger status or log is an error, not a pause. */
 const GIT_MAX_BUFFER = 8 * 1024 * 1024
+
+/**
+ * Ceiling on one discard request's body. A selection is a list of paths, so it
+ * cannot travel in the query — a checkout whose new directory holds thousands of
+ * files would not fit a URL — and a body past this is refused rather than read
+ * into memory.
+ */
+const GIT_DISCARD_MAX_BYTES = 256 * 1024
 
 /**
  * Longest diff the route sends. A one-file diff of a generated file or a
@@ -857,6 +873,16 @@ function isDirectory(path) {
 }
 
 /**
+ * One path as a pathspec that names exactly it, whatever glob characters its own
+ * name holds.
+ * @param path - path relative to the repository root.
+ * @returns the pathspec.
+ */
+function withLiteralPath(path) {
+  return `:(literal)${path}`
+}
+
+/**
  * Open one Session's working directory in the system file manager.
  *
  * The directory is checked here rather than left to the file manager: a Session
@@ -953,31 +979,31 @@ async function readGitCommits(cwd, skip = 0, author = '') {
   return { ok: true, root, commits: rows.slice(0, GIT_LOG_PAGE), hasMore: rows.length > GIT_LOG_PAGE }
 }
 
-/** Last queued network operation per repository root. */
-const gitNetworkTails = new Map()
+/** Last queued operation per repository root. */
+const gitOperationTails = new Map()
 
 /** Upstream checks already running for one repository and tracking ref. */
 const gitRemoteChecks = new Map()
 
 /**
- * Serialize remote operations for one repository.
+ * Serialize the operations that write one repository.
  *
- * Separate tabs may refresh or pull the same checkout at once. Git protects its
- * refs with lock files, so those operations take turns here instead of exposing
- * an incidental lock failure in the page.
+ * Separate tabs may refresh, pull, or discard in the same checkout at once. Git
+ * protects its refs and its index with lock files, so those operations take
+ * turns here instead of exposing an incidental lock failure in the page.
  * @param root - repository root used as the serialization key.
  * @param run - operation to start after the previous one settles.
  * @returns the operation's result.
  */
-async function runGitNetworkOperation(root, run) {
-  const previous = gitNetworkTails.get(root) ?? Promise.resolve()
+async function runSerializedGit(root, run) {
+  const previous = gitOperationTails.get(root) ?? Promise.resolve()
   const operation = previous.catch(() => {}).then(run)
   const tail = operation.then(() => undefined, () => undefined)
-  gitNetworkTails.set(root, tail)
+  gitOperationTails.set(root, tail)
   try {
     return await operation
   } finally {
-    if (gitNetworkTails.get(root) === tail) gitNetworkTails.delete(root)
+    if (gitOperationTails.get(root) === tail) gitOperationTails.delete(root)
   }
 }
 
@@ -1019,7 +1045,7 @@ async function readGitRemoteStatus(cwd, timeoutMs = GIT_PULL_TIMEOUT_MS) {
   const key = `${root}\0${upstreamRef}`
   const running = gitRemoteChecks.get(key)
   if (running !== undefined) return running
-  const operation = runGitNetworkOperation(root, async () => {
+  const operation = runSerializedGit(root, async () => {
     if (remoteName !== '.') {
       const fetched = await execGit(root, [
         'fetch', '--quiet', '--no-tags', '--no-write-fetch-head',
@@ -1086,7 +1112,7 @@ async function pullGitRepository(cwd, timeoutMs = GIT_PULL_TIMEOUT_MS) {
   const running = gitPulls.get(root)
   if (running !== undefined) return running
   const operation = (async () => {
-    const updated = await runGitNetworkOperation(root, async () => {
+    const updated = await runSerializedGit(root, async () => {
       const before = await execGit(root, ['rev-parse', 'HEAD'])
       if (!before.ok) return { ok: false, reason: 'failed', message: before.message }
       const pulled = await execGit(root, [
@@ -1115,6 +1141,96 @@ async function pullGitRepository(cwd, timeoutMs = GIT_PULL_TIMEOUT_MS) {
 }
 
 /**
+ * Restore the uncommitted changes a selection names.
+ *
+ * The paths come from a listing the page drew, so each one is looked up again
+ * before anything is touched: a change that was committed, reverted, or
+ * discarded by someone else since then is answered as clean rather than acted
+ * on. What Git says about a path then decides the command, because no single one
+ * covers every case — a tracked path goes back to what `HEAD` holds, one only
+ * the index holds is dropped, one Git never tracked is deleted, and a rename
+ * needs its old path back before its new one goes. The repository is serialized
+ * with the operations that write it, so two tabs cannot compete for its locks.
+ * @param root - repository root, which the page takes from the listing.
+ * @param requests - the selected entries, each `{ path }` plus `from` on a rename.
+ * @returns the refreshed listing plus the discarded and already-clean paths, or
+ *   `{ ok: false }` with the listing's own reasons plus `no-paths` for a request
+ *   that selected nothing and `failed` with the command's message.
+ */
+async function discardGitChanges(root, requests) {
+  if (!isDirectory(root)) return { ok: false, reason: 'no-dir' }
+  const top = await execGit(root, ['rev-parse', '--show-toplevel'])
+  if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
+  const repository = top.stdout.trim()
+  const selected = new Map()
+  for (const request of requests) {
+    if (typeof request?.path !== 'string' || request.path === '') continue
+    const from = typeof request.from === 'string' && request.from !== '' ? request.from : undefined
+    selected.set(request.path, from === undefined ? { path: request.path } : { path: request.path, from })
+  }
+  if (selected.size === 0) return { ok: false, reason: 'no-paths' }
+  return runSerializedGit(repository, () => restoreSelectedPaths(repository, selected))
+}
+
+/**
+ * Read the selected paths once more and restore each by its own status.
+ * @param repository - repository root, already resolved.
+ * @param selected - the requested entries by path, each `{ path }`, plus `from`
+ *   on a rename.
+ * @returns the refreshed listing plus `discarded` and `clean`, or `{ ok: false }`
+ *   when a restore command failed.
+ */
+async function restoreSelectedPaths(repository, selected) {
+  // A rename is two paths to Git: looking the selection up without its source
+  // would report the destination as a plain addition, and restoring only that
+  // would leave the old path deleted.
+  const named = [...new Set([...selected.values()].flatMap((entry) => (
+    entry.from === undefined ? [entry.path] : [entry.path, entry.from]
+  )))]
+  const status = await execGit(repository, ['status', '--porcelain=v1', '-z', '--untracked-files=all',
+    '--', ...named.map(withLiteralPath)])
+  if (!status.ok) return { ok: false, reason: 'failed', message: status.message }
+  const reported = new Map(parseGitStatus(status.stdout).map((entry) => [entry.path, entry]))
+  const tracked = []
+  const added = []
+  const untracked = []
+  const renamed = []
+  const discarded = []
+  const clean = []
+  for (const entry of selected.values()) {
+    const change = reported.get(entry.path)
+    // Nothing is left to discard for this path — it was committed, reverted, or
+    // discarded while the page was open — which is an answer, not a failure.
+    if (change === undefined) {
+      clean.push(entry.path)
+      continue
+    }
+    const source = entry.from ?? change.from
+    discarded.push(entry.path)
+    if (change.status === '??') untracked.push(entry.path)
+    else if (source !== undefined) renamed.push({ path: entry.path, from: source })
+    else if (change.status[0] === 'A') added.push(entry.path)
+    else tracked.push(entry.path)
+  }
+  // One command per case, in the order that keeps a rename's two ends from
+  // meeting: the old path is back before the new one is removed.
+  const steps = [
+    { paths: tracked, args: ['checkout', '-q', 'HEAD'] },
+    { paths: renamed.map((entry) => entry.from), args: ['checkout', '-q', 'HEAD'] },
+    { paths: renamed.map((entry) => entry.path), args: ['rm', '-q', '-f'] },
+    { paths: added, args: ['rm', '-q', '-f'] },
+    { paths: untracked, args: ['clean', '-q', '-f'] },
+  ]
+  for (const step of steps) {
+    if (step.paths.length === 0) continue
+    const outcome = await execGit(repository, [...step.args, '--', ...step.paths.map(withLiteralPath)])
+    if (!outcome.ok) return { ok: false, reason: 'failed', message: outcome.message }
+  }
+  const listing = await readGitRepository(repository)
+  return listing.ok ? { ...listing, discarded, clean } : listing
+}
+
+/**
  * Read one changed file's diff.
  *
  * Which comparison shows the change depends on where the path stands, which is
@@ -1138,7 +1254,7 @@ async function readGitDiff(root, path) {
   if (!top.ok) return { ok: false, reason: top.missing ? 'no-git' : 'not-a-repo' }
   // A pathspec that names this one path whatever glob characters its name holds;
   // `--no-index` takes plain filenames instead, so only the tracked diffs use it.
-  const named = `:(literal)${path}`
+  const named = withLiteralPath(path)
   const status = await execGit(root, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', named])
   if (!status.ok) return { ok: false, reason: 'failed', message: status.message }
   const [entry] = parseGitStatus(status.stdout)
@@ -1296,6 +1412,79 @@ function serveGitMutation(ctx, req, res, run) {
   }
   const query = new URL(req.url ?? '', 'http://localhost').searchParams
   void run(query).then(
+    (payload) => { sendJson(res, payload) },
+    (error) => {
+      ctx.logger.warn('little-icon: git mutation failed: %s', String(error))
+      sendJson(res, { ok: false, reason: 'failed', message: String(error) })
+    })
+}
+
+/**
+ * Read one JSON request body.
+ *
+ * The body is bounded before it is parsed: a request is a local one from this
+ * plugin's own page, so anything past the cap is not a selection, and it is
+ * drained rather than read into memory so the refusal can still be answered.
+ * @param req - the request stream.
+ * @param limit - most bytes to accept, in bytes.
+ * @returns the parsed body, or undefined when the request carried none, carried
+ *   more than the cap, or did not carry JSON.
+ */
+function readJsonBody(req, limit) {
+  return new Promise((resolve) => {
+    const chunks = []
+    let size = 0
+    let over = false
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limit) {
+        over = true
+        chunks.length = 0
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (over) {
+        resolve(undefined)
+        return
+      }
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+      } catch {
+        // A body that is not JSON is a request this route cannot answer.
+        resolve(undefined)
+      }
+    })
+    req.on('error', () => { resolve(undefined) })
+  })
+}
+
+/**
+ * Run one Git mutation whose request carries a JSON body, and answer with its
+ * result. The list routes use it because a selection is a list: it is the same
+ * POST-only frame as {@link serveGitMutation}, with the body in place of the
+ * query.
+ * @param ctx - host context providing connection authorization and logging.
+ * @param req - the request; only POST is accepted.
+ * @param res - the response.
+ * @param run - performs the mutation for the parsed body, which is undefined
+ *   when the request carried none.
+ */
+function serveGitBody(ctx, req, res, run) {
+  const connection = ctx.get('connection')
+  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+  if (rejection !== undefined) {
+    res.writeHead(rejection)
+    res.end()
+    return
+  }
+  if (req.method !== 'POST') {
+    res.writeHead(405)
+    res.end()
+    return
+  }
+  void readJsonBody(req, GIT_DISCARD_MAX_BYTES).then(run).then(
     (payload) => { sendJson(res, payload) },
     (error) => {
       ctx.logger.warn('little-icon: git mutation failed: %s', String(error))
@@ -2311,6 +2500,21 @@ export function apply(ctx, config) {
         })
       },
     }), `little-icon: POST ${GIT_PULL_PATH}`)
+    // Discarding is the one route here that throws work away, so it is also the
+    // one whose paths travel in the body: a selection is a list, and a thousand
+    // paths do not fit a URL. The page always names a root it read from its own
+    // listing, and one that names nothing is answered rather than passed on.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: GIT_DISCARD_PATH,
+      handler: (req, res) => {
+        serveGitBody(ctx, req, res, (body) => {
+          const root = typeof body?.root === 'string' ? body.root : ''
+          if (root === '') return Promise.resolve({ ok: false, reason: 'no-root' })
+          return discardGitChanges(root, Array.isArray(body?.paths) ? body.paths : [])
+        })
+      },
+    }), `little-icon: POST ${GIT_DISCARD_PATH}`)
     // The one route here with a side effect outside the page: it opens the
     // directory in the shell's own file manager. POST, so a page that re-reads
     // its listing never opens a folder by itself.
@@ -2670,6 +2874,7 @@ export const internals = {
   readGitCommits,
   readGitRemoteStatus,
   pullGitRepository,
+  discardGitChanges,
   readGitDiff,
   readGitCommit,
   openWorkingDirectory,
@@ -2687,6 +2892,7 @@ export const internals = {
   GIT_COMMITS_PATH,
   GIT_REMOTE_PATH,
   GIT_PULL_PATH,
+  GIT_DISCARD_PATH,
   OPEN_PATH,
   MUSIC_PATH,
   MUSIC_SYNC_PATH,
@@ -2696,5 +2902,6 @@ export const internals = {
   MUSIC_REMOVE_PATH,
   MUSIC_COMMAND_PATH,
   GIT_DIFF_MAX_CHARS,
+  GIT_DISCARD_MAX_BYTES,
   GIT_LOG_PAGE,
 }

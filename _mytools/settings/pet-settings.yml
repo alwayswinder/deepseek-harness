@@ -8,7 +8,7 @@
 
 version: 1
 exportedFrom: desktop
-exportedAt: 2026-10-09T13:34:37.640Z
+exportedAt: 2026-10-10T03:17:31.527Z
 name: "@local/dsh-little-icon"
 config:
   enabled: true
@@ -30,6 +30,8 @@ config:
       url: https://platform.deepseek.com/usage
     - name: 翻译
       url: https://translate.google.com/?hl=zh-CN&sl=en&tl=zh-CN&op=translate
+    - name: 谷歌
+      url: https://www.google.com/
   coopAutoStart: false
   musicLinks:
     - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596

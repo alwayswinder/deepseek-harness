@@ -331,6 +331,27 @@ export const Config = z.object({
   musicPlaylist: z.string().default('').volatile(),
   /** Whether the next song is drawn at random from the playlist being played. */
   musicShuffle: z.boolean().default(false).volatile(),
+  /**
+   * Whether the pet steps aside while another application plays sound on the
+   * default output device. The pet reads the audio sessions there itself — the
+   * page and this half have no business in somebody else's playback — so this is
+   * only the switch it obeys.
+   */
+  musicDuck: z.boolean().default(true).volatile(),
+  /**
+   * Seconds the other application has to stay quiet before the pet picks the
+   * music back up. Zero resumes on the first quiet sample, which is also what
+   * makes the pause between two videos sound like a stutter.
+   */
+  musicDuckHoldSeconds: z.number().step(1).min(0).max(60).default(3).volatile(),
+  /**
+   * How the pet steps aside: `fade` walks the volume down to `musicDuckLevel` and
+   * back, `pause` stops where it is. The pet performs either one itself — it owns
+   * the player — so this is the instruction it is handed.
+   */
+  musicDuckMode: z.union(['fade', 'pause']).default('fade').volatile(),
+  /** What a fade leaves: a percent of the configured volume, `0` to `100`. */
+  musicDuckLevel: z.number().step(1).min(0).max(100).default(20).volatile(),
 })
 
 /**
@@ -1835,6 +1856,11 @@ export function apply(ctx, config) {
       const reported = JSON.parse(readFileSync(musicPlayerFile, 'utf8'))
       return {
         playing: reported.playing === true,
+        // A step aside the pet made because somebody else was playing: the card says
+        // which kind it was rather than offering the same "paused" the person's own
+        // pause gets.
+        ducked: reported.ducked === true,
+        duckedMode: reported.duckedMode === 'pause' ? 'pause' : 'fade',
         id: typeof reported.id === 'string' ? reported.id : '',
         title: typeof reported.title === 'string' ? reported.title : '',
         positionMs: Number.isFinite(reported.positionMs) ? reported.positionMs : 0,
@@ -1930,6 +1956,13 @@ export function apply(ctx, config) {
       playlists: [...playlists.values()],
       playlist: selectedKnown ? selected : '',
       shuffle,
+      // The switch, how it steps aside, and its hold, for the pet's own probe: it
+      // reads the sessions on the default output device and steps the music aside
+      // while somebody else plays.
+      duck: config.musicDuck.get() === true,
+      duckHoldSeconds: config.musicDuckHoldSeconds.get(),
+      duckMode: config.musicDuckMode.get(),
+      duckLevel: config.musicDuckLevel.get(),
       missing,
       sync: current.progress,
       command: musicCommand,

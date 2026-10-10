@@ -197,6 +197,23 @@ const runningView = musicView({
   exists: (path) => path.endsWith('one.m4a'),
 })
 assert.deepEqual(runningView.entries.map(row => [row.link, row.state]), [['BV1', 'ready'], ['BV2', 'downloading']])
+// A pause the pet made because somebody else was playing is its own answer, not the
+// pause a person asked for: the card says why the music stopped rather than showing
+// the same line, so the switch that caused it is traceable from there.
+const duckedView = musicView({
+  links: ['BV1'],
+  entries: viewEntries,
+  dir: join(tmpdir(), 'little-icon-music-view'),
+  volume: 55,
+  sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
+  player: { playing: false, ducked: true, duckedMode: 'fade', id: 'BV1', title: 'One', positionMs: 1000, error: '' },
+  exists: (path) => path.endsWith('one.m4a'),
+})
+assert.equal(duckedView.player.ducked, true, 'a step aside reaches the card')
+assert.equal(duckedView.player.duckedMode, 'fade', 'together with which way it was taken')
+assert.equal(musicView({ links: [], entries: {}, dir: join(tmpdir(), 'little-icon-music-view'),
+  volume: 55, sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
+}).player.ducked, false, 'and a pet that never reported one is not stepped aside')
 
 // The download pipeline. The view API, the playurl API, the short address, and the
 // audio body are all answered here, so these checks cover what this half does with
@@ -877,6 +894,23 @@ if (process.platform === 'win32') {
   // another application hide DSH, which is the opposite of what it asked for.
   assert.match(selfTest.stdout, /click-intent: front=hide behind=show hidden=show minimized=show/,
     'a click must hide only an in-front window and raise every other one')
+  // Stepping the music aside for another application is decided by a pure function,
+  // so the cases that matter are printed from it: a sound has to last two samples
+  // before the music pauses (a notification ding does not), and only a pause this
+  // probe made comes back, after the configured stretch of silence.
+  assert.match(selfTest.stdout,
+    /duck-decision: quiet=none loud-1=none loud-2=step stepped-quiet-1=none stepped-quiet-3=return stepped-loud=none stepped-hold-0=return/,
+    'the duck decision must step aside on sustained sound and return only from its own step')
+  // The fade is a slope rather than a jump, and its one step is the same size in both
+  // directions: a whole fade lasts a second at 50 ms a step, it stops on the target
+  // instead of overshooting, and the last step up lands exactly on full volume.
+  assert.match(selfTest.stdout, /duck-fade: down=0\.95 arrive=0\.2 up=0\.25 full=1/,
+    'one fade step must be a fiftieth of the way and settle on its target')
+  // And what the player is told, where a fractional volume is easy to lose: the
+  // clamp has to stay in double arithmetic, or a fifth of a 4% volume reads as
+  // silence - PowerShell's Math.Min picks its Int32 overload for `Min(1, 0.2)`.
+  assert.match(selfTest.stdout, /duck-output: full=0\.7 faded=0\.008 silent=0/,
+    'the player volume must keep its fraction through the clamp')
   // The sites submenu is the menu's only part built from configuration, so the
   // self test builds it for an empty list and for a list of two and prints what
   // each turned into: what an entry reads, the address it carries, and the two
@@ -1092,6 +1126,26 @@ if (process.platform === 'win32') {
   assert.equal(musicProbe.status, 1, 'a file that is not there must be reported, not played')
   assert.match(musicProbe.stdout, /music-probe: failed error=/, 'and the probe must say so in one line')
   rmSync(musicProbeDir, { recursive: true, force: true })
+
+  // The other-audio probe, which is the one part of the duck feature a keyless test
+  // can reach: it compiles the CoreAudio interop and asks Windows for the default
+  // output device's sessions. What those sessions are is the machine's business, so
+  // what is asserted is that the answer is a number and that the prompt for a
+  // player is the process id this probe knows about itself.
+  const audioProbeDir = mkdtempSync(join(tmpdir(), 'little-icon-audio-probe-'))
+  const audioProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(audioProbeDir, 'state.json'),
+    '-PositionFile', join(audioProbeDir, 'position.json'),
+    '-AudioProbe',
+  ], { encoding: 'utf8' })
+  rmSync(audioProbeDir, { recursive: true, force: true })
+  assert.equal(audioProbe.status, 0, `pet.ps1 -AudioProbe failed: ${audioProbe.stderr}`)
+  assert.match(audioProbe.stdout, /audio-probe-own-pid: \d+/, 'the probe must name the process it excludes')
+  assert.match(audioProbe.stdout, /audio-probe-max-other: -?\d+\.\d{3}/,
+    'and must report one peak level, whether or not anybody is playing')
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')
 }
@@ -2379,7 +2433,10 @@ const sampleLibrary = {
 // the way the rest of the card writes them: the slider through the field writer, the
 // path once the box is left, and the picker with what it answered.
 const musicElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDir: '', musicVolume: 40 })
-const volumeSlider = musicElements.find(node => node.type === 'input' && node.props.type === 'range' && node.props.min === 0 && node.props.max === 100)
+// Found by its own row rather than by its bounds: the fade-level slider below
+// covers the same 0-100 range, and a test that takes whichever comes first would
+// follow the layout instead of the field.
+const volumeSlider = musicElements.find(node => node.props?.label === t('musicVolume')).props.control
 assert.ok(volumeSlider !== undefined, 'the volume slider is missing')
 assert.equal(volumeSlider.props.value, 40, 'the slider starts from the stored volume')
 const musicDirField = musicElements.find(node => node.type === 'input' && node.props.type === 'text'
@@ -2527,7 +2584,7 @@ assert.ok(strings(manyFolded).includes(t('musicSetCount', { count: 150, ready: 0
 
 // The playlist picker and the shuffle switch: the picker offers All and one entry per
 // playlist with its size, and each control writes through the form like every field.
-const setupElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: '', musicShuffle: false })
+const setupElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: '', musicShuffle: false, musicDuck: true, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 })
 const picker = setupElements.find(node => node.type === 'select')
 assert.ok(picker !== undefined, 'the playlist picker is missing')
 assert.equal(picker.props.value, '', 'it starts on All')
@@ -2549,6 +2606,54 @@ assert.deepEqual(musicWrites.at(-1), { patch: { musicPlaylist: 'BV1' }, immediat
 shuffleBox.props.onChange({ target: { checked: true } })
 assert.deepEqual(musicWrites.at(-1), { patch: { musicShuffle: true }, immediate: true },
   'and ticking shuffle writes that')
+// Stepping aside for another player is a switch of its own, on by default, with the
+// way it steps aside, the level it fades to, and the silence it waits for beside it:
+// each of those is disabled while the switch is off, because a control nothing reads
+// is a control that does nothing.
+const duckBox = setupElements.filter(node => node.type === 'input' && node.props.type === 'checkbox')[1]
+assert.ok(duckBox !== undefined, 'the other-audio switch is missing')
+assert.equal(duckBox.props.checked, true, 'and is on until it is turned off')
+const duckRows = (elements) => ({
+  mode: elements.find(node => node.props?.label === t('musicDuckMode')),
+  level: elements.find(node => node.props?.label === t('musicDuckLevel')),
+  hold: elements.find(node => node.props?.label === t('musicDuckHold')),
+})
+const setupDuck = duckRows(setupElements)
+assert.equal(setupDuck.mode.props.control.props.value, 'fade', 'the fade is what steps aside by default')
+assert.deepEqual(setupDuck.mode.props.control.children.map(option => option.props.value), ['fade', 'pause'],
+  'and the other way is offered beside it')
+assert.equal(setupDuck.level.props.control.props.value, 20, 'the fade starts from the schema default level')
+assert.ok(strings(setupElements).includes(t('percent', { value: 20 })),
+  'which the row says in percent')
+assert.ok(strings(setupElements).includes(t('seconds', { value: 3 })),
+  'and the hold shows the seconds the schema defaults to when nothing is stored')
+musicWrites.length = 0
+setupDuck.mode.props.control.props.onChange({ target: { value: 'pause' } })
+assert.deepEqual(musicWrites.at(-1), { patch: { musicDuckMode: 'pause' }, immediate: true },
+  'choosing the pause writes it at once')
+// A level only means something while a fade is the way: pausing never reads it, so
+// the row is not on screen at all in that mode.
+const pausedMode = duckRows(renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDuck: true, musicDuckMode: 'pause', musicDuckHoldSeconds: 3 }))
+assert.equal(pausedMode.mode.props.control.props.value, 'pause', 'the pause is what the picker shows then')
+assert.equal(pausedMode.level, undefined, 'and the fade level is not offered')
+const duckOffElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDuck: false, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 })
+const offDuck = duckRows(duckOffElements)
+assert.equal(offDuck.mode.props.control.props.disabled, true, 'the switch off disables the way it would step aside')
+assert.equal(offDuck.level.props.control.props.disabled, true, 'and the level')
+assert.equal(offDuck.hold.props.control.props.disabled, true, 'and the hold')
+musicWrites.length = 0
+duckBox.props.onChange({ target: { checked: false } })
+assert.deepEqual(musicWrites.at(-1), { patch: { musicDuck: false }, immediate: true },
+  'turning the switch off writes it at once')
+// What the pet reports about a step aside it made itself is said in the card's own
+// line, in the words of whichever kind it was.
+const duckedCard = (mode) => strings(renderMusic(
+  { ...sampleLibrary, player: { playing: false, ducked: true, duckedMode: mode, id: 'BV1', title: 'Song One', positionMs: 1000, error: '' } },
+  { musicLinks: ['BV1', 'BV2'], musicDuck: true, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 }))
+assert.ok(duckedCard('fade').includes(t('musicDuckedFade', { title: 'Song One' })),
+  'a fade is reported as the volume being turned down')
+assert.ok(duckedCard('pause').includes(t('musicDucked', { title: 'Song One' })),
+  'and a pause as a pause, whichever way the card itself is set')
 // A selection whose playlist is no longer in the list shows All rather than a stale name,
 // which is the same fallback the Host makes when it publishes the pet's list.
 const staleElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: 'BVgone' })
@@ -3270,6 +3375,10 @@ if (process.argv.includes('--pet')) {
     musicLinks: ref([]),
     musicDir: ref(''),
     musicVolume: ref(70),
+    musicDuck: ref(true),
+    musicDuckHoldSeconds: ref(3),
+    musicDuckMode: ref('fade'),
+    musicDuckLevel: ref(20),
     coopAddress: ref('192.168.1.3:15180'),
     coopHotkey: ref('ctrl+alt+f12'),
     // Off: this suite must not start the multi-machine process on a machine that

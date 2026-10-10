@@ -128,6 +128,12 @@ window.__ModuleLoader__.load({
     /** Volume a fresh install plays at; mirrors the Host schema default. */
     const MUSIC_VOLUME_DEFAULT = 70
 
+    /** Seconds of silence before the pet resumes; mirrors the Host schema default. */
+    const MUSIC_DUCK_HOLD_DEFAULT = 3
+
+    /** Where a fade leaves the volume; mirrors the Host schema default. */
+    const MUSIC_DUCK_LEVEL_DEFAULT = 20
+
     /**
      * Clamp a volume the pet's menu reported to the range the player accepts.
      * @param value - the number the frame carried.
@@ -200,6 +206,10 @@ window.__ModuleLoader__.load({
       musicLinks: [],
       musicDir: '',
       musicVolume: MUSIC_VOLUME_DEFAULT,
+      musicDuck: true,
+      musicDuckHoldSeconds: MUSIC_DUCK_HOLD_DEFAULT,
+      musicDuckMode: 'fade',
+      musicDuckLevel: MUSIC_DUCK_LEVEL_DEFAULT,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -214,6 +224,10 @@ window.__ModuleLoader__.load({
     const HIDDEN_SECONDS = { min: 2, max: 600, step: 2 }
     const AUTO_HIDE_SECONDS = { min: 0, max: 600, step: 5 }
     const MUSIC_VOLUME = { min: 0, max: 100, step: 1 }
+    /** Beats the Host schema's step and bounds for the duck hold, which is seconds. */
+    const MUSIC_DUCK_HOLD = { min: 0, max: 60, step: 1 }
+    /** The same for where a fade leaves the volume, which is a percent. */
+    const MUSIC_DUCK_LEVEL = { min: 0, max: 100, step: 1 }
 
     /** How long a slider drag settles before its writes are merged into one. */
     const WRITE_DELAY_MS = 250
@@ -295,6 +309,16 @@ window.__ModuleLoader__.load({
       musicPlaylistOption: '{title}（{count} 首）',
       musicShuffle: '随机播放',
       musicShuffleHint: '勾选后换歌在选中的歌单里随机挑一首，不按顺序。',
+      musicDuck: '别人放音视频时先让开',
+      musicDuckHint: '桌宠自己看 Windows 的音频会话：默认出声设备上有别的应用在放（约一秒以上）就先让开，等它安静了再回来。你手动暂停的不算，不会被自动恢复。',
+      musicDuckMode: '让开的方式',
+      musicDuckModeHint: '淡出：音量在一秒里滑下去、再滑回来，音乐一直不停；暂停：直接停在原地，回来时从原位置继续。',
+      musicDuckFade: '淡出（压低音量）',
+      musicDuckPause: '暂停播放',
+      musicDuckLevel: '淡出到',
+      musicDuckLevelHint: '淡出后保留的音量（相对上面那个音量）。设成 0 就是滑到听不见，但仍然在播放，回来时不用重新定位。',
+      musicDuckHold: '安静多久再回来',
+      musicDuckHoldHint: '别的应用安静这么久之后桌宠才接着放。调太小，两段视频之间的空隙也会来回切。',
       musicAddPlaceholder: '粘贴 B站链接（BV号 / av号 / b23.tv 短链都行）',
       musicAdd: '添加',
       musicAdding: '正在解析并下载，请稍候…',
@@ -322,6 +346,8 @@ window.__ModuleLoader__.load({
       musicNotPlaying: '桌宠没有在播放',
       musicPlaying: '正在播放：{title}',
       musicPaused: '已暂停：{title}',
+      musicDucked: '别的应用在播放，先暂停：{title}',
+      musicDuckedFade: '别的应用在播放，已压低音量：{title}',
       musicPlay: '播放',
       musicPause: '暂停',
       musicNext: '下一首',
@@ -503,6 +529,16 @@ window.__ModuleLoader__.load({
       musicPlaylistOption: '{title} ({count} songs)',
       musicShuffle: 'Shuffle',
       musicShuffleHint: 'When ticked, the next song is drawn from the chosen playlist rather than being the next in line.',
+      musicDuck: 'Step aside for other audio',
+      musicDuckHint: 'The pet reads the audio sessions on the default output device itself: while another application is playing there (for about a second), the music steps aside, and it comes back once that application has gone quiet. A pause you asked for is not touched.',
+      musicDuckMode: 'How it steps aside',
+      musicDuckModeHint: 'Fade slides the volume down over a second and back up, with the music never stopping; pause stops where it is and carries on from the same place.',
+      musicDuckFade: 'Fade the volume down',
+      musicDuckPause: 'Pause playback',
+      musicDuckLevel: 'Fade down to',
+      musicDuckLevelHint: 'What is left of the volume above once the fade lands. Zero slides it out of hearing while it keeps playing, so coming back needs no seeking.',
+      musicDuckHold: 'Come back after silence',
+      musicDuckHoldHint: 'How long the other application has to stay quiet before the pet plays on. Too small and the gap between two videos becomes a stutter.',
       musicAddPlaceholder: 'Paste a Bilibili link (a BV id, an av id, or a b23.tv address)',
       musicAdd: 'Add',
       musicAdding: 'Resolving and downloading…',
@@ -530,6 +566,8 @@ window.__ModuleLoader__.load({
       musicNotPlaying: 'The pet is not playing anything',
       musicPlaying: 'Now playing: {title}',
       musicPaused: 'Paused: {title}',
+      musicDucked: 'Paused while another app plays: {title}',
+      musicDuckedFade: 'Turned down while another app plays: {title}',
       musicPlay: 'Play',
       musicPause: 'Pause',
       musicNext: 'Next',
@@ -1075,7 +1113,10 @@ window.__ModuleLoader__.load({
       const playingTitle = typeof player?.title === 'string' ? player.title : ''
       const nowText = playingTitle === ''
         ? t('musicNotPlaying')
-        : playing ? t('musicPlaying', { title: playingTitle }) : t('musicPaused', { title: playingTitle })
+        : playing ? t('musicPlaying', { title: playingTitle })
+          : player?.ducked === true
+            ? t(player.duckedMode === 'pause' ? 'musicDucked' : 'musicDuckedFade', { title: playingTitle })
+            : t('musicPaused', { title: playingTitle })
       const warning = library?.warning === 'inside-checkout' ? t('musicWarnInsideCheckout')
         : library?.warning === 'unwritable' ? t('musicWarnUnwritable') : ''
 
@@ -1290,6 +1331,49 @@ window.__ModuleLoader__.load({
           control: h('input', {
             type: 'checkbox', disabled: !editable, checked: draft.musicShuffle === true,
             onChange: (event) => write({ musicShuffle: event.target.checked }, true),
+          }),
+        }),
+        // Not playing over somebody else's video is the pet's own decision, made
+        // where the audio is: these fields are what it obeys. A fade is the default
+        // because it reads as a gesture rather than as an interruption, and the
+        // level only means anything while the fade is the one in force.
+        h(Row, {
+          label: t('musicDuck'), text: t('musicDuckHint'), inline: true, disabled: !editable,
+          control: h('input', {
+            type: 'checkbox', disabled: !editable, checked: draft.musicDuck === true,
+            onChange: (event) => write({ musicDuck: event.target.checked }, true),
+          }),
+        }),
+        h(Row, {
+          label: t('musicDuckMode'), text: t('musicDuckModeHint'),
+          disabled: !editable || draft.musicDuck !== true,
+          control: h('select', {
+            className: 'dli-select',
+            disabled: !editable || draft.musicDuck !== true,
+            value: draft.musicDuckMode === 'pause' ? 'pause' : 'fade',
+            onChange: (event) => write({ musicDuckMode: event.target.value }, true),
+          },
+          h('option', { value: 'fade' }, t('musicDuckFade')),
+          h('option', { value: 'pause' }, t('musicDuckPause'))),
+        }),
+        draft.musicDuck === true && draft.musicDuckMode === 'pause' ? null : h(Row, {
+          label: t('musicDuckLevel'),
+          value: t('percent', { value: Math.round(draft.musicDuckLevel) }),
+          text: t('musicDuckLevelHint'), disabled: !editable || draft.musicDuck !== true,
+          control: h('input', {
+            min: MUSIC_DUCK_LEVEL.min, max: MUSIC_DUCK_LEVEL.max, step: MUSIC_DUCK_LEVEL.step,
+            ...slider('musicDuckLevel'),
+            disabled: !editable || draft.musicDuck !== true,
+          }),
+        }),
+        h(Row, {
+          label: t('musicDuckHold'),
+          value: t('seconds', { value: Math.round(draft.musicDuckHoldSeconds) }),
+          text: t('musicDuckHoldHint'), disabled: !editable || draft.musicDuck !== true,
+          control: h('input', {
+            min: MUSIC_DUCK_HOLD.min, max: MUSIC_DUCK_HOLD.max, step: MUSIC_DUCK_HOLD.step,
+            ...slider('musicDuckHoldSeconds'),
+            disabled: !editable || draft.musicDuck !== true,
           }),
         }),
         rows.length === 0 ? h('div', { className: 'dli-hint' }, t('musicListEmpty'))

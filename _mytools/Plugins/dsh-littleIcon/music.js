@@ -856,7 +856,7 @@ export function musicView({ links, entries, dir, warning = '', volume, sync, pla
     warning,
     volume,
     sync,
-    player: player ?? { playing: false, id: '', title: '', positionMs: 0, error: '' },
+    player: player ?? { playing: false, ducked: false, duckedMode: 'fade', id: '', title: '', positionMs: 0, error: '' },
     entries: rows,
     extras,
     missing: rows.filter(row => row.state !== 'ready').length,

@@ -73,6 +73,13 @@
     decoder, the sound device, and a file the host downloaded on their own, so a
     machine that cannot play what was downloaded fails here instead of at the
     first menu click.
+
+.PARAMETER AudioProbe
+    Print what Windows reports about the audio sessions on the default output
+    device - each one's process, state, and peak level - and exit. This is what
+    the probe that steps aside for another player reads, printed rather than acted
+    on, so a machine can be checked for what it sees before anything is decided
+    from it.
 #>
 [CmdletBinding()]
 param(
@@ -82,6 +89,7 @@ param(
     [int]$DshPid = 0,
     [switch]$SelfTest,
     [switch]$ShotProbe,
+    [switch]$AudioProbe,
     [string]$MusicProbe = ''
 )
 
@@ -472,6 +480,8 @@ function Get-Labels {
         MusicPrev             = 'Previous song'
         MusicNowPlaying       = 'Now playing: {0}'
         MusicPaused           = 'Paused: {0}'
+        MusicDucked           = 'Paused while another app plays: {0}'
+        MusicDuckedFade       = 'Turned down while another app plays: {0}'
         MusicReady            = 'Ready: {0}'
         MusicEmpty            = 'No songs downloaded yet'
         MusicEmptyHint        = 'Paste a Bilibili link under Settings, or fill them in below'
@@ -643,6 +653,34 @@ $SCRIPT:MusicRestore = $false
 $SCRIPT:MusicSavedId = ''
 $SCRIPT:MusicSavedPositionMs = 0
 $SCRIPT:MusicSavedPlaying = $false
+# Whether this process steps aside while another application plays sound, how it
+# does that, how far down it goes, and how many seconds that application has to
+# stay quiet before the pet comes back. All four travel with the library the host
+# publishes. The counters are what the decision carries from one sample to the
+# next, and MusicSteppedAside is the one fact that tells a step this process took
+# from a pause the person asked for: without it, a person's own pause would come
+# back on its own the moment a video ended.
+$SCRIPT:MusicDuck = $true
+$SCRIPT:MusicDuckHoldSeconds = 3
+$SCRIPT:MusicDuckMode = 'fade'
+$SCRIPT:MusicDuckLevel = 20
+$SCRIPT:MusicSteppedAside = $false
+$SCRIPT:DuckLoud = 0
+$SCRIPT:DuckQuiet = 0
+# A session that is merely open reports peaks at the noise floor, so a peak this
+# small is silence; and a sound has to last this many samples (one a second) before
+# the music steps aside, which is what keeps a notification ding out of it.
+$SCRIPT:DuckPeak = 0.02
+$SCRIPT:DuckSustainSamples = 2
+# The fade: one multiplier on the configured volume, walked toward its target every
+# 50 ms so a step aside is heard as a slope rather than as a jump. A second is slow
+# enough to read as a gesture and fast enough to be out of the way of a video that
+# just started.
+$SCRIPT:DuckFadeMs = 1000
+$SCRIPT:DuckFadeStepMs = 50
+$SCRIPT:DuckGain = 1.0
+$SCRIPT:DuckTarget = 1.0
+$SCRIPT:DuckTimer = $null
 $SCRIPT:MusicStamp = [DateTime]::MinValue
 $SCRIPT:BuildStartedAt = 0
 $SCRIPT:Exiting = $false
@@ -1230,6 +1268,479 @@ function Update-CoopMenu {
 }
 
 # ---- music ------------------------------------------------------------------
+# ---- other audio on this machine ---------------------------------------------
+#
+# Whether somebody else is playing sound is Windows' answer rather than this
+# process's: every application mixing into the default output device owns an audio
+# session there, and each session exposes a peak level. The default endpoint is the
+# one that matters because WPF's MediaPlayer has no device selection - whatever
+# this pet plays is mixed into it - and this process's own session is excluded by
+# its process id, so what is left is exactly the audio that would play over the
+# music. The C# below is the in-box CoreAudio surface, which PowerShell cannot
+# declare by itself, and it is compiled on first use so a pet that never plays
+# anything pays nothing for it.
+
+function Initialize-AudioSessions {
+    if ('DshPet.AudioSessions' -as [type]) { return $true }
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace DshPet
+{
+    // The audio sessions of the default output device: their process, their state,
+    // and their peak level. Only the members this needs are declared, in vtable
+    // order, because COM resolves them by position.
+    public static class AudioSessions
+    {
+        [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
+        private class MMDeviceEnumerator
+        {
+        }
+
+        private enum EDataFlow
+        {
+            eRender = 0,
+            eCapture = 1,
+            eAll = 2
+        }
+
+        private enum ERole
+        {
+            eConsole = 0,
+            eMultimedia = 1,
+            eCommunications = 2
+        }
+
+        private enum CLSCTX
+        {
+            CLSCTX_INPROC_SERVER = 1,
+            CLSCTX_INPROC_HANDLER = 2,
+            CLSCTX_LOCAL_SERVER = 4,
+            CLSCTX_REMOTE_SERVER = 16,
+            CLSCTX_ALL = 23
+        }
+
+        private enum AudioSessionState
+        {
+            Inactive = 0,
+            Active = 1,
+            Expired = 2
+        }
+
+        [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IMMDeviceEnumerator
+        {
+            [PreserveSig]
+            int EnumAudioEndpoints(EDataFlow dataFlow, int stateMask, out IntPtr devices);
+            [PreserveSig]
+            int GetDefaultAudioEndpoint(EDataFlow dataFlow, ERole role, out IMMDevice endpoint);
+            [PreserveSig]
+            int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice device);
+            [PreserveSig]
+            int RegisterEndpointNotificationCallback(IntPtr client);
+            [PreserveSig]
+            int UnregisterEndpointNotificationCallback(IntPtr client);
+        }
+
+        [ComImport, Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IMMDevice
+        {
+            [PreserveSig]
+            int Activate(ref Guid iid, CLSCTX clsCtx, IntPtr activationParams, [MarshalAs(UnmanagedType.IUnknown)] out object instance);
+            [PreserveSig]
+            int OpenPropertyStore(int stgmAccess, out IntPtr properties);
+            [PreserveSig]
+            int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+            [PreserveSig]
+            int GetState(out int state);
+        }
+
+        [ComImport, Guid("77AA99A0-1BD6-484F-8BC7-2C654C9A9B6F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioSessionManager2
+        {
+            [PreserveSig]
+            int GetAudioSessionControl(ref Guid sessionGuid, int streamFlags, out IntPtr sessionControl);
+            [PreserveSig]
+            int GetSimpleAudioVolume(ref Guid sessionGuid, int streamFlags, out IntPtr audioVolume);
+            [PreserveSig]
+            int GetSessionEnumerator(out IAudioSessionEnumerator sessions);
+            [PreserveSig]
+            int RegisterSessionNotification(IntPtr sessionNotification);
+            [PreserveSig]
+            int UnregisterSessionNotification(IntPtr sessionNotification);
+            [PreserveSig]
+            int RegisterDuckNotification([MarshalAs(UnmanagedType.LPWStr)] string sessionId, IntPtr duckNotification);
+            [PreserveSig]
+            int UnregisterDuckNotification(IntPtr duckNotification);
+        }
+
+        [ComImport, Guid("E2F5BB11-0570-40CA-ACDD-3AA01277DEE8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioSessionEnumerator
+        {
+            [PreserveSig]
+            int GetCount(out int sessionCount);
+            [PreserveSig]
+            int GetSession(int sessionIndex, out IAudioSessionControl session);
+        }
+
+        [ComImport, Guid("F4B1A599-7266-4319-A8CA-E70ACB11E8CD"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioSessionControl
+        {
+            [PreserveSig]
+            int GetState(out AudioSessionState state);
+            [PreserveSig]
+            int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string name);
+            [PreserveSig]
+            int SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string value, ref Guid eventContext);
+            [PreserveSig]
+            int GetIconPath([MarshalAs(UnmanagedType.LPWStr)] out string path);
+            [PreserveSig]
+            int SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string value, ref Guid eventContext);
+            [PreserveSig]
+            int GetGroupingParam(out Guid groupingParam);
+            [PreserveSig]
+            int SetGroupingParam(ref Guid groupingParam, ref Guid eventContext);
+            [PreserveSig]
+            int RegisterAudioSessionNotification(IntPtr client);
+            [PreserveSig]
+            int UnregisterAudioSessionNotification(IntPtr client);
+        }
+
+        [ComImport, Guid("BFB7FF88-7239-4FC9-8FA2-07C950BE9C6D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioSessionControl2
+        {
+            [PreserveSig]
+            int GetState(out AudioSessionState state);
+            [PreserveSig]
+            int GetDisplayName([MarshalAs(UnmanagedType.LPWStr)] out string name);
+            [PreserveSig]
+            int SetDisplayName([MarshalAs(UnmanagedType.LPWStr)] string value, ref Guid eventContext);
+            [PreserveSig]
+            int GetIconPath([MarshalAs(UnmanagedType.LPWStr)] out string path);
+            [PreserveSig]
+            int SetIconPath([MarshalAs(UnmanagedType.LPWStr)] string value, ref Guid eventContext);
+            [PreserveSig]
+            int GetGroupingParam(out Guid groupingParam);
+            [PreserveSig]
+            int SetGroupingParam(ref Guid groupingParam, ref Guid eventContext);
+            [PreserveSig]
+            int RegisterAudioSessionNotification(IntPtr client);
+            [PreserveSig]
+            int UnregisterAudioSessionNotification(IntPtr client);
+            [PreserveSig]
+            int GetSessionIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string identifier);
+            [PreserveSig]
+            int GetSessionInstanceIdentifier([MarshalAs(UnmanagedType.LPWStr)] out string identifier);
+            [PreserveSig]
+            int GetProcessId(out int processId);
+            [PreserveSig]
+            int IsSystemSoundsSession();
+            [PreserveSig]
+            int SetDuckingPreference([MarshalAs(UnmanagedType.Bool)] bool optOut);
+        }
+
+        [ComImport, Guid("C02216F6-8C67-4B5B-9D00-D008E73E0064"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IAudioMeterInformation
+        {
+            [PreserveSig]
+            int GetPeakValue(out float peak);
+            [PreserveSig]
+            int GetMeteringChannelCount(out int channelCount);
+            [PreserveSig]
+            int GetChannelsPeakValues(int channelCount, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] float[] peakValues);
+            [PreserveSig]
+            int QueryHardwareSupport(out int hardwareSupportMask);
+        }
+
+        // One session as the probe prints it: who owns it, whether it is still
+        // mixing, how loud it is right now, and whether it is the system-sounds
+        // session - which is where notification dings land.
+        private sealed class Session
+        {
+            public int ProcessId;
+            public AudioSessionState State;
+            public float Peak;
+            public bool SystemSounds;
+        }
+
+        public static float MaxOtherPeak(int ownPid)
+        {
+            Session[] sessions = Read(ownPid);
+            if (sessions == null) return -1f;
+            float loudest = 0f;
+            for (int index = 0; index < sessions.Length; index++)
+            {
+                Session session = sessions[index];
+                if (session.ProcessId == ownPid) continue;
+                if (session.State == AudioSessionState.Expired) continue;
+                if (session.Peak > loudest) loudest = session.Peak;
+            }
+            return loudest;
+        }
+
+        public static string Describe(int ownPid)
+        {
+            Session[] sessions = Read(ownPid);
+            if (sessions == null) return "unavailable";
+            StringBuilder text = new StringBuilder();
+            for (int index = 0; index < sessions.Length; index++)
+            {
+                Session session = sessions[index];
+                if (index > 0) text.Append('\n');
+                text.Append(session.ProcessId.ToString(CultureInfo.InvariantCulture));
+                text.Append('|').Append(session.State.ToString());
+                text.Append('|').Append(session.Peak.ToString("0.000", CultureInfo.InvariantCulture));
+                text.Append('|').Append(session.ProcessId == ownPid ? "self" : "other");
+                if (session.SystemSounds) text.Append("|system-sounds");
+                text.Append('|').Append(ProcessName(session.ProcessId));
+            }
+            return text.ToString();
+        }
+
+        private static Session[] Read(int ownPid)
+        {
+            IMMDeviceEnumerator enumerator = null;
+            IMMDevice device = null;
+            IAudioSessionManager2 manager = null;
+            IAudioSessionEnumerator sessions = null;
+            try
+            {
+                enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+                if (enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out device) != 0) return null;
+                Guid iid = typeof(IAudioSessionManager2).GUID;
+                object activated = null;
+                if (device.Activate(ref iid, CLSCTX.CLSCTX_ALL, IntPtr.Zero, out activated) != 0) return null;
+                manager = activated as IAudioSessionManager2;
+                if (manager == null) return null;
+                if (manager.GetSessionEnumerator(out sessions) != 0) return null;
+                int count = 0;
+                if (sessions.GetCount(out count) != 0) return null;
+                Session[] found = new Session[count];
+                int kept = 0;
+                for (int index = 0; index < count; index++)
+                {
+                    IAudioSessionControl control = null;
+                    try
+                    {
+                        if (sessions.GetSession(index, out control) != 0 || control == null) continue;
+                        Session session = new Session();
+                        session.State = AudioSessionState.Inactive;
+                        control.GetState(out session.State);
+                        IAudioSessionControl2 details = control as IAudioSessionControl2;
+                        if (details != null)
+                        {
+                            details.GetProcessId(out session.ProcessId);
+                            // S_OK is the system-sounds session; S_FALSE is everything else.
+                            session.SystemSounds = details.IsSystemSoundsSession() == 0;
+                        }
+                        IAudioMeterInformation meter = control as IAudioMeterInformation;
+                        if (meter != null) meter.GetPeakValue(out session.Peak);
+                        found[kept] = session;
+                        kept++;
+                    }
+                    finally
+                    {
+                        Release(control);
+                    }
+                }
+                if (kept == count) return found;
+                Session[] trimmed = new Session[kept];
+                Array.Copy(found, trimmed, kept);
+                return trimmed;
+            }
+            catch (Exception)
+            {
+                // A device that went away between enumeration and read is not a
+                // problem the caller can act on; it reads as "cannot say".
+                return null;
+            }
+            finally
+            {
+                Release(sessions);
+                Release(manager);
+                Release(device);
+                Release(enumerator);
+            }
+        }
+
+        private static string ProcessName(int processId)
+        {
+            if (processId <= 0) return "system";
+            try
+            {
+                using (Process process = Process.GetProcessById(processId))
+                {
+                    return process.ProcessName;
+                }
+            }
+            catch (Exception)
+            {
+                return "gone";
+            }
+        }
+
+        private static void Release(object instance)
+        {
+            if (instance == null) return;
+            try
+            {
+                if (Marshal.IsComObject(instance)) Marshal.ReleaseComObject(instance);
+            }
+            catch (Exception)
+            {
+                // Already released, or never a COM object: nothing left to do.
+            }
+        }
+    }
+}
+'@
+        return $true
+    } catch {
+        Write-Log "audio sessions unavailable: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+# The loudest session that is not this process, or a negative number when Windows
+# cannot say. The caller treats that as nobody: a machine without this API plays
+# the way it did before the feature existed.
+function Get-OtherAudioPeak {
+    if (-not (Initialize-AudioSessions)) { return -1 }
+    try {
+        return [double][DshPet.AudioSessions]::MaxOtherPeak($PID)
+    } catch {
+        Write-Log "reading other audio failed: $($_.Exception.Message)"
+        return -1
+    }
+}
+
+# What one sample means, given the counters the sample before it left behind. Pure,
+# because a decision that can only be observed by playing music beside a video is a
+# decision nobody tests: the smoke test drives it directly. It answers only *when*
+# to step aside and when to come back; how that is done - a fade or a pause - is the
+# caller's business, which is what keeps the two independent of each other. The
+# parameter is LoudNow rather than Loud because PowerShell variable names ignore
+# case, so a local called loud would be the parameter itself.
+function Get-MusicDuckDecision([bool]$Stepped, [bool]$LoudNow, [int]$LoudSamples, [int]$QuietSamples, [int]$HoldSeconds, [int]$SustainSamples) {
+    if (-not $Stepped) {
+        $heard = 0
+        if ($LoudNow) { $heard = $LoudSamples + 1 }
+        if ($heard -ge $SustainSamples) { return @{ Action = 'step'; Loud = 0; Quiet = 0 } }
+        return @{ Action = 'none'; Loud = $heard; Quiet = 0 }
+    }
+    $silent = 0
+    if (-not $LoudNow) { $silent = $QuietSamples + 1 }
+    if ($silent -ge $HoldSeconds) { return @{ Action = 'return'; Loud = 0; Quiet = 0 } }
+    return @{ Action = 'none'; Loud = 0; Quiet = $silent }
+}
+
+# The next multiplier of one fade step: the distance a step covers is the whole
+# fade's share of it, and it stops on the target rather than overshooting. Pure for
+# the same reason the decision is: a slope is otherwise only visible by listening.
+function Get-MusicDuckGain([double]$Gain, [double]$Target, [double]$StepMs, [double]$FadeMs) {
+    $step = $StepMs / $FadeMs
+    if ($Gain -lt $Target) { return [Math]::Round([Math]::Min($Target, $Gain + $step), 4) }
+    return [Math]::Round([Math]::Max($Target, $Gain - $step), 4)
+}
+
+# What the player is told: the volume the settings hold times the fade, as the 0-1
+# fraction WPF wants. Pure and clamped with double literals, because PowerShell
+# picks Math.Min's overload from the arguments and `[Math]::Min(1, 0.2)` is the
+# Int32 one - it truncates a fade to silence instead of to a fifth of the volume.
+function Get-MusicOutputVolume([double]$Volume, [double]$Gain) {
+    return [Math]::Max(0.0, [Math]::Min(1.0, ($Volume / 100) * $Gain))
+}
+
+# What the player is at right now: the volume the settings hold, times the fade.
+function Update-MusicOutput {
+    if ($null -eq $SCRIPT:Music) { return }
+    try { $SCRIPT:Music.Volume = Get-MusicOutputVolume $SCRIPT:MusicVolume $SCRIPT:DuckGain } catch { }
+}
+
+# Aim the fade at one multiplier of the configured volume and keep walking toward it
+# while the timer runs. The step is applied at once, so a step aside is audible
+# within one timer tick rather than after the first interval.
+function Set-MusicDuckGain([double]$Target) {
+    $SCRIPT:DuckTarget = [Math]::Max(0.0, [Math]::Min(1.0, $Target))
+    if ($null -eq $SCRIPT:DuckTimer) {
+        $SCRIPT:DuckTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $SCRIPT:DuckTimer.Interval = [TimeSpan]::FromMilliseconds($SCRIPT:DuckFadeStepMs)
+        $SCRIPT:DuckTimer.Add_Tick({
+            try {
+                $next = Get-MusicDuckGain $SCRIPT:DuckGain $SCRIPT:DuckTarget $SCRIPT:DuckFadeStepMs $SCRIPT:DuckFadeMs
+                if ([Math]::Abs($next - $SCRIPT:DuckGain) -lt 0.0001) { $SCRIPT:DuckTimer.Stop(); return }
+                $SCRIPT:DuckGain = $next
+                Update-MusicOutput
+                Save-MusicPlayerState
+                if ([Math]::Abs($next - $SCRIPT:DuckTarget) -lt 0.0001) { $SCRIPT:DuckTimer.Stop() }
+            } catch { Write-Log "the music fade failed: $($_.Exception.Message)" }
+        })
+    }
+    if ([Math]::Abs($SCRIPT:DuckGain - $SCRIPT:DuckTarget) -lt 0.0001) {
+        $SCRIPT:DuckGain = $SCRIPT:DuckTarget
+        Update-MusicOutput
+        return
+    }
+    if (-not $SCRIPT:DuckTimer.IsEnabled) { $SCRIPT:DuckTimer.Start() }
+}
+
+# One sample of the probe, once a second while the music matters. Nothing is asked
+# of the host and nothing is written except the playback state: this runs inside
+# this process, which is the half that owns the audio.
+function Update-MusicDuck {
+    if (-not ($SCRIPT:MusicPlaying -or $SCRIPT:MusicSteppedAside)) {
+        $SCRIPT:DuckLoud = 0
+        $SCRIPT:DuckQuiet = 0
+        return
+    }
+    $peak = Get-OtherAudioPeak
+    if ($peak -lt 0) { return }
+    $decision = Get-MusicDuckDecision $SCRIPT:MusicSteppedAside ($peak -gt $SCRIPT:DuckPeak) $SCRIPT:DuckLoud $SCRIPT:DuckQuiet $SCRIPT:MusicDuckHoldSeconds $SCRIPT:DuckSustainSamples
+    $SCRIPT:DuckLoud = [int]$decision.Loud
+    $SCRIPT:DuckQuiet = [int]$decision.Quiet
+    if ($decision.Action -eq 'step') { Step-MusicAside }
+    elseif ($decision.Action -eq 'return') { Return-MusicFromAside }
+}
+
+# Step aside for another application, the way the configuration asks: a fade to the
+# configured level, or a pause where we are. MusicSteppedAside is what marks it as
+# this process's own doing, so the return may undo it and nothing else may.
+function Step-MusicAside {
+    if ($SCRIPT:MusicSteppedAside) { return }
+    $SCRIPT:MusicSteppedAside = $true
+    if ($SCRIPT:MusicDuckMode -eq 'pause') {
+        if ($null -ne $SCRIPT:Music) { try { $SCRIPT:Music.Pause() } catch { } }
+        $SCRIPT:MusicPlaying = $false
+    } else {
+        Set-MusicDuckGain ($SCRIPT:MusicDuckLevel / 100)
+    }
+    Save-MusicPlayerState
+}
+
+# Come back once the other application has been quiet for the configured stretch. A
+# pause the person asked for is never resumed by this: it is what MusicSteppedAside
+# distinguishes.
+function Return-MusicFromAside {
+    if (-not $SCRIPT:MusicSteppedAside) { return }
+    $SCRIPT:MusicSteppedAside = $false
+    if ($SCRIPT:MusicDuckMode -eq 'pause') { Start-MusicPlayback }
+    else { Set-MusicDuckGain 1 }
+    Save-MusicPlayerState
+}
+
+# Take the music back at once, for something the person asked for: the fade goes
+# back up and the step-aside mark goes with it, so the probe does not come along
+# afterwards and undo what was just asked for.
+function Clear-MusicStepAside {
+    if ($SCRIPT:MusicSteppedAside) { $SCRIPT:MusicSteppedAside = $false }
+    if ($SCRIPT:DuckGain -lt 1) { Set-MusicDuckGain 1 }
+}
+
 # The audio is a WPF MediaPlayer: one instance owned by this process, opened on a
 # track the host published, told the volume the settings card holds. Nothing here
 # decodes anything by itself - the streams the host downloads are AAC in an MP4 box
@@ -1284,9 +1795,9 @@ function Get-MusicPlayer {
 function Set-MusicVolume([double]$Percent) {
     $value = [Math]::Min(100, [Math]::Max(0, $Percent))
     $SCRIPT:MusicVolume = $value
-    if ($null -ne $SCRIPT:Music) {
-        try { $SCRIPT:Music.Volume = $value / 100 } catch { }
-    }
+    # What the player is told is this volume times the fade, so a volume change
+    # during a fade keeps the slope rather than jumping out of it.
+    Update-MusicOutput
 }
 
 function Get-MusicTitle {
@@ -1313,6 +1824,13 @@ function Save-MusicPlayerState {
     }
     Write-Json $SCRIPT:MusicPlayerFile ([ordered]@{
         playing    = [bool]$SCRIPT:MusicPlaying
+        ducked     = [bool]$SCRIPT:MusicSteppedAside
+        # How it stepped aside, and what it is playing at right now: the card says
+        # which of the two happened, and the volume is the fade's own report - the
+        # only way a slope can be seen from outside this process. One decimal,
+        # because a machine listening at 4% would otherwise show a fade as 4, 3, 2.
+        duckedMode = [string]$SCRIPT:MusicDuckMode
+        volume     = [double][Math]::Round($SCRIPT:MusicVolume * $SCRIPT:DuckGain, 1)
         id         = [string]$SCRIPT:MusicCurrentId
         title      = (Get-MusicTitle)
         positionMs = $position
@@ -1385,16 +1903,16 @@ function Get-StepMusicIndex([int]$Delta) {
 function Step-MusicTrack([int]$Delta, [bool]$Play) {
     $index = Get-StepMusicIndex $Delta
     if ($index -lt 0) { return }
+    # Asking for another song is asking to listen: whatever another application is
+    # doing, this is not the step aside any more (see Clear-MusicStepAside).
+    Clear-MusicStepAside
     Open-MusicTrack $index $Play 0
 }
 
-function Toggle-MusicPlay {
-    if ($SCRIPT:MusicPlaying) {
-        if ($null -ne $SCRIPT:Music) { try { $SCRIPT:Music.Pause() } catch { } }
-        $SCRIPT:MusicPlaying = $false
-        Save-MusicPlayerState
-        return
-    }
+# Start, or continue, playback where it was left: shared by the person's own play
+# command and the resume that follows another application going quiet.
+function Start-MusicPlayback {
+    if ($SCRIPT:MusicPlaying) { return }
     if ($SCRIPT:MusicTracks.Count -eq 0) { return }
     # A track that is still open is picked up where it stopped; one the host no
     # longer publishes, or whose file moved, is opened again from the top.
@@ -1410,6 +1928,20 @@ function Toggle-MusicPlay {
     Save-MusicPlayerState
 }
 
+function Toggle-MusicPlay {
+    if ($SCRIPT:MusicPlaying) {
+        if ($null -ne $SCRIPT:Music) { try { $SCRIPT:Music.Pause() } catch { } }
+        $SCRIPT:MusicPlaying = $false
+        # A pause the person asked for is nobody else's to undo, and its volume is
+        # the volume the settings card holds.
+        Clear-MusicStepAside
+        Save-MusicPlayerState
+        return
+    }
+    Clear-MusicStepAside
+    Start-MusicPlayback
+}
+
 function Stop-MusicPlayback {
     # Pause rather than Stop: WPF reports a Stop as the media having ended, which
     # would send this process looking for the next track of an empty library.
@@ -1419,6 +1951,7 @@ function Stop-MusicPlayback {
     $SCRIPT:MusicCurrentFile = ''
     $SCRIPT:MusicPlaying = $false
     $SCRIPT:MusicStarted = $false
+    Clear-MusicStepAside
     Save-MusicPlayerState
 }
 
@@ -1475,6 +2008,25 @@ function Read-MusicLibrary {
     $SCRIPT:MusicTracks = $tracks
     $SCRIPT:MusicDir = [string]$data.dir
     $SCRIPT:MusicShuffle = $data.shuffle -eq $true
+    # Whether this process steps aside for another player, and how, is configuration:
+    # it arrives with the library and applies at once; a host that predates a field
+    # leaves the default in force. Every number is parsed rather than cast, because
+    # this file is written by another process: a field that arrives empty would
+    # otherwise read as a zero, and a fade level of zero is a step aside nobody
+    # asked for. A fade that was in progress while the mode changed is taken back up,
+    # so no setting leaves the music quiet by itself.
+    if ($null -ne $data.duck) { $SCRIPT:MusicDuck = $data.duck -eq $true }
+    $holdSeconds = 0
+    if ([int]::TryParse([string]$data.duckHoldSeconds, [ref]$holdSeconds)) {
+        $SCRIPT:MusicDuckHoldSeconds = [Math]::Max(0, $holdSeconds)
+    }
+    if ([string]$data.duckMode -eq 'pause') { $SCRIPT:MusicDuckMode = 'pause' }
+    elseif ([string]$data.duckMode -eq 'fade') { $SCRIPT:MusicDuckMode = 'fade' }
+    $level = 0
+    if ([int]::TryParse([string]$data.duckLevel, [ref]$level)) {
+        $SCRIPT:MusicDuckLevel = [Math]::Max(0, [Math]::Min(100, $level))
+    }
+    if (-not $SCRIPT:MusicSteppedAside -and $SCRIPT:DuckGain -lt 1) { Set-MusicDuckGain 1 }
     $SCRIPT:MusicMissing = 0
     if ($null -ne $data.missing) { $SCRIPT:MusicMissing = [int]$data.missing }
     $SCRIPT:MusicSync = $data.sync
@@ -1533,6 +2085,12 @@ function Get-MusicStatusText {
         return $SCRIPT:Labels.MusicEmpty
     }
     if ($SCRIPT:MusicPlaying) { return ($SCRIPT:Labels.MusicNowPlaying -f $title) }
+    if ($SCRIPT:MusicSteppedAside) {
+        # Which sentence fits is what the step aside actually did: a fade that is
+        # still audible reads as lowered, and a pause reads as paused.
+        if ($SCRIPT:MusicDuckMode -eq 'pause') { return ($SCRIPT:Labels.MusicDucked -f $title) }
+        return ($SCRIPT:Labels.MusicDuckedFade -f $title)
+    }
     if ($SCRIPT:MusicStarted) { return ($SCRIPT:Labels.MusicPaused -f $title) }
     return ($SCRIPT:Labels.MusicReady -f $title)
 }
@@ -1728,6 +2286,34 @@ if ($SelfTest) {
     # cannot be read off the window after the fact, so it is printed here too: only
     # a window that is both on screen and in front is tucked away.
     Write-Output "click-intent: front=$(Get-ClickIntent $true $true) behind=$(Get-ClickIntent $true $false) hidden=$(Get-ClickIntent $false $false) minimized=$(Get-ClickIntent $false $true)"
+    # Stepping the music aside for another player is the third decision of that kind:
+    # whether the step comes back, and after how much silence, is what decides whether
+    # somebody's video keeps being interrupted, and it cannot be read off a running
+    # pet. The samples are one second apart, the sustain is two of them, and the hold
+    # is the configured three seconds; the last case is a hold of zero, which comes
+    # back on the first quiet sample.
+    Write-Output ("duck-decision: " + (@(
+        "quiet=$((Get-MusicDuckDecision $false $false 0 0 3 2).Action)",
+        "loud-1=$((Get-MusicDuckDecision $false $true 0 0 3 2).Action)",
+        "loud-2=$((Get-MusicDuckDecision $false $true 1 0 3 2).Action)",
+        "stepped-quiet-1=$((Get-MusicDuckDecision $true $false 0 0 3 2).Action)",
+        "stepped-quiet-3=$((Get-MusicDuckDecision $true $false 0 2 3 2).Action)",
+        "stepped-loud=$((Get-MusicDuckDecision $true $true 0 2 3 2).Action)",
+        "stepped-hold-0=$((Get-MusicDuckDecision $true $false 0 0 0 2).Action)"
+    ) -join ' '))
+    # And the slope itself, which is otherwise only visible by listening: one step of
+    # a one-second fade is 50/1000 of the way, it stops on the target rather than
+    # overshooting, and the last step up lands exactly on full volume.
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+    Write-Output ("duck-fade: down=$((Get-MusicDuckGain 1 0.2 50 1000).ToString($invariant))" `
+        + " arrive=$((Get-MusicDuckGain 0.25 0.2 50 1000).ToString($invariant))" `
+        + " up=$((Get-MusicDuckGain 0.2 1 50 1000).ToString($invariant))" `
+        + " full=$((Get-MusicDuckGain 0.98 1 50 1000).ToString($invariant))")
+    # What the player is actually told, which is where a fractional volume can be lost:
+    # the clamp has to stay in double arithmetic, or a fifth of 4% reads as silence.
+    Write-Output ("duck-output: full=$((Get-MusicOutputVolume 70 1).ToString($invariant))" `
+        + " faded=$((Get-MusicOutputVolume 4 0.2).ToString($invariant))" `
+        + " silent=$((Get-MusicOutputVolume 0 1).ToString($invariant))")
     # The sites submenu is the menu's only part built from configuration rather than
     # from this script, so it is built here - without ever being shown - and what
     # each list turns into is printed. The host has already dropped every row it
@@ -2056,6 +2642,25 @@ if (-not [string]::IsNullOrWhiteSpace($MusicProbe)) {
     Write-Output "music-probe: failed error=$SCRIPT:MusicError"
     Remove-Item -LiteralPath $SCRIPT:MusicPlayerFile -Force -ErrorAction SilentlyContinue
     exit 1
+}
+
+if ($AudioProbe) {
+    # What Windows says about the default output device's audio sessions, printed
+    # rather than acted on: the probe that steps the music aside reads exactly this,
+    # so a machine can be checked for what it sees before anything is decided from
+    # it. A session that is open but silent reports 0.000, and this process's own
+    # session is marked so what the probe excludes is visible.
+    if (-not (Initialize-AudioSessions)) {
+        Write-Output 'audio-probe: unavailable'
+        exit 1
+    }
+    $probePeak = [double][DshPet.AudioSessions]::MaxOtherPeak($PID)
+    Write-Output "audio-probe-own-pid: $PID"
+    Write-Output ("audio-probe-max-other: " + $probePeak.ToString('0.000', [System.Globalization.CultureInfo]::InvariantCulture))
+    foreach ($probeLine in ([DshPet.AudioSessions]::Describe($PID) -split "`n")) {
+        if (-not [string]::IsNullOrWhiteSpace($probeLine)) { Write-Output "audio-probe-session: $probeLine" }
+    }
+    exit 0
 }
 
 # ---- single instance --------------------------------------------------------
@@ -3025,6 +3630,13 @@ $timer.Add_Tick({
                 }
             }
         } catch { }
+
+        # Somebody else's audio decides whether this keeps playing: sampled once a
+        # second, which is also the hysteresis - a notification ding does not last
+        # two samples, and the silence between two videos does. The configuration
+        # arrives with the library above, so a switch turned off in the settings card
+        # stops the sampling entirely.
+        if ($SCRIPT:MusicDuck -and ($SCRIPT:Ticks % 5) -eq 0) { Update-MusicDuck }
 
         # Keep the resume position fresh while something plays: this file is both what
         # the settings card shows and what the next start picks up from.

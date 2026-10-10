@@ -41,7 +41,7 @@ set "ELECTRON_ENABLE_LOGGING=0"
 set "DESKTOP_APP=%DSH_REPO%\apps\desktop"
 set "DESKTOP_DEVELOPMENT=%DESKTOP_APP%\.desktop-build\development"
 set "DESKTOP_PROJECT=%DESKTOP_DEVELOPMENT%\project"
-set "DESKTOP_EXE=%DESKTOP_APP%\node_modules\electron\dist\electron.exe"
+set "DESKTOP_ELECTRON_SOURCE=%DESKTOP_APP%\node_modules\electron\dist"
 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop.log"
 rem Electron's browser storage lives under the Harness home, not in the build
 rem tree: a full build deletes that tree, and with it every sign-in the Sidebar
@@ -85,7 +85,10 @@ rem Carry over the browser data earlier launchers kept inside the build tree, so
 rem this launch starts signed in instead of asking again.
 call "%~dp0migrate-desktop-user-data.bat"
 
-if not exist "%DESKTOP_EXE%" goto :missingElectron
+if not exist "%DESKTOP_ELECTRON_SOURCE%\electron.exe" goto :missingElectron
+call "%~dp0prepare-desktop-electron.bat" "%DESKTOP_ELECTRON_SOURCE%"
+if errorlevel 1 goto :electronCacheFailure
+set "DESKTOP_EXE=%DSH_DESKTOP_ELECTRON_EXE%"
 if not exist "%DSH_REPO%\apps\cli\lib\profile-boot.js" set "MISSING_STARTUP_FILE=%DSH_REPO%\apps\cli\lib\profile-boot.js"
 if defined MISSING_STARTUP_FILE goto :missingBuild
 if not exist "%DESKTOP_APP%\lib\main.js" set "MISSING_STARTUP_FILE=%DESKTOP_APP%\lib\main.js"
@@ -113,8 +116,13 @@ exit /b 0
 
 :missingElectron
 echo [desktop] Electron is not installed at
-echo [desktop]   %DESKTOP_EXE%
+echo [desktop]   %DESKTOP_ELECTRON_SOURCE%\electron.exe
 echo [desktop] Run build-desktop.bat (it installs dependencies) and try again.
+call :maybePause
+exit /b 1
+
+:electronCacheFailure
+echo [desktop] Electron could not be prepared outside the checkout.
 call :maybePause
 exit /b 1
 

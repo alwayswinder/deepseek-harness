@@ -31,7 +31,7 @@
 | `build\build.bat --detached [--restart]` | 用 WMI 把构建放到本进程树之外跑（父进程是 WmiPrvSE），控制台实时显示输出并同步写日志，结束时写结果文件；失败时窗口会留下来供查看，`--restart` 会在成功后自动 `start-desktop.bat` 把 app 拉回来。 | 这是「让 DSH 自己重建自己」的正规路径：构建要关掉 app，而任何从 app 里起的 shell 都会跟着死。 |
 | `build\build-desktop.bat` | 兼容壳：转发到 `build.bat desktop`。 | 老快捷方式/笔记不用改。 |
 | `build\start-dsh.bat [端口]` | 启动网页版（默认 3080）。仅在构建 revision 与当前 checkout 一致时使用本地产物；启动前幂等注册插件并同步 profile 副本，然后用 node 直接跑 `apps\cli\lib\bin.js web`。 | token 链接和日志在同目录 `dsh-web.log`。别用 `pnpm dsh web` 启动同一 checkout；本地产物不可用时会依次退回全局 `dsh`、`npx`。 |
-| `build\start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。Electron 的 `--user-data-dir` 固定在 `$DSH_HOME\desktop\electron-user-data`。 | 只在启动所需文件缺失或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。浏览器数据放在 `$DSH_HOME` 下是为了躲开 `clean`，理由见下面「构建模式与『自己 build 自己』」。 |
+| `build\start-desktop.bat` | 校验 CLI profile boot、Electron、Desktop Host 和 primary runtime 是否存在，同步 desktop profile 的插件副本后启动 Electron。启动器按版本把 Electron 分发缓存到 `%LOCALAPPDATA%\DeepSeek Harness\development-electron`，避开工作副本 ACL 对 Chromium 沙箱的干扰；`--user-data-dir` 固定在 `$DSH_HOME\desktop\electron-user-data`。 | 只在启动所需文件缺失、Electron 缓存复制失败或启动器失败时报错，不根据 Git revision 判断是否需要重建。使用 `$DSH_HOME`，未设置时回退 `~/.dsh`。浏览器数据放在 `$DSH_HOME` 下是为了躲开 `clean`，理由见下面「构建模式与『自己 build 自己』」。 |
 | `build\stop-dsh.bat [端口]` | 按端口杀掉正在监听的进程（默认 3080）。 | 只用于网页版；桌面端关窗口就行。 |
 | `build\start-dsh-service.vbs` | 供两个 `start-*.bat` 调用的隐藏启动器：把服务放进无窗口的独立进程，stdout/stderr 追加到指定日志。 | 不用直接运行。 |
 | `build\make-shortcut.bat` | 把「DeepSeek Harness」装进开始菜单（默认还有桌面）：带应用图标、点开不弹控制台、失败时弹一个带日志尾巴的对话框。`--start-menu-only` 只要开始菜单，`--remove` 删掉。 | 每台机器跑一次；重复跑就是刷新。见下面「像应用一样启动」。 |
@@ -152,6 +152,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\run-detached-build.ps1` | 在脱离的控制台中运行实际构建，把每行输出同时显示并写进日志；成功后自动关窗，失败后等待确认。由 `build\detach.ps1` 调用。 |
 | `build\resolve-dsh-home.ps1` | 按 harness 的规则解析 `$DSH_HOME`（空白=未设置、展开开头的 `~`、转绝对路径），供上面几个 PS1 共用。 |
 | `build\migrate-desktop-user-data.bat` | 把 Electron 的浏览器数据从 `apps\desktop\.desktop-build\development\electron-user-data` 搬到 `$DSH_HOME\desktop\electron-user-data`（`Partitions` 与解密 Cookie 用的 `Local State` 一起搬）。由 `build\build.bat` 在 `clean` 前、`build\start-desktop.bat` 在启动前调用；只在旧目录还在、且新目录还没有 `Partitions` 时动手，失败就整份丢弃等下次，任何情况下都退出 0。 |
+| `build\prepare-desktop-electron.bat` | 把当前版本的 Electron 分发复制到 `%LOCALAPPDATA%\DeepSeek Harness\development-electron\<版本>`，完成标记存在时复用；工作副本受进程沙箱保护时，Chromium 从这个仓库外目录启动。由 `build\start-desktop.bat` 调用，源分发不完整或复制失败时阻止启动。 |
 | `build\launch-desktop.vbs` | 开始菜单/桌面快捷方式背后的隐藏启动器：隐藏跑 `build\start-desktop.bat`，失败时弹带日志尾巴的对话框。 |
 | `backup\backup-chats.bat` / `backup\backup-chats.mjs` | **会话备份**：把本机的 DSH `sessions` + `storages`、Codex `sessions` + `history.jsonl` 增量拷进 `%DSH_BACKUP_DIR%`（默认 `D:\AI\备份`）里当天的快照目录，写 `manifest.txt`，并在 `_backup.log` 追加一行；`DSH_BACKUP_KEEP`（默认 14，`0` = 全留）按天保留，只删带本脚本 manifest 的日期目录，源目录一律不动。由 `build\start-desktop.bat`、`build\start-dsh.bat` 在启动前，以及桌宠菜单重启走的 `settings\sync-pet-settings.mjs` 调用；找不到 node、目标盘不存在或某个文件正被应用占用都只报一行，不拦启动。 | 只备份对话记录：凭证（`.credentials.yaml`）与 `settings.yaml` **不**进备份。目标盘不存在时退回 `<用户目录>\dsh-home-backups`。 |
 | `build\install-shortcut.ps1` | 建/删那两个快捷方式；`build\make-shortcut.bat` 的实体。 |

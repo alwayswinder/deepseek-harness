@@ -4,19 +4,21 @@
  * position file that ships in this package, priced with the public quote feed;
  * with a Cookie it answers from the Tonghuashun ledger API instead. The Cookie
  * itself never leaves the host process.
- * @module @deepseek-ai/dsh-client-ui-stock-pnl
+ *
+ * Hand-written ESM, the way this working copy's other out-of-tree plugins are
+ * written: this file is the artifact, so the plugin needs no bundler and no
+ * installed build dependencies.
+ * @module dsh-ths-holdings
  */
 
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { CookieAcquirer, resolvePlaywright } from './acquire.ts'
-import { collectStats, cookieField, fetchFundKey, INDEX_URL, listPortfolios, normalizeCookie, PNL_URL, type Portfolio, verifyCookie } from './fetch.ts'
-import { collectLocalStats, DEFAULT_MINUTE_REFRESH_MS } from './local.ts'
-import type { Stats } from './types.ts'
+import { CookieAcquirer, resolvePlaywright } from './acquire.js'
+import { collectStats, cookieField, fetchFundKey, INDEX_URL, listPortfolios, normalizeCookie, PNL_URL, verifyCookie } from './fetch.js'
+import { collectLocalStats, DEFAULT_MINUTE_REFRESH_MS, QUOTE_URL } from './local.js'
+import { savePositions, readPositionsView } from './positions.js'
 
 export const name = 'ui-stock-pnl'
 export const inject = ['webServer', 'credentials']
@@ -24,60 +26,32 @@ export const inject = ['webServer', 'credentials']
 /** The same-origin route the composer strip polls. */
 export const ROUTE_PATH = '/api/stock-pnl'
 
-/** Plugin config: the Cookie reference and ledger identity/endpoints. */
-export interface Config {
-  /** Environment-variable name holding the ledger Cookie; defaults to `STOCK_PNL_COOKIE`. */
-  cookieEnv?: string
-  /** Credential reference holding the ledger fund key; defaults to `STOCK_PNL_FUND_KEY`. */
-  fundKeyEnv?: string
-  /** The ledger user id included in every form payload; empty falls back to the Cookie's `userid`. */
-  user_id?: string
-  /** The ledger fund key selecting the managed portfolio; auto-discovered when empty. */
-  fund_key?: string
-  /** P&L endpoint override (tests point at a scripted server). */
-  pnlUrl?: string
-  /** Index endpoint override (tests point at a scripted server). */
-  indexUrl?: string
-  /** Poll interval the strip should use, in milliseconds; defaults to 20000. */
-  pollMs?: number
-  /**
-   * Exported-position snapshot feeding the local quote source; defaults to
-   * `positions.json` beside this package's own files, so the single file a
-   * person replaces when the holdings change lives in the plugin directory.
-   */
-  positionsFile?: string
-  /** How long one intraday P&L series stays cached, in milliseconds; defaults to 120000. */
-  minuteRefreshMs?: number
-}
+/** The same-origin route this plugin's page reads and writes the holdings through. */
+export const POSITIONS_PATH = '/api/stock-pnl/positions'
 
-/** Schemastery config for the overlay route. */
-export const Config: z<Config> = z.object({
+/** Largest accepted holdings-save body: a few hundred rows of four short fields. */
+const MAX_POSITIONS_BODY_BYTES = 256 * 1024
+
+/** Schemastery config for the routes. */
+export const Config = z.object({
   cookieEnv: z.string().default('STOCK_PNL_COOKIE'),
   fundKeyEnv: z.string().default('STOCK_PNL_FUND_KEY'),
   user_id: z.string().default(''),
   fund_key: z.string().default(''),
   pnlUrl: z.string().default(PNL_URL),
   indexUrl: z.string().default(INDEX_URL),
+  quoteUrl: z.string().default(QUOTE_URL),
   pollMs: z.number().min(1000).default(20000),
   positionsFile: z.string().default(''),
   minuteRefreshMs: z.number().min(10000).default(DEFAULT_MINUTE_REFRESH_MS),
 })
 
-/** Fully materialized route policy; defaulting happens here, never inline. */
-interface ResolvedConfig {
-  cookieEnv: string
-  fundKeyEnv: string
-  user_id: string
-  fund_key: string
-  pnlUrl: string
-  indexUrl: string
-  pollMs: number
-  positionsFile: string
-  minuteRefreshMs: number
-}
-
-/** Resolve defaults the same way Schemastery would, so direct `apply` calls stay correct. */
-function resolveConfig(config: Config): ResolvedConfig {
+/**
+ * Resolve defaults the same way Schemastery would, so direct `apply` calls stay correct.
+ * @param {object} config - the plugin config.
+ * @returns {object} the fully materialized route policy.
+ */
+function resolveConfig(config) {
   return {
     cookieEnv: config.cookieEnv ?? 'STOCK_PNL_COOKIE',
     fundKeyEnv: config.fundKeyEnv ?? 'STOCK_PNL_FUND_KEY',
@@ -85,42 +59,45 @@ function resolveConfig(config: Config): ResolvedConfig {
     fund_key: config.fund_key ?? '',
     pnlUrl: config.pnlUrl ?? PNL_URL,
     indexUrl: config.indexUrl ?? INDEX_URL,
+    quoteUrl: config.quoteUrl ?? QUOTE_URL,
     pollMs: config.pollMs ?? 20000,
     positionsFile: config.positionsFile ?? '',
     minuteRefreshMs: config.minuteRefreshMs ?? DEFAULT_MINUTE_REFRESH_MS,
   }
 }
 
-/** The package directory (the parent of the built `lib/` this module loads from). */
-const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url))
+/** The package directory (this module's own directory). */
+const PACKAGE_ROOT = fileURLToPath(new URL('.', import.meta.url))
 
 /**
  * The exported-position snapshot the local quote source reads by default: one
  * file in the plugin directory, so swapping the holdings is copying one file
  * into the package rather than hunting a path under the DSH home directory.
+ * @returns {string} the absolute snapshot path.
  */
-function defaultPositionsFile(): string {
+function defaultPositionsFile() {
   return path.join(PACKAGE_ROOT, 'positions.json')
 }
 
-/** Resolve one credential-reference value through the seam; `undefined` when unconfigured. */
-async function resolveCredential(ctx: Context, ref: string): Promise<string | undefined> {
+/**
+ * Resolve one credential-reference value through the seam.
+ * @param {object} ctx - the plugin context.
+ * @param {string} ref - the credential reference name.
+ * @returns {Promise<string | undefined>} the value, or undefined when unconfigured.
+ */
+async function resolveCredential(ctx, ref) {
   const resolved = await ctx.credentials.resolve(credentialRef(ref))
   return resolved?.value
 }
 
-/** The web server's response type, derived from the route contract (no node import). */
-type RouteResponse = Parameters<NonNullable<WebRoute['handler']>>[1]
-
-/** The route's response value: the stats snapshot plus the poll interval the strip should use. */
-export type RouteStats = Stats & {
-  readonly poll_ms: number
-  /** Which source answered: the ledger API through a Cookie, or the local quote feed. */
-  readonly source: 'ledger' | 'local'
-}
-
-/** Write a JSON response (same-origin only, so no CORS header). */
-function writeJson<T>(res: RouteResponse, status: number, value: T): void {
+/**
+ * Write a JSON response (same-origin only, so no CORS header).
+ * @param {object} res - the node response.
+ * @param {number} status - the HTTP status.
+ * @param {unknown} value - the JSON value.
+ * @returns {void}
+ */
+function writeJson(res, status, value) {
   const body = JSON.stringify(value)
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -130,15 +107,16 @@ function writeJson<T>(res: RouteResponse, status: number, value: T): void {
 }
 
 /**
- * Register the `/api/stock-pnl` route. Per-request failures answer 500 and
- * never take the server down; the route unregisters with the plugin fiber.
+ * Register the `/api/stock-pnl` routes. Per-request failures answer 500 and
+ * never take the server down; the routes unregister with the plugin fiber.
  *
- * @param ctx - Cordis context carrying the `webServer` and `credentials` services.
- * @param config - plugin config.
+ * @param {object} ctx - Cordis context carrying the `webServer` and `credentials` services.
+ * @param {object} [config] - plugin config.
+ * @returns {void}
  */
-export function apply(ctx: Context, config: Config = {}): void {
+export function apply(ctx, config = {}) {
   const spec = resolveConfig(config)
-  const route: WebRoute = {
+  const route = {
     kind: 'exact',
     path: ROUTE_PATH,
     handler: async (_req, res) => {
@@ -151,6 +129,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         if (cookie === undefined || cookie.length === 0) {
           const local = await collectLocalStats({
             positionsFile: spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile,
+            quoteUrl: spec.quoteUrl,
             minuteRefreshMs: spec.minuteRefreshMs,
           })
           if (local !== undefined) {
@@ -200,17 +179,17 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => ctx.webServer.register(route), 'ui-stock-pnl: /api/stock-pnl route')
 
   // Portfolio list endpoint: lets a client render a portfolio selector.
-  const portfolioRoute: WebRoute = {
+  const portfolioRoute = {
     kind: 'exact',
     path: '/api/stock-pnl/portfolios',
     handler: async (_req, res) => {
       try {
         const cookie = await resolveCredential(ctx, spec.cookieEnv)
-        if (!cookie) { writeJson(res, 200, [] as readonly Portfolio[]); return }
+        if (!cookie) { writeJson(res, 200, []); return }
         const user_id = spec.user_id.length > 0
           ? spec.user_id
           : (cookieField(normalizeCookie(cookie), 'userid') ?? '')
-        if (!user_id) { writeJson(res, 200, [] as readonly Portfolio[]); return }
+        if (!user_id) { writeJson(res, 200, []); return }
         const list = await listPortfolios(cookie, user_id)
         writeJson(res, 200, list)
       } catch (error) {
@@ -223,8 +202,13 @@ export function apply(ctx: Context, config: Config = {}): void {
   }
   ctx.effect(() => ctx.webServer.register(portfolioRoute), 'ui-stock-pnl: /api/stock-pnl/portfolios route')
 
-  // Register one exact route for the life of the plugin fiber.
-  const addRoute = (path: string, handler: WebRoute['handler']): void => {
+  /**
+   * Register one exact route for the life of the plugin fiber.
+   * @param {string} path - the route path.
+   * @param {Function} handler - the route handler.
+   * @returns {void}
+   */
+  const addRoute = (path, handler) => {
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path, handler }), `ui-stock-pnl: ${path}`)
   }
 
@@ -239,12 +223,13 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => async () => { await acquirer.dispose() }, 'ui-stock-pnl: acquire teardown')
 
   // Verify: probe the ledger with the stored Cookie and report whether it works.
-  const verifyHandler: WebRoute['handler'] = async (_req, res) => {
+  const verifyHandler = async (_req, res) => {
     try {
       const cookie = await resolveCredential(ctx, spec.cookieEnv)
       if (cookie === undefined || cookie.length === 0) {
         const local = await collectLocalStats({
           positionsFile: spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile,
+          quoteUrl: spec.quoteUrl,
           minuteRefreshMs: spec.minuteRefreshMs,
         })
         if (local !== undefined) {
@@ -273,4 +258,98 @@ export function apply(ctx: Context, config: Config = {}): void {
   addRoute('/api/stock-pnl/acquire/status', (_req, res) => { writeJson(res, 200, acquirer.status()) })
   addRoute('/api/stock-pnl/acquire/check', async (_req, res) => { writeJson(res, 200, await acquirer.check()) })
   addRoute('/api/stock-pnl/acquire/cancel', async (_req, res) => { writeJson(res, 200, await acquirer.cancel()) })
+
+  // Holdings management: this plugin's page reads the same snapshot the local
+  // source prices and writes an edited list back to it. A save is accepted
+  // only as an `application/json` body, which also keeps a cross-origin form
+  // post from reaching this write.
+  const positionsFile = () => spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile
+  addRoute(POSITIONS_PATH, async (req, res) => {
+    try {
+      const cookie = await resolveCredential(ctx, spec.cookieEnv)
+      const cookieConfigured = cookie !== undefined && cookie.length > 0
+      const input = {
+        file: positionsFile(),
+        cookieConfigured,
+        quoteUrl: spec.quoteUrl,
+      }
+
+      if (req.method === 'POST') {
+        // A cross-origin form post reaches this loopback server without a
+        // preflight, so the media type is part of the write's contract: only a
+        // JSON body is read, and everything else is refused before parsing.
+        const contentType = req.headers['content-type'] ?? ''
+        if (!contentType.toLowerCase().startsWith('application/json')) {
+          writeJson(res, 415, {
+            ok: false,
+            errors: [{ index: -1, field: 'body', message: '请求的 Content-Type 必须是 application/json' }],
+          })
+          return
+        }
+        const body = await readJsonBody(req, MAX_POSITIONS_BODY_BYTES)
+        if (body === undefined) {
+          writeJson(res, 400, {
+            ok: false,
+            errors: [{ index: -1, field: 'body', message: `请求体必须是 JSON 对象，且不超过 ${String(MAX_POSITIONS_BODY_BYTES)} 字节` }],
+          })
+          return
+        }
+        const result = await savePositions({ ...input, body })
+        writeJson(res, result.ok ? 200 : 400, result)
+        return
+      }
+
+      if (req.method !== 'GET') {
+        res.writeHead(405, { Allow: 'GET, POST' })
+        res.end()
+        return
+      }
+      writeJson(res, 200, await readPositionsView(input))
+    } catch (error) {
+      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+      if (res.headersSent) { res.destroy(); return }
+      res.writeHead(500)
+      res.end()
+    }
+  })
+}
+
+/**
+ * Read one JSON request body.
+ *
+ * The body is bounded before it is parsed and drained rather than buffered
+ * past the cap, so an oversized request is still answered instead of stalling
+ * the connection.
+ * @param {object} req - the request stream.
+ * @param {number} limit - most bytes to accept.
+ * @returns {Promise<unknown>} the parsed body, or undefined when the request carried none, exceeded the cap, or did not carry JSON.
+ */
+function readJsonBody(req, limit) {
+  return new Promise((resolve) => {
+    const chunks = []
+    let size = 0
+    let over = false
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > limit) {
+        over = true
+        chunks.length = 0
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (over) {
+        resolve(undefined)
+        return
+      }
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+      } catch {
+        // A body that is not JSON is a request this route cannot answer.
+        resolve(undefined)
+      }
+    })
+    req.on('error', () => { resolve(undefined) })
+  })
 }

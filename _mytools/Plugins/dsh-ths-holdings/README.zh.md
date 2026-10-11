@@ -76,6 +76,20 @@ dsh plugin --profile web add dsh-ths-holdings
 >
 > ![上传数据教程](assets/update.png)
 
+## 管理持仓（插件自己的页面）
+
+这份工作副本的 `dsh-ths-holdings` 只发宿主半边，持仓的日常维护放在**插件自己的页面**上——和桌宠的设置同一个位置：**设置 → 插件 → 点开 `dsh-ths-holdings` 这一条**，页面里就是「持仓管理」（`plugins.bundle.config`，按包名挂在自己的 bundle 页上）。
+
+- **看** — 每只持仓的代码、名称、数量、成本，以及公开行情算出的现价、市值、累计盈亏（相对成本）和今日盈亏（相对昨收）；表格上方是整仓合计，没有报价的行会单独说明。
+- **改** — 直接改表格里的代码 / 名称 / 数量 / 成本，点「保存」写回持仓文件；「放弃修改 / 重新载入」退回上一次载入的状态。
+- **增删** — 「添加一行」加一条空行，行尾的「删除」去掉一条。
+- **先校验再落盘** — 保存前整份列表都会被检查（6 位代码、数量 > 0、成本 ≥ 0、代码不重复）；不合格的行标红并逐条给出原因，只要有一行不合格就什么都不写。
+- **写回** — 保存原子替换 `positions.json`，保留导出流程写入的 `exported_at` / `export_date` / `source_file`，另记一个 `updated_at`；盈亏卡片在下一次轮询（约 20 秒）后使用新数据，不需要重启。
+
+> 已配置账本 Cookie 时，卡片的数字来自账本接口，这一页的编辑只在「导出持仓 + 公开行情」这条本地通路上生效——页面顶部会如实说明这一点。
+
+这条通路与 `.xlsx` 拖拽导入共用同一个文件：随时可以再把账本导出的表格拖到 `ths-export-positions.bat` 上整份覆盖，之后继续在插件页面里微调。
+
 ## 特性
 
 - **📊 实时持仓盈亏** — 每 20 秒（可配置）轮询你的真实组合
@@ -85,6 +99,7 @@ dsh plugin --profile web add dsh-ths-holdings
 - **🔄 自动发现** — `fund_key` 从组合列表自动获取；多账户可通过下拉框选择
 - **🖥 自动获取 Cookie** — 一键弹出 Edge 登录窗口，登录即自动保存，无需 F12
 - **✓ 保存即校验** — 粘贴或自动获取后当场验证 Cookie 是否被账本接受
+- **⚙ 持仓管理页** — 设置 → 插件 → 点开 `dsh-ths-holdings`：改成本 / 数量、增删持仓，带实时市值与盈亏
 - **↕ 可拖动** — 沿右侧边缘上下拖动标题栏（位置存 localStorage）
 - **⚙ 就地设置** — 粘贴 Cookie、选择组合，全在卡片上完成
 - **🔒 凭据安全** — Cookie 始终留在宿主进程
@@ -93,19 +108,19 @@ dsh plugin --profile web add dsh-ths-holdings
 
 ```text
 ┌─────────────── Web browser ───────────────┐
-│  lib/client.js (browser module)           │
-│  · shell.overlay slot → floating card      │
-│  · React + CSS Modules                     │
-│  · config in localStorage                  │
+│  client.js (browser module)               │
+│  · plugins.bundle.config → holdings page   │
+│  · React (editable table over host routes) │
 │          │ fetch (same-origin)             │
 └──────────┼─────────────────────────────────┘
            ▼
-┌─────────────── DSH Host (lib/index.js) ───┐
+┌─────────────── DSH Host (index.js) ───────┐
 │  cordis plugin: webServer routes          │
 │  · GET /api/stock-pnl          snapshot    │
 │  · GET /api/stock-pnl/portfolios  accounts │
 │  · GET /api/stock-pnl/verify     cookie ok?│
 │  · POST /api/stock-pnl/acquire*   sign-in │
+│  · GET|POST /api/stock-pnl/positions hold. │
 │  resolves Cookie via ctx.credentials      │
 │  auto-discovers user_id + fund_key        │
 │  POSTs Tonghuashun ledger APIs            │
@@ -126,24 +141,36 @@ node 半区每次请求通过凭据引用通道（`ctx.credentials`）读取登�
 | `fund_key` | 自动发现 | 选择所管理组合的账本 fund key；设置了 `fundKeyEnv` 凭据时覆盖，为空时从组合列表自动发现。 |
 | `pnlUrl` | 同花顺 `time_share` 端点 | 盈亏端点覆盖（测试指向脚本化服务器）。 |
 | `indexUrl` | 同花顺 `getQuotes` 端点 | 指数端点覆盖（测试指向脚本化服务器）。 |
+| `quoteUrl` | 腾讯 `qt.gtimg.cn/q=` | 本地行情源的批量报价端点覆盖，盈亏卡片与持仓管理页共用（测试指向脚本化服务器）。 |
+| `positionsFile` | 包目录下的 `positions.json` | 导出的持仓快照路径；持仓管理页读写的也是这个文件。 |
 | `pollMs` | `20000` | 卡片使用的轮询间隔（毫秒）；随每次响应的 `poll_ms` 上报给浏览器。 |
+| `minuteRefreshMs` | `120000` | 一张分时曲线缓存多久（毫秒）。 |
 
 ## 目录结构
 
+这份工作副本按桌宠那套写法维护：**手写的 ESM / lazy-CJS 就是最终产物**，没有 `src/` → `lib/` 这一步，因此**没有 `node_modules`、没有构建脚本、没有 lockfile**。运行时只需要 `_mytools\Plugins\node_modules` 里由 `ensure-plugin-modules.bat` 维护的 peer 链接（junction，0 字节）。
+
 ```
 dsh-ths-holdings/
-├── src/
-│   ├── index.ts            # node half: webServer routes + credential resolution
-│   ├── fetch.ts            # Tonghuashun ledger API calls + auto-discovery + cookie verify
-│   ├── acquire.ts          # auto-acquire cookie (playwright-core drives Edge)
-│   └── client/
-│       ├── index.ts        # browser half: shell.overlay registration
-│       └── StockPnlCard.tsx
-├── lib/                    # built artifacts (index.js + client.js)
+├── index.js                # host half: webServer routes + credential resolution + config
+├── fetch.js                # Tonghuashun ledger API calls + auto-discovery + cookie verify
+├── acquire.js              # auto-acquire cookie (playwright-core drives Edge/Chrome)
+├── local.js                # local quote source: exported holdings + Tencent quote feed
+├── positions.js            # holdings page: validate and write
+├── client.js               # browser half: the holdings manager on this plugin's own page
 ├── cordis.patch.yml        # dsh.bundle patch layer
 ├── package.json            # dsh.bundle + dsh.client manifests
-├── tests/                  # ledger / verify / acquire unit tests
+├── vitest.config.ts        # the plugin's own test config (the repository's covers no path here)
+├── tests/                  # ledger / verify / acquire / holdings-route specs + two keyless smokes
 └── README.md
+```
+
+测试（在插件目录里跑；不需要先构建任何东西）：
+
+```sh
+..\..\..\node_modules\.bin\vitest.CMD run    # host half: 37 specs
+node tests\positions-ui.smoke.mjs            # browser half: register, render, edit, save
+node tests\host.smoke.mjs                    # boot the package by row name and drive the routes
 ```
 
 ## FAQ / 故障排查
@@ -152,13 +179,17 @@ dsh-ths-holdings/
 |---|---|
 | 卡片显示 `请配置 Cookie` | `STOCK_PNL_COOKIE` 为空——在 ⚙ 面板点「自动获取」或手动粘贴。 |
 | 卡片显示 `Token 已过期` | 会话 Cookie 过期——在 ⚙ 面板点「自动获取」重新登录，或手动重新 `copy(document.cookie)` 粘贴。 |
-| 点「自动获取」提示缺少 playwright-core | `playwright-core` 未随包装入（通常是历史安装或手动剔除依赖导致）——重新 `pnpm add dsh-ths-holdings`（或 `npm i playwright-core`）后**重启 dsh web** 再试。 |
+| 点「自动获取」提示缺少 playwright-core | 本副本不含构建依赖，`playwright-core` 需要单独装：`npm i -g playwright-core`（插件目录、web profile、全局 npm 根都会被查找），然后**重启 dsh web** 再试。 |
 | 自动获取弹出窗口后没有反应 | 在弹出窗口完成登录（扫码 / 账号），登录后窗口会自动关闭并保存。 |
 | 弹出窗口显示 `Nginx forbidden` | 同花顺风控偶发拦截——在窗口里 F5 刷新或手动访问登录页重试；登录完成后点「我已登录，继续 →」。 |
 | 保存后徽标显示 `✗ 无效` | 粘贴的 Cookie 已失效或不是投资账本会话——重新登录获取后再试；面板会给出具体原因。 |
 | 下拉框没有组合 | 组合列表需要有效的 Cookie——先保存有效 Cookie，再点 ↻ 刷新。 |
 | 有多个组合 | 从下拉框选一个——选择会保存为 `STOCK_PNL_FUND_KEY`。 |
 | 粘贴的 Cookie 带换行 | 插件保存时会去掉空白，换行粘贴也没问题。 |
+| 在插件列表里找不到这一条 | 这一半走宿主启动时算出的插件清单：改完插件要**重启 DSH**（桌面端重启应用，网页版重启 `dsh web`）；位置是 **设置 → 插件 → `dsh-ths-holdings`**（在 bundle 那一组里，和桌宠同一条路）。 |
+| 保存成功但卡片数字没变 | 卡片按 `pollMs`（默认 20 秒）轮询一次，等一轮即可；若已配置账本 Cookie，卡片走账本通路，本页只改本地快照。 |
+| 保存被拒、某行标红 | 按提示修该字段：代码必须是 6 位数字、数量 > 0、成本 ≥ 0、代码不能重复；全部合格才会写文件。 |
+| 持仓管理页一片空白 | 该机器还没有 `positions.json`——直接「添加一行」保存即可创建；页面上会显示它将要写入的路径。 |
 
 ## Model Experience
 
@@ -172,8 +203,10 @@ dsh-ths-holdings/
 
 - **账本 API 是未公开的、需登录的端点** — 响应格式可能变化，Cookie 会过期；插件以错误呈现，而不是重试或缓存。
 - **组合列表端点（`account_list`）需要先保存 Cookie** — 粘贴有效 Cookie 后组合选择器才会出现。
-- **自动获取复用系统浏览器** — 依赖随包安装的 playwright-core，自动选择已安装的 Edge / Chrome；机器上两者都没有时自动获取不可用（退化为手动粘贴），卡片会给出明确提示。
+- **自动获取复用系统浏览器** — 依赖 `playwright-core`（本副本不再随包安装，需要 `npm i -g playwright-core` 或放进插件目录的 `node_modules`），自动选择已安装的 Edge / Chrome；找不到时自动获取不可用（退化为手动粘贴），页面会给出明确提示。
 - **无服务端轮询** — 路由按请求拉取，卡片按配置的 `pollMs` 间隔轮询；没有共享缓存或推送通道。
+- **持仓管理页只改本地快照** — 它读写 `positions.json`，不会写回同花顺账本；账本侧仍需在投资账本里维护（改完再导出一次 `.xlsx` 即可整份覆盖）。
+- **它挂在插件自己的页面上** — 用的是 Plugins 页给 bundle 的 `plugins.bundle.config` 位置（与桌宠设置同一处），因此只有这一条 bundle 被打开时才渲染；这一页需要浏览器重新加载插件清单，所以改完插件必须重启 DSH。
 
 ## License
 

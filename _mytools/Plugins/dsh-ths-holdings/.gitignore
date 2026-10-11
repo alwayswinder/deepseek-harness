@@ -1,4 +1,8 @@
 node_modules/
+# pnpm renames an unusable dependency tree aside to node_modules.broken-<stamp>
+# instead of deleting it. The pattern above matches only a directory named
+# `node_modules`, so the residue needs its own line to stay out of git.
+node_modules.broken-*/
 lib/
 dist/
 .env

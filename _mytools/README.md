@@ -17,7 +17,7 @@
 | 日常启动桌面端 | 开始菜单/桌面上的「DeepSeek Harness」图标，或 `build\start-desktop.bat` |
 | 还没装那个图标（每台机器一次） | `build\make-shortcut.bat`；不想要了 `build\make-shortcut.bat --remove` |
 | 关掉网页版 | `build\stop-dsh.bat` |
-| 持仓变了，更新对话上方那个数字 | 把账本导出的 `.xlsx` 拖到 [Plugins/dsh-ths-holdings/ths-export-positions.bat](Plugins/dsh-ths-holdings/ths-export-positions.bat) |
+| 持仓变了，更新对话上方那个数字 | 两种都行：把账本导出的 `.xlsx` 拖到 [Plugins/dsh-ths-holdings/ths-export-positions.bat](Plugins/dsh-ths-holdings/ths-export-positions.bat)，或在 设置 → 插件 → `dsh-ths-holdings` 页面里的「持仓管理」直接改 |
 | 合完上游，build 报奇怪的错 | `build\build.bat`（它会先跑 preflight 把常见问题指名）；还不行就 `build\build.bat repair` |
 
 ## 启动 / 构建 / 停止
@@ -84,8 +84,8 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 | 脚本 | 干什么 |
 | --- | --- |
-| `build\ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：`@deepseek-ai/schemastery` → `vendor\schemastery`，`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`。链接已正确就跳过，缺了就补。 |
-| `build\ensure-plugin-builds.bat` | 每次都按插件自己的 lockfile 同步依赖，再重新构建"有源码"的树外插件（目前只有 `dsh-ths-holdings`），避免更新后沿用旧 `node_modules` 或 `lib\`。 |
+| `build\ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：运行时的 `@deepseek-ai/schemastery` → `vendor\schemastery`、`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`，加上只有测试用的 `@deepseek-ai/cordis` → `vendor\cordis`、`cordis-plugin-loader` → `vendor\loader`、`cordis-plugin-include` → `vendor\include`、`dsh-host-webserver` → `packages\host\webserver`。全部是 0 字节 junction，插件因此可以完全不装依赖。链接已正确就跳过，缺了就补。 |
+| `build\ensure-plugin-builds.bat` | 以前给"发源码、要构建"的树外插件按 lockfile 装依赖再构建（当时只有 `dsh-ths-holdings`）。**现在什么都不构建**：那个插件已改成手写 ESM（`main` 直接是 `index.js`，没有 `node_modules`、没有 lockfile），脚本打印一行说明后 exit 0。将来若有插件重新走"发源码"路线，在脚本的 `PLUGIN_BUILD_LIST` 里加回 `call :buildPlugin <目录名>` 即可；那时**别用 `pnpm install --force`**——它会跳过可选依赖的 os/cpu 过滤，把构建器所有平台的原生二进制都装上（2026-10-11 实测：`node_modules` 从 74.9 MB 涨到 401.9 MB）。 |
 | `build\sync-plugins.bat <profile>` | 把**以 `file:` 副本装进 profile** 的插件（`appearance-plus`、`deepseek-usage`、`dsh-fish-tank`、`dsh-aquarium3d`、`dsh-littleIcon`）刷新成 `Plugins\` 里的最新源码，含插件自带的 `assets\`、`pet\`、`locale\`、`src\`、`vendor\`、`tools\` 目录；内容相同就不写。装成 `link:`（junction）的插件实测跳过——profile 加载的就是源码本身，没有副本要刷新。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
 `build\ensure-plugin-*.bat` 由 `build\build.bat`（任何模式）自动调用，`build\sync-plugins.bat` 由两个 `start-*.bat` 自动调用，平时都不用手点。
@@ -103,7 +103,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `appearance-plus` | 插件页增加五套护眼配色、背景图片编辑器，以及空闲锁屏壁纸：无操作满设定秒数后整屏换成锁屏图；桌面端连系统标题栏和三个窗口按钮一起清掉，窗口状态不变。 | web、desktop |
 | `deepseek-usage` | 设置页的用量/余额卡片；**对话输入框上方那条汇总**（余额、今日消费 —— 现在最前面还有一个不标单位的持仓盈亏数字）。 | web、desktop |
 | `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，单击收起/恢复 DSH 主窗口；右键与托盘菜单第一项「对话」在 DSH 自己的右侧 Browser 标签里开 chat.deepseek.com，第二项「Git 改动」在右侧栏开插件自己的仓库页（左：当前会话工作目录里未提交的改动，右：最近十次提交；双击任意一行看详情；「拉取」用 `git pull --ff-only` 更新到上游最新；左栏默认是普通列表，点标题上的「选择」进入多选（每行一个勾选框，整行可直接点选，Shift 连选，标题的勾选框一次全选）后「丢弃」——按 Git 报的状态恢复成 `HEAD` 的样子（改动还原、已暂存的新增与未跟踪文件删掉、重命名把旧路径放回去），撤销不了，所以第一次点只是起意、确认行上再点一次才动手，成功后又回到普通列表；「提交并推送」仍只把「审查本地改动，没有问题就提交并推送吧」作为用户消息发进当前对话，由 AI 去执行），第三项「打开工作目录」把当前会话的工作目录交给宿主，用资源管理器打开（打不开时桌宠弹一句说明）；「听歌」时别人在默认出声设备上放音视频会让开——默认是**淡出**（音量在一秒里滑到 20% 再滑回来，音乐不停），也可选直接暂停——对方安静 3 秒后自己回来（桌宠自己读 Windows 的音频会话，卡片上有开关、方式、淡出到的音量与秒数，手动暂停不会被自动恢复）；分隔线下可以「更新 DSH」（构建当前工作副本，成功后自动重启）、「重启 DSH」或「退出 DSH」。DSH 切到后台就自动收起，等用户回答时举着「惊讶」。桌宠自己不在菜单里退出，生死由「启用桌宠」开关控制。 | desktop（web 可装，但那里不控制窗口；Git 页两边都能用） |
-| `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时。 | desktop |
+| `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时；另外在**插件自己的页面**（设置 → 插件 → 点开 `dsh-ths-holdings`，与桌宠设置同一个位置）提供持仓管理界面（改数量/成本、增删），读写的就是下面那份 `positions.json`。手写 ESM，零构建零依赖。 | desktop |
 | `dsh-pocket` | 手机扫码访问电脑上的 DSH：设置页「手机访问」，局域网二维码（代理监听 3081）+ cloudflared 公网隧道，WebSocket 透传实时同屏。第三方插件（作者 shaobeichen，GPL-2.0）。 | desktop |
 
 `Plugins\node_modules\@deepseek-ai\` 是给上面这些插件用的 peer 链接，由 `build\ensure-plugin-modules.bat` 维护，不要手改。
@@ -114,12 +114,15 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 | 文件 | 说明 |
 | --- | --- |
-| `positions.json` | **唯一需要维护的数据文件**，每条 `code / name / qty / cost`。已被 `.gitignore` 忽略（真实持仓，而这个仓库是公开的）。 |
+| `positions.json` | **唯一需要维护的数据文件**，每条 `code / name / qty / cost`。两种改法等价：插件页面里改，或拖 xlsx 整份覆盖。按实测它**在 git 里是被跟踪的**（`git ls-files` 有它，最近一次改动是提交 `chore(_mytools/dsh-ths-holdings): 更新持仓快照`），所以每次保存都会体现为一次工作树改动——真实持仓，而这个仓库是公开的，要不要继续跟踪由你决定。 |
 | `ths-export-positions.bat` | 把账本导出的 `.xlsx` 拖上来 → 重写同目录的 `positions.json`。不用重启，20 秒内生效。 |
 | `ths-export-positions.py` | 上面那个的实体（xlsx → json）。需要一个装了 openpyxl 的 Python：脚本优先用 DSH 桌面运行时自带的那个，找不到会给出提示。 |
+| `index.js` 及同级 `fetch.js` / `acquire.js` / `local.js` / `positions.js` | 宿主半边，**手写 ESM**（照桌宠的写法）：注册 `/api/stock-pnl` 系列路由。没有 `src/`、没有构建、没有 `node_modules`——`main` 直接指向 `index.js`，运行时只从 `Plugins\node_modules` 的两个 peer 链接取 `schemastery` 与 `dsh-credentials`。 |
+| `client.js` | 浏览器半边（手写 lazy-CJS）：挂在**插件自己的页面**上的「持仓管理」（`plugins.bundle.config`，按包名 `dsh-ths-holdings`，与桌宠设置同一处）。宿主与浏览器两半都在启动时算进清单，改完要重启 DSH。 |
+| `vitest.config.ts` / `tests/` | 插件自带用例（仓库的 vitest 配置不覆盖 `_mytools/`）。在插件目录里跑：`..\..\..\node_modules\.bin\vitest.CMD run`（37 例）；`node tests\positions-ui.smoke.mjs`（浏览器半边：注册 + 渲染 + 改/增/删/保存）；`node tests\host.smoke.mjs`（按行名 `dsh-ths-holdings` 走真实 Loader 启动并驱动路由）。都不需要先构建。 |
 
-- 没配 Cookie 时走"导出持仓 + 公开行情"这条本地通路；以后若在设置里存了 `STOCK_PNL_COOKIE`，插件会自动切回账本接口。
-- 换机器：代码跟仓库走，`positions.json` 不跟（隐私）——新机器上拖一次 xlsx 就有数了。
+- 没配 Cookie 时走"导出持仓 + 公开行情"这条本地通路；以后若在设置里存了 `STOCK_PNL_COOKIE`，插件会自动切回账本接口——**此时插件页面里的编辑不再影响卡片数字**（页面顶部会说明）。
+- 换机器：代码跟仓库走；因为 `positions.json` 目前确实被 git 跟踪，它也跟着 `git pull` 走。若想让它真的"不跟"，需要 `git rm --cached` 后再加进忽略——这一步没做，由你决定。
 
 ## 设置跟着 git 走（`settings\`）
 

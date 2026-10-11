@@ -77,6 +77,20 @@ The session cookie expires eventually — when it does, the card shows a **Token
 >
 > ![Data upload tutorial](assets/update.png)
 
+## Managing holdings (the plugin's own page)
+
+This working copy ships the host half of `dsh-ths-holdings` only, so the day-to-day maintenance of the holdings sits on **the plugin's own page** — the same place the desktop pet's settings live: **Settings → Plugins → open the `dsh-ths-holdings` row**, where the page shows 持仓管理 (the `plugins.bundle.config` entry, keyed by this package, on this bundle's page).
+
+- **See** — one row per holding with its code, name, quantity, and cost, plus the price, market value, cumulative P&L (against the position's own cost), and today's P&L (against the previous close) that the public quote feed gives; the account totals sit above the table, and unpriced rows are called out.
+- **Edit** — change the code, name, quantity, or cost straight in the table and click save to write it back to the holdings file; discard-and-reload returns to the last loaded state.
+- **Add and delete** — "添加一行" appends an empty row, and the row's "删除" control drops one.
+- **Validate before writing** — the whole list is checked before anything is written (six-digit code, quantity > 0, cost ≥ 0, no repeated code); a rejected row is marked and explained, and one bad row means nothing is written at all.
+- **Write-back** — saving replaces `positions.json` atomically, keeps the `exported_at` / `export_date` / `source_file` the export flow wrote, and records an `updated_at`; the P&L card picks the new data up on its next poll (about 20 seconds), with no restart.
+
+> With a ledger Cookie configured, the card's figures come from the ledger API and the edits on this page only take effect on the "exported holdings + public quotes" local path — the page says so at the top.
+
+That path shares one file with the `.xlsx` import: drop a fresh ledger export onto `ths-export-positions.bat` at any time to replace the whole list, then keep fine-tuning it on the plugin's page.
+
 ## Features
 
 - **📊 Real-time position P&L** — polls every 20 s (configurable) from your actual portfolio
@@ -86,6 +100,7 @@ The session cookie expires eventually — when it does, the card shows a **Token
 - **🔄 Auto-discovery** — `fund_key` is discovered from the portfolio list; multi-account selection via dropdown
 - **🖥 Auto-acquire Cookie** — one click pops the Edge sign-in window; the cookie is saved automatically, no F12 needed
 - **✓ Validate on save** — the stored cookie is checked against the ledger right after paste or auto-acquire
+- **⚙ Holdings manager page** — Settings → Plugins → open `dsh-ths-holdings`: edit cost and quantity, add and delete holdings, with live market value and P&L
 - **↕ Draggable** — drag the title bar vertically along the right edge (position persists in localStorage)
 - **⚙ In-place settings** — paste Cookie and select portfolio from the card itself
 - **🔒 Credential-safe** — the Cookie never leaves the host process
@@ -94,19 +109,19 @@ The session cookie expires eventually — when it does, the card shows a **Token
 
 ```text
 ┌─────────────── Web browser ───────────────┐
-│  lib/client.js (browser module)           │
-│  · shell.overlay slot → floating card      │
-│  · React + CSS Modules                     │
-│  · config in localStorage                  │
+│  client.js (browser module)               │
+│  · plugins.bundle.config → holdings page   │
+│  · React (editable table over host routes) │
 │          │ fetch (same-origin)             │
 └──────────┼─────────────────────────────────┘
            ▼
-┌─────────────── DSH Host (lib/index.js) ───┐
+┌─────────────── DSH Host (index.js) ───────┐
 │  cordis plugin: webServer routes          │
 │  · GET /api/stock-pnl          snapshot    │
 │  · GET /api/stock-pnl/portfolios  accounts │
 │  · GET /api/stock-pnl/verify     cookie ok?│
 │  · POST /api/stock-pnl/acquire*   sign-in │
+│  · GET|POST /api/stock-pnl/positions hold. │
 │  resolves Cookie via ctx.credentials      │
 │  auto-discovers user_id + fund_key        │
 │  POSTs Tonghuashun ledger APIs            │
@@ -127,24 +142,36 @@ Auto-acquire runs an in-host state machine (`acquire.ts`): click the button → 
 | `fund_key` | auto-discovered | The ledger fund key selecting the managed portfolio; overridden by the `fundKeyEnv` credential when set, auto-discovered from the account list when empty. |
 | `pnlUrl` | Tonghuashun `time_share` endpoint | P&L endpoint override (tests point at a scripted server). |
 | `indexUrl` | Tonghuashun `getQuotes` endpoint | Index endpoint override (tests point at a scripted server). |
+| `quoteUrl` | Tencent `qt.gtimg.cn/q=` | Batch quote endpoint override for the local source, shared by the P&L card and the holdings page (tests point at a scripted server). |
+| `positionsFile` | `positions.json` beside this package | Path of the exported holdings snapshot; the holdings page reads and writes the same file. |
 | `pollMs` | `20000` | Poll interval (ms) the card uses; reported to the browser in each response's `poll_ms`. |
+| `minuteRefreshMs` | `120000` | How long one intraday series stays cached, in milliseconds. |
 
 ## Directory structure
 
+This working copy follows the desktop pet's authoring style: the **hand-written ESM / lazy-CJS files are the artifacts**, so there is no `src/` → `lib/` step — and therefore **no `node_modules`, no build script, no lockfile**. At runtime it needs only the peer links `ensure-plugin-modules.bat` maintains under `_mytools\Plugins\node_modules` (junctions, 0 bytes).
+
 ```
 dsh-ths-holdings/
-├── src/
-│   ├── index.ts            # node half: webServer routes + credential resolution
-│   ├── fetch.ts            # Tonghuashun ledger API calls + auto-discovery + cookie verify
-│   ├── acquire.ts          # auto-acquire cookie (playwright-core drives Edge)
-│   └── client/
-│       ├── index.ts        # browser half: shell.overlay registration
-│       └── StockPnlCard.tsx
-├── lib/                    # built artifacts (index.js + client.js)
+├── index.js                # host half: webServer routes + credential resolution + config
+├── fetch.js                # Tonghuashun ledger API calls + auto-discovery + cookie verify
+├── acquire.js              # auto-acquire cookie (playwright-core drives Edge/Chrome)
+├── local.js                # local quote source: exported holdings + Tencent quote feed
+├── positions.js            # holdings page: validate and write
+├── client.js               # browser half: the holdings manager on this plugin's own page
 ├── cordis.patch.yml        # dsh.bundle patch layer
 ├── package.json            # dsh.bundle + dsh.client manifests
-├── tests/                  # ledger / verify / acquire unit tests
+├── vitest.config.ts        # the plugin's own test config (the repository's covers no path here)
+├── tests/                  # ledger / verify / acquire / holdings-route specs + two keyless smokes
 └── README.md
+```
+
+Tests (run them from the plugin directory; nothing needs building first):
+
+```sh
+..\..\..\node_modules\.bin\vitest.CMD run    # host half: 37 specs
+node tests\positions-ui.smoke.mjs            # browser half: register, render, edit, save
+node tests\host.smoke.mjs                    # boot the package by row name and drive the routes
 ```
 
 ## FAQ / Troubleshooting
@@ -153,13 +180,17 @@ dsh-ths-holdings/
 |---|---|
 | Card shows `请配置 Cookie` | `STOCK_PNL_COOKIE` is empty — click **auto-acquire** in the ⚙ panel, or paste manually. |
 | Card shows `Token 已过期` | The session Cookie expired — click **auto-acquire** in the ⚙ panel to re-sign-in, or re-run `copy(document.cookie)` and paste. |
-| Auto-acquire reports missing playwright-core | `playwright-core` did not ship with the install (typically a legacy install or a manually pruned dependency tree) — re-`pnpm add dsh-ths-holdings` (or `npm i playwright-core`), restart `dsh web`, retry. |
+| Auto-acquire reports missing playwright-core | This working copy ships no build dependencies, so `playwright-core` is installed separately: `npm i -g playwright-core` (the plugin directory, the web profile, and the global npm root are all searched), then restart `dsh web`. |
 | Auto-acquire window does not respond | Complete the sign-in in the popped window (QR code / account); the window closes and saves the Cookie after sign-in. |
 | Popped window shows `Nginx forbidden` | The Tonghuashun WAF intermittently refuses automation — F5 in the window or open the ledger URL manually, then click **「我已登录，继续 →」**. |
 | Saved Cookie shows `✗ invalid` | The Cookie expired or does not belong to an investment-ledger session — sign in again and retry; the panel displays the specific reason. |
 | No portfolio in the dropdown | The account list needs a valid Cookie first; save the Cookie, then click ↻ to refresh. |
 | Multiple portfolios | Select the one you want from the dropdown — the choice is saved as `STOCK_PNL_FUND_KEY`. |
 | Cookie pasted with line breaks | The plugin strips whitespace on save, so wrapped lines are fine. |
+| The plugin row has no holdings manager | The browser half follows the plugin roster the host computes at startup: **restart DSH** after changing the plugin (the desktop app, or `dsh web`); the page is **Settings → Plugins → `dsh-ths-holdings`** (the bundle group, the same route the desktop pet takes). |
+| Saved, but the card's figures did not move | The card polls once per `pollMs` (20 seconds by default), so give it a round; with a ledger Cookie configured the card reads the ledger and this page only edits the local snapshot. |
+| The save is refused and a row is marked | Fix the field it names: the code must be six digits, the quantity above 0, the cost 0 or more, and no code may repeat; nothing is written until the whole list passes. |
+| The holdings page is empty | This machine has no `positions.json` yet — add a row and save to create it; the page shows the path it will write. |
 
 ## Model Experience
 
@@ -173,8 +204,10 @@ None — the plugin contributes no prompt, schema, or result.
 
 - **The ledger API is an undocumented, login-gated endpoint** — its response format can change and the Cookie expires; the plugin surfaces both as errors rather than retrying or caching.
 - **The portfolio list endpoint (`account_list`) requires the Cookie to be saved first** — the portfolio selector appears after you paste a valid Cookie.
-- **Auto-acquire reuses a system browser** — it drives the bundled playwright-core dependency against whichever of Edge / Chrome is installed (first found wins); with neither present auto-acquire is unavailable (manual paste still works) and the card says so explicitly.
+- **Auto-acquire reuses a system browser** — it needs `playwright-core` (no longer installed with this copy: run `npm i -g playwright-core` or put it in the plugin directory's own `node_modules`) and drives whichever of Edge / Chrome is installed (first found wins); with neither present auto-acquire is unavailable (manual paste still works) and the page says so explicitly.
 - **No server-side polling** — the route fetches on each request and the card polls at the configured `pollMs` interval; there is no shared cache or push channel.
+- **The holdings page only edits the local snapshot** — it reads and writes `positions.json` and never writes back to the Tonghuashun ledger; the ledger side is still maintained in the ledger itself (re-export the `.xlsx` to replace the whole list).
+- **It lives on the plugin's own page** — it uses the `plugins.bundle.config` seat the Plugins page gives a bundle (the desktop pet's settings use the same one), so it renders only while that bundle is open, and the browser has to reload the plugin roster: restart DSH after changing the plugin.
 
 ## License
 

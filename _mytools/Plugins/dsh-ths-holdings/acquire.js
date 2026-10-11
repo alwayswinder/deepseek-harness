@@ -3,9 +3,8 @@
  * (the system-installed Edge — no browser download), wait for the human to
  * sign in, then read the resulting 10jqka cookies and commit them through the
  * credentials seam. playwright-core is resolved through several anchors
- * (global npm root, the web profile, this plugin's own node_modules) so a
- * missing install degrades to a clear hint instead of a crash — the same
- * resolution strategy dsh-web-search-pro uses for its login script.
+ * (this plugin's own node_modules, the web profile, the global npm root) so a
+ * missing install degrades to a clear hint instead of a crash.
  * @module dsh-ths-holdings/acquire
  */
 
@@ -14,27 +13,6 @@ import { execFileSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Browser, BrowserContext, Page } from 'playwright-core'
-import type { AcquireStatusView } from './types.ts'
-
-/** The playwright module shape used at runtime (typed through playwright-core types). */
-export interface PwModule {
-  chromium: {
-    launch(options?: { channel?: string; headless?: boolean; args?: string[] }): Promise<Browser>
-  }
-}
-
-/** A playwright Cookie (the storageState subset). */
-export interface PwCookie {
-  name: string
-  value: string
-  domain: string
-  path: string
-  expires?: number
-  httpOnly?: boolean
-  secure?: boolean
-  sameSite?: string
-}
 
 /** The installed-browser channels to try, most preferred first (playwright `channel` option). */
 const BROWSER_CHANNELS = [
@@ -42,19 +20,19 @@ const BROWSER_CHANNELS = [
   { channel: 'chrome', label: 'Google Chrome' },
   { channel: 'msedge-beta', label: 'Microsoft Edge (Beta)' },
   { channel: 'chrome-beta', label: 'Google Chrome (Beta)' },
-] as const
+]
 
 /**
  * Launch a visible browser through the first installed channel. Each
  * `chromium.launch({ channel })` locates the system browser executable and
  * fails fast when it is missing, so the fallback chain costs little and needs
  * no bundled browser download.
- * @param pw - the resolved playwright module.
- * @returns the launched Browser.
+ * @param {object} pw - the resolved playwright module.
+ * @returns {Promise<object>} the launched Browser.
  * @throws when no known browser channel is installed.
  */
-export async function launchVisibleBrowser(pw: PwModule): Promise<Browser> {
-  let lastError: unknown = undefined
+export async function launchVisibleBrowser(pw) {
+  let lastError
   for (const { channel } of BROWSER_CHANNELS) {
     try {
       return await pw.chromium.launch({
@@ -79,7 +57,7 @@ export async function launchVisibleBrowser(pw: PwModule): Promise<Browser> {
 
 /** The ledger host's domain suffix (all 10jqka hosts share the Cookie). */
 const LEDGER_DOMAIN = '10jqka.com.cn'
-/** The session-cookie name marking a completed sign-in (matches fetch.ts's userid derivation). */
+/** The session-cookie name marking a completed sign-in (matches fetch's userid derivation). */
 const AUTH_COOKIE_NAME = 'userid'
 /** The page opened for the sign-in. */
 export const LEDGER_LOGIN_URL = 'https://tzzb.10jqka.com.cn'
@@ -89,11 +67,14 @@ const DEFAULT_TIMEOUT_MS = 10 * 60_000
 /** The default sign-in watch cadence, ms. */
 const DEFAULT_POLL_MS = 1_000
 
-/** The module directory (lib/ at runtime), for plugin-local resolution anchors. */
+/** This module's directory (the plugin root), for plugin-local resolution anchors. */
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 
-/** The global npm root: `npm root -g`, with the stock Windows fallback. */
-function globalNpmRoot(): string {
+/**
+ * The global npm root: `npm root -g`, with the stock Windows fallback.
+ * @returns {string} the global node_modules directory.
+ */
+function globalNpmRoot() {
   try {
     return execFileSync('npm', ['root', '-g'], { encoding: 'utf8', windowsHide: true }).trim()
   } catch {
@@ -102,23 +83,22 @@ function globalNpmRoot(): string {
 }
 
 /**
- * Resolve the playwright-core module through a chain of anchors.
- * Since 0.1.6 playwright-core ships as a regular dependency of this plugin,
- * the plugin's own node_modules is the primary anchor; the web profile and the
- * global npm root remain as fallbacks for installs that predate the change.
- * @returns the module, or undefined when it is not installed anywhere we look.
+ * Resolve the playwright-core module through a chain of anchors: this plugin's
+ * own directory, the web profile, the global npm root, then plain resolution
+ * (a source launch resolves from the repository).
+ * @returns {object | undefined} the module, or undefined when it is not installed anywhere we look.
  */
-export function resolvePlaywright(): PwModule | undefined {
+export function resolvePlaywright() {
   const home = process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh')
   const anchors = [
-    path.join(HERE, '..', 'node_modules', 'playwright-core', 'package.json'),
+    path.join(HERE, 'node_modules', 'playwright-core', 'package.json'),
     path.join(home, 'profiles', 'web', 'node_modules', 'playwright-core', 'package.json'),
     path.join(globalNpmRoot(), 'playwright-core', 'package.json'),
     'playwright-core/package.json',
   ]
   for (const anchor of anchors) {
     try {
-      return createRequire(anchor)('playwright-core') as PwModule
+      return createRequire(anchor)('playwright-core')
     } catch {
       /* try the next anchor */
     }
@@ -126,39 +106,33 @@ export function resolvePlaywright(): PwModule | undefined {
   return undefined
 }
 
-/** True when the cookie belongs to the ledger domain or any 10jqka subdomain. */
-function isLedgerCookie(cookie: PwCookie): boolean {
+/**
+ * True when the cookie belongs to the ledger domain or any 10jqka subdomain.
+ * @param {{domain: string}} cookie - one playwright cookie.
+ * @returns {boolean} whether the cookie is a ledger cookie.
+ */
+function isLedgerCookie(cookie) {
   const domain = cookie.domain.toLowerCase()
   return domain === LEDGER_DOMAIN || domain === `.${LEDGER_DOMAIN}` || domain.endsWith(`.${LEDGER_DOMAIN}`)
 }
 
-/** True when the cookie set proves a signed-in session (a non-empty userid). */
-export function isSignedIn(cookies: readonly PwCookie[]): boolean {
+/**
+ * True when the cookie set proves a signed-in session (a non-empty userid).
+ * @param {ReadonlyArray<{name: string, value: string, domain: string}>} cookies - the cookies to inspect.
+ * @returns {boolean} whether a ledger session cookie is present.
+ */
+export function isSignedIn(cookies) {
   return cookies.some(cookie => cookie.name === AUTH_COOKIE_NAME && cookie.value.length > 0 && isLedgerCookie(cookie))
 }
 
 /**
  * Build a Cookie header string from storageState cookies — ledger cookies only,
  * canonical `; ` joined (no line-wrapping surprises for the YAML store).
- * @param cookies - cookies as playwright's storageState reports them.
- * @returns a Cookie header, or '' when no ledger cookie is present.
+ * @param {ReadonlyArray<{name: string, value: string, domain: string}>} cookies - cookies as playwright's storageState reports them.
+ * @returns {string} a Cookie header, or '' when no ledger cookie is present.
  */
-export function cookiesToHeader(cookies: readonly PwCookie[]): string {
+export function cookiesToHeader(cookies) {
   return cookies.filter(isLedgerCookie).map(cookie => `${cookie.name}=${cookie.value}`).join('; ')
-}
-
-/** The context the acquirer needs: how to commit and where to look. */
-export interface AcquireContext {
-  /** Commit the acquired Cookie (the credentials-seam write). */
-  save: (cookie: string) => Promise<void>
-  /** Resolve the playwright module; injectable for tests. */
-  resolvePlaywright: () => PwModule | undefined
-  /** Sign-in watch cadence, ms. */
-  pollMs?: number
-  /** Total wait budget before timing out, ms. */
-  timeoutMs?: number
-  /** Clock override for tests. */
-  now?: () => number
 }
 
 /**
@@ -167,28 +141,35 @@ export interface AcquireContext {
  * safe to call from the plugin's web routes.
  */
 export class CookieAcquirer {
-  private readonly pollMs: number
-  private readonly timeoutMs: number
-  private readonly now: () => number
-
-  private state: AcquireStatusView['state'] = 'idle'
-  private error = ''
-  private hint = ''
-  private startedAt = 0
-  private probing = false
-  private browser: Browser | undefined
-  private context: BrowserContext | undefined
-  private page: Page | undefined
-  private timer: ReturnType<typeof setInterval> | undefined
-
-  constructor(private readonly ctx: AcquireContext) {
+  /**
+   * @param {object} ctx - how to commit the Cookie and where to look for playwright.
+   * @param {(cookie: string) => Promise<void>} ctx.save - the credentials-seam write.
+   * @param {() => object | undefined} ctx.resolvePlaywright - the playwright resolver (injectable for tests).
+   * @param {number} [ctx.pollMs] - sign-in watch cadence, ms.
+   * @param {number} [ctx.timeoutMs] - total wait budget before timing out, ms.
+   * @param {() => number} [ctx.now] - clock override for tests.
+   */
+  constructor(ctx) {
+    this.ctx = ctx
     this.pollMs = ctx.pollMs ?? DEFAULT_POLL_MS
     this.timeoutMs = ctx.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.now = ctx.now ?? (() => Date.now())
+    this.state = 'idle'
+    this.error = ''
+    this.hint = ''
+    this.startedAt = 0
+    this.probing = false
+    this.browser = undefined
+    this.context = undefined
+    this.page = undefined
+    this.timer = undefined
   }
 
-  /** The current status view for the browser. */
-  status(): AcquireStatusView {
+  /**
+   * The current status view for the browser.
+   * @returns {{state: string, error?: string, hint?: string}} the status.
+   */
+  status() {
     return {
       state: this.state,
       ...(this.error !== '' ? { error: this.error } : {}),
@@ -199,9 +180,9 @@ export class CookieAcquirer {
   /**
    * Start a new sign-in run: open a visible Edge window on the ledger page and
    * begin watching for the sign-in cookie. A no-op when one is already running.
-   * @returns the resulting status.
+   * @returns {Promise<object>} the resulting status.
    */
-  async start(): Promise<AcquireStatusView> {
+  async start() {
     if (this.state === 'acquiring') return this.status()
     this.error = ''
     this.hint = ''
@@ -209,7 +190,7 @@ export class CookieAcquirer {
     if (pw === undefined) {
       this.state = 'failed'
       this.error = '未找到 playwright-core，无法自动获取 Cookie'
-      this.hint = '请先安装（npm i -g playwright-core）或在本插件的依赖里安装 playwright-core，然后重启 dsh web 再试'
+      this.hint = '请先安装：npm i -g playwright-core（或放入插件目录的 node_modules），然后重启 dsh web 再试'
       return this.status()
     }
     try {
@@ -246,9 +227,10 @@ export class CookieAcquirer {
   /**
    * After the landing page settles, look for the familiar WAF refusal markers
    * (nginx 403 "forbidden" bodies) and, when found, record a non-fatal notice
-   * the card renders under the acquiring state.
+   * the page renders under the acquiring state.
+   * @returns {Promise<void>} resolution once the probe finished.
    */
-  private async detectBlocked(): Promise<void> {
+  async detectBlocked() {
     try {
       await this.page?.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
       const text = (await this.page?.content()) ?? ''
@@ -262,9 +244,9 @@ export class CookieAcquirer {
   /**
    * Run one immediate sign-in probe — the "我已登录" button. A no-op unless a
    * run is acquiring.
-   * @returns the resulting status.
+   * @returns {Promise<object>} the resulting status.
    */
-  async check(): Promise<AcquireStatusView> {
+  async check() {
     if (this.state !== 'acquiring') return this.status()
     await this.probe()
     return this.status()
@@ -272,9 +254,9 @@ export class CookieAcquirer {
 
   /**
    * Abandon a running sign-in: close the window and return to idle.
-   * @returns the resulting status.
+   * @returns {Promise<object>} the resulting status.
    */
-  async cancel(): Promise<AcquireStatusView> {
+  async cancel() {
     if (this.state === 'acquiring') {
       this.stopTimer()
       await this.closeBrowser()
@@ -285,21 +267,29 @@ export class CookieAcquirer {
     return this.status()
   }
 
-  /** Tear down for plugin disposal: stop watching and close any window. */
-  async dispose(): Promise<void> {
+  /**
+   * Tear down for plugin disposal: stop watching and close any window.
+   * @returns {Promise<void>} resolution once the window is gone.
+   */
+  async dispose() {
     this.stopTimer()
     await this.closeBrowser()
     this.state = 'idle'
   }
 
-  private stopTimer(): void {
+  /** Stop the watch timer when one is running. */
+  stopTimer() {
     if (this.timer !== undefined) {
       clearInterval(this.timer)
       this.timer = undefined
     }
   }
 
-  private async closeBrowser(): Promise<void> {
+  /**
+   * Drop the current window and its handles.
+   * @returns {Promise<void>} resolution once the browser reports closed.
+   */
+  async closeBrowser() {
     const browser = this.browser
     this.browser = undefined
     this.context = undefined
@@ -311,8 +301,9 @@ export class CookieAcquirer {
   /**
    * One watch tick: detect the sign-in cookie, then commit and finish.
    * Failures (timeout, closed window, save refusal) settle as `failed`.
+   * @returns {Promise<void>} resolution once the tick finished.
    */
-  private async probe(): Promise<void> {
+  async probe() {
     if (this.probing || this.state !== 'acquiring') return
     this.probing = true
     try {

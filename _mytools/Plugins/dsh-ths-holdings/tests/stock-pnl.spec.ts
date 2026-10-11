@@ -8,7 +8,7 @@
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -20,12 +20,70 @@ import { CredentialProvider } from '@deepseek-ai/dsh-credentials'
 import type { CredentialInfo, CredentialRef, ResolvedCredential } from '@deepseek-ai/dsh-credentials'
 import z from '@deepseek-ai/schemastery'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
-import * as uiStockPnl from '../src/index.ts'
-import { CookieAcquirer, cookiesToHeader, isSignedIn, type PwCookie, type PwModule } from '../src/acquire.ts'
-import { collectStats, cookieField, listPortfolios, verifyCookie, type FetchLike } from '../src/fetch.ts'
+import * as uiStockPnl from '../index.js'
+import { CookieAcquirer, cookiesToHeader, isSignedIn } from '../acquire.js'
+import { collectStats, cookieField, listPortfolios, verifyCookie } from '../fetch.js'
+import { parsePositionEntries, readPositionsView, savePositions } from '../positions.js'
+
+/** A playwright cookie, as these tests hand it to the acquirer. */
+interface PwCookie {
+  name: string
+  value: string
+  domain: string
+  path: string
+}
+
+/** The playwright module shape the acquirer launches through. */
+interface PwModule {
+  chromium: { launch(options?: { channel?: string; headless?: boolean; args?: string[] }): Promise<any> }
+}
+
+/** The fetch-compatible executor the ledger modules accept. */
+type FetchLike = (url: string, init: RequestInit) => Promise<Response>
+
+/** The `/api/stock-pnl/positions` view, as these tests read it. */
+interface PositionsView {
+  file: string
+  exported_at?: string
+  export_date?: string
+  updated_at?: string
+  cookie_configured: boolean
+  skipped: number
+  positions: Array<Record<string, any>>
+  quotes_error: string
+  unreadable?: string
+}
+
+/** The `/api/stock-pnl/positions` save answer, as these tests read it. */
+interface SavePositionsResult {
+  ok: boolean
+  errors: Array<{ index: number, field: string, message: string }>
+  view?: PositionsView
+}
 
 const FIXED_NOW = () => new Date('2026-05-26T06:00:00Z')
 const COOKIE_ENV = 'STOCK_PNL_COOKIE'
+
+/** The exported holdings the composition test starts from, as the xlsx export writes them. */
+const POSITION_FIXTURE = {
+  exported_at: '2026-05-01T15:00:00+08:00',
+  export_date: '2026-05-01',
+  source_file: 'D:/ledger/positions.xlsx',
+  positions: [
+    { code: '600941', name: 'AAA', qty: 400, cost: 87.291 },
+    { code: '601668', name: 'BBB', qty: 15000, cost: 4.478 },
+  ],
+}
+
+/**
+ * The scripted quote-feed body. Names stay ASCII because the feed is GBK and
+ * the reader decodes it as such; ASCII survives that decode unchanged.
+ */
+const QUOTE_BODY = [
+  'v_sh600941="1~AAA~600941~88.00~87.00";',
+  'v_sh601668="1~BBB~601668~4.50~4.40";',
+].join('\n')
+
 
 /** Wrap any JSON as a fetch-style Response. */
 function jsonResponse(body: unknown, status = 200): Response {
@@ -159,7 +217,10 @@ class TestCredentialProvider extends CredentialProvider {
 let root: string | undefined
 let context: Context | undefined
 let ledgerServer: Server | undefined
+let quoteServer: Server | undefined
 let ledgerCookie: string | undefined
+/** Absolute path of the snapshot file the composition test's management route reads and writes. */
+let positionsPath: string | undefined
 
 afterEach(async () => {
   await context?.fiber.dispose()
@@ -168,6 +229,9 @@ afterEach(async () => {
   root = undefined
   if (ledgerServer !== undefined) await new Promise<void>(resolve => { ledgerServer?.close(() => { resolve() }) })
   ledgerServer = undefined
+  if (quoteServer !== undefined) await new Promise<void>(resolve => { quoteServer?.close(() => { resolve() }) })
+  quoteServer = undefined
+  positionsPath = undefined
   delete process.env[COOKIE_ENV]
   ledgerCookie = undefined
 })
@@ -189,7 +253,22 @@ async function loadComposition(): Promise<number> {
   })
   const ledgerPort = (ledgerServer.address() as AddressInfo).port
 
+  // The public quote feed is scripted too: the management view prices every
+  // row, and a test must not depend on the live feed.
+  quoteServer = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain; charset=gbk' })
+    res.end(QUOTE_BODY)
+  })
+  await new Promise<void>((resolve, reject) => {
+    quoteServer!.once('error', reject)
+    quoteServer!.listen(0, '127.0.0.1', () => { resolve() })
+  })
+  const quotePort = (quoteServer.address() as AddressInfo).port
+
   process.env[COOKIE_ENV] = 'sid=test-secret'
+
+  positionsPath = join(root, 'positions.json')
+  await writeFile(positionsPath, `${JSON.stringify(POSITION_FIXTURE, null, 2)}\n`, 'utf8')
 
   const configPath = join(root, 'cordis.yml')
   await writeFile(configPath, [
@@ -203,6 +282,8 @@ async function loadComposition(): Promise<number> {
     `    cookieEnv: '${COOKIE_ENV}'`,
     `    pnlUrl: 'http://127.0.0.1:${String(ledgerPort)}/pnl'`,
     `    indexUrl: 'http://127.0.0.1:${String(ledgerPort)}/index'`,
+    `    quoteUrl: 'http://127.0.0.1:${String(quotePort)}/q='`,
+    `    positionsFile: '${positionsPath.replaceAll('\\', '/')}'`,
     '',
   ].join('\n'))
 
@@ -444,6 +525,283 @@ describe('verifyCookie', () => {
     expect(result.reason).toBe('rejected')
     expect(result.error).toContain('需要登录')
     expect(result.hint).toContain('重新登录')
+  })
+})
+
+describe('parsePositionEntries', () => {
+  it('accepts whole rows and keeps quantity and cost at storage precision', () => {
+    const { entries, errors } = parsePositionEntries({
+      positions: [
+        { code: ' 600941 ', name: '中国移动', qty: 400.000001, cost: 87.29123456 },
+        { code: '513330', name: '', qty: 286800, cost: 0.407 },
+      ],
+    })
+    expect(errors).toEqual([])
+    expect(entries).toEqual([
+      { code: '600941', name: '中国移动', qty: 400, cost: 87.2912 },
+      { code: '513330', name: '', qty: 286800, cost: 0.407 },
+    ])
+  })
+
+  it('reports every rejected field instead of stopping at the first row', () => {
+    const { entries, errors } = parsePositionEntries({
+      positions: [
+        { code: '60094', name: 'AAA', qty: 100, cost: 1 },
+        { code: '600941', name: 'AAA', qty: 0, cost: 1 },
+        { code: '600941', name: 'AAA', qty: 100, cost: -1 },
+        { code: '601668', name: 'x'.repeat(41), qty: 100, cost: 1 },
+      ],
+    })
+    expect(entries).toEqual([])
+    expect(errors.map(error => `${String(error.index)}:${error.field}`)).toEqual([
+      '0:code',
+      '1:qty',
+      '2:cost',
+      '3:name',
+    ])
+    expect(errors[0]?.message).toContain('6 位数字')
+  })
+
+  it('rejects a repeated code', () => {
+    const { errors } = parsePositionEntries({
+      positions: [
+        { code: '600941', name: 'AAA', qty: 100, cost: 1 },
+        { code: '600941', name: 'AAA', qty: 200, cost: 1 },
+      ],
+    })
+    expect(errors).toEqual([{ index: 1, field: 'code', message: '代码重复' }])
+  })
+
+  it('rejects a body without a positions array', () => {
+    expect(parsePositionEntries({ rows: [] }).errors).toEqual([
+      { index: -1, field: 'positions', message: '请求体需要一个 positions 数组' },
+    ])
+    expect(parsePositionEntries(undefined).entries).toEqual([])
+  })
+
+  it('rejects more rows than the write accepts', () => {
+    const positions = Array.from({ length: 501 }, (_value, index) => ({
+      code: String(600000 + index),
+      name: '',
+      qty: 1,
+      cost: 1,
+    }))
+    expect(parsePositionEntries({ positions }).errors[0]?.field).toBe('positions')
+  })
+
+  it('accepts an empty list, which is how the page clears the holdings', () => {
+    expect(parsePositionEntries({ positions: [] })).toEqual({ entries: [], errors: [] })
+  })
+})
+
+describe('savePositions', () => {
+  /** A quote-feed response for the two fixture holdings. */
+  const quotingFetch: FetchLike = async () => new Response(QUOTE_BODY, { status: 200 })
+
+  it('creates the snapshot file when the deployment never exported one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-positions-'))
+    try {
+      const file = join(dir, 'nested', 'positions.json')
+      const result = await savePositions({
+        file,
+        body: { positions: [{ code: '600941', name: 'AAA', qty: 100, cost: 90 }] },
+        cookieConfigured: false,
+        fetchImpl: quotingFetch,
+      })
+      expect(result.ok).toBe(true)
+      const stored = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
+      expect(stored.positions).toEqual([{ code: '600941', name: 'AAA', qty: 100, cost: 90 }])
+      expect(typeof stored.updated_at).toBe('string')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('writes nothing when a row is rejected', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-positions-'))
+    try {
+      const file = join(dir, 'positions.json')
+      await writeFile(file, `${JSON.stringify(POSITION_FIXTURE, null, 2)}\n`, 'utf8')
+      const result = await savePositions({
+        file,
+        body: { positions: [{ code: '600941', name: 'AAA', qty: -5, cost: 90 }] },
+        cookieConfigured: false,
+        fetchImpl: quotingFetch,
+      })
+      expect(result.ok).toBe(false)
+      expect(result.errors.map(error => error.field)).toEqual(['qty'])
+      expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(POSITION_FIXTURE)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses to overwrite a file it cannot parse', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-positions-'))
+    try {
+      const file = join(dir, 'positions.json')
+      await writeFile(file, 'not json', 'utf8')
+      const result = await savePositions({
+        file,
+        body: { positions: [{ code: '600941', name: 'AAA', qty: 100, cost: 90 }] },
+        cookieConfigured: false,
+        fetchImpl: quotingFetch,
+      })
+      expect(result.ok).toBe(false)
+      expect(result.errors[0]?.field).toBe('file')
+      expect(await readFile(file, 'utf8')).toBe('not json')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('readPositionsView', () => {
+  const quotingFetch: FetchLike = async () => new Response(QUOTE_BODY, { status: 200 })
+
+  it('answers an empty list for a machine that never exported holdings', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-view-'))
+    try {
+      const view = await readPositionsView({
+        file: join(dir, 'positions.json'),
+        cookieConfigured: false,
+        fetchImpl: quotingFetch,
+      })
+      expect(view.positions).toEqual([])
+      expect(view.skipped).toBe(0)
+      expect(view.unreadable).toBeUndefined()
+      expect(view.quotes_error).toBe('')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reports rows the snapshot carries without a usable quantity or cost', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-view-'))
+    try {
+      const file = join(dir, 'positions.json')
+      await writeFile(file, JSON.stringify({
+        exported_at: POSITION_FIXTURE.exported_at,
+        positions: [
+          { code: '600941', name: 'AAA', qty: 400, cost: 87.291 },
+          { code: '601668', name: 'BBB', qty: 0, cost: 4.478 },
+        ],
+      }), 'utf8')
+      const view = await readPositionsView({ file, cookieConfigured: false, fetchImpl: quotingFetch })
+      expect(view.positions.map(row => row.code)).toEqual(['600941'])
+      expect(view.skipped).toBe(1)
+      expect(view.exported_at).toBe(POSITION_FIXTURE.exported_at)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('flags a file that is not a snapshot object so the page can explain an empty table', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-view-'))
+    try {
+      const file = join(dir, 'positions.json')
+      await writeFile(file, '[]', 'utf8')
+      const view = await readPositionsView({ file, cookieConfigured: true, fetchImpl: quotingFetch })
+      expect(view.positions).toEqual([])
+      expect(view.unreadable).toContain('不是持仓快照 JSON')
+      expect(view.cookie_configured).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('positions management route', () => {
+  it('prices the exported holdings and reports the ledger state', { timeout: 60_000 }, async () => {
+    const port = await loadComposition()
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/api/stock-pnl/positions`)
+    expect(response.status).toBe(200)
+    const view = (await response.json()) as PositionsView
+    // The config passes the path with forward slashes, which is how the view reports it back.
+    expect(view.file.replaceAll('\\', '/')).toBe(positionsPath!.replaceAll('\\', '/'))
+    expect(view.exported_at).toBe(POSITION_FIXTURE.exported_at)
+    expect(view.export_date).toBe(POSITION_FIXTURE.export_date)
+    expect(view.cookie_configured).toBe(true)
+    expect(view.skipped).toBe(0)
+    expect(view.quotes_error).toBe('')
+    expect(view.positions).toEqual([
+      {
+        code: '600941', name: 'AAA', qty: 400, cost: 87.291,
+        price: 88, prev_close: 87, market_value: 35200, cost_value: 34916.4,
+        pnl: 283.6, pnl_pct: 0.8122, day_pnl: 400, day_pnl_pct: 1.1494,
+      },
+      {
+        code: '601668', name: 'BBB', qty: 15000, cost: 4.478,
+        price: 4.5, prev_close: 4.4, market_value: 67500, cost_value: 67170,
+        pnl: 330, pnl_pct: 0.4913, day_pnl: 1500, day_pnl_pct: 2.2727,
+      },
+    ])
+  })
+
+  it('saves an edited list and keeps the export facts the page never edited', { timeout: 60_000 }, async () => {
+    const port = await loadComposition()
+
+    const response = await fetch(`http://127.0.0.1:${String(port)}/api/stock-pnl/positions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        positions: [
+          { code: '600941', name: 'AAA', qty: 500, cost: 86.5 },
+          { code: '000895', name: 'CCC', qty: 1700, cost: 25 },
+        ],
+      }),
+    })
+    expect(response.status).toBe(200)
+    const result = (await response.json()) as SavePositionsResult
+    expect(result.ok).toBe(true)
+    expect(result.view?.positions.map(row => row.code)).toEqual(['600941', '000895'])
+
+    const stored = JSON.parse(await readFile(positionsPath!, 'utf8')) as Record<string, unknown>
+    expect(stored.exported_at).toBe(POSITION_FIXTURE.exported_at)
+    expect(stored.source_file).toBe(POSITION_FIXTURE.source_file)
+    expect(stored.positions).toEqual([
+      { code: '600941', name: 'AAA', qty: 500, cost: 86.5 },
+      { code: '000895', name: 'CCC', qty: 1700, cost: 25 },
+    ])
+    expect(typeof stored.updated_at).toBe('string')
+
+    // A fresh read returns what the file now holds, so the edit survives the request.
+    const reread = (await (await fetch(`http://127.0.0.1:${String(port)}/api/stock-pnl/positions`)).json()) as PositionsView
+    expect(reread.positions.map(row => row.qty)).toEqual([500, 1700])
+    expect(reread.updated_at).toBe(stored.updated_at)
+  })
+
+  it('rejects invalid rows, a non-JSON media type, and a non-JSON body without writing', { timeout: 60_000 }, async () => {
+    const port = await loadComposition()
+    const url = `http://127.0.0.1:${String(port)}/api/stock-pnl/positions`
+
+    const rejected = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ positions: [{ code: '600941', name: 'AAA', qty: 0, cost: -1 }] }),
+    })
+    expect(rejected.status).toBe(400)
+    const result = (await rejected.json()) as SavePositionsResult
+    expect(result.ok).toBe(false)
+    expect(result.errors.map(error => error.field)).toEqual(['qty', 'cost'])
+
+    // A form post is a simple request that reaches loopback without a
+    // preflight; the media type is what keeps it out of the write.
+    const notJson = await fetch(url, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: 'positions=1' })
+    expect(notJson.status).toBe(415)
+
+    const unparsable = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' })
+    expect(unparsable.status).toBe(400)
+
+    expect(JSON.parse(await readFile(positionsPath!, 'utf8'))).toEqual(POSITION_FIXTURE)
+  })
+
+  it('answers 405 for methods it does not serve', { timeout: 60_000 }, async () => {
+    const port = await loadComposition()
+    const response = await fetch(`http://127.0.0.1:${String(port)}/api/stock-pnl/positions`, { method: 'DELETE' })
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe('GET, POST')
   })
 })
 

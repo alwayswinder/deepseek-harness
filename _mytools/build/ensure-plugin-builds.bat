@@ -15,6 +15,11 @@ rem The pinned pnpm-lock.yaml is reconciled on every call so a pulled dependency
 rem change cannot leave the plugin on an old node_modules tree. The build also
 rem runs every time because linked profiles load lib\ directly.
 rem
+rem No working-copy plugin needs this today: dsh-ths-holdings (the only one that
+rem ever did) is hand-written ESM now — its package main is index.js, so it has
+rem no node_modules and no build step. Add a `call :buildPlugin <dir>` below for
+rem any plugin that goes back to shipping sources.
+rem
 rem %1 = pnpm command to use; resolved here when omitted.
 rem build.bat and build-desktop.bat call this after locating pnpm.
 rem ============================================================
@@ -22,6 +27,14 @@ rem ============================================================
 rem Resolve the repository and _mytools roots from this script's location.
 for %%I in ("%~dp0..\..") do set "DSH_REPO=%%~fI"
 for %%I in ("%~dp0..") do set "MYTOOLS_ROOT=%%~fI"
+
+rem One call per plugin that needs a build: its directory under Plugins\.
+set "PLUGIN_BUILD_LIST="
+
+if not defined PLUGIN_BUILD_LIST (
+    echo [plugins] no out-of-tree plugin needs a build.
+    exit /b 0
+)
 
 set "PLUGIN_PNPM=%~1"
 if not defined PLUGIN_PNPM call :findPnpm
@@ -31,9 +44,6 @@ if not defined PLUGIN_PNPM (
 )
 
 set "PLUGIN_FAILED="
-
-rem One call per plugin that needs a build: its directory under Plugins\.
-call :buildPlugin dsh-ths-holdings
 
 if defined PLUGIN_FAILED exit /b 1
 exit /b 0

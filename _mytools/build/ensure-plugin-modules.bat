@@ -4,8 +4,11 @@ chcp 65001 >nul
 
 rem ============================================================
 rem Give the out-of-tree plugins under Plugins\ the peer packages their host
-rem halves import as values: @deepseek-ai/schemastery and
-rem @deepseek-ai/dsh-credentials.
+rem halves import as values — @deepseek-ai/schemastery and
+rem @deepseek-ai/dsh-credentials — plus the four packages only their test
+rem suites import (cordis, the Loader, the include plugin, the webserver), so
+rem a plugin can be built-free and dependency-free: hand-written JS that
+rem resolves everything it needs from this checkout.
 rem
 rem A plugin added to a profile as a bare path, or as file:<abs> on a machine
 rem where pnpm records the link protocol, stays a junction to this source
@@ -17,9 +20,9 @@ rem reports the bundle as failed to enable. Each junction below names the copy
 rem of that package this checkout itself loads, so the plugin and the Host
 rem share one module instance.
 rem
-rem A plugin built in place keeps its own node_modules and resolves these
-rem imports there instead; the junctions are what let a linked plugin that has
-rem no node_modules of its own load.
+rem A plugin with a build step of its own keeps its own node_modules and
+rem resolves these imports there instead; the junctions are what let a linked
+rem plugin that has no node_modules of its own load.
 rem
 rem build.bat, build-desktop.bat, start-dsh.bat and start-desktop.bat call this,
 rem so a machine needs no manual setup beyond running one of them.
@@ -36,6 +39,10 @@ rem One call per peer package: its name under @deepseek-ai, and the directory
 rem in this checkout that holds the copy the harness loads.
 call :linkPeer schemastery "%DSH_REPO%\vendor\schemastery"
 call :linkPeer dsh-credentials "%DSH_REPO%\packages\credentials\credentials"
+call :linkPeer cordis "%DSH_REPO%\vendor\cordis"
+call :linkPeer cordis-plugin-loader "%DSH_REPO%\vendor\loader"
+call :linkPeer cordis-plugin-include "%DSH_REPO%\vendor\include"
+call :linkPeer dsh-host-webserver "%DSH_REPO%\packages\host\webserver"
 
 if defined PLUGIN_FAILED exit /b 1
 exit /b 0

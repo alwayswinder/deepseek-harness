@@ -179,6 +179,8 @@ rem ---- mode: web / desktop ---------------------------------------------------
 if /i "%TARGET%"=="desktop" (
     call :prepareDownloadCache
     if errorlevel 1 goto :finishInstall
+    call :ensureElectronBinary
+    if errorlevel 1 goto :finishElectron
 )
 
 rem A running development Desktop keeps desktop.log open, which makes clean fail on
@@ -279,6 +281,30 @@ if exist "%LEGACY_DESKTOP_DOWNLOAD_CACHE%\" (
 )
 exit /b 0
 
+rem The Electron binary is not something `pnpm install` fetches: pnpm-workspace.yaml's
+rem allowBuilds lists no install script for electron, so its postinstall never runs
+rem and the package downloads the binary itself the first time something requires
+rem it - during a build, that is prepare-desktop, minutes in, where the failure
+rem reads as a stack trace from inside tsx. Do that download here instead: early,
+rem once, through whatever mirror this machine has (ELECTRON_MIRROR).
+:ensureElectronBinary
+set "ELECTRON_PACKAGE=%DSH_REPO%\apps\desktop\node_modules\electron"
+if not exist "%ELECTRON_PACKAGE%\install.js" (
+    echo [build] Electron is not installed under apps\desktop\node_modules.
+    echo [build] The dependency step did not provide it; run this build again, and
+    echo [build] if it repeats, run: pnpm install
+    exit /b 1
+)
+if exist "%ELECTRON_PACKAGE%\dist\electron.exe" exit /b 0
+if not defined NODE_CMD (
+    echo [build] Node was not found, so Electron's binary cannot be downloaded.
+    exit /b 1
+)
+echo [build] The Electron binary is missing for this checkout; downloading it now...
+"%NODE_CMD%" "%ELECTRON_PACKAGE%\install.js"
+if exist "%ELECTRON_PACKAGE%\dist\electron.exe" exit /b 0
+exit /b 1
+
 rem The log a detached run writes to: under the harness home, so build output
 rem never lands in the repository.
 :writeRevision
@@ -330,9 +356,21 @@ if exist "%DSH_REPO%\node_modules" rmdir /s /q "%DSH_REPO%\node_modules"
 exit /b 0
 
 :stopRepositoryDesktop
-if not exist "%DSH_REPO%\apps\desktop\node_modules\electron\dist\electron.exe" exit /b 0
-powershell.exe -NoProfile -Command "$target = [IO.Path]::GetFullPath((Join-Path $env:DSH_REPO 'apps\desktop\node_modules\electron\dist\electron.exe')); $processes = @(Get-Process electron -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $target }); if ($processes.Count -gt 0) { $processes | Stop-Process -Force -ErrorAction Stop }"
-exit /b %errorlevel%
+rem Which processes are this checkout's Desktop app, and why the stop has to
+rem succeed before clean, belongs to stop-repository-desktop.ps1: the launcher
+rem starts Electron from a per-version cache outside the checkout, so the image
+rem path cannot name it, and the launcher's cmd.exe keeps a file inside the
+rem directory clean deletes open until the app is gone.
+if not exist "%SCRIPT_DIR%stop-repository-desktop.ps1" (
+    echo [build] stop-repository-desktop.ps1 is missing next to this script.
+    exit /b 1
+)
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%stop-repository-desktop.ps1"
+rem Not `if errorlevel 1`: a powershell.exe that cannot start the script exits with
+rem a negative code, which that test reads as success - and "the app may still be
+rem running" is the one outcome this step must never report as fine.
+if not "%errorlevel%"=="0" exit /b 1
+exit /b 0
 
 :detachCachedPrimaryRuntime
 set "DESKTOP_PRIMARY_RUNTIME=%DSH_REPO%\apps\desktop\.desktop-build\targets\win-x64\runtime\primary-runtime"
@@ -368,6 +406,16 @@ exit /b 3
 
 :finishInstall
 call :finish install 1
+exit /b 1
+
+:finishElectron
+echo.
+echo [build] Electron's binary is not installed for this checkout and could not be
+echo [build] downloaded, so there is no Desktop runtime to build against. When this
+echo [build] machine cannot reach GitHub releases, point the download at a mirror
+echo [build] and run this build again:
+echo [build]   set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+call :finish electron-binary 1
 exit /b 1
 
 :finishStop

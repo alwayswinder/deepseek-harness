@@ -285,8 +285,8 @@ rem The Electron binary is not something `pnpm install` fetches: pnpm-workspace.
 rem allowBuilds lists no install script for electron, so its postinstall never runs
 rem and the package downloads the binary itself the first time something requires
 rem it - during a build, that is prepare-desktop, minutes in, where the failure
-rem reads as a stack trace from inside tsx. Do that download here instead: early,
-rem once, through whatever mirror this machine has (ELECTRON_MIRROR).
+rem reads as a stack trace from inside tsx. Download it here through the default
+rem domestic mirror; ELECTRON_MIRROR can select a different compatible mirror.
 :ensureElectronBinary
 set "ELECTRON_PACKAGE=%DSH_REPO%\apps\desktop\node_modules\electron"
 if not exist "%ELECTRON_PACKAGE%\install.js" (
@@ -300,6 +300,8 @@ if not defined NODE_CMD (
     echo [build] Node was not found, so Electron's binary cannot be downloaded.
     exit /b 1
 )
+if not defined ELECTRON_MIRROR set "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/"
+echo [build] Electron download mirror: %ELECTRON_MIRROR%
 echo [build] The Electron binary is missing for this checkout; downloading it now...
 "%NODE_CMD%" "%ELECTRON_PACKAGE%\install.js"
 if exist "%ELECTRON_PACKAGE%\dist\electron.exe" exit /b 0
@@ -411,10 +413,8 @@ exit /b 1
 :finishElectron
 echo.
 echo [build] Electron's binary is not installed for this checkout and could not be
-echo [build] downloaded, so there is no Desktop runtime to build against. When this
-echo [build] machine cannot reach GitHub releases, point the download at a mirror
-echo [build] and run this build again:
-echo [build]   set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+echo [build] downloaded, so there is no Desktop runtime to build against. Override
+echo [build] ELECTRON_MIRROR with another compatible mirror and run this build again.
 call :finish electron-binary 1
 exit /b 1
 

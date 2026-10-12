@@ -10,6 +10,12 @@
 # here, which is what this turns off for exactly this path.
 Plugins/dsh-aquarium3d/vendor/three.module.js -whitespace
 
+# The Remotion skill tree is the upstream text of `dsh-remotion` copied byte for
+# byte, and its Markdown keeps trailing spaces plus a few space-before-tab
+# indents. Reformatting it to satisfy `git diff --check` would diverge from
+# upstream, which is what this turns off for exactly this subtree.
+Plugins/dsh-remotion-master/skills/** -whitespace
+
 # The compiled MouseShare helper ships in the repository so the second machine
 # only has to `git pull` (it is a PE image: no end-of-line or diff handling).
 # The pet plugin carries its own copy of the same exe, which `build.bat` refreshes.

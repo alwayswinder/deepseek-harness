@@ -1,0 +1,8 @@
+node_modules/
+test/.media-fixture-*/
+*.log
+
+# 仓库根的 .gitignore 把 lib/ 当构建产物忽略，而本插件是以 link: 装进 profile 的
+# 上游原样副本：package.json 的 main 指向 lib/index.js，上游仓库也把 lib/ 一起提交。
+# 不跟着仓库走，另一台机器 git pull 下来就是一个加载不了的插件。
+!lib/

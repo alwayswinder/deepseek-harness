@@ -105,10 +105,13 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `dsh-littleIcon` | 桌面桌宠：独立于 DSH 窗口的置顶透明小窗（PowerShell + WPF），可拖动、按 agent 状态换表情，单击收起/恢复 DSH 主窗口；右键与托盘菜单第一项「对话」在 DSH 自己的右侧 Browser 标签里开 chat.deepseek.com，第二项「Git 改动」在右侧栏开插件自己的仓库页（左：当前会话工作目录里未提交的改动，右：最近十次提交；双击任意一行看详情；「拉取」用 `git pull --ff-only` 更新到上游最新；左栏默认是普通列表，点标题上的「选择」进入多选（每行一个勾选框，整行可直接点选，Shift 连选，标题的勾选框一次全选）后「丢弃」——按 Git 报的状态恢复成 `HEAD` 的样子（改动还原、已暂存的新增与未跟踪文件删掉、重命名把旧路径放回去），撤销不了，所以第一次点只是起意、确认行上再点一次才动手，成功后又回到普通列表；「提交并推送」仍只把「审查本地改动，没有问题就提交并推送吧」作为用户消息发进当前对话，由 AI 去执行），第三项「打开工作目录」把当前会话的工作目录交给宿主，用资源管理器打开（打不开时桌宠弹一句说明）；「听歌」时别人在默认出声设备上放音视频会让开——默认是**淡出**（音量在一秒里滑到 20% 再滑回来，音乐不停），也可选直接暂停——对方安静 3 秒后自己回来（桌宠自己读 Windows 的音频会话，卡片上有开关、方式、淡出到的音量与秒数，手动暂停不会被自动恢复）；分隔线下可以「更新 DSH」（构建当前工作副本，成功后自动重启）、「重启 DSH」或「退出 DSH」。DSH 切到后台就自动收起，等用户回答时举着「惊讶」。桌宠自己不在菜单里退出，生死由「启用桌宠」开关控制。 | desktop（web 可装，但那里不控制窗口；Git 页两边都能用） |
 | `dsh-ths-holdings` | 持仓实时盈亏的数据源：注册 `/api/stock-pnl`，用导出的持仓 + 腾讯公开行情算出当日盈亏、上证指数和分时；另外在**插件自己的页面**（设置 → 插件 → 点开 `dsh-ths-holdings`，与桌宠设置同一个位置）提供持仓管理界面（改数量/成本、增删），读写的就是下面那份 `positions.json`。手写 ESM，零构建零依赖。 | desktop |
 | `dsh-pocket` | 手机扫码访问电脑上的 DSH：设置页「手机访问」，局域网二维码（代理监听 3081）+ cloudflared 公网隧道，WebSocket 透传实时同屏。第三方插件（作者 shaobeichen，GPL-2.0）。 | desktop |
+| `dsh-remotion-master` | Remotion 的 React 视频创作技能（12 个 `remotion-*` 技能，含官方 `remotion-dev/skills` 内容）加设置页的「Remotion」视频工作台：选模板、编辑内容、传素材，官方 Studio 预览后导出本机 MP4。第三方插件（包名 `dsh-remotion`，作者 stardustlc，MIT），上游 `STARDUSTLC666/dsh-remotion` 的 master（版本 0.5.0）原样收录。 | desktop |
 
 `Plugins\node_modules\@deepseek-ai\` 是给上面这些插件用的 peer 链接，由 `build\ensure-plugin-modules.bat` 维护，不要手改。
 
 `dsh-pocket` 的 `lib\service.mjs` 用 `require('qrcode')` 生成二维码，而它以 `link:` 装进 profile（不是 `file:` 副本），所以要在**插件目录自己**装依赖：新机器上先 `cd Plugins\dsh-pocket && npm ci --omit=dev --legacy-peer-deps`，否则设置页里二维码是空图。它不跟着 `build\sync-plugins.bat` 走 —— 那里的文件清单只覆盖 `index.js`/`client.js` 这类布局，而它是 `lib\` + `client\`，`link:` 生效靠的是 junction。
+
+`dsh-remotion-master` 的依赖同理，而且它的三个依赖（`yaml`、`proper-lockfile`、`fflate`）在插件加载路径上：profile 只装插件本身、不装它的依赖，Node 又从插件目录按真实路径解析，所以缺了连插件都起不来（实测 `lib\skill-bundle.js` 报 `ERR_MODULE_NOT_FOUND: Cannot find package 'yaml'`，设置页里根本没有 Remotion）。新机器上先 `cd Plugins\dsh-remotion-master && npm install --omit=dev --no-package-lock --no-audit --no-fund`，装完重启 DSH。用 `npm install` 而不是 `npm ci` 是因为上游只带 `pnpm-lock.yaml`；`--no-package-lock` 免得多出一份没进仓库的 lockfile。它同样以 `link:` 装进 profile（实测 desktop 是 junction），`build\sync-plugins.bat` 只刷新 `file:` 副本，所以它不在那份清单里。`lib\` 是上游提交的构建产物，跟着仓库走（本目录 `.gitignore` 里有一行 `!lib/` 顶掉仓库根把 `lib/` 当产物的忽略）；改了 `src\` 要重新构建。
 
 ### `dsh-ths-holdings` 的数据
 
@@ -162,7 +165,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\install-shortcut.ps1` | 建/删那两个快捷方式；`build\make-shortcut.bat` 的实体。 |
 | `build\make-app-icon.mjs` | 从 `apps\desktop\resources\icon-windows.svg` 光栅化 9 个尺寸的 `.ico` 到 `$DSH_HOME\build\dsh.ico`。 |
 | `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build\build.bat`（desktop/repair）调用。 |
-| `.gitattributes` | 固定 `*.bat` 以 CRLF 检出（cmd 按 CRLF 解析）。 |
+| `.gitattributes` | 固定 `*.bat` 以 CRLF 检出（cmd 按 CRLF 解析）；另给逐字收录的第三方文件关掉空白检查（aquarium 的 `three.module.js`、`dsh-remotion-master\skills\`），免得为了过 `git diff --check` 去改上游原文。 |
 | `build\dsh-web.log` | `build\start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
 | `ai-game\` | 个人东西（ATB 回合制战斗 demo，纯 HTML/CSS/JS），与 DSH 运行无关。 |
 | `bg\` | 背景图素材。 |

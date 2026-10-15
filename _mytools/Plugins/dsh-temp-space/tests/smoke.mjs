@@ -4,8 +4,9 @@
  * Drives the real routes over a real HTTP listener and a real Git repository in
  * a temporary directory, so the checks cover what the page would actually meet:
  * name sanitization against traversal, both quota refusals, the state revision
- * that keeps two writers apart, the byte round trip, and the four Git actions.
- * Nothing here needs DSH_HOME, a browser, or a network remote.
+ * that keeps two writers apart, the byte round trip, the four Git actions, the
+ * refusals of the reveal route, and the clipboard commands the page cannot build
+ * for itself. Nothing here needs DSH_HOME, a browser, or a network remote.
  *
  * Run: node tests/smoke.mjs
  */
@@ -19,7 +20,8 @@ import { join } from 'node:path'
 
 const { apply, internals } = await import('../index.js')
 const {
-  sanitizeName, contentTypeOf, validateItems, STATE_PATH, BLOB_PATH, GIT_PATH,
+  sanitizeName, contentTypeOf, validateItems, explorerTarget, revealCommand, powerShellLiteral, clipboardCommand,
+  STATE_PATH, BLOB_PATH, GIT_PATH, REVEAL_PATH, CLIPBOARD_PATH,
 } = internals
 
 // ---- pure helpers ---------------------------------------------------------
@@ -39,6 +41,53 @@ assert.ok(long.endsWith('.png'), 'truncation keeps the extension')
 
 assert.equal(contentTypeOf('a.PNG'), 'image/png', 'the type follows the extension, case aside')
 assert.equal(contentTypeOf('a.bin'), 'application/octet-stream', 'an unknown extension is a byte stream')
+
+// Showing a stored file where it lies is the host's job, so the command is built
+// here: the page has no file manager of its own, and a Linux desktop has no
+// portable "select this file", which is why that one opens the directory.
+assert.deepEqual(revealCommand('C:\\space\\files\\a.txt', 'win32'), {
+  command: 'explorer.exe',
+  args: ['/select,', 'file:///C:/space/files/a.txt'],
+}, 'Windows selects the stored file inside a folder window')
+assert.deepEqual(revealCommand('/home/me/space/files/a.txt', 'darwin'), {
+  command: 'open',
+  args: ['-R', '/home/me/space/files/a.txt'],
+}, 'macOS reveals the stored file in Finder')
+assert.deepEqual(revealCommand('/home/me/space/files/a.txt', 'linux'), {
+  command: 'xdg-open',
+  args: ['/home/me/space/files'],
+}, 'a Linux desktop opens the directory its file managers all agree on')
+assert.equal(explorerTarget('C:\\space\\a,b=c.txt'), 'file:///C:/space/a%2Cb%3Dc.txt',
+  'a comma or an equals sign would otherwise split the target Explorer parses')
+assert.equal(explorerTarget('C:\\space\\报告.txt'), 'file:///C:/space/报告.txt',
+  'non-ASCII arrives as characters, because Explorer rejects the escaped form')
+
+// The clipboard is the other thing the page cannot do itself: a browser can read a
+// file list off the clipboard but has no way to put one back. Files go out as a
+// file drop list, and text goes in on standard input so no character of a note has
+// to survive a command line.
+assert.equal(powerShellLiteral("C:\\space\\it's.png"), "'C:\\space\\it''s.png'",
+  'a quote in a path is doubled, the way PowerShell reads a literal')
+assert.deepEqual(clipboardCommand({ files: ['C:\\space\\files\\a.png'], text: '' }, 'win32'), {
+  command: 'powershell.exe',
+  args: ['-NoProfile', '-NonInteractive', '-Command', "Set-Clipboard -LiteralPath 'C:\\space\\files\\a.png'"],
+}, 'Windows publishes the stored file as a file the desktop can paste')
+assert.deepEqual(clipboardCommand({ files: [], text: "it's fine\nsecond line" }, 'win32'), {
+  command: 'powershell.exe',
+  args: ['-NoProfile', '-NonInteractive', '-Command', '$input | Set-Clipboard'],
+  stdin: "it's fine\nsecond line",
+}, 'text travels on standard input, where nothing has to be escaped')
+assert.deepEqual(clipboardCommand({ files: ['/home/me/space/files/a.txt'], text: '' }, 'darwin'), {
+  command: 'osascript',
+  args: ['-e', 'set the clipboard to {(POSIX file "/home/me/space/files/a.txt")}'],
+}, 'macOS hands Finder the file itself')
+assert.deepEqual(clipboardCommand({ files: [], text: 'hello' }, 'darwin'), {
+  command: 'pbcopy',
+  args: [],
+  stdin: 'hello',
+}, 'and takes text on its own standard input')
+assert.equal(clipboardCommand({ files: ['/a/b.txt'], text: '' }, 'linux'), undefined,
+  'a platform with no clipboard command is reported rather than guessed at')
 
 assert.deepEqual(validateItems([{ id: 'a', kind: 'text', text: 'hi', x: 1, y: 2, w: 3, h: 4, z: 5 }]),
   [{ id: 'a', kind: 'text', x: 1, y: 2, w: 3, h: 4, z: 5, text: 'hi' }], 'a note is accepted')
@@ -97,8 +146,8 @@ apply(ctx, {
   gitTimeoutMs: 20_000,
 })
 
-assert.deepEqual([...routes.keys()].sort(), [BLOB_PATH, GIT_PATH, STATE_PATH].sort(),
-  'the three routes are registered')
+assert.deepEqual([...routes.keys()].sort(), [BLOB_PATH, CLIPBOARD_PATH, GIT_PATH, REVEAL_PATH, STATE_PATH].sort(),
+  'the five routes are registered')
 
 const server = createServer((req, res) => {
   const pathname = new URL(req.url ?? '', 'http://localhost').pathname
@@ -213,6 +262,38 @@ try {
   }))
   assert.equal(unknown.status, 409, 'an action this plugin does not offer is refused')
   assert.equal(unknown.body.reason, 'unknown-action', 'the refusal names the action')
+
+  // Revealing is the one route that moves nothing: the bytes already sit on the
+  // disk of every machine that pulled them. Only its refusals are driven here,
+  // because its success would start a real file manager on whoever runs this.
+  const missingReveal = await json(await fetch(`${origin}${REVEAL_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'not-stored.txt' }),
+  }))
+  assert.equal(missingReveal.status, 404, 'revealing a file this space does not hold is refused')
+  assert.equal(missingReveal.body.reason, 'no-such-file', 'the refusal names what is missing')
+  const revealMethod = await fetch(`${origin}${REVEAL_PATH}`)
+  assert.equal(revealMethod.status, 405, 'the reveal route answers a POST and nothing else')
+
+  // The clipboard route refuses the same way, and its success is not driven here
+  // either: it would overwrite the clipboard of whoever runs this test.
+  const emptyCopy = await json(await fetch(`${origin}${CLIPBOARD_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  }))
+  assert.equal(emptyCopy.status, 400, 'a copy with neither files nor text is refused')
+  assert.equal(emptyCopy.body.reason, 'invalid-body', 'the refusal names the body')
+  const missingCopy = await json(await fetch(`${origin}${CLIPBOARD_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ names: ['not-stored.txt'] }),
+  }))
+  assert.equal(missingCopy.status, 404, 'copying a file this space does not hold is refused')
+  assert.equal(missingCopy.body.reason, 'no-such-file', 'the refusal names what is missing')
+  const copyMethod = await fetch(`${origin}${CLIPBOARD_PATH}`)
+  assert.equal(copyMethod.status, 405, 'the clipboard route answers a POST and nothing else')
 
   // Deleting is the one route that frees quota.
   const deleted = await json(await fetch(`${origin}${BLOB_PATH}?name=escape.txt`, { method: 'DELETE' }))

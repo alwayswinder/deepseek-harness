@@ -9,7 +9,11 @@
  *
  * The page has no filesystem and no process, so every fact here is served on a
  * same-origin route: the canvas state (positions, notes, and the file each item
- * names), the bytes themselves, and the Git operations. The state is one
+ * names), the bytes themselves, the Git operations, showing one stored file in
+ * the system file manager, and putting stored files or text on the clipboard —
+ * neither of the last two is something a page can do itself. The stored bytes are
+ * already on disk on every machine that pulled them, so that is the only way to
+ * reach them — nothing is downloaded. The state is one
  * `index.json` in the same directory, written through a temporary file so a
  * reader never sees half of it, and guarded by a revision so the second of two
  * writers is told rather than silently overwriting the first. Quotas are
@@ -21,12 +25,13 @@
  * and a terminal.
  */
 
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import {
   createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { extname, join, resolve } from 'node:path'
+import { dirname, extname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'temp-space'
@@ -42,6 +47,12 @@ const BLOB_PATH = `${ROUTE_PREFIX}/blob`
 
 /** Git status, and the four operations the page may ask for. */
 const GIT_PATH = `${ROUTE_PREFIX}/git`
+
+/** Show one stored file in the system file manager, which the page cannot reach. */
+const REVEAL_PATH = `${ROUTE_PREFIX}/reveal`
+
+/** Put stored files or text on the system clipboard, which the page cannot write. */
+const CLIPBOARD_PATH = `${ROUTE_PREFIX}/clipboard`
 
 /** The state file's own format version, so a later layout can be recognized. */
 const STATE_VERSION = 1
@@ -393,6 +404,174 @@ function validateItems(raw) {
     items.push(item)
   }
   return items
+}
+
+/**
+ * Encode one Windows path as the target Explorer can receive intact.
+ *
+ * Explorer parses its own command line and splits fields at commas and equals
+ * signs, so a raw path loses everything after the first separator and the shell
+ * opens a different target without reporting it; both separators are escaped.
+ * Percent-encoded non-ASCII is not escaped: Explorer rejects it and opens the
+ * user's Documents folder instead, so those escapes are decoded back.
+ * @param windowsPath - absolute path of a stored file.
+ * @returns the file address Explorer accepts, for a `/select,` reveal.
+ */
+function explorerTarget(windowsPath) {
+  const href = pathToFileURL(windowsPath, { windows: true }).href
+  return href
+    .replace(/(?:%[89A-F][0-9A-F])+/gi, escaped => decodeURIComponent(escaped))
+    .replaceAll(',', '%2C')
+    .replaceAll('=', '%3D')
+}
+
+/**
+ * The command that shows one file in the system file manager.
+ *
+ * Windows selects the file inside a folder window and macOS reveals it in
+ * Finder. A Linux desktop has no portable "select this file", so the directory
+ * is opened instead — the part every file manager there agrees on.
+ * @param target - absolute path of a stored file.
+ * @param platform - the platform choosing the command.
+ * @returns the executable to start and its arguments.
+ */
+function revealCommand(target, platform) {
+  if (platform === 'win32') return { command: 'explorer.exe', args: ['/select,', explorerTarget(target)] }
+  if (platform === 'darwin') return { command: 'open', args: ['-R', target] }
+  return { command: 'xdg-open', args: [dirname(target)] }
+}
+
+/**
+ * Show one stored file in the system file manager.
+ *
+ * The command is started detached rather than awaited: Explorer hands the
+ * request to the desktop process already running and then exits 1, so waiting
+ * for an exit would report a failure for a window that did open. The answer
+ * here is only whether the file manager could be started at all.
+ * @param target - absolute path of a stored file.
+ * @returns whether it started, and what went wrong when it did not.
+ */
+function revealFile(target) {
+  const { command, args } = revealCommand(target, process.platform)
+  return new Promise((done) => {
+    let answered = false
+    const answer = (result) => {
+      if (answered) return
+      answered = true
+      done(result)
+    }
+    let child
+    try {
+      child = spawn(command, args, { detached: true, stdio: 'ignore' })
+    } catch (error) {
+      answer({ ok: false, reason: 'failed', message: String(error) })
+      return
+    }
+    child.on('error', (error) => { answer({ ok: false, reason: 'failed', message: String(error) }) })
+    child.on('spawn', () => {
+      // Nothing waits for the window, and this process must not outlive the
+      // request that asked for it.
+      child.unref()
+      answer({ ok: true })
+    })
+  })
+}
+
+/**
+ * Quote one path so PowerShell reads it as a single literal string.
+ * @param value - the path to quote.
+ * @returns the quoted literal.
+ */
+function powerShellLiteral(value) {
+  return `'${String(value).replaceAll("'", "''")}'`
+}
+
+/**
+ * The command that puts stored files or text on the system clipboard.
+ *
+ * A page can read the clipboard but cannot write a file list to it, so the host
+ * does: `Set-Clipboard -LiteralPath` publishes the stored files as a file drop
+ * list, which is what makes them pasteable in Explorer and in other applications.
+ * Text travels on standard input, where no character has to survive a command
+ * line. A platform with no command here is reported as unsupported rather than
+ * guessed at.
+ * @param payload - the absolute paths to publish, or the text to copy.
+ * @param platform - the platform choosing the command.
+ * @returns the executable, its arguments, and the text for its input, or undefined.
+ */
+function clipboardCommand(payload, platform) {
+  const files = payload.files ?? []
+  const text = payload.text ?? ''
+  if (platform === 'win32') {
+    if (files.length > 0) {
+      return {
+        command: 'powershell.exe',
+        args: ['-NoProfile', '-NonInteractive', '-Command',
+          `Set-Clipboard -LiteralPath ${files.map(powerShellLiteral).join(', ')}`],
+      }
+    }
+    return {
+      command: 'powershell.exe',
+      args: ['-NoProfile', '-NonInteractive', '-Command', '$input | Set-Clipboard'],
+      stdin: text,
+    }
+  }
+  if (platform === 'darwin') {
+    if (files.length > 0) {
+      const list = files.map(file => `(POSIX file ${JSON.stringify(file)})`).join(', ')
+      return { command: 'osascript', args: ['-e', `set the clipboard to {${list}}`] }
+    }
+    return { command: 'pbcopy', args: [], stdin: text }
+  }
+  return undefined
+}
+
+/**
+ * Run one clipboard command and wait for it.
+ *
+ * Starting a file manager is deliberately not awaited; this one is, because its
+ * exit code is the answer: a clipboard that did not take the text has to be
+ * reported rather than assumed.
+ * @param payload - the absolute paths to publish, or the text to copy.
+ * @param platform - the platform choosing the command.
+ * @returns whether the clipboard took it, and what went wrong when it did not.
+ */
+function putOnClipboard(payload, platform) {
+  const command = clipboardCommand(payload, platform)
+  if (command === undefined) {
+    return Promise.resolve({ ok: false, reason: 'unsupported', message: `no clipboard command for ${platform}` })
+  }
+  return new Promise((done) => {
+    let answered = false
+    const answer = (result) => {
+      if (answered) return
+      answered = true
+      done(result)
+    }
+    let child
+    try {
+      child = spawn(command.command, command.args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true })
+    } catch (error) {
+      answer({ ok: false, reason: 'failed', message: String(error) })
+      return
+    }
+    let stderr = ''
+    child.stderr?.on('data', (chunk) => { stderr += String(chunk) })
+    child.on('error', (error) => { answer({ ok: false, reason: 'failed', message: String(error) }) })
+    child.on('close', (code) => {
+      if (code === 0) {
+        answer({ ok: true })
+        return
+      }
+      const reported = stderr.trim()
+      answer({
+        ok: false,
+        reason: 'failed',
+        message: reported === '' ? `${command.command} exited ${code}` : reported,
+      })
+    })
+    child.stdin?.end(command.stdin ?? '')
+  })
 }
 
 /**
@@ -764,6 +943,85 @@ export function apply(ctx, config) {
         res.end()
       },
     }), `temp-space: GET/POST ${GIT_PATH}`)
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: REVEAL_PATH,
+      handler: (req, res) => {
+        if (!admit(ctx, req, res)) return
+        if (req.method !== 'POST') {
+          res.writeHead(405, { allow: 'POST' })
+          res.end()
+          return
+        }
+        const space = ensureSpace()
+        if (!space.ok) { sendJson(res, space, 409); return }
+        void (async () => {
+          const body = await readJsonBody(req, STATE_BODY_LIMIT)
+          const requested = sanitizeName(typeof body?.name === 'string' ? body.name : '')
+          const target = join(filesDir, requested)
+          let stored = false
+          try {
+            stored = statSync(target).isFile()
+          } catch {
+            // A name that is not on disk is exactly what this answers, and a
+            // file removed since the listing lands in the same refusal.
+            stored = false
+          }
+          if (!stored) {
+            sendJson(res, { ok: false, reason: 'no-such-file', name: requested }, 404)
+            return
+          }
+          const revealed = await revealFile(target)
+          sendJson(res, revealed.ok ? { ok: true, name: requested } : revealed, revealed.ok ? 200 : 500)
+        })()
+      },
+    }), `temp-space: POST ${REVEAL_PATH}`)
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: CLIPBOARD_PATH,
+      handler: (req, res) => {
+        if (!admit(ctx, req, res)) return
+        if (req.method !== 'POST') {
+          res.writeHead(405, { allow: 'POST' })
+          res.end()
+          return
+        }
+        const space = ensureSpace()
+        if (!space.ok) { sendJson(res, space, 409); return }
+        void (async () => {
+          const body = await readJsonBody(req, STATE_BODY_LIMIT)
+          const text = typeof body?.text === 'string' ? body.text : undefined
+          const requested = Array.isArray(body?.names) ? body.names : []
+          if (text === undefined && requested.length === 0) {
+            sendJson(res, { ok: false, reason: 'invalid-body' }, 400)
+            return
+          }
+          const files = []
+          for (const raw of requested) {
+            const name = sanitizeName(typeof raw === 'string' ? raw : '')
+            const target = join(filesDir, name)
+            let stored = false
+            try {
+              stored = statSync(target).isFile()
+            } catch {
+              // A name that is not on disk is exactly what this answers, and a
+              // file removed since the listing lands in the same refusal.
+              stored = false
+            }
+            if (!stored) {
+              sendJson(res, { ok: false, reason: 'no-such-file', name }, 404)
+              return
+            }
+            files.push(target)
+          }
+          const copied = await putOnClipboard({ files, text: text ?? '' }, process.platform)
+          const status = copied.ok ? 200 : copied.reason === 'unsupported' ? 501 : 500
+          sendJson(res, copied.ok ? { ok: true, files: files.length, text: text !== undefined } : copied, status)
+        })()
+      },
+    }), `temp-space: POST ${CLIPBOARD_PATH}`)
   })
 }
 
@@ -772,6 +1030,8 @@ export const internals = {
   STATE_PATH,
   BLOB_PATH,
   GIT_PATH,
+  REVEAL_PATH,
+  CLIPBOARD_PATH,
   STATE_VERSION,
   MAX_NAME_LENGTH,
   MAX_ITEMS,
@@ -788,6 +1048,10 @@ export const internals = {
   readBodyBytes,
   readJsonBody,
   writeJsonAtomic,
+  explorerTarget,
+  revealCommand,
+  powerShellLiteral,
+  clipboardCommand,
   execGit,
   readGitStatus,
   runGitAction,

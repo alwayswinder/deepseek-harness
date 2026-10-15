@@ -8,10 +8,21 @@
  * The page holds no bytes and no filesystem of its own. It renders the state the
  * host serves — items with a position, a note or a stored file name — and every
  * change goes back through a route of this plugin's: a save of the whole canvas,
- * one uploaded file, one file deleted, and the Git operations. Saves are
- * debounced rather than batched at close, because a window can be closed without
- * asking the page first, and the revision the host returns is what the next save
- * carries so a second writer is told instead of overwriting the first.
+ * one uploaded file, one unreferenced file removed by the clean-up, the Git
+ * operations, showing one stored file in the system file manager, and putting
+ * stored files or text on the clipboard. Those bytes are already on the disk of
+ * every machine that pulled them, so a card never offers to download them.
+ *
+ * Cards can be selected, one at a time or by sweeping the canvas, and moved,
+ * copied or removed together: the clipboard takes a file list out of the space and
+ * brings files in, and a pasted note lands as a card. Every canvas edit is
+ * snapshotted, so Ctrl+Z walks back through them; a removal deliberately leaves the
+ * file behind so that step can be taken whole, and the header counts those files
+ * until they are cleaned up.
+ * Saves are debounced rather than batched at close, because a window can be
+ * closed without asking the page first, and the revision the host returns is what
+ * the next save carries so a second writer is told instead of overwriting the
+ * first.
  */
 
 import { createElement as h, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -26,9 +37,14 @@ const PANEL_ID = 'temp-space'
 const STATE_PATH = '/api/temp-space/state'
 const BLOB_PATH = '/api/temp-space/blob'
 const GIT_PATH = '/api/temp-space/git'
+const REVEAL_PATH = '/api/temp-space/reveal'
+const CLIPBOARD_PATH = '/api/temp-space/clipboard'
 
 /** How far a press must travel before it counts as a drag rather than a click. */
 const DRAG_THRESHOLD = 3
+
+/** How many canvas snapshots Ctrl+Z can walk back through. */
+const HISTORY_LIMIT = 50
 
 /** How long an edit waits before the whole canvas is written back. */
 const SAVE_DEBOUNCE_MS = 500
@@ -77,8 +93,36 @@ function defaultSizeOf(item) {
   return isImage(item.file) ? DEFAULT_SIZE.image : DEFAULT_SIZE.file
 }
 
+/** One item's box in content coordinates, the way the card is drawn. */
+function boxOf(item) {
+  const size = defaultSizeOf(item)
+  return { x: item.x, y: item.y, w: item.w ?? size.w, h: item.h ?? size.h }
+}
+
+/** Whether two content-coordinate boxes overlap at all. */
+function overlaps(left, right) {
+  return left.x < right.x + right.w && right.x < left.x + left.w
+    && left.y < right.y + right.h && right.y < left.y + left.h
+}
+
 /** Extensions drawn as a picture rather than as a name. */
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'ico', 'avif'])
+
+/**
+ * Name a clipboard file the browser handed over without one.
+ *
+ * A screenshot pasted from a snipping tool arrives as a file whose name is empty,
+ * and a stored file needs a name: the extension follows the type it declares.
+ * @param file - the clipboard file.
+ * @returns the same file, or a copy of it carrying a name of its own.
+ */
+function namedForClipboard(file) {
+  const given = typeof file?.name === 'string' ? file.name.trim() : ''
+  if (given !== '') return file
+  const type = typeof file?.type === 'string' ? file.type : ''
+  const extension = type === 'image/png' ? 'png' : type === 'image/jpeg' ? 'jpg' : type === 'image/webp' ? 'webp' : 'bin'
+  return new File([file], `clipboard-${Date.now()}.${extension}`, { type })
+}
 
 const zh = {
   panel: '临时空间',
@@ -99,11 +143,27 @@ const zh = {
   titleHint: '双击标题可以改名字',
   titlePlaceholder: '未命名',
   zoomReset: '回到 100%',
-  zoomHint: '滚轮缩放；右键拖动或拖空白处平移',
+  zoomHint: '滚轮缩放；左键拖空白处框选，右键或中键拖动平移；Delete 删除选中，Ctrl+C/V 复制粘贴，Ctrl+Z 撤回',
   usage: '{used} / {total}',
   fileMissing: '文件不在了',
-  download: '下载',
+  revealHint: '拖动可以移动卡片；双击在文件管理器里定位这个文件',
+  revealed: '已在文件管理器里定位：{name}',
   remove: '删除',
+  selected: '已选 {count} 张卡片：拖动可以一起移动，Delete 删除，Ctrl+Z 撤回',
+  removed: '已删除 {count} 张卡片（Ctrl+Z 撤回；字节要等「清理」时才从仓库移除）',
+  undone: '已撤回',
+  noUndo: '没有可撤回的操作',
+  orphans: '{count} 个未引用文件（{size}）',
+  clean: '清理',
+  confirmClean: '再点一次就删除 {count} 个没有卡片引用的文件（{size}）',
+  cleaned: '已清理 {count} 个未引用文件（{size}）；撤销历史已清空',
+  copyNothing: '没有选中卡片：先点一张或用框选选几张，再按 Ctrl+C',
+  copiedFiles: '已把 {count} 个文件放进系统剪贴板，去文件管理器或其他程序里粘贴',
+  copiedText: '已把 {count} 张便签的文字放进系统剪贴板',
+  copyFailed: '系统剪贴板没有接受：{message}',
+  hostStale: '宿主半边还没有这条路由：重启 DSH 之后再试（浏览器半边刷新页面就会更新，宿主不是）',
+  pasted: '已从剪贴板存入 {count} 个文件',
+  pastedText: '已从剪贴板新建一张便签',
   gitBranch: '分支 {branch}',
   gitUpToDate: '与远端一致',
   gitAhead: '领先 {ahead}',
@@ -146,11 +206,27 @@ const en = {
   titleHint: 'Double-click the title to rename it',
   titlePlaceholder: 'Untitled',
   zoomReset: 'Back to 100%',
-  zoomHint: 'Wheel to zoom; right-drag or drag the background to move around',
+  zoomHint: 'Wheel to zoom; left-drag the background to select, right- or middle-drag to pan; Delete removes the selection, Ctrl+C/V copy and paste, Ctrl+Z undoes',
   usage: '{used} / {total}',
   fileMissing: 'File is gone',
-  download: 'Download',
+  revealHint: 'Drag to move the card; double-click to show the file in the file manager',
+  revealed: 'Shown in the file manager: {name}',
   remove: 'Remove',
+  selected: '{count} selected: drag to move them together, Delete to remove them, Ctrl+Z to undo',
+  removed: 'Removed {count} cards (Ctrl+Z undoes it; the bytes leave the repository at the next clean-up)',
+  undone: 'Undone',
+  noUndo: 'Nothing to undo',
+  orphans: '{count} files nothing points at ({size})',
+  clean: 'Clean up',
+  confirmClean: 'Press again to delete {count} files no card points at ({size})',
+  cleaned: 'Cleaned up {count} unreferenced files ({size}); the undo history is empty now',
+  copyNothing: 'Nothing is selected: click a card or sweep a few, then press Ctrl+C',
+  copiedFiles: 'Put {count} files on the system clipboard — paste them in the file manager or another application',
+  copiedText: 'Put the text of {count} notes on the system clipboard',
+  copyFailed: 'The system clipboard would not take it: {message}',
+  hostStale: 'The host half has no such route yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)',
+  pasted: 'Stored {count} files from the clipboard',
+  pastedText: 'Left a new note holding what the clipboard had',
   gitBranch: 'branch {branch}',
   gitUpToDate: 'in sync with the remote',
   gitAhead: '{ahead} ahead',
@@ -172,23 +248,6 @@ const en = {
   tooLarge: 'One file may hold at most 10 MB; that one was not stored.',
   full: 'The space is full (100 MB); remove something first.',
   noDir: 'The space directory {dir} is missing. Clone it on this machine first.',
-}
-
-/**
- * Hold one coordinate inside the canvas plane.
- *
- * The plane is the only thing that bounds a card: it is what "a fixed-size
- * canvas" means, and it is far enough away that the space around a card looks
- * unlimited until the edge is reached.
- * @param value - the coordinate the drag asked for.
- * @param size - the card's own extent along that axis.
- * @param span - the plane's extent along that axis.
- * @returns the nearest coordinate the plane allows.
- */
-function clampToPlane(value, size, span) {
-  const low = -span / 2
-  const high = span / 2 - size
-  return Math.round(Math.max(low, Math.min(value, high)))
 }
 
 /** Format one byte count for the headers. */
@@ -214,7 +273,7 @@ function blobUrl(name) {
  * Draw the canvas, its quota, and the Git bar.
  * @param props - framework-derived props, including this entry's inject face.
  */
-function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, t }) {
+function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, reveal, clipboard, t }) {
   const [phase, setPhase] = useState('loading')
   const [items, setItems] = useState([])
   const [files, setFiles] = useState([])
@@ -227,12 +286,40 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState('')
   const [zoom, setZoom] = useState(1)
+  const [selected, setSelected] = useState(new Set())
+  /** The box being swept on the canvas, in content coordinates, or null. */
+  const [marquee, setMarquee] = useState(null)
+  const [confirmClean, setConfirmClean] = useState(false)
   const revision = useRef(0)
   const itemsRef = useRef([])
   const dirty = useRef(false)
   const timer = useRef()
   const drag = useRef(null)
   const canvas = useRef(null)
+  /** Canvas snapshots Ctrl+Z walks back through, oldest first. */
+  const history = useRef([])
+  /**
+   * The note whose typing counts as one undo step. Every keystroke replacing the
+   * whole canvas in the history would push the state before one letter, so a
+   * note's edits are remembered once per visit to the field.
+   */
+  const editingNote = useRef(null)
+  /** The scaled layer, which is what turns a pointer position into content coordinates. */
+  const layer = useRef(null)
+  /**
+   * Whether the drag in flight began inside the panel.
+   *
+   * A drag that starts here is a card or a piece of text being moved, never a file
+   * arriving from outside — and a browser will happily hand the panel a file for a
+   * dragged picture, which would store a second copy of what the space already
+   * holds.
+   */
+  const internalDrag = useRef(false)
+  /**
+   * The selection as the copy handler sees it, assigned during render the way
+   * `latest` is, so a listener registered once still reads the current one.
+   */
+  const selectedRef = useRef(selected)
   /**
    * The zoom in force, readable from the wheel listener and from handlers built
    * by earlier renders. The scroll a zoom asks for can only be applied once the
@@ -308,6 +395,34 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     timer.current = setTimeout(() => { void flush() }, SAVE_DEBOUNCE_MS)
   }, [flush])
 
+  /**
+   * Keep the canvas as it is now, so Ctrl+Z can come back to it.
+   *
+   * One entry per gesture, not per pointer move: the whole canvas is snapshotted,
+   * and a drag that moved four cards is still one thing the person did. The list
+   * of items is flat — every field is a primitive — so a shallow copy of each item
+   * is a complete one.
+   */
+  const remember = useCallback(() => {
+    const stack = history.current
+    stack.push(itemsRef.current.map(item => ({ ...item })))
+    if (stack.length > HISTORY_LIMIT) stack.shift()
+  }, [])
+
+  /** Walk one canvas edit back. */
+  const undo = useCallback(() => {
+    const previous = history.current.pop()
+    if (previous === undefined) {
+      say(t('noUndo'))
+      return
+    }
+    update(previous)
+    // The cards that are back are the only ones still worth having selected.
+    const ids = new Set(previous.map(item => item.id))
+    setSelected(current => new Set([...current].filter(id => ids.has(id))))
+    say(t('undone'))
+  }, [say, t, update])
+
   const refresh = useCallback(async () => {
     setPhase('loading')
     const [state, status] = await Promise.all([load(), gitStatus()])
@@ -344,6 +459,43 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   }, [])
 
   const present = useMemo(() => new Set(files.map(row => row.name)), [files])
+
+  /**
+   * Stored files no card points at any more.
+   *
+   * Removing a card leaves its bytes alone on purpose — an undo has to find them,
+   * and another machine may still be showing the card — so the header tells the
+   * truth about them and the clean-up control is where they go.
+   */
+  const orphans = useMemo(() => {
+    const referenced = new Set(items.filter(item => item.kind === 'file').map(item => item.file))
+    return files.filter(row => !referenced.has(row.name))
+  }, [files, items])
+  const orphanBytes = useMemo(() => orphans.reduce((total, row) => total + row.bytes, 0), [orphans])
+
+  /**
+   * The selection one card press asks for.
+   *
+   * A press does not change the selection on its own: it becomes a click or a
+   * drag first, and a drag of an unselected card has to be able to select the card
+   * it moved without the press having cleared everything else under it.
+   * @param change - the card, and how the press asked for it.
+   */
+  const applySelection = useCallback((change) => {
+    setSelected(current => {
+      const next = new Set(change.mode === 'only' ? [] : current)
+      if (change.mode === 'toggle' && next.has(change.id)) next.delete(change.id)
+      else next.add(change.id)
+      return next
+    })
+  }, [])
+
+  /** Select every card on the canvas. */
+  const selectAll = useCallback(() => {
+    const ids = itemsRef.current.map(item => item.id)
+    setSelected(new Set(ids))
+    say(t('selected', { count: ids.length }))
+  }, [say, t])
 
   /**
    * The box the cards themselves fill, used once to aim the opening view. The
@@ -393,39 +545,140 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       h: size.h,
       z: base.reduce((top, row) => Math.max(top, row.z), 0) + 1,
     }
+    remember()
     update([...base, item])
     setFiles(rows => [...rows, { name: result.name, bytes: result.bytes }])
     setUsage(current => ({ ...current, usedBytes: current.usedBytes + result.bytes }))
-  }, [say, t, update, upload])
+  }, [remember, say, t, update, upload])
 
   const dropFiles = useCallback(async (event) => {
     event.preventDefault()
     setDropping(false)
-    const dropped = Array.from(event.dataTransfer?.files ?? [])
+    const transfer = event.dataTransfer
+    // Only a drag from outside carries files. What a browser hands over for an
+    // element dragged within the page looks the same otherwise, and importing it
+    // would store a copy of something the space already holds.
+    const carriesFiles = Array.from(transfer?.types ?? []).includes('Files')
+    const dropped = carriesFiles ? Array.from(transfer?.files ?? []) : []
     if (dropped.length === 0) return
     setBusy('drop')
     for (const file of dropped) await store(file)
     setBusy('')
   }, [store])
 
-  /** Leave a note where the next free slot is. */
-  const addText = useCallback(() => {
+  /**
+   * Leave a note where the next free slot is.
+   * @param text - what the note starts out holding.
+   */
+  const addNote = useCallback((text) => {
     const base = itemsRef.current
+    remember()
     update([...base, {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       kind: 'text',
-      text: '',
+      text,
       x: 32 + (base.length % 6) * 28,
       y: 32 + (base.length % 6) * 26,
       w: DEFAULT_SIZE.text.w,
       h: DEFAULT_SIZE.text.h,
       z: base.reduce((top, row) => Math.max(top, row.z), 0) + 1,
     }])
-  }, [update])
+  }, [remember, update])
+
+  /** Leave an empty note: what the "+ 文字" control does. */
+  const addText = useCallback(() => { addNote('') }, [addNote])
+
+  /**
+   * Take whatever the system clipboard holds.
+   *
+   * A file copied in the file manager, or a screenshot, arrives as a file and is
+   * stored the way a dropped one is; plain text becomes a note holding it. A field
+   * that can be typed in keeps its own paste — the same guard Delete and Ctrl+Z
+   * use — so pasting into a note is still the browser's text paste.
+   * @param event - the paste event.
+   */
+  const pasteFromClipboard = useCallback((event) => {
+    const target = event.target
+    const tag = typeof target?.tagName === 'string' ? target.tagName.toUpperCase() : ''
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || target?.isContentEditable === true) return
+    const data = event.clipboardData
+    const listed = Array.from(data?.items ?? [])
+      .filter(entry => entry.kind === 'file')
+      .map(entry => (typeof entry.getAsFile === 'function' ? entry.getAsFile() : entry))
+      .filter(file => file !== null && file !== undefined)
+    // A browser that lists pasted files only in `files` gets the same treatment.
+    const pasted = listed.length > 0 ? listed : Array.from(data?.files ?? [])
+    if (pasted.length > 0) {
+      event.preventDefault()
+      guard(async () => {
+        setBusy('paste')
+        for (const file of pasted) await store(namedForClipboard(file))
+        setBusy('')
+        say(t('pasted', { count: pasted.length }))
+      })
+      return
+    }
+    const text = typeof data?.getData === 'function' ? data.getData('text/plain') : ''
+    if (typeof text !== 'string' || text === '') return
+    event.preventDefault()
+    addNote(text)
+    say(t('pastedText'))
+  }, [addNote, guard, say, store, t])
+
+  /**
+   * Put the selection on the system clipboard.
+   *
+   * A selection holding stored files goes out as a file list, which is what makes
+   * it pasteable in the file manager or in another application; a selection of
+   * notes goes out as their text. A page can read that list but cannot write one,
+   * so the host does it, and either answer is reported.
+   */
+  const copyToClipboard = useCallback(() => {
+    const chosen = itemsRef.current.filter(item => selected.has(item.id))
+    if (chosen.length === 0) {
+      say(t('copyNothing'))
+      return
+    }
+    const fileNames = chosen.filter(item => item.kind === 'file').map(item => item.file)
+    guard(async () => {
+      const result = fileNames.length > 0
+        ? await clipboard({ names: fileNames })
+        : await clipboard({ text: chosen.map(item => item.text ?? '').join('\n\n') })
+      if (result.ok) {
+        say(fileNames.length > 0
+          ? t('copiedFiles', { count: fileNames.length })
+          : t('copiedText', { count: chosen.length }))
+        return
+      }
+      // The host half is loaded once, when DSH starts, so a route added to it since
+      // then answers with the web server's own 404 page rather than this plugin's
+      // JSON: that is a restart, not a broken clipboard.
+      say(result.reason === 'transport' && result.status === 404 ? t('hostStale')
+        : result.reason === 'unsupported' ? t('copyFailed', { message: result.message ?? result.reason })
+          : t('failed', { message: result.message ?? result.reason }))
+    })
+  }, [clipboard, guard, say, selected, t])
 
   const patch = useCallback((id, fields) => {
     update(itemsRef.current.map(item => (item.id === id ? { ...item, ...fields } : item)))
   }, [update])
+
+  /**
+   * Type in one note.
+   *
+   * A note is written letter by letter, and remembering the canvas at each of
+   * them would fill the history with the states between two keystrokes; one entry
+   * per visit to the field is what a person means by "undo my edit".
+   * @param id - the note's item id.
+   * @param text - the text the field now holds.
+   */
+  const patchText = useCallback((id, text) => {
+    if (editingNote.current !== id) {
+      remember()
+      editingNote.current = id
+    }
+    patch(id, { text })
+  }, [patch, remember])
 
   /** What one card is called: the person's title, or what the item is without one. */
   const titleOf = useCallback((item) => (
@@ -443,26 +696,124 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     if (item === undefined) return
     const trimmed = draft.trim()
     if ((item.title ?? '') === trimmed) return
+    remember()
     patch(id, { title: trimmed })
-  }, [draft, editing, patch])
+  }, [draft, editing, patch, remember])
 
-  const drop = useCallback(async (item) => {
-    const name = item.file
-    update(itemsRef.current.filter(row => row.id !== item.id))
+  /**
+   * Take cards off the canvas.
+   *
+   * Their bytes stay where they are. A card that comes back through Ctrl+Z has to
+   * find its file, and the other machine may still be showing it — so a removal is
+   * a canvas edit, and the files nothing points at any more are counted in the
+   * header and removed by the clean-up control.
+   * @param list - the cards to remove.
+   */
+  const dropItems = useCallback((list) => {
+    if (list.length === 0) return
+    remember()
+    const ids = new Set(list.map(item => item.id))
+    update(itemsRef.current.filter(item => !ids.has(item.id)))
     setConfirmRemove(null)
     setEditing(null)
-    if (name === undefined) return
-    const result = await removeBlob(name)
-    if (!result.ok) say(t('failed', { message: result.message ?? result.reason }))
-    setFiles(rows => rows.filter(row => row.name !== name))
-  }, [removeBlob, say, t, update])
+    setSelected(current => new Set([...current].filter(id => !ids.has(id))))
+    say(t('removed', { count: list.length }))
+  }, [remember, say, t, update])
 
-  /** Raise one item above the others, so a dragged card is not covered. */
-  const raise = useCallback((id) => {
+  /** Remove every selected card: the Delete key and the × both end here. */
+  const deleteSelection = useCallback(() => {
+    dropItems(itemsRef.current.filter(item => selected.has(item.id)))
+  }, [dropItems, selected])
+
+  /**
+   * Delete the stored files no card points at any more.
+   *
+   * They cannot come back afterwards, so this asks first and empties the undo
+   * history with them: a snapshot that still holds a card for a deleted file would
+   * otherwise restore a card that says its file is gone.
+   */
+  const cleanOrphans = useCallback(async () => {
+    if (orphans.length === 0) return
+    if (!confirmClean) {
+      setConfirmClean(true)
+      say(t('confirmClean', { count: orphans.length, size: formatBytes(orphanBytes) }))
+      return
+    }
+    setConfirmClean(false)
+    const removed = []
+    let failure = ''
+    for (const row of orphans) {
+      const result = await removeBlob(row.name)
+      if (!result.ok) {
+        failure = result.message ?? result.reason
+        break
+      }
+      removed.push(row)
+    }
+    if (removed.length > 0) {
+      const names = new Set(removed.map(row => row.name))
+      const freed = removed.reduce((total, row) => total + row.bytes, 0)
+      setFiles(rows => rows.filter(row => !names.has(row.name)))
+      setUsage(current => ({ ...current, usedBytes: Math.max(0, current.usedBytes - freed) }))
+      history.current = []
+    }
+    if (failure !== '') {
+      say(t('failed', { message: failure }))
+      return
+    }
+    say(t('cleaned', { count: removed.length, size: formatBytes(orphanBytes) }))
+  }, [confirmClean, orphanBytes, orphans, removeBlob, say, t])
+
+  /**
+   * Show one card's file where it already lies.
+   *
+   * The page has no file manager of its own, so the host starts one on the file
+   * it already serves; a card whose file is gone says that, rather than asking
+   * the host to reveal a path that is not there.
+   * @param item - the card that was double-clicked.
+   */
+  const revealItem = useCallback((item) => {
+    if (item.kind !== 'file') return
+    if (!present.has(item.file)) { say(t('fileMissing')); return }
+    guard(async () => {
+      const result = await reveal(item.file)
+      say(result.ok
+        ? t('revealed', { name: item.file })
+        : t('failed', { message: result.message ?? result.reason }))
+    })
+  }, [guard, present, reveal, say, t])
+
+  /**
+   * Raise cards above the others, so a dragged card is not covered.
+   *
+   * A group keeps the order it had among itself: cards moved together should not
+   * shuffle in front of each other. The whole canvas is written back once, since a
+   * set of new heights is one edit.
+   * @param ids - the cards to raise.
+   */
+  const raiseMany = useCallback((ids) => {
+    const chosen = new Set(ids)
     const top = itemsRef.current.reduce((highest, row) => Math.max(highest, row.z), 0)
-    const item = itemsRef.current.find(row => row.id === id)
-    if (item === undefined || item.z === top) return
-    update(itemsRef.current.map(row => (row.id === id ? { ...row, z: top + 1 } : row)))
+    const raised = new Map(itemsRef.current
+      .filter(row => chosen.has(row.id))
+      .sort((left, right) => left.z - right.z)
+      .map((row, index) => [row.id, top + 1 + index]))
+    if (raised.size === 0) return
+    update(itemsRef.current.map(row => (raised.has(row.id) ? { ...row, z: raised.get(row.id) } : row)))
+  }, [update])
+
+  /**
+   * Move cards by one travel, in content coordinates.
+   * @param starts - the cards and the positions they started from.
+   * @param dx - horizontal travel.
+   * @param dy - vertical travel.
+   */
+  const moveMany = useCallback((starts, dx, dy) => {
+    const moved = new Map(starts.map(start => [start.id, {
+      x: Math.round(start.x + dx),
+      y: Math.round(start.y + dy),
+    }]))
+    update(itemsRef.current.map(row => (moved.has(row.id) ? { ...row, ...moved.get(row.id) } : row)))
   }, [update])
 
   /**
@@ -581,6 +932,22 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       CANVAS_MARGIN + CANVAS_HALF_HEIGHT * zoomRef.current + middleY * zoomRef.current + roomY - (outer.clientHeight ?? 0) / 2)
   }, [phase, contentBox])
 
+  /**
+   * The content point under a pointer event.
+   *
+   * Measured from the scaled layer rather than from the scroller: the layer's own
+   * rectangle already accounts for the plane's size, the scroll offset, and the
+   * room an auto margin adds when the plane is smaller than the column.
+   * @param event - the pointer event to place.
+   * @returns the point in content coordinates.
+   */
+  const layerPoint = useCallback((event) => {
+    const rect = layer.current?.getBoundingClientRect?.()
+    const scale = zoomRef.current
+    if (rect === undefined || scale <= 0) return { x: 0, y: 0 }
+    return { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale }
+  }, [])
+
   const onWindowMove = useCallback((event) => {
     const held = drag.current
     if (held === null) return
@@ -593,67 +960,175 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       outer.scrollTop = held.top - (event.clientY - held.originY)
       return
     }
-    // A card is moved by how far the pointer travelled, not by where it landed:
-    // content coordinates are the position plus that travel over the zoom, and
-    // nothing about the canvas's own layout — the margin, the plane, the opening
-    // view — enters the answer. It is then held inside the plane, which is the
-    // only thing that bounds it.
+    if (held.kind === 'marquee') {
+      if (!held.moved) {
+        // The same threshold a card drag uses: a left press on the background that
+        // has not travelled is a click there, and a click there drops the selection.
+        if (Math.abs(event.clientX - held.originX) < DRAG_THRESHOLD
+          && Math.abs(event.clientY - held.originY) < DRAG_THRESHOLD) return
+        held.moved = true
+      }
+      const point = layerPoint(event)
+      const box = {
+        x: Math.min(held.start.x, point.x),
+        y: Math.min(held.start.y, point.y),
+        w: Math.abs(point.x - held.start.x),
+        h: Math.abs(point.y - held.start.y),
+      }
+      setMarquee(box)
+      // The sweep selects as it goes, so what is about to be taken is visible
+      // before the pointer is let go.
+      const swept = itemsRef.current.filter(item => overlaps(boxOf(item), box)).map(item => item.id)
+      held.chosen = [...new Set([...held.base, ...swept])]
+      setSelected(new Set(held.chosen))
+      return
+    }
+    // Cards are moved by how far the pointer travelled, not by where it landed:
+    // content coordinates are the starting position plus that travel over the
+    // zoom, and nothing about the canvas's own layout — the margin, the plane, the
+    // opening view — enters the answer. A group moves rigidly: the travel it takes
+    // is the one its most constrained card allows, so the distances between the
+    // cards do not change and none of them is pushed out of the plane.
     const scale = zoomRef.current
-    const x = clampToPlane(held.x + (event.clientX - held.originX) / scale, held.size.w, CANVAS_BOX.width)
-    const y = clampToPlane(held.y + (event.clientY - held.originY) / scale, held.size.h, CANVAS_BOX.height)
+    const travel = {
+      x: (event.clientX - held.originX) / scale,
+      y: (event.clientY - held.originY) / scale,
+    }
     if (!held.moved) {
       // A press that has not travelled is a click, and a click on the title or
       // on the remove control has to reach it: nothing moves until the pointer
       // has gone far enough to mean a drag.
-      if (Math.abs(x - held.x) < DRAG_THRESHOLD && Math.abs(y - held.y) < DRAG_THRESHOLD) return
+      if (Math.abs(travel.x) < DRAG_THRESHOLD && Math.abs(travel.y) < DRAG_THRESHOLD) return
       held.moved = true
-      raise(held.id)
+      // A drag of a card outside the selection takes the selection with it; one of
+      // a card already inside it must leave the rest chosen, or dragging a group
+      // would dissolve it before it moved. A click, which never travels, still
+      // collapses the selection onto the card it landed on.
+      if (!held.group) applySelection(held.select)
+      remember()
+      raiseMany(held.ids)
     }
-    patch(held.id, { x, y })
-  }, [patch, raise])
+    moveMany(
+      held.starts,
+      Math.min(held.bounds.maxX, Math.max(held.bounds.minX, travel.x)),
+      Math.min(held.bounds.maxY, Math.max(held.bounds.minY, travel.y)),
+    )
+  }, [applySelection, layerPoint, moveMany, raiseMany, remember])
 
   const stopDrag = useCallback(() => {
+    const held = drag.current
     drag.current = null
     window.removeEventListener('pointermove', onWindowMove)
     window.removeEventListener('pointerup', stopDrag)
     window.removeEventListener('pointercancel', stopDrag)
-  }, [onWindowMove])
+    if (held === null) return
+    if (held.kind === 'marquee') {
+      setMarquee(null)
+      // A sweep has already selected what it covered; a left press on the
+      // background that never swept is a click there, which drops the selection.
+      if (!held.moved) {
+        setSelected(new Set())
+        return
+      }
+      // The sweep says what it took: a selection that shows only as a border is
+      // easy to miss, and the count is what Delete is about to act on.
+      const taken = held.chosen ?? []
+      if (taken.length > 0) say(t('selected', { count: taken.length }))
+      return
+    }
+    // A card pressed and not moved is a click on it: that, and only that, is how
+    // the selection changes on a press.
+    if (held.kind === 'card' && !held.moved) applySelection(held.select)
+  }, [applySelection, onWindowMove, say, t])
 
   /**
    * Begin a possible drag of one card.
    *
    * The pointer is not captured and nothing is prevented: capture would deliver
-   * the following click to the header itself, so the title and the remove
-   * control inside it would never see one. The move and up handlers live on the
-   * window instead, which is what keeps a drag that leaves the card alive.
+   * the following click to the header itself, so the title and the remove control
+   * inside it would never see one. The move and up handlers live on the window
+   * instead, which is what keeps a drag that leaves the card alive.
+   *
+   * Which cards this drag can move is decided here, while the pointer is still
+   * down: a press on a card that is already part of the selection moves the whole
+   * selection, and a press on any other card moves that card alone.
    * @param event - the pointerdown that started it.
    * @param item - the card under the pointer.
    */
   const startDrag = useCallback((event, item) => {
     if (event.button !== 0) return
-    const size = defaultSizeOf(item)
+    const additive = event.ctrlKey === true || event.metaKey === true
+    const range = event.shiftKey === true
+    const inSelection = selected.has(item.id)
+    const group = inSelection && !additive && !range
+    const ids = group ? [...selected] : [item.id]
+    const chosen = new Set(ids)
+    const starts = itemsRef.current.filter(row => chosen.has(row.id)).map(row => ({ id: row.id, ...boxOf(row) }))
     drag.current = {
       kind: 'card',
-      id: item.id, x: item.x, y: item.y, moved: false,
+      id: item.id,
+      moved: false,
+      ids,
+      starts,
+      // The travel every card of the group can take together. Computed once, from
+      // where the cards are, because a drag never changes how big anything is.
+      bounds: {
+        minX: Math.max(...starts.map(start => -CANVAS_HALF_WIDTH - start.x)),
+        maxX: Math.min(...starts.map(start => CANVAS_HALF_WIDTH - start.w - start.x)),
+        minY: Math.max(...starts.map(start => -CANVAS_HALF_HEIGHT - start.y)),
+        maxY: Math.min(...starts.map(start => CANVAS_HALF_HEIGHT - start.h - start.y)),
+      },
+      // Whether this press is already part of a group drag: a press on a card the
+      // selection holds moves all of it, and the click below would otherwise
+      // collapse the selection onto the one under the pointer.
+      group,
+      select: { id: item.id, mode: additive ? 'toggle' : range ? 'add' : 'only' },
       originX: event.clientX, originY: event.clientY,
-      size: { w: item.w ?? size.w, h: item.h ?? size.h },
     }
     window.addEventListener('pointermove', onWindowMove)
     window.addEventListener('pointerup', stopDrag)
     window.addEventListener('pointercancel', stopDrag)
-  }, [onWindowMove, stopDrag])
+  }, [onWindowMove, selected, stopDrag])
+
+  /**
+   * Begin sweeping the canvas for cards.
+   *
+   * A left press on the background draws a box and takes every card it covers; a
+   * modifier adds to the selection instead of replacing it. This is why the left
+   * button no longer pans: the plane is covered in cards, and a sweep has to be
+   * able to start anywhere on it, so panning kept the right and middle buttons.
+   * @param event - the pointerdown that started it.
+   */
+  const startMarquee = useCallback((event) => {
+    const additive = event.ctrlKey === true || event.metaKey === true || event.shiftKey === true
+    const start = layerPoint(event)
+    // The sweep crosses cards, and a browser would spend the drag selecting their
+    // text instead of drawing the box. This is the default action, not the click:
+    // a click still reaches the canvas below.
+    event.preventDefault()
+    drag.current = {
+      kind: 'marquee',
+      moved: false,
+      start,
+      base: additive ? new Set(selected) : new Set(),
+      originX: event.clientX, originY: event.clientY,
+    }
+    setMarquee({ x: start.x, y: start.y, w: 0, h: 0 })
+    window.addEventListener('pointermove', onWindowMove)
+    window.addEventListener('pointerup', stopDrag)
+    window.addEventListener('pointercancel', stopDrag)
+  }, [layerPoint, onWindowMove, selected, stopDrag])
 
   /**
    * Begin dragging the view itself.
    *
-   * The wheel zooms, so it is no longer free to scroll: the left or middle
-   * button pans from the canvas background, and the right button pans from
-   * wherever it is pressed — a canvas covered in cards has no background left to
-   * aim at.
+   * The wheel zooms and the left button sweeps for cards, so the view moves on the
+   * middle and right buttons. The right one works from wherever it is pressed,
+   * cards included — a canvas covered in cards has no background left to aim at.
    * @param event - the pointerdown that started it.
    */
   const startPan = useCallback((event) => {
-    if (event.button !== 0 && event.button !== 1 && event.button !== 2) return
+    if (event.button !== 1 && event.button !== 2) return
     const outer = canvas.current
     if (outer === undefined) return
     drag.current = {
@@ -665,6 +1140,22 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     window.addEventListener('pointerup', stopDrag)
     window.addEventListener('pointercancel', stopDrag)
   }, [onWindowMove, stopDrag])
+
+  /**
+   * Whether a press landed on the canvas rather than on a card.
+   *
+   * The plane and the layer under the cards are part of the canvas, so this asks
+   * about cards rather than about the pressed element being the scroller itself. A
+   * harness that hands over an event with no DOM node behind it means the canvas.
+   * @param event - the pointer event to classify.
+   * @returns whether the press is a press on the canvas.
+   */
+  const isCanvasBackground = useCallback((event) => {
+    if (event.target === event.currentTarget) return true
+    const target = event.target
+    if (typeof target?.closest !== 'function') return false
+    return target.closest('[data-card]') === null
+  }, [])
 
   const run = useCallback(async (label, action, describe) => {
     setBusy(label)
@@ -734,8 +1225,12 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   const itemCard = (item) => {
     const missing = item.kind === 'file' && !present.has(item.file)
     const size = defaultSizeOf(item)
+    const chosen = selected.has(item.id)
     return h('div', {
       key: item.id,
+      // Read by the canvas press handler to tell a card from the background: the
+      // plane and the layer are pressed through, and both belong to the canvas.
+      'data-card': item.id,
       style: {
         position: 'absolute',
         left: item.x,
@@ -746,9 +1241,11 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         display: 'flex',
         flexDirection: 'column',
         borderRadius: 10,
-        border: '1px solid var(--dsw-alias-border-l2, #d9dde6)',
+        border: `1px solid ${chosen ? 'var(--dsw-alias-brand-primary, #4f6ef7)' : 'var(--dsw-alias-border-l2, #d9dde6)'}`,
         background: 'var(--dsw-alias-bg-layer-1, #fff)',
-        boxShadow: '0 2px 10px rgba(15, 23, 42, .08)',
+        boxShadow: chosen
+          ? '0 0 0 2px color-mix(in srgb, var(--dsw-alias-brand-primary, #4f6ef7) 35%, transparent)'
+          : '0 2px 10px rgba(15, 23, 42, .08)',
         overflow: 'hidden',
       },
     },
@@ -789,7 +1286,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       ? h('span', { style: { display: 'flex', alignItems: 'center', gap: 4, flex: '0 0 auto' } },
         h('button', {
           type: 'button',
-          onClick: () => { guard(() => drop(item)) },
+          onClick: () => { dropItems([item]) },
           style: { font: 'inherit', cursor: 'pointer', border: 'none', borderRadius: 6, padding: '0 5px',
             background: 'var(--dsw-alias-state-danger-primary, #d9534f)', color: '#fff' },
         }, t('removeConfirm')),
@@ -813,38 +1310,110 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         // What a note holds is what somebody pasted: keys, paths, code. The
         // browser's spell checker would draw red under all of it.
         spellCheck: false,
-        onChange: event => { patch(item.id, { text: event.target.value }) },
+        // Typing in a note is one undo step per visit to the field, not one per
+        // keystroke: the focus is what marks the visit.
+        onFocus: () => { editingNote.current = item.id },
+        onBlur: () => { editingNote.current = null },
+        onChange: event => { patchText(item.id, event.target.value) },
         style: {
           flex: '1 1 auto', minHeight: 0, resize: 'none', border: 'none', outline: 'none',
           padding: '8px 10px', font: 'inherit', fontSize: 13, lineHeight: 1.5, background: 'transparent',
           color: 'var(--dsw-alias-label-primary, inherit)',
         },
       })
-      : h('div', { style: { flex: '1 1 auto', minHeight: 0, display: 'flex', alignItems: 'center', gap: 8, padding: 8 } },
-        !missing && isImage(item.file)
-          ? h('img', {
-            src: blobUrl(item.file),
-            alt: titleOf(item),
-            style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 6 },
-          })
-          : h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)' } },
-            // A card renamed by hand still has to say which file it holds.
-            missing
-              ? `${item.file} — ${t('fileMissing')}`
-              : `${titleOf(item) === item.file ? '' : `${item.file} · `}${files.find(row => row.name === item.file)?.bytes ?? 0} B`),
-        !missing
-          ? h('a', {
-            href: blobUrl(item.file),
-            download: item.file,
-            style: { fontSize: 12, color: 'var(--dsw-alias-brand-primary, #4f6ef7)', marginLeft: 'auto' },
-          }, t('download'))
-          : null))
+      : h('div', {
+        // The body moves the card the way the title bar does — a picture is the
+        // obvious thing to grab — and keeps its own double-click for showing the
+        // file where it lies.
+        onPointerDown: event => { startDrag(event, item) },
+        onDoubleClick: () => { revealItem(item) },
+        title: t('revealHint'),
+        style: {
+          flex: '1 1 auto', minHeight: 0, display: 'flex', alignItems: 'center', gap: 8, padding: 8,
+          cursor: 'grab', touchAction: 'none', userSelect: 'none',
+        },
+      },
+      !missing && isImage(item.file)
+        ? h('img', {
+          src: blobUrl(item.file),
+          alt: titleOf(item),
+          // A picture is draggable by default, and dragging one starts a browser
+          // drag that offers the canvas a file: letting go over the canvas then
+          // stored a second copy of a picture the space already had.
+          draggable: false,
+          style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 6 },
+        })
+        : h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)' } },
+          // A card renamed by hand still has to say which file it holds.
+          missing
+            ? `${item.file} — ${t('fileMissing')}`
+            : `${titleOf(item) === item.file ? '' : `${item.file} · `}${files.find(row => row.name === item.file)?.bytes ?? 0} B`)))
   }
+
+  // The keyboard belongs to the canvas unless a field is being typed in: Delete in
+  // a note is a character, and Ctrl+Z there is the browser's own text undo. The
+  // panel is the main column, so the window is the one place that sees these
+  // whatever inside the panel has the focus.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const target = event.target
+      const tag = typeof target?.tagName === 'string' ? target.tagName.toUpperCase() : ''
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || target?.isContentEditable === true) return
+      const primary = event.ctrlKey === true || event.metaKey === true
+      if (primary && (event.key === 'z' || event.key === 'Z')) {
+        event.preventDefault()
+        undo()
+        return
+      }
+      if (primary && (event.key === 'a' || event.key === 'A')) {
+        event.preventDefault()
+        selectAll()
+        return
+      }
+      if (primary && (event.key === 'c' || event.key === 'C')) {
+        event.preventDefault()
+        copyToClipboard()
+        return
+      }
+      // Backspace removes the selection as well: a keyboard without a Delete key
+      // is common enough that the two are one gesture here.
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault()
+        deleteSelection()
+        return
+      }
+      if (event.key === 'Escape') setSelected(new Set())
+    }
+    // Copying is also what the browser's own copy command asks for. Handling that
+    // as well means Ctrl+C still reaches the clipboard if anything upstream claims
+    // the keydown: the keydown path cancels the default action, so only one of the
+    // two ever runs.
+    const onCopy = (event) => {
+      const target = event.target
+      const tag = typeof target?.tagName === 'string' ? target.tagName.toUpperCase() : ''
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || target?.isContentEditable === true) return
+      // With no card selected this is somebody copying text the normal way.
+      if (selectedRef.current.size === 0) return
+      event.preventDefault()
+      copyToClipboard()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('paste', pasteFromClipboard)
+    window.addEventListener('copy', onCopy)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('paste', pasteFromClipboard)
+      window.removeEventListener('copy', onCopy)
+    }
+  }, [copyToClipboard, deleteSelection, pasteFromClipboard, selectAll, undo])
 
   // Assigned in the render body, after every callback it carries is defined —
   // the mount effect reaches for these on its first run and cannot wait for an
   // effect of its own to have run first.
   latest.current = { flush, refresh, stopDrag }
+  // The copy handler asks whether anything is selected without re-registering
+  // itself on every selection change.
+  selectedRef.current = selected
 
   return h('div', {
     style: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, position: 'relative' },
@@ -858,6 +1427,21 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   h('strong', { style: { fontSize: 14 } }, t('title')),
   h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)' } },
     t('usage', { used: formatBytes(usage.usedBytes), total: formatBytes(usage.maxTotalBytes) })),
+  // Cards that were removed leave their bytes behind, so the header says how many
+  // and offers to take them out of the repository. Nothing counts as saved while
+  // they are there, and nothing else in the panel would tell the person.
+  orphans.length === 0
+    ? null
+    : h('button', {
+      type: 'button',
+      onClick: () => { guard(() => cleanOrphans()) },
+      style: {
+        font: 'inherit', cursor: 'pointer', height: 24, padding: '0 10px', borderRadius: 999, fontSize: 12,
+        border: '1px solid var(--dsw-alias-border-l2, #d9dde6)',
+        background: confirmClean ? 'var(--dsw-alias-state-danger-primary, #d9534f)' : 'var(--dsw-alias-bg-layer-1, #fff)',
+        color: confirmClean ? '#fff' : 'var(--dsw-alias-label-secondary, #4b5563)',
+      },
+    }, `${t('orphans', { count: orphans.length, size: formatBytes(orphanBytes) })} · ${t('clean')}`),
   h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)' } }, gitLine),
   h('span', { style: { flex: '1 1 auto' } }),
   button('−', () => { stepZoom(-1) }, false),
@@ -906,25 +1490,48 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         startPan(event)
         return
       }
-      // A left press pans only the canvas itself; on a card it is that card's
+      if (!isCanvasBackground(event)) return
+      if (event.button === 1) {
+        event.preventDefault()
+        startPan(event)
+        return
+      }
+      // The left button sweeps the canvas for cards; on a card it is that card's
       // own drag.
-      if (event.target !== event.currentTarget) return
-      if (event.button === 1) event.preventDefault()
-      startPan(event)
+      if (event.button === 0) startMarquee(event)
     },
     onContextMenu: (event) => {
       // A right press is a pan, so the shell must not open its menu over it.
       event.preventDefault()
     },
     onClick: (event) => {
-      // A click on the canvas itself is the way out of a pending removal; a
-      // click on a card is not, so this reads the target rather than relying on
-      // the event having stopped anywhere.
-      if (event.target === event.currentTarget) setConfirmRemove(null)
+      // A click on the canvas itself is the way out of a pending removal and out
+      // of a pending clean-up; a click on a card is not, so this reads the target
+      // rather than relying on the event having stopped anywhere.
+      if (!isCanvasBackground(event)) return
+      setConfirmRemove(null)
+      setConfirmClean(false)
     },
-    onDragOver: (event) => { event.preventDefault(); setDropping(true) },
+    // A drag that began inside the panel — a card, a note's selected text — is not
+    // a file arriving: refusing it here keeps the drop hint away and stops the
+    // browser offering the canvas as a drop target for it at all.
+    onDragStart: () => { internalDrag.current = true },
+    onDragEnd: () => { internalDrag.current = false; setDropping(false) },
+    onDragOver: (event) => {
+      if (internalDrag.current) return
+      event.preventDefault()
+      setDropping(true)
+    },
     onDragLeave: () => { setDropping(false) },
-    onDrop: (event) => { void dropFiles(event) },
+    onDrop: (event) => {
+      const internal = internalDrag.current
+      internalDrag.current = false
+      if (internal) {
+        setDropping(false)
+        return
+      }
+      void dropFiles(event)
+    },
     title: t('zoomHint'),
     style: {
       // The scroller fills the column and is a flex box, so the plane below can
@@ -956,6 +1563,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     },
   },
   h('div', {
+    ref: layer,
     style: {
       position: 'absolute', left: layerLeft, top: layerTop,
       width: 0, height: 0,
@@ -971,6 +1579,20 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       borderRadius: 8,
     },
   }),
+  // The sweep is drawn in content coordinates, inside the scaled layer, so it
+  // covers exactly the cards it takes. Its border is divided by the zoom because
+  // the layer scales: at 300% a plain 1px edge would be three pixels wide.
+  marquee === null
+    ? null
+    : h('div', {
+      style: {
+        position: 'absolute', left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h,
+        border: `${1 / zoom}px solid var(--dsw-alias-brand-primary, #4f6ef7)`,
+        borderRadius: 2 / zoom,
+        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary, #4f6ef7) 12%, transparent)',
+        pointerEvents: 'none',
+      },
+    }),
   items.map(itemCard)))),
   // Outside the scroller on purpose: these two say something about the canvas
   // rather than belonging on it, and inside the scroller they would scroll out of
@@ -1057,6 +1679,16 @@ export function apply(ctx) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action, message }),
       })),
+      reveal: async (name) => readJson(await fetch(REVEAL_PATH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })),
+      clipboard: async (payload) => readJson(await fetch(CLIPBOARD_PATH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })),
     }),
   }, TempSpacePanel))
 
@@ -1090,6 +1722,8 @@ async function readJson(response) {
   try {
     return await response.json()
   } catch (error) {
-    return { ok: false, reason: 'transport', message: String(error) }
+    // The status is carried out with the failure: a route this host does not have
+    // yet answers with a page rather than JSON, and that is a fact worth saying.
+    return { ok: false, reason: 'transport', status: response.status, message: String(error) }
   }
 }

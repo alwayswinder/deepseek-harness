@@ -37,7 +37,10 @@ var PANEL_ID = "temp-space";
 var STATE_PATH = "/api/temp-space/state";
 var BLOB_PATH = "/api/temp-space/blob";
 var GIT_PATH = "/api/temp-space/git";
+var REVEAL_PATH = "/api/temp-space/reveal";
+var CLIPBOARD_PATH = "/api/temp-space/clipboard";
 var DRAG_THRESHOLD = 3;
+var HISTORY_LIMIT = 50;
 var SAVE_DEBOUNCE_MS = 500;
 var ZOOM_MIN = 0.25;
 var ZOOM_MAX = 3;
@@ -57,7 +60,21 @@ function defaultSizeOf(item) {
   if (item.kind !== "file") return DEFAULT_SIZE.text;
   return isImage(item.file) ? DEFAULT_SIZE.image : DEFAULT_SIZE.file;
 }
+function boxOf(item) {
+  const size = defaultSizeOf(item);
+  return { x: item.x, y: item.y, w: item.w ?? size.w, h: item.h ?? size.h };
+}
+function overlaps(left, right) {
+  return left.x < right.x + right.w && right.x < left.x + left.w && left.y < right.y + right.h && right.y < left.y + left.h;
+}
 var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "avif"]);
+function namedForClipboard(file) {
+  const given = typeof file?.name === "string" ? file.name.trim() : "";
+  if (given !== "") return file;
+  const type = typeof file?.type === "string" ? file.type : "";
+  const extension = type === "image/png" ? "png" : type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "bin";
+  return new File([file], `clipboard-${Date.now()}.${extension}`, { type });
+}
 var zh = {
   panel: "\u4E34\u65F6\u7A7A\u95F4",
   title: "\u4E34\u65F6\u7A7A\u95F4",
@@ -77,11 +94,27 @@ var zh = {
   titleHint: "\u53CC\u51FB\u6807\u9898\u53EF\u4EE5\u6539\u540D\u5B57",
   titlePlaceholder: "\u672A\u547D\u540D",
   zoomReset: "\u56DE\u5230 100%",
-  zoomHint: "\u6EDA\u8F6E\u7F29\u653E\uFF1B\u53F3\u952E\u62D6\u52A8\u6216\u62D6\u7A7A\u767D\u5904\u5E73\u79FB",
+  zoomHint: "\u6EDA\u8F6E\u7F29\u653E\uFF1B\u5DE6\u952E\u62D6\u7A7A\u767D\u5904\u6846\u9009\uFF0C\u53F3\u952E\u6216\u4E2D\u952E\u62D6\u52A8\u5E73\u79FB\uFF1BDelete \u5220\u9664\u9009\u4E2D\uFF0CCtrl+C/V \u590D\u5236\u7C98\u8D34\uFF0CCtrl+Z \u64A4\u56DE",
   usage: "{used} / {total}",
   fileMissing: "\u6587\u4EF6\u4E0D\u5728\u4E86",
-  download: "\u4E0B\u8F7D",
+  revealHint: "\u62D6\u52A8\u53EF\u4EE5\u79FB\u52A8\u5361\u7247\uFF1B\u53CC\u51FB\u5728\u6587\u4EF6\u7BA1\u7406\u5668\u91CC\u5B9A\u4F4D\u8FD9\u4E2A\u6587\u4EF6",
+  revealed: "\u5DF2\u5728\u6587\u4EF6\u7BA1\u7406\u5668\u91CC\u5B9A\u4F4D\uFF1A{name}",
   remove: "\u5220\u9664",
+  selected: "\u5DF2\u9009 {count} \u5F20\u5361\u7247\uFF1A\u62D6\u52A8\u53EF\u4EE5\u4E00\u8D77\u79FB\u52A8\uFF0CDelete \u5220\u9664\uFF0CCtrl+Z \u64A4\u56DE",
+  removed: "\u5DF2\u5220\u9664 {count} \u5F20\u5361\u7247\uFF08Ctrl+Z \u64A4\u56DE\uFF1B\u5B57\u8282\u8981\u7B49\u300C\u6E05\u7406\u300D\u65F6\u624D\u4ECE\u4ED3\u5E93\u79FB\u9664\uFF09",
+  undone: "\u5DF2\u64A4\u56DE",
+  noUndo: "\u6CA1\u6709\u53EF\u64A4\u56DE\u7684\u64CD\u4F5C",
+  orphans: "{count} \u4E2A\u672A\u5F15\u7528\u6587\u4EF6\uFF08{size}\uFF09",
+  clean: "\u6E05\u7406",
+  confirmClean: "\u518D\u70B9\u4E00\u6B21\u5C31\u5220\u9664 {count} \u4E2A\u6CA1\u6709\u5361\u7247\u5F15\u7528\u7684\u6587\u4EF6\uFF08{size}\uFF09",
+  cleaned: "\u5DF2\u6E05\u7406 {count} \u4E2A\u672A\u5F15\u7528\u6587\u4EF6\uFF08{size}\uFF09\uFF1B\u64A4\u9500\u5386\u53F2\u5DF2\u6E05\u7A7A",
+  copyNothing: "\u6CA1\u6709\u9009\u4E2D\u5361\u7247\uFF1A\u5148\u70B9\u4E00\u5F20\u6216\u7528\u6846\u9009\u9009\u51E0\u5F20\uFF0C\u518D\u6309 Ctrl+C",
+  copiedFiles: "\u5DF2\u628A {count} \u4E2A\u6587\u4EF6\u653E\u8FDB\u7CFB\u7EDF\u526A\u8D34\u677F\uFF0C\u53BB\u6587\u4EF6\u7BA1\u7406\u5668\u6216\u5176\u4ED6\u7A0B\u5E8F\u91CC\u7C98\u8D34",
+  copiedText: "\u5DF2\u628A {count} \u5F20\u4FBF\u7B7E\u7684\u6587\u5B57\u653E\u8FDB\u7CFB\u7EDF\u526A\u8D34\u677F",
+  copyFailed: "\u7CFB\u7EDF\u526A\u8D34\u677F\u6CA1\u6709\u63A5\u53D7\uFF1A{message}",
+  hostStale: "\u5BBF\u4E3B\u534A\u8FB9\u8FD8\u6CA1\u6709\u8FD9\u6761\u8DEF\u7531\uFF1A\u91CD\u542F DSH \u4E4B\u540E\u518D\u8BD5\uFF08\u6D4F\u89C8\u5668\u534A\u8FB9\u5237\u65B0\u9875\u9762\u5C31\u4F1A\u66F4\u65B0\uFF0C\u5BBF\u4E3B\u4E0D\u662F\uFF09",
+  pasted: "\u5DF2\u4ECE\u526A\u8D34\u677F\u5B58\u5165 {count} \u4E2A\u6587\u4EF6",
+  pastedText: "\u5DF2\u4ECE\u526A\u8D34\u677F\u65B0\u5EFA\u4E00\u5F20\u4FBF\u7B7E",
   gitBranch: "\u5206\u652F {branch}",
   gitUpToDate: "\u4E0E\u8FDC\u7AEF\u4E00\u81F4",
   gitAhead: "\u9886\u5148 {ahead}",
@@ -123,11 +156,27 @@ var en = {
   titleHint: "Double-click the title to rename it",
   titlePlaceholder: "Untitled",
   zoomReset: "Back to 100%",
-  zoomHint: "Wheel to zoom; right-drag or drag the background to move around",
+  zoomHint: "Wheel to zoom; left-drag the background to select, right- or middle-drag to pan; Delete removes the selection, Ctrl+C/V copy and paste, Ctrl+Z undoes",
   usage: "{used} / {total}",
   fileMissing: "File is gone",
-  download: "Download",
+  revealHint: "Drag to move the card; double-click to show the file in the file manager",
+  revealed: "Shown in the file manager: {name}",
   remove: "Remove",
+  selected: "{count} selected: drag to move them together, Delete to remove them, Ctrl+Z to undo",
+  removed: "Removed {count} cards (Ctrl+Z undoes it; the bytes leave the repository at the next clean-up)",
+  undone: "Undone",
+  noUndo: "Nothing to undo",
+  orphans: "{count} files nothing points at ({size})",
+  clean: "Clean up",
+  confirmClean: "Press again to delete {count} files no card points at ({size})",
+  cleaned: "Cleaned up {count} unreferenced files ({size}); the undo history is empty now",
+  copyNothing: "Nothing is selected: click a card or sweep a few, then press Ctrl+C",
+  copiedFiles: "Put {count} files on the system clipboard \u2014 paste them in the file manager or another application",
+  copiedText: "Put the text of {count} notes on the system clipboard",
+  copyFailed: "The system clipboard would not take it: {message}",
+  hostStale: "The host half has no such route yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)",
+  pasted: "Stored {count} files from the clipboard",
+  pastedText: "Left a new note holding what the clipboard had",
   gitBranch: "branch {branch}",
   gitUpToDate: "in sync with the remote",
   gitAhead: "{ahead} ahead",
@@ -150,11 +199,6 @@ var en = {
   full: "The space is full (100 MB); remove something first.",
   noDir: "The space directory {dir} is missing. Clone it on this machine first."
 };
-function clampToPlane(value, size, span) {
-  const low = -span / 2;
-  const high = span / 2 - size;
-  return Math.round(Math.max(low, Math.min(value, high)));
-}
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -168,7 +212,7 @@ function isImage(name2) {
 function blobUrl(name2) {
   return `${BLOB_PATH}?name=${encodeURIComponent(name2)}`;
 }
-function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, t }) {
+function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, reveal, clipboard, t }) {
   const [phase, setPhase] = (0, import_react.useState)("loading");
   const [items, setItems] = (0, import_react.useState)([]);
   const [files, setFiles] = (0, import_react.useState)([]);
@@ -181,12 +225,20 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   const [editing, setEditing] = (0, import_react.useState)(null);
   const [draft, setDraft] = (0, import_react.useState)("");
   const [zoom, setZoom] = (0, import_react.useState)(1);
+  const [selected, setSelected] = (0, import_react.useState)(/* @__PURE__ */ new Set());
+  const [marquee, setMarquee] = (0, import_react.useState)(null);
+  const [confirmClean, setConfirmClean] = (0, import_react.useState)(false);
   const revision = (0, import_react.useRef)(0);
   const itemsRef = (0, import_react.useRef)([]);
   const dirty = (0, import_react.useRef)(false);
   const timer = (0, import_react.useRef)();
   const drag = (0, import_react.useRef)(null);
   const canvas = (0, import_react.useRef)(null);
+  const history = (0, import_react.useRef)([]);
+  const editingNote = (0, import_react.useRef)(null);
+  const layer = (0, import_react.useRef)(null);
+  const internalDrag = (0, import_react.useRef)(false);
+  const selectedRef = (0, import_react.useRef)(selected);
   const zoomRef = (0, import_react.useRef)(1);
   const pendingScroll = (0, import_react.useRef)(null);
   const didCentre = (0, import_react.useRef)(false);
@@ -233,6 +285,22 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       void flush();
     }, SAVE_DEBOUNCE_MS);
   }, [flush]);
+  const remember = (0, import_react.useCallback)(() => {
+    const stack = history.current;
+    stack.push(itemsRef.current.map((item) => ({ ...item })));
+    if (stack.length > HISTORY_LIMIT) stack.shift();
+  }, []);
+  const undo = (0, import_react.useCallback)(() => {
+    const previous = history.current.pop();
+    if (previous === void 0) {
+      say(t("noUndo"));
+      return;
+    }
+    update(previous);
+    const ids = new Set(previous.map((item) => item.id));
+    setSelected((current) => new Set([...current].filter((id) => ids.has(id))));
+    say(t("undone"));
+  }, [say, t, update]);
   const refresh = (0, import_react.useCallback)(async () => {
     setPhase("loading");
     const [state, status] = await Promise.all([load(), gitStatus()]);
@@ -259,6 +327,24 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     };
   }, []);
   const present = (0, import_react.useMemo)(() => new Set(files.map((row) => row.name)), [files]);
+  const orphans = (0, import_react.useMemo)(() => {
+    const referenced = new Set(items.filter((item) => item.kind === "file").map((item) => item.file));
+    return files.filter((row) => !referenced.has(row.name));
+  }, [files, items]);
+  const orphanBytes = (0, import_react.useMemo)(() => orphans.reduce((total, row) => total + row.bytes, 0), [orphans]);
+  const applySelection = (0, import_react.useCallback)((change) => {
+    setSelected((current) => {
+      const next = new Set(change.mode === "only" ? [] : current);
+      if (change.mode === "toggle" && next.has(change.id)) next.delete(change.id);
+      else next.add(change.id);
+      return next;
+    });
+  }, []);
+  const selectAll = (0, import_react.useCallback)(() => {
+    const ids = itemsRef.current.map((item) => item.id);
+    setSelected(new Set(ids));
+    say(t("selected", { count: ids.length }));
+  }, [say, t]);
   const contentBox = (0, import_react.useMemo)(() => {
     if (items.length === 0) return { left: 0, top: 0, right: 0, bottom: 0 };
     let left = Infinity;
@@ -294,35 +380,88 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       h: size.h,
       z: base.reduce((top, row) => Math.max(top, row.z), 0) + 1
     };
+    remember();
     update([...base, item]);
     setFiles((rows) => [...rows, { name: result.name, bytes: result.bytes }]);
     setUsage((current) => ({ ...current, usedBytes: current.usedBytes + result.bytes }));
-  }, [say, t, update, upload]);
+  }, [remember, say, t, update, upload]);
   const dropFiles = (0, import_react.useCallback)(async (event) => {
     event.preventDefault();
     setDropping(false);
-    const dropped = Array.from(event.dataTransfer?.files ?? []);
+    const transfer = event.dataTransfer;
+    const carriesFiles = Array.from(transfer?.types ?? []).includes("Files");
+    const dropped = carriesFiles ? Array.from(transfer?.files ?? []) : [];
     if (dropped.length === 0) return;
     setBusy("drop");
     for (const file of dropped) await store(file);
     setBusy("");
   }, [store]);
-  const addText = (0, import_react.useCallback)(() => {
+  const addNote = (0, import_react.useCallback)((text) => {
     const base = itemsRef.current;
+    remember();
     update([...base, {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       kind: "text",
-      text: "",
+      text,
       x: 32 + base.length % 6 * 28,
       y: 32 + base.length % 6 * 26,
       w: DEFAULT_SIZE.text.w,
       h: DEFAULT_SIZE.text.h,
       z: base.reduce((top, row) => Math.max(top, row.z), 0) + 1
     }]);
-  }, [update]);
+  }, [remember, update]);
+  const addText = (0, import_react.useCallback)(() => {
+    addNote("");
+  }, [addNote]);
+  const pasteFromClipboard = (0, import_react.useCallback)((event) => {
+    const target = event.target;
+    const tag = typeof target?.tagName === "string" ? target.tagName.toUpperCase() : "";
+    if (tag === "TEXTAREA" || tag === "INPUT" || target?.isContentEditable === true) return;
+    const data = event.clipboardData;
+    const listed = Array.from(data?.items ?? []).filter((entry) => entry.kind === "file").map((entry) => typeof entry.getAsFile === "function" ? entry.getAsFile() : entry).filter((file) => file !== null && file !== void 0);
+    const pasted = listed.length > 0 ? listed : Array.from(data?.files ?? []);
+    if (pasted.length > 0) {
+      event.preventDefault();
+      guard(async () => {
+        setBusy("paste");
+        for (const file of pasted) await store(namedForClipboard(file));
+        setBusy("");
+        say(t("pasted", { count: pasted.length }));
+      });
+      return;
+    }
+    const text = typeof data?.getData === "function" ? data.getData("text/plain") : "";
+    if (typeof text !== "string" || text === "") return;
+    event.preventDefault();
+    addNote(text);
+    say(t("pastedText"));
+  }, [addNote, guard, say, store, t]);
+  const copyToClipboard = (0, import_react.useCallback)(() => {
+    const chosen = itemsRef.current.filter((item) => selected.has(item.id));
+    if (chosen.length === 0) {
+      say(t("copyNothing"));
+      return;
+    }
+    const fileNames = chosen.filter((item) => item.kind === "file").map((item) => item.file);
+    guard(async () => {
+      const result = fileNames.length > 0 ? await clipboard({ names: fileNames }) : await clipboard({ text: chosen.map((item) => item.text ?? "").join("\n\n") });
+      if (result.ok) {
+        say(fileNames.length > 0 ? t("copiedFiles", { count: fileNames.length }) : t("copiedText", { count: chosen.length }));
+        return;
+      }
+      say(result.reason === "transport" && result.status === 404 ? t("hostStale") : result.reason === "unsupported" ? t("copyFailed", { message: result.message ?? result.reason }) : t("failed", { message: result.message ?? result.reason }));
+    });
+  }, [clipboard, guard, say, selected, t]);
   const patch = (0, import_react.useCallback)((id, fields) => {
     update(itemsRef.current.map((item) => item.id === id ? { ...item, ...fields } : item));
   }, [update]);
+  const patchText = (0, import_react.useCallback)((id, text) => {
+    if (editingNote.current !== id) {
+      remember();
+      editingNote.current = id;
+    }
+    patch(id, { text });
+  }, [patch, remember]);
   const titleOf = (0, import_react.useCallback)((item) => typeof item.title === "string" && item.title !== "" ? item.title : item.kind === "text" ? t("titlePlaceholder") : item.file, [t]);
   const commitTitle = (0, import_react.useCallback)(() => {
     const id = editing;
@@ -332,23 +471,77 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     if (item === void 0) return;
     const trimmed = draft.trim();
     if ((item.title ?? "") === trimmed) return;
+    remember();
     patch(id, { title: trimmed });
-  }, [draft, editing, patch]);
-  const drop = (0, import_react.useCallback)(async (item) => {
-    const name2 = item.file;
-    update(itemsRef.current.filter((row) => row.id !== item.id));
+  }, [draft, editing, patch, remember]);
+  const dropItems = (0, import_react.useCallback)((list) => {
+    if (list.length === 0) return;
+    remember();
+    const ids = new Set(list.map((item) => item.id));
+    update(itemsRef.current.filter((item) => !ids.has(item.id)));
     setConfirmRemove(null);
     setEditing(null);
-    if (name2 === void 0) return;
-    const result = await removeBlob(name2);
-    if (!result.ok) say(t("failed", { message: result.message ?? result.reason }));
-    setFiles((rows) => rows.filter((row) => row.name !== name2));
-  }, [removeBlob, say, t, update]);
-  const raise = (0, import_react.useCallback)((id) => {
+    setSelected((current) => new Set([...current].filter((id) => !ids.has(id))));
+    say(t("removed", { count: list.length }));
+  }, [remember, say, t, update]);
+  const deleteSelection = (0, import_react.useCallback)(() => {
+    dropItems(itemsRef.current.filter((item) => selected.has(item.id)));
+  }, [dropItems, selected]);
+  const cleanOrphans = (0, import_react.useCallback)(async () => {
+    if (orphans.length === 0) return;
+    if (!confirmClean) {
+      setConfirmClean(true);
+      say(t("confirmClean", { count: orphans.length, size: formatBytes(orphanBytes) }));
+      return;
+    }
+    setConfirmClean(false);
+    const removed = [];
+    let failure = "";
+    for (const row of orphans) {
+      const result = await removeBlob(row.name);
+      if (!result.ok) {
+        failure = result.message ?? result.reason;
+        break;
+      }
+      removed.push(row);
+    }
+    if (removed.length > 0) {
+      const names = new Set(removed.map((row) => row.name));
+      const freed = removed.reduce((total, row) => total + row.bytes, 0);
+      setFiles((rows) => rows.filter((row) => !names.has(row.name)));
+      setUsage((current) => ({ ...current, usedBytes: Math.max(0, current.usedBytes - freed) }));
+      history.current = [];
+    }
+    if (failure !== "") {
+      say(t("failed", { message: failure }));
+      return;
+    }
+    say(t("cleaned", { count: removed.length, size: formatBytes(orphanBytes) }));
+  }, [confirmClean, orphanBytes, orphans, removeBlob, say, t]);
+  const revealItem = (0, import_react.useCallback)((item) => {
+    if (item.kind !== "file") return;
+    if (!present.has(item.file)) {
+      say(t("fileMissing"));
+      return;
+    }
+    guard(async () => {
+      const result = await reveal(item.file);
+      say(result.ok ? t("revealed", { name: item.file }) : t("failed", { message: result.message ?? result.reason }));
+    });
+  }, [guard, present, reveal, say, t]);
+  const raiseMany = (0, import_react.useCallback)((ids) => {
+    const chosen = new Set(ids);
     const top = itemsRef.current.reduce((highest, row) => Math.max(highest, row.z), 0);
-    const item = itemsRef.current.find((row) => row.id === id);
-    if (item === void 0 || item.z === top) return;
-    update(itemsRef.current.map((row) => row.id === id ? { ...row, z: top + 1 } : row));
+    const raised = new Map(itemsRef.current.filter((row) => chosen.has(row.id)).sort((left, right) => left.z - right.z).map((row, index) => [row.id, top + 1 + index]));
+    if (raised.size === 0) return;
+    update(itemsRef.current.map((row) => raised.has(row.id) ? { ...row, z: raised.get(row.id) } : row));
+  }, [update]);
+  const moveMany = (0, import_react.useCallback)((starts, dx, dy) => {
+    const moved = new Map(starts.map((start) => [start.id, {
+      x: Math.round(start.x + dx),
+      y: Math.round(start.y + dy)
+    }]));
+    update(itemsRef.current.map((row) => moved.has(row.id) ? { ...row, ...moved.get(row.id) } : row));
   }, [update]);
   const zoomAround = (0, import_react.useCallback)((next, offsetX, offsetY) => {
     const outer = canvas.current;
@@ -439,6 +632,12 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       CANVAS_MARGIN + CANVAS_HALF_HEIGHT * zoomRef.current + middleY * zoomRef.current + roomY - (outer.clientHeight ?? 0) / 2
     );
   }, [phase, contentBox]);
+  const layerPoint = (0, import_react.useCallback)((event) => {
+    const rect = layer.current?.getBoundingClientRect?.();
+    const scale = zoomRef.current;
+    if (rect === void 0 || scale <= 0) return { x: 0, y: 0 };
+    return { x: (event.clientX - rect.left) / scale, y: (event.clientY - rect.top) / scale };
+  }, []);
   const onWindowMove = (0, import_react.useCallback)((event) => {
     const held = drag.current;
     if (held === null) return;
@@ -449,41 +648,115 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       outer.scrollTop = held.top - (event.clientY - held.originY);
       return;
     }
-    const scale = zoomRef.current;
-    const x = clampToPlane(held.x + (event.clientX - held.originX) / scale, held.size.w, CANVAS_BOX.width);
-    const y = clampToPlane(held.y + (event.clientY - held.originY) / scale, held.size.h, CANVAS_BOX.height);
-    if (!held.moved) {
-      if (Math.abs(x - held.x) < DRAG_THRESHOLD && Math.abs(y - held.y) < DRAG_THRESHOLD) return;
-      held.moved = true;
-      raise(held.id);
+    if (held.kind === "marquee") {
+      if (!held.moved) {
+        if (Math.abs(event.clientX - held.originX) < DRAG_THRESHOLD && Math.abs(event.clientY - held.originY) < DRAG_THRESHOLD) return;
+        held.moved = true;
+      }
+      const point = layerPoint(event);
+      const box = {
+        x: Math.min(held.start.x, point.x),
+        y: Math.min(held.start.y, point.y),
+        w: Math.abs(point.x - held.start.x),
+        h: Math.abs(point.y - held.start.y)
+      };
+      setMarquee(box);
+      const swept = itemsRef.current.filter((item) => overlaps(boxOf(item), box)).map((item) => item.id);
+      held.chosen = [.../* @__PURE__ */ new Set([...held.base, ...swept])];
+      setSelected(new Set(held.chosen));
+      return;
     }
-    patch(held.id, { x, y });
-  }, [patch, raise]);
+    const scale = zoomRef.current;
+    const travel = {
+      x: (event.clientX - held.originX) / scale,
+      y: (event.clientY - held.originY) / scale
+    };
+    if (!held.moved) {
+      if (Math.abs(travel.x) < DRAG_THRESHOLD && Math.abs(travel.y) < DRAG_THRESHOLD) return;
+      held.moved = true;
+      if (!held.group) applySelection(held.select);
+      remember();
+      raiseMany(held.ids);
+    }
+    moveMany(
+      held.starts,
+      Math.min(held.bounds.maxX, Math.max(held.bounds.minX, travel.x)),
+      Math.min(held.bounds.maxY, Math.max(held.bounds.minY, travel.y))
+    );
+  }, [applySelection, layerPoint, moveMany, raiseMany, remember]);
   const stopDrag = (0, import_react.useCallback)(() => {
+    const held = drag.current;
     drag.current = null;
     window.removeEventListener("pointermove", onWindowMove);
     window.removeEventListener("pointerup", stopDrag);
     window.removeEventListener("pointercancel", stopDrag);
-  }, [onWindowMove]);
+    if (held === null) return;
+    if (held.kind === "marquee") {
+      setMarquee(null);
+      if (!held.moved) {
+        setSelected(/* @__PURE__ */ new Set());
+        return;
+      }
+      const taken = held.chosen ?? [];
+      if (taken.length > 0) say(t("selected", { count: taken.length }));
+      return;
+    }
+    if (held.kind === "card" && !held.moved) applySelection(held.select);
+  }, [applySelection, onWindowMove, say, t]);
   const startDrag = (0, import_react.useCallback)((event, item) => {
     if (event.button !== 0) return;
-    const size = defaultSizeOf(item);
+    const additive = event.ctrlKey === true || event.metaKey === true;
+    const range = event.shiftKey === true;
+    const inSelection = selected.has(item.id);
+    const group = inSelection && !additive && !range;
+    const ids = group ? [...selected] : [item.id];
+    const chosen = new Set(ids);
+    const starts = itemsRef.current.filter((row) => chosen.has(row.id)).map((row) => ({ id: row.id, ...boxOf(row) }));
     drag.current = {
       kind: "card",
       id: item.id,
-      x: item.x,
-      y: item.y,
       moved: false,
+      ids,
+      starts,
+      // The travel every card of the group can take together. Computed once, from
+      // where the cards are, because a drag never changes how big anything is.
+      bounds: {
+        minX: Math.max(...starts.map((start) => -CANVAS_HALF_WIDTH - start.x)),
+        maxX: Math.min(...starts.map((start) => CANVAS_HALF_WIDTH - start.w - start.x)),
+        minY: Math.max(...starts.map((start) => -CANVAS_HALF_HEIGHT - start.y)),
+        maxY: Math.min(...starts.map((start) => CANVAS_HALF_HEIGHT - start.h - start.y))
+      },
+      // Whether this press is already part of a group drag: a press on a card the
+      // selection holds moves all of it, and the click below would otherwise
+      // collapse the selection onto the one under the pointer.
+      group,
+      select: { id: item.id, mode: additive ? "toggle" : range ? "add" : "only" },
       originX: event.clientX,
-      originY: event.clientY,
-      size: { w: item.w ?? size.w, h: item.h ?? size.h }
+      originY: event.clientY
     };
     window.addEventListener("pointermove", onWindowMove);
     window.addEventListener("pointerup", stopDrag);
     window.addEventListener("pointercancel", stopDrag);
-  }, [onWindowMove, stopDrag]);
+  }, [onWindowMove, selected, stopDrag]);
+  const startMarquee = (0, import_react.useCallback)((event) => {
+    const additive = event.ctrlKey === true || event.metaKey === true || event.shiftKey === true;
+    const start = layerPoint(event);
+    event.preventDefault();
+    drag.current = {
+      kind: "marquee",
+      moved: false,
+      start,
+      base: additive ? new Set(selected) : /* @__PURE__ */ new Set(),
+      originX: event.clientX,
+      originY: event.clientY
+    };
+    setMarquee({ x: start.x, y: start.y, w: 0, h: 0 });
+    window.addEventListener("pointermove", onWindowMove);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+  }, [layerPoint, onWindowMove, selected, stopDrag]);
   const startPan = (0, import_react.useCallback)((event) => {
-    if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
+    if (event.button !== 1 && event.button !== 2) return;
     const outer = canvas.current;
     if (outer === void 0) return;
     drag.current = {
@@ -497,6 +770,12 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     window.addEventListener("pointerup", stopDrag);
     window.addEventListener("pointercancel", stopDrag);
   }, [onWindowMove, stopDrag]);
+  const isCanvasBackground = (0, import_react.useCallback)((event) => {
+    if (event.target === event.currentTarget) return true;
+    const target = event.target;
+    if (typeof target?.closest !== "function") return false;
+    return target.closest("[data-card]") === null;
+  }, []);
   const run = (0, import_react.useCallback)(async (label, action, describe) => {
     setBusy(label);
     try {
@@ -549,10 +828,14 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   const itemCard = (item) => {
     const missing = item.kind === "file" && !present.has(item.file);
     const size = defaultSizeOf(item);
+    const chosen = selected.has(item.id);
     return (0, import_react.createElement)(
       "div",
       {
         key: item.id,
+        // Read by the canvas press handler to tell a card from the background: the
+        // plane and the layer are pressed through, and both belong to the canvas.
+        "data-card": item.id,
         style: {
           position: "absolute",
           left: item.x,
@@ -563,9 +846,9 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
           display: "flex",
           flexDirection: "column",
           borderRadius: 10,
-          border: "1px solid var(--dsw-alias-border-l2, #d9dde6)",
+          border: `1px solid ${chosen ? "var(--dsw-alias-brand-primary, #4f6ef7)" : "var(--dsw-alias-border-l2, #d9dde6)"}`,
           background: "var(--dsw-alias-bg-layer-1, #fff)",
-          boxShadow: "0 2px 10px rgba(15, 23, 42, .08)",
+          boxShadow: chosen ? "0 0 0 2px color-mix(in srgb, var(--dsw-alias-brand-primary, #4f6ef7) 35%, transparent)" : "0 2px 10px rgba(15, 23, 42, .08)",
           overflow: "hidden"
         }
       },
@@ -625,7 +908,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
           (0, import_react.createElement)("button", {
             type: "button",
             onClick: () => {
-              guard(() => drop(item));
+              dropItems([item]);
             },
             style: {
               font: "inherit",
@@ -677,8 +960,16 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         // What a note holds is what somebody pasted: keys, paths, code. The
         // browser's spell checker would draw red under all of it.
         spellCheck: false,
+        // Typing in a note is one undo step per visit to the field, not one per
+        // keystroke: the focus is what marks the visit.
+        onFocus: () => {
+          editingNote.current = item.id;
+        },
+        onBlur: () => {
+          editingNote.current = null;
+        },
         onChange: (event) => {
-          patch(item.id, { text: event.target.value });
+          patchText(item.id, event.target.value);
         },
         style: {
           flex: "1 1 auto",
@@ -695,26 +986,93 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         }
       }) : (0, import_react.createElement)(
         "div",
-        { style: { flex: "1 1 auto", minHeight: 0, display: "flex", alignItems: "center", gap: 8, padding: 8 } },
+        {
+          // The body moves the card the way the title bar does — a picture is the
+          // obvious thing to grab — and keeps its own double-click for showing the
+          // file where it lies.
+          onPointerDown: (event) => {
+            startDrag(event, item);
+          },
+          onDoubleClick: () => {
+            revealItem(item);
+          },
+          title: t("revealHint"),
+          style: {
+            flex: "1 1 auto",
+            minHeight: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: 8,
+            cursor: "grab",
+            touchAction: "none",
+            userSelect: "none"
+          }
+        },
         !missing && isImage(item.file) ? (0, import_react.createElement)("img", {
           src: blobUrl(item.file),
           alt: titleOf(item),
+          // A picture is draggable by default, and dragging one starts a browser
+          // drag that offers the canvas a file: letting go over the canvas then
+          // stored a second copy of a picture the space already had.
+          draggable: false,
           style: { maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 6 }
         }) : (0, import_react.createElement)(
           "span",
           { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)" } },
           // A card renamed by hand still has to say which file it holds.
           missing ? `${item.file} \u2014 ${t("fileMissing")}` : `${titleOf(item) === item.file ? "" : `${item.file} \xB7 `}${files.find((row) => row.name === item.file)?.bytes ?? 0} B`
-        ),
-        !missing ? (0, import_react.createElement)("a", {
-          href: blobUrl(item.file),
-          download: item.file,
-          style: { fontSize: 12, color: "var(--dsw-alias-brand-primary, #4f6ef7)", marginLeft: "auto" }
-        }, t("download")) : null
+        )
       )
     );
   };
+  (0, import_react.useEffect)(() => {
+    const onKeyDown = (event) => {
+      const target = event.target;
+      const tag = typeof target?.tagName === "string" ? target.tagName.toUpperCase() : "";
+      if (tag === "TEXTAREA" || tag === "INPUT" || target?.isContentEditable === true) return;
+      const primary = event.ctrlKey === true || event.metaKey === true;
+      if (primary && (event.key === "z" || event.key === "Z")) {
+        event.preventDefault();
+        undo();
+        return;
+      }
+      if (primary && (event.key === "a" || event.key === "A")) {
+        event.preventDefault();
+        selectAll();
+        return;
+      }
+      if (primary && (event.key === "c" || event.key === "C")) {
+        event.preventDefault();
+        copyToClipboard();
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteSelection();
+        return;
+      }
+      if (event.key === "Escape") setSelected(/* @__PURE__ */ new Set());
+    };
+    const onCopy = (event) => {
+      const target = event.target;
+      const tag = typeof target?.tagName === "string" ? target.tagName.toUpperCase() : "";
+      if (tag === "TEXTAREA" || tag === "INPUT" || target?.isContentEditable === true) return;
+      if (selectedRef.current.size === 0) return;
+      event.preventDefault();
+      copyToClipboard();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("paste", pasteFromClipboard);
+    window.addEventListener("copy", onCopy);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("paste", pasteFromClipboard);
+      window.removeEventListener("copy", onCopy);
+    };
+  }, [copyToClipboard, deleteSelection, pasteFromClipboard, selectAll, undo]);
   latest.current = { flush, refresh, stopDrag };
+  selectedRef.current = selected;
   return (0, import_react.createElement)(
     "div",
     {
@@ -738,6 +1096,26 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)" } },
         t("usage", { used: formatBytes(usage.usedBytes), total: formatBytes(usage.maxTotalBytes) })
       ),
+      // Cards that were removed leave their bytes behind, so the header says how many
+      // and offers to take them out of the repository. Nothing counts as saved while
+      // they are there, and nothing else in the panel would tell the person.
+      orphans.length === 0 ? null : (0, import_react.createElement)("button", {
+        type: "button",
+        onClick: () => {
+          guard(() => cleanOrphans());
+        },
+        style: {
+          font: "inherit",
+          cursor: "pointer",
+          height: 24,
+          padding: "0 10px",
+          borderRadius: 999,
+          fontSize: 12,
+          border: "1px solid var(--dsw-alias-border-l2, #d9dde6)",
+          background: confirmClean ? "var(--dsw-alias-state-danger-primary, #d9534f)" : "var(--dsw-alias-bg-layer-1, #fff)",
+          color: confirmClean ? "#fff" : "var(--dsw-alias-label-secondary, #4b5563)"
+        }
+      }, `${t("orphans", { count: orphans.length, size: formatBytes(orphanBytes) })} \xB7 ${t("clean")}`),
       (0, import_react.createElement)("span", { style: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #6b7280)" } }, gitLine),
       (0, import_react.createElement)("span", { style: { flex: "1 1 auto" } }),
       button("\u2212", () => {
@@ -802,17 +1180,34 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
               startPan(event);
               return;
             }
-            if (event.target !== event.currentTarget) return;
-            if (event.button === 1) event.preventDefault();
-            startPan(event);
+            if (!isCanvasBackground(event)) return;
+            if (event.button === 1) {
+              event.preventDefault();
+              startPan(event);
+              return;
+            }
+            if (event.button === 0) startMarquee(event);
           },
           onContextMenu: (event) => {
             event.preventDefault();
           },
           onClick: (event) => {
-            if (event.target === event.currentTarget) setConfirmRemove(null);
+            if (!isCanvasBackground(event)) return;
+            setConfirmRemove(null);
+            setConfirmClean(false);
+          },
+          // A drag that began inside the panel — a card, a note's selected text — is not
+          // a file arriving: refusing it here keeps the drop hint away and stops the
+          // browser offering the canvas as a drop target for it at all.
+          onDragStart: () => {
+            internalDrag.current = true;
+          },
+          onDragEnd: () => {
+            internalDrag.current = false;
+            setDropping(false);
           },
           onDragOver: (event) => {
+            if (internalDrag.current) return;
             event.preventDefault();
             setDropping(true);
           },
@@ -820,6 +1215,12 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
             setDropping(false);
           },
           onDrop: (event) => {
+            const internal = internalDrag.current;
+            internalDrag.current = false;
+            if (internal) {
+              setDropping(false);
+              return;
+            }
             void dropFiles(event);
           },
           title: t("zoomHint"),
@@ -858,6 +1259,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
           (0, import_react.createElement)(
             "div",
             {
+              ref: layer,
               style: {
                 position: "absolute",
                 left: layerLeft,
@@ -878,6 +1280,22 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
                 background: "var(--dsw-alias-bg-layer-1, #fff)",
                 border: "1px solid var(--dsw-alias-border-l2, #e6e9ef)",
                 borderRadius: 8
+              }
+            }),
+            // The sweep is drawn in content coordinates, inside the scaled layer, so it
+            // covers exactly the cards it takes. Its border is divided by the zoom because
+            // the layer scales: at 300% a plain 1px edge would be three pixels wide.
+            marquee === null ? null : (0, import_react.createElement)("div", {
+              style: {
+                position: "absolute",
+                left: marquee.x,
+                top: marquee.y,
+                width: marquee.w,
+                height: marquee.h,
+                border: `${1 / zoom}px solid var(--dsw-alias-brand-primary, #4f6ef7)`,
+                borderRadius: 2 / zoom,
+                background: "color-mix(in srgb, var(--dsw-alias-brand-primary, #4f6ef7) 12%, transparent)",
+                pointerEvents: "none"
               }
             }),
             items.map(itemCard)
@@ -972,6 +1390,16 @@ function apply(ctx) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, message })
+      })),
+      reveal: async (name2) => readJson(await fetch(REVEAL_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name2 })
+      })),
+      clipboard: async (payload) => readJson(await fetch(CLIPBOARD_PATH, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
       }))
     })
   }, TempSpacePanel));
@@ -1001,7 +1429,7 @@ async function readJson(response) {
   try {
     return await response.json();
   } catch (error) {
-    return { ok: false, reason: "transport", message: String(error) };
+    return { ok: false, reason: "transport", status: response.status, message: String(error) };
   }
 }
 

@@ -277,7 +277,7 @@ assert.deepEqual(selected, ['temp-space', null], 'closing returns the main colum
 
 const face = main.options.inject()
 assert.deepEqual(Object.keys(face).sort(),
-  ['gitAction', 'gitStatus', 'load', 'removeBlob', 'save', 't', 'upload'].sort(),
+  ['clipboard', 'gitAction', 'gitStatus', 'load', 'removeBlob', 'reveal', 'save', 't', 'upload'].sort(),
   'the panel is given the routes and the copy it renders with')
 
 /** Every string in one rendered tree, so copy and structure are asserted together. */
@@ -295,10 +295,15 @@ function elements(node) {
   return [node, ...elements(node.props?.children), ...elements(node.children)]
 }
 
+/** Mount the panel with the answers a route set gives, and return its harness. */
+function mountWith(answers, overrides) {
+  globalThis.fetch = hostFetch(answers)
+  return mount(main.component, { ...face, ...overrides })
+}
+
 /** Render the panel with the answers a route set gives, and return its tree. */
 async function paint(answers) {
-  globalThis.fetch = hostFetch(answers)
-  return mount(main.component, { ...face }).settle()
+  return mountWith(answers).settle()
 }
 
 // A fresh space: the header, the quota, and the empty state.
@@ -326,7 +331,7 @@ const items = [
   { id: 'doc', kind: 'file', file: 'notes.md', x: 600, y: 20, w: 240, h: 84, z: 3 },
   { id: 'gone', kind: 'file', file: 'gone.txt', x: 300, y: 260, w: 240, h: 84, z: 4 },
 ]
-const loaded = await paint({
+const loadedAnswers = {
   state: {
     ok: true,
     revision: 4,
@@ -335,7 +340,8 @@ const loaded = await paint({
     usage: { usedBytes: 2112, maxTotalBytes: 104857600, maxFileBytes: 10485760 },
   },
   git: { ok: true, branch: 'main', detached: false, changes: 2, commit: null, relation: 'diverged', ahead: 1, behind: 3, upstream: 'origin/main' },
-})
+}
+const loaded = await paint(loadedAnswers)
 const loadedText = texts(loaded)
 assert.ok(loadedText.includes('2.1 KB / 100.0 MB'), 'the quota follows what is stored')
 assert.ok(loadedText.includes('分支 main · 已分叉：1 领先 / 3 落后 · 2 个未提交改动'),
@@ -353,6 +359,53 @@ assert.equal(noteArea.props.value, '记得改端口', 'the note carries the text
 assert.equal(noteArea.props.spellCheck, false, 'a note is not spell checked')
 const picture = elements(loaded).find(node => node.type === 'img')
 assert.equal(picture.props.src, '/api/temp-space/blob?name=shot.png', 'the picture is read from the blob route')
+
+// The bytes are already on the disk of every machine that pulled the space, so a
+// card has nothing to hand out: reaching the file is the host's file manager.
+assert.equal(elements(loaded).some(node => node.type === 'a'), false,
+  'a card offers no download link')
+
+/**
+ * The body of one card, found by the item id the panel gives its card element:
+ * the title bar carries a double-click of its own (renaming), so the hint copy is
+ * what tells the two gestures apart.
+ */
+function cardBody(tree, id) {
+  const card = elements(tree).find(node => node.props?.key === id)
+  assert.ok(card !== undefined, `the card ${id} is rendered`)
+  return elements(card).find(node => node.props?.title === '拖动可以移动卡片；双击在文件管理器里定位这个文件')
+}
+
+const reveals = []
+const revealHarness = mountWith(loadedAnswers, {
+  reveal: async (name) => { reveals.push(name); return { ok: true, name } },
+})
+let revealTree = await revealHarness.settle()
+const docBody = cardBody(revealTree, 'doc')
+assert.ok(docBody !== undefined, 'a file card body answers a double-click')
+docBody.props.onDoubleClick()
+revealTree = await revealHarness.settle()
+assert.deepEqual(reveals, ['notes.md'], 'the double-clicked card names its own file to the host')
+assert.ok(texts(revealTree).includes('已在文件管理器里定位：notes.md'), 'the panel says the file was shown')
+
+// A card whose file is gone cannot be shown, so it says that rather than asking
+// the host to reveal a path that is not there.
+const goneBody = cardBody(revealTree, 'gone')
+assert.ok(goneBody !== undefined, 'a card whose file is gone is still a card')
+goneBody.props.onDoubleClick()
+revealTree = await revealHarness.settle()
+assert.deepEqual(reveals, ['notes.md'], 'a missing file is never asked for')
+assert.ok(texts(revealTree).includes('文件不在了'), 'a missing file says it is gone')
+
+// A host that cannot start a file manager reports it on the same line as every
+// other failure, rather than looking like a click that did nothing.
+const revealedFailed = mountWith(loadedAnswers, {
+  reveal: async () => ({ ok: false, reason: 'failed', message: 'boom' }),
+})
+let failedTree = await revealedFailed.settle()
+cardBody(failedTree, 'doc').props.onDoubleClick()
+failedTree = await revealedFailed.settle()
+assert.ok(texts(failedTree).includes('失败：boom'), 'a file manager that will not start is reported')
 
 // Every Git relation the host reports has copy of its own; none may render blank.
 for (const [relation, expected] of [
@@ -397,11 +450,41 @@ assert.equal(writes.length, 0, 'an edit is debounced rather than written on the 
 
 const dropZone = elements(tree).find(node => typeof node.props?.onDrop === 'function')
 assert.ok(dropZone !== undefined, 'the canvas accepts a drop')
-dropZone.props.onDrop({ preventDefault: () => {}, dataTransfer: { files: [{ name: 'shot.png' }] } })
+dropZone.props.onDrop({ preventDefault: () => {}, dataTransfer: { types: ['Files'], files: [{ name: 'shot.png' }] } })
 await new Promise((resolve) => { setTimeout(resolve, 0) })
 tree = await harness.settle()
 assert.ok(writes.some(entry => entry.method === 'POST' && entry.url.includes('name=shot.png')),
   'a dropped file is uploaded under its own name')
+
+// What already sits in the space never arrives as a file again. A card's picture is
+// draggable by the browser's own rules, and the browser offers the canvas a file for
+// it: that drag began inside the panel, so the panel refuses it outright — no hint,
+// and nothing stored.
+const writesBefore = writes.length
+dropZone.props.onDragStart({})
+dropZone.props.onDragOver({ preventDefault: () => {} })
+tree = await harness.settle()
+assert.equal(texts(tree).includes('松手即入库'), false, 'a drag from inside the panel raises no drop hint')
+dropZone.props.onDrop({
+  preventDefault: () => {},
+  dataTransfer: { types: ['Files', 'text/html'], files: [{ name: 'pixel-aquarium-bg.png' }] },
+})
+await new Promise((resolve) => { setTimeout(resolve, 0) })
+tree = await harness.settle()
+assert.equal(writes.length, writesBefore, 'and stores nothing, however the browser labels that drag')
+assert.equal(elements(tree).filter(node => node.type === 'img').length, 1, 'the canvas still holds its one picture')
+dropZone.props.onDragEnd({})
+
+// The other half of the rule: a drop that carries no files at all is not an import
+// either, whichever drag it came from.
+dropZone.props.onDrop({ preventDefault: () => {}, dataTransfer: { files: [{ name: 'shot.png' }] } })
+await new Promise((resolve) => { setTimeout(resolve, 0) })
+assert.equal(writes.length, writesBefore, 'a drop with no file type stores nothing')
+
+// And the picture cannot start a browser drag in the first place, which is where a
+// copy of it would come from.
+assert.equal(elements(tree).filter(node => node.type === 'img').every(node => node.props.draggable === false), true,
+  'a picture is not draggable')
 globalThis.fetch = before
 
 // ---- the controls, which may not fail quietly -------------------------------
@@ -428,10 +511,13 @@ let panel = await control.settle()
 // is picked out by what it is: the one press target that carries a grab cursor.
 const handlesOf = (tree) => elements(tree).filter(node => typeof node.props?.onPointerDown === 'function'
   && node.props?.style?.cursor === 'grab')
-assert.equal(handlesOf(panel).length, items.length, 'every card has one drag handle')
+assert.equal(handlesOf(panel).length, items.length + 3,
+  'every card has a title handle, and each stored file a body one to grab the picture by')
 assert.equal(elements(panel).filter(node => node.type === 'button' && texts(node).includes('×')).length,
   items.length, 'every card offers a remove control of its own')
-assert.equal(windowListeners.size, 0, 'nothing listens on the window until a press starts')
+/** The window listeners a pointer drag installs; a mounted panel's keyboard listener is not one. */
+const dragging = () => windowListeners.get('pointermove') ?? new Set()
+assert.equal(dragging().size, 0, 'nothing listens for a pointer on the window until a press starts')
 
 const calls = []
 const live = globalThis.fetch
@@ -504,17 +590,38 @@ panel = await control.settle()
 assert.equal(elements(panel).filter(node => node.type === 'textarea').length, 0, 'the note is gone from the canvas')
 assert.equal(calls.some(entry => entry.method === 'DELETE'), false, 'a note has no bytes to delete')
 
-// A stored file does go: the same two presses, and the second reaches the route.
+// A stored file leaves the canvas the same way, and its bytes stay: Ctrl+Z has to
+// be able to bring the card back whole, and the other machine may still be showing
+// it. The header counts the file nothing points at, and is where it is really
+// removed — which is why that control asks first too.
 removeButtons()[0].props.onClick()
 panel = await control.settle()
 elements(panel).find(node => node.type === 'button' && texts(node).includes('确定删除')).props.onClick()
 panel = await control.settle()
+assert.ok(texts(panel).some(text => text.includes('已删除 1 张卡片')), 'the panel says what it removed')
+assert.equal(calls.some(entry => entry.method === 'DELETE'), false,
+  'removing a card leaves its bytes where they are')
+const orphanButton = () => elements(panel).find(node => node.type === 'button'
+  && texts(node).some(text => text.includes('未引用文件')))
+assert.ok(orphanButton() !== undefined, 'the header counts the file nothing points at')
+assert.ok(texts(orphanButton()).some(text => text.includes('2.0 KB')), 'and how much space it takes')
+orphanButton().props.onClick()
+panel = await control.settle()
+assert.ok(texts(panel).some(text => text.includes('再点一次')), 'the clean-up asks first')
+assert.equal(calls.some(entry => entry.method === 'DELETE'), false, 'and reaches nothing until it is confirmed')
+orphanButton().props.onClick()
+panel = await control.settle()
 assert.ok(calls.some(entry => entry.method === 'DELETE' && entry.url.includes('name=shot.png')),
-  'the second press deletes the file behind the card')
+  'confirming the clean-up deletes the file nothing points at')
+assert.ok(texts(panel).some(text => text.includes('已清理 1 个未引用文件')), 'and says what went')
+assert.equal(orphanButton(), undefined, 'the header stops counting once it is gone')
 
 // A card is titled with its file name until someone renames it, and a renamed
-// card still says which file it holds.
-const titles = () => elements(panel).filter(node => typeof node.props?.onDoubleClick === 'function')
+// card still says which file it holds. A file card answers two double-clicks —
+// the title's, for renaming, and the body's, for showing the file — so the
+// editable titles are the ones the reveal hint does not claim.
+const titles = () => elements(panel).filter(node => typeof node.props?.onDoubleClick === 'function'
+  && node.props?.title !== '拖动可以移动卡片；双击在文件管理器里定位这个文件')
 assert.equal(titles().length, items.length - 2, 'every card carries exactly one editable title')
 assert.ok(texts(panel).includes('notes.md'), 'an untouched card is titled with its file name')
 titles()[0].props.onDoubleClick()
@@ -754,5 +861,310 @@ for (const move of [...(windowListeners.get('pointermove') ?? [])]) move({ clien
 for (const up of [...(windowListeners.get('pointerup') ?? [])]) up({})
 edgeView = await edges.settle()
 assert.equal(cardsOf(edgeView)[1].props.style.left, -2000, 'a card is held at the far edge of the plane')
+
+// ---- selection, batch edits, and undo ---------------------------------------
+
+// A fresh panel with a fresh window: a mounted panel keeps a keyboard listener of
+// its own, and the sections above left pointer listeners behind.
+elementListeners.clear()
+windowListeners.clear()
+const pickedAnswers = {
+  state: {
+    ok: true,
+    revision: 4,
+    items,
+    files: [{ name: 'shot.png', bytes: 2048 }, { name: 'notes.md', bytes: 64 }],
+    usage: { usedBytes: 2112, maxTotalBytes: 104857600, maxFileBytes: 10485760 },
+  },
+  git: { ok: true, branch: 'main', detached: false, changes: 0, commit: null, relation: 'up-to-date', ahead: 0, behind: 0, upstream: 'origin/main' },
+}
+const editCalls = []
+const answered = hostFetch(pickedAnswers)
+globalThis.fetch = (url, init) => {
+  editCalls.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body })
+  return answered(url, init)
+}
+const picking = mount(main.component, { ...face })
+let picked = await picking.settle()
+
+/** One card of a tree, by the item id the panel marks it with. */
+const cardById = (tree, id) => cardsOf(tree).find(node => node.props['data-card'] === id)
+/** Whether one card is drawn as part of the selection. */
+const chosenCard = (tree, id) => String(cardById(tree, id).props.style.boxShadow).includes('brand-primary')
+/** Whether any card at all is drawn as selected. */
+const anyChosen = (tree) => cardsOf(tree).some(card => String(card.props.style.boxShadow).includes('brand-primary'))
+/** The canvas column of one tree, which is what a sweep is dispatched to. */
+const canvasOf = (tree) => elements(tree).find(node => node.props?.style?.cursor === 'default'
+  && typeof node.props?.onPointerDown === 'function')
+/** Press the background and sweep to another point, without letting go yet. */
+function sweepTo(tree, from, to) {
+  const node = canvasOf(tree)
+  node.props.onPointerDown({
+    button: 0, clientX: from.x, clientY: from.y, target: node, currentTarget: node,
+    preventDefault: () => {},
+  })
+  for (const move of [...(windowListeners.get('pointermove') ?? [])]) move({ clientX: to.x, clientY: to.y })
+}
+/** Let go of whatever press is in flight. */
+function letGo() {
+  for (const up of [...(windowListeners.get('pointerup') ?? [])]) up({})
+}
+/** Press one card's handle, travel, and let go. */
+function dragCard(tree, id, dx, dy) {
+  const handle = elements(cardById(tree, id)).find(node => typeof node.props?.onPointerDown === 'function')
+  handle.props.onPointerDown({ button: 0, clientX: 500, clientY: 400 })
+  for (const move of [...(windowListeners.get('pointermove') ?? [])]) move({ clientX: 500 + dx, clientY: 400 + dy })
+  letGo()
+}
+/** Press one card's body — its picture, or its file line — travel, and let go. */
+function dragByBody(tree, id, dx, dy) {
+  const body = cardBody(tree, id)
+  assert.ok(body !== undefined, `the card ${id} has a body to grab`)
+  body.props.onPointerDown({ button: 0, clientX: 500, clientY: 400 })
+  for (const move of [...(windowListeners.get('pointermove') ?? [])]) move({ clientX: 500 + dx, clientY: 400 + dy })
+  letGo()
+}
+/** Press one card's handle and let go without travelling. */
+function clickCard(tree, id, modifiers = {}) {
+  const handle = elements(cardById(tree, id)).find(node => typeof node.props?.onPointerDown === 'function')
+  handle.props.onPointerDown({ button: 0, clientX: 500, clientY: 400, ...modifiers })
+  letGo()
+}
+/** Type one key, as the window delivers it to the mounted panel. */
+function pressKey(key, init = {}) {
+  const listeners = [...(windowListeners.get('keydown') ?? [])]
+  assert.ok(listeners.length >= 1, 'the mounted panel holds a keyboard listener')
+  listeners[listeners.length - 1]({ key, preventDefault: () => {}, ...init })
+}
+
+// A sweep takes every card its box covers, and the box drawn is the one the cards
+// were chosen by. The cards span (10,20)-(840,344), so a box to (560,240) covers
+// the note and the picture and neither of the other two.
+sweepTo(picked, { x: 0, y: 0 }, { x: 560, y: 240 })
+picked = await picking.settle()
+const sweptBox = elements(picked).find(node => node.props?.style?.pointerEvents === 'none')
+assert.ok(sweptBox !== undefined, 'the sweep draws itself while the pointer is down')
+assert.deepEqual({
+  left: sweptBox.props.style.left, top: sweptBox.props.style.top,
+  width: sweptBox.props.style.width, height: sweptBox.props.style.height,
+}, { left: 0, top: 0, width: 560, height: 240 }, 'the box is the rectangle the pointer travelled')
+letGo()
+picked = await picking.settle()
+assert.equal(chosenCard(picked, 'note'), true, 'a card the box covered is selected')
+assert.equal(chosenCard(picked, 'shot'), true, 'and so is the next one it covered')
+assert.equal(chosenCard(picked, 'doc'), false, 'a card outside the box is not')
+assert.equal(chosenCard(picked, 'gone'), false, 'in either direction')
+assert.ok(texts(picked).some(text => text.includes('已选 2 张卡片')), 'the panel says how many the sweep took')
+assert.equal(elements(picked).some(node => node.props?.style?.pointerEvents === 'none'), false,
+  'and the box is gone once the pointer is let go')
+
+// A press that never travels is a click on one card: that one alone, or one more
+// with Shift. Without this a card could never be picked out of a crowded plane.
+clickCard(picked, 'note')
+picked = await picking.settle()
+assert.equal(chosenCard(picked, 'note'), true, 'a click selects the card under it')
+assert.equal(chosenCard(picked, 'shot'), false, 'and only that card')
+clickCard(picked, 'doc', { shiftKey: true })
+picked = await picking.settle()
+assert.equal(chosenCard(picked, 'doc'), true, 'Shift adds the next card')
+assert.equal(chosenCard(picked, 'note'), true, 'without dropping the first')
+
+// The whole selection moves rigidly: one card is dragged, every selected card
+// takes the same travel, and the cards outside it stay put.
+const noteLeft = cardById(picked, 'note').props.style.left
+const docLeft = cardById(picked, 'doc').props.style.left
+dragCard(picked, 'note', 60, 30)
+picked = await picking.settle()
+assert.equal(cardById(picked, 'note').props.style.left, noteLeft + 60, 'the dragged card follows the pointer')
+assert.equal(cardById(picked, 'doc').props.style.left, docLeft + 60, 'and so does the other selected card')
+assert.equal(cardById(picked, 'doc').props.style.top, 20 + 30, 'vertically too')
+assert.equal(cardById(picked, 'shot').props.style.left, 300, 'a card outside the selection does not move')
+
+// One gesture is one step back, whatever it moved.
+pressKey('z', { ctrlKey: true })
+picked = await picking.settle()
+assert.equal(cardById(picked, 'note').props.style.left, noteLeft, 'Ctrl+Z puts the dragged card back')
+assert.equal(cardById(picked, 'doc').props.style.left, docLeft, 'and the card that travelled with it')
+assert.ok(texts(picked).some(text => text.includes('已撤回')), 'and says that it undid something')
+
+// Delete takes the selection off the canvas, and the bytes stay behind: that is
+// what lets the next step bring the cards back whole.
+pressKey('Delete')
+picked = await picking.settle()
+assert.equal(cardsOf(picked).length, 2, 'Delete removes every selected card')
+assert.ok(texts(picked).some(text => text.includes('已删除 2 张卡片')), 'and says how many went')
+assert.equal(editCalls.some(entry => entry.method === 'DELETE'), false,
+  'the bytes stay until the clean-up, so the cards can come back whole')
+pressKey('z', { ctrlKey: true })
+picked = await picking.settle()
+assert.equal(cardsOf(picked).length, 4, 'Ctrl+Z brings the removed cards back')
+assert.equal(cardById(picked, 'doc').props.style.left, docLeft, 'where they were')
+assert.equal(anyChosen(picked), false, 'and the selection does not pretend they are still chosen')
+
+// The keyboard belongs to the canvas only while no field is being typed in:
+// Delete in a note is a character, and Ctrl+Z there is the browser's own undo.
+pressKey('a', { ctrlKey: true })
+picked = await picking.settle()
+assert.equal(cardsOf(picked).every(card => String(card.props.style.boxShadow).includes('brand-primary')), true,
+  'Ctrl+A takes every card on the canvas')
+assert.ok(texts(picked).some(text => text.includes('已选 4 张卡片')), 'and says how many that is')
+pressKey('Delete', { target: { tagName: 'TEXTAREA' } })
+picked = await picking.settle()
+assert.equal(cardsOf(picked).length, 4, 'Delete typed into a note is a character, not a removal')
+pressKey('Escape')
+picked = await picking.settle()
+assert.equal(anyChosen(picked), false, 'Escape drops the selection')
+
+// A sweep is a left press on the background, so a left click there — a press that
+// never travelled — is how the selection is dropped without touching a card.
+clickCard(picked, 'note')
+picked = await picking.settle()
+assert.equal(chosenCard(picked, 'note'), true, 'a click takes one card again')
+sweepTo(picked, { x: 20, y: 20 }, { x: 20, y: 20 })
+letGo()
+picked = await picking.settle()
+assert.equal(anyChosen(picked), false, 'a left click on the background drops the selection')
+
+// A group is bounded by its most constrained card: the travel everyone can take is
+// the travel the group takes, so the cards keep their distances from each other and
+// none of them is pushed out of the plane.
+clickCard(picked, 'note')
+clickCard(picked, 'doc', { shiftKey: true })
+picked = await picking.settle()
+dragCard(picked, 'note', 4000, 0)
+picked = await picking.settle()
+assert.equal(cardById(picked, 'doc').props.style.left, 2000 - 240, 'the most constrained card stops at the plane edge')
+assert.equal(cardById(picked, 'note').props.style.left, (2000 - 240) - (600 - 10),
+  'and the card beside it keeps the distance between them')
+
+// Drag to move a card, and the system clipboard both ways ----------------------
+
+// Grabbing the picture moves the card: that is what someone dragging a picture is
+// trying to do, and it is the gesture that used to hand the canvas a file.
+const shotTop = cardById(picked, 'shot').props.style.top
+dragByBody(picked, 'shot', 30, 25)
+picked = await picking.settle()
+assert.equal(cardById(picked, 'shot').props.style.left, 300 + 30, 'dragging the picture moves the card')
+assert.equal(cardById(picked, 'shot').props.style.top, shotTop + 25, 'vertically too')
+assert.equal(chosenCard(picked, 'shot'), true, 'and the card that was grabbed is the selection')
+
+// Copying out is the host's job: a page can read a file list off the clipboard but
+// has no way to write one, and a file list is what makes the files pasteable in the
+// file manager or in another application.
+const clipboardCalls = []
+globalThis.fetch = (url, init) => {
+  const address = String(url)
+  clipboardCalls.push({ url: address, method: init?.method ?? 'GET', body: init?.body })
+  if (address.includes('/clipboard')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) })
+  return answered(url, init)
+}
+const pasteEvent = (clipboardData, target) => {
+  const listeners = [...(windowListeners.get('paste') ?? [])]
+  assert.ok(listeners.length >= 1, 'the mounted panel holds a paste listener')
+  listeners[listeners.length - 1]({ clipboardData, target, preventDefault: () => {} })
+}
+
+const clipboardOnly = () => clipboardCalls.filter(entry => entry.url.includes('/clipboard'))
+pressKey('Escape')
+picked = await picking.settle()
+pressKey('c', { ctrlKey: true })
+picked = await picking.settle()
+assert.equal(clipboardOnly().length, 0, 'copying with nothing selected reaches no route')
+assert.ok(texts(picked).some(text => text.includes('没有选中卡片')), 'and says what to do first')
+
+clickCard(picked, 'doc')
+picked = await picking.settle()
+pressKey('c', { ctrlKey: true })
+picked = await picking.settle()
+const copyCall = clipboardCalls.find(entry => entry.url.includes('/clipboard'))
+assert.ok(copyCall !== undefined, 'Ctrl+C reaches the clipboard route')
+assert.deepEqual(JSON.parse(copyCall.body), { names: ['notes.md'] }, 'a stored file goes out as a file list')
+assert.ok(texts(picked).some(text => text.includes('已把 1 个文件放进系统剪贴板')),
+  'and the panel says where it went')
+
+clickCard(picked, 'note')
+picked = await picking.settle()
+pressKey('c', { ctrlKey: true })
+picked = await picking.settle()
+const textCall = clipboardCalls.filter(entry => entry.url.includes('/clipboard')).at(-1)
+assert.deepEqual(JSON.parse(textCall.body), { text: '记得改端口' }, 'a note goes out as its text')
+assert.ok(texts(picked).some(text => text.includes('已把 1 张便签的文字放进系统剪贴板')), 'and says so')
+
+// The browser's own copy command is the other way Ctrl+C arrives, and handling it
+// means a keydown claimed upstream cannot lose the copy. A keydown that is handled
+// cancels the default action, so only one of the two ever runs.
+const copyEvent = (target) => {
+  const listeners = [...(windowListeners.get('copy') ?? [])]
+  assert.ok(listeners.length >= 1, 'the mounted panel holds a copy listener')
+  listeners[listeners.length - 1]({ target, preventDefault: () => {} })
+}
+clickCard(picked, 'doc')
+picked = await picking.settle()
+const beforeCopyEvent = clipboardOnly().length
+copyEvent(undefined)
+picked = await picking.settle()
+assert.equal(clipboardOnly().length, beforeCopyEvent + 1, 'the copy command reaches the clipboard too')
+assert.deepEqual(JSON.parse(clipboardOnly().at(-1).body), { names: ['notes.md'] }, 'with the same file list')
+copyEvent({ tagName: 'TEXTAREA' })
+assert.equal(clipboardOnly().length, beforeCopyEvent + 1, 'a copy inside a note belongs to the browser')
+pressKey('Escape')
+picked = await picking.settle()
+copyEvent(undefined)
+assert.equal(clipboardOnly().length, beforeCopyEvent + 1, 'and with nothing selected the copy is not ours either')
+
+// Pasting brings the outside in: a file copied in the file manager becomes a stored
+// card, and text on the clipboard becomes a note holding it.
+const cardsBeforePaste = cardsOf(picked).length
+pasteEvent({
+  items: [{ kind: 'file', getAsFile: () => new File(['bytes'], 'from-explorer.png', { type: 'image/png' }) }],
+  getData: () => '',
+})
+await new Promise((resolve) => { setTimeout(resolve, 0) })
+picked = await picking.settle()
+assert.ok(clipboardCalls.some(entry => entry.method === 'POST' && entry.url.includes('name=from-explorer.png')),
+  'a pasted file is stored under its own name')
+assert.equal(cardsOf(picked).length, cardsBeforePaste + 1, 'and lands as a card')
+assert.ok(texts(picked).some(text => text.includes('已从剪贴板存入 1 个文件')), 'the panel says where it came from')
+
+// A screenshot arrives with no name at all, and a stored file needs one. This one
+// is listed only in `files`, which is the other way a browser hands pasted files over.
+pasteEvent({
+  files: [new File(['bytes'], '', { type: 'image/png' })],
+  getData: () => '',
+})
+await new Promise((resolve) => { setTimeout(resolve, 0) })
+picked = await picking.settle()
+assert.ok(clipboardCalls.some(entry => entry.url.includes('name=clipboard-') && entry.url.includes('.png')),
+  'a clipboard picture with no name is stored under one of its own')
+
+// Text on the clipboard becomes a note: the canvas is where it was pasted.
+pasteEvent({ items: [], getData: (type) => (type === 'text/plain' ? '贴进来的文字' : '') })
+picked = await picking.settle()
+assert.equal(cardsOf(picked).length, cardsBeforePaste + 3, 'pasted text lands as a note')
+assert.equal(elements(picked).filter(node => node.type === 'textarea').some(node => node.props.value === '贴进来的文字'),
+  true, 'holding exactly what the clipboard had')
+assert.ok(texts(picked).some(text => text.includes('已从剪贴板新建一张便签')), 'and says so')
+
+// A field that can be typed in keeps its own paste, the way it keeps Delete and
+// Ctrl+Z: pasting into a note is still the browser's text paste.
+pasteEvent({
+  items: [{ kind: 'file', getAsFile: () => new File(['bytes'], 'nope.png', { type: 'image/png' }) }],
+  getData: () => '',
+}, { tagName: 'TEXTAREA' })
+await new Promise((resolve) => { setTimeout(resolve, 0) })
+picked = await picking.settle()
+assert.equal(clipboardCalls.some(entry => entry.url.includes('name=nope.png')), false,
+  'pasting into a note stores nothing')
+
+// A host that started before this route existed answers with the web server's own
+// page instead of this plugin's JSON, and that is a restart, not a broken clipboard.
+globalThis.fetch = (url, init) => (String(url).includes('/clipboard')
+  ? Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('not json')) })
+  : answered(url, init))
+clickCard(picked, 'doc')
+picked = await picking.settle()
+pressKey('c', { ctrlKey: true })
+picked = await picking.settle()
+assert.ok(texts(picked).some(text => text.includes('重启 DSH')), 'a host without the route says to restart it')
 
 console.log('temp-space client smoke: ok')

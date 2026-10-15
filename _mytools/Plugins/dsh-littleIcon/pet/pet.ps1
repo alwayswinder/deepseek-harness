@@ -433,8 +433,9 @@ function Get-Labels {
         OpenCwdFailed         = 'The folder could not be opened.'
         Settings              = 'Settings'
         Sites                 = 'Sites'
+        SitesFavorites        = 'Favourite sites'
         SitesEmpty            = 'No sites yet. Add one under Settings.'
-        SitesManage           = 'Manage sites'
+        SitesManage           = 'Site settings'
         Nav                   = 'Site list'
         NavMissing            = 'Site list (not generated yet)'
         NavFailed             = 'No browser would open it. Check the default browser setting.'
@@ -594,8 +595,10 @@ $SCRIPT:Sites = @()
 $SCRIPT:SiteMenu = $null
 # The generated navigation page's path, as the host publishes it, and empty when
 # this machine has no library to show. The page is a build product, so the menu
-# entry is offered only once there is one to open.
+# entry is offered only once there is one to open: that entry is built once and
+# refreshed from this path rather than rebuilt.
 $SCRIPT:FavoritesPage = ''
+$SCRIPT:NavItem = $null
 # Music: the library the host published, the MediaPlayer that owns the audio, what
 # this process last reported about it, and the submenu itself. The submenu is
 # rebuilt at every open because a download that finished in between, a volume the
@@ -1126,6 +1129,62 @@ function Add-SiteMenuItem($Menu, $Site) {
     [void]$Menu.DropDownItems.Add($item)
 }
 
+function Add-PetMenuItem($Items, [string]$Text, [string]$Icon) {
+    $item = New-Object System.Windows.Forms.ToolStripMenuItem
+    $item.Text = $Text
+    $item.Tag = $Icon
+    $item.AutoSize = $true
+    $item.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
+    $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    [void]$Items.Add($item)
+    return $item
+}
+
+function New-NavigationItem($Items) {
+    # The one entry under the sites entry that opens a page of its own instead of an
+    # address: the page is a local file, so the browser association opens it and this
+    # process needs nothing from the host at the click. Whether there is a page to
+    # open is the only thing that changes about it, so it is built once and refreshed
+    # at every open (see Update-NavigationEntry) rather than rebuilt.
+    $nav = Add-PetMenuItem $Items $SCRIPT:Labels.Nav ''
+    $nav.add_Click({
+        try { Open-NavigationPage $SCRIPT:FavoritesPage } catch { Write-Log $_.Exception.Message }
+    })
+    return $nav
+}
+
+function Add-SitesMenu($Menu) {
+    # Two levels below the right click: the entry that carries this name opens
+    # nothing by itself, and what it lists is the configured sites in a submenu of
+    # their own, beside the library page rather than above it.
+    $sitesItem = Add-PetMenuItem $Menu.Items $SCRIPT:Labels.Sites 'globe'
+    $favoritesItem = Add-PetMenuItem $sitesItem.DropDownItems $SCRIPT:Labels.SitesFavorites ''
+    foreach ($dropdown in @($sitesItem.DropDown, $favoritesItem.DropDown)) {
+        $dropdown.ShowImageMargin = $false
+        $dropdown.ShowItemToolTips = $true
+        $dropdown.BackColor = $Menu.BackColor
+        $dropdown.ForeColor = $Menu.ForeColor
+    }
+    # The list is the person's own and can be any length, so it is rebuilt from the
+    # published rows at every open (see Update-SiteMenu), which is also what makes an
+    # edit in the settings card reach a pet that is already running.
+    $favoritesItem.add_DropDownOpening({
+        try { Update-SiteMenu } catch { Write-Log $_.Exception.Message }
+    })
+    # The library page is a build product, so this entry is offered only once there
+    # is one to open: it sits beside the list and is refreshed, not rebuilt.
+    $navItem = New-NavigationItem $sitesItem.DropDownItems
+    $sitesItem.add_DropDownOpening({
+        try { Update-NavigationEntry } catch { Write-Log $_.Exception.Message }
+    })
+    # The script scope is what the refresh and the click read these from, so both
+    # are published before the first refresh runs.
+    $SCRIPT:SiteMenu = $favoritesItem
+    $SCRIPT:NavItem = $navItem
+    [void](Update-NavigationEntry)
+    return $sitesItem
+}
+
 function Update-SiteMenu {
     # Rebuilt whole at every open rather than kept in step with the state file:
     # the list is configuration, it is short, and rebuilding is what makes an edit
@@ -1150,25 +1209,6 @@ function Update-SiteMenu {
     # The way to a list that is empty, and to a longer one: the settings card owns
     # the list, so this is the same page entry the main menu's own Settings opens.
     [void]$SCRIPT:SiteMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    # The whole library, where the entries above are the handful configured by hand.
-    # This is the one entry in the submenu that opens a page of its own instead of an
-    # address: the page is a local file, so the browser association opens it and this
-    # process needs nothing from the host at the click. Until the host has built one
-    # there is no file to open, and saying so beats an entry that does nothing.
-    $nav = New-Object System.Windows.Forms.ToolStripMenuItem
-    $nav.AutoSize = $true
-    $nav.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
-    if ([string]::IsNullOrWhiteSpace($SCRIPT:FavoritesPage) -or -not (Test-Path -LiteralPath $SCRIPT:FavoritesPage)) {
-        $nav.Text = $SCRIPT:Labels.NavMissing
-        $nav.Enabled = $false
-    } else {
-        $nav.Text = $SCRIPT:Labels.Nav
-        $nav.Tag = 'globe'
-        $nav.add_Click({
-            try { Open-NavigationPage $SCRIPT:FavoritesPage } catch { Write-Log $_.Exception.Message }
-        })
-    }
-    [void]$SCRIPT:SiteMenu.DropDownItems.Add($nav)
     $manage = New-Object System.Windows.Forms.ToolStripMenuItem
     $manage.Text = $SCRIPT:Labels.SitesManage
     $manage.Tag = 'gear'
@@ -1181,6 +1221,21 @@ function Update-SiteMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     [void]$SCRIPT:SiteMenu.DropDownItems.Add($manage)
+}
+
+function Update-NavigationEntry {
+    # Until the host has built a library there is no file to open, and saying so in
+    # the entry beats an entry that does nothing.
+    if ($null -eq $SCRIPT:NavItem) { return }
+    if ([string]::IsNullOrWhiteSpace($SCRIPT:FavoritesPage) -or -not (Test-Path -LiteralPath $SCRIPT:FavoritesPage)) {
+        $SCRIPT:NavItem.Text = $SCRIPT:Labels.NavMissing
+        $SCRIPT:NavItem.Tag = ''
+        $SCRIPT:NavItem.Enabled = $false
+    } else {
+        $SCRIPT:NavItem.Text = $SCRIPT:Labels.Nav
+        $SCRIPT:NavItem.Tag = 'globe'
+        $SCRIPT:NavItem.Enabled = $true
+    }
 }
 
 # ---- opening the navigation page --------------------------------------------
@@ -2266,7 +2321,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesFavorites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -2306,15 +2361,17 @@ if ($SelfTest) {
     Write-Output ("duck-output: full=$((Get-MusicOutputVolume 70 1).ToString($invariant))" `
         + " faded=$((Get-MusicOutputVolume 4 0.2).ToString($invariant))" `
         + " silent=$((Get-MusicOutputVolume 0 1).ToString($invariant))")
-    # The sites submenu is the menu's only part built from configuration rather than
+    # The sites entry is the menu's only part built from configuration rather than
     # from this script, so it is built here - without ever being shown - and what
     # each list turns into is printed. The host has already dropped every row it
-    # cannot open, so what is left to get wrong is the entries themselves: their
-    # text, the address each carries, and the ones an empty list still needs.
-    # The item is the submenu, so its own DropDownItems is the collection the menu
-    # fills; a ContextMenuStrip is a dropdown and has none.
-    $SCRIPT:SiteMenu = New-Object System.Windows.Forms.ToolStripMenuItem
+    # cannot open, so what is left to get wrong is the entries themselves: the two
+    # the right click reaches, what each configured site reads and carries, and the
+    # one entry an empty list still needs. A ContextMenuStrip is what the real menu
+    # is, and the entry the sites hang from is the one the pet adds to it.
     $siteMenuProbe = New-Object System.Collections.Generic.List[string]
+    $probeMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    $sitesItem = Add-SitesMenu $probeMenu
+    [void]$siteMenuProbe.Add((@($sitesItem.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)[$($_.Enabled)]" }) -join '|')
     $SCRIPT:Sites = @()
     Update-SiteMenu
     [void]$siteMenuProbe.Add((@($SCRIPT:SiteMenu.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)" }) -join '|')
@@ -2337,21 +2394,20 @@ if ($SelfTest) {
     $clicked = Read-Json $probeCommand
     if ($null -eq $clicked) { [void]$siteMenuProbe.Add('click=no-command') }
     else { [void]$siteMenuProbe.Add("click=$($clicked.command)|$($clicked.url)") }
-    # The navigation entry is the one row in this submenu that opens a page rather
-    # than an address, and it is offered only once that page is on disk. The probe
-    # gives it one and then fires it down all three roads: with a browser registered
-    # (the arm a healthy machine takes), with only the file association left, and
-    # with neither, where the failure has to become something the person sees,
-    # because a click that opens nothing is indistinguishable from a click that
+    # The navigation entry is the other thing under this entry: it opens a page
+    # rather than an address, and it is offered only once that page is on disk. The
+    # probe gives it one and then fires it down all three roads: with a browser
+    # registered (the arm a healthy machine takes), with only the file association
+    # left, and with neither, where the failure has to become something the person
+    # sees, because a click that opens nothing is indistinguishable from a click that
     # missed. Start-Process, Show-PetNotice, and the registry read are shadowed for
     # these few lines, the way Show-DshWindow is above, so a self test never opens a
     # browser and never depends on how this machine is configured.
     $navProbe = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'nav-probe.html'
     Set-Content -LiteralPath $navProbe -Value '<!DOCTYPE html>' -Encoding UTF8
     $SCRIPT:FavoritesPage = $navProbe
-    Update-SiteMenu
-    $navItems = @($SCRIPT:SiteMenu.DropDownItems)
-    $navItem = $navItems[$navItems.Count - 2]
+    Update-NavigationEntry
+    $navItem = $SCRIPT:NavItem
     $SCRIPT:NavProbeExe = ''
     $SCRIPT:NavProbeUrl = ''
     $SCRIPT:NavProbeNotice = ''
@@ -2385,8 +2441,9 @@ if ($SelfTest) {
         'not-a-command'
     )
     Write-Output "browser-exe: $((@($browserCommands) | ForEach-Object { Get-BrowserExe $_ }) -join '|')"
-    $SCRIPT:SiteMenu.Dispose()
+    $probeMenu.Dispose()
     $SCRIPT:SiteMenu = $null
+    $SCRIPT:NavItem = $null
     # What the host publishes, read back the way Apply-State reads it: the note names
     # the entry, and a row that left it blank is named by its address instead of
     # reaching the menu as an empty line.
@@ -3331,17 +3388,6 @@ function Exit-Pet {
     try { $app.Shutdown() } catch { }
 }
 
-function Add-PetMenuItem($Items, [string]$Text, [string]$Icon) {
-    $item = New-Object System.Windows.Forms.ToolStripMenuItem
-    $item.Text = $Text
-    $item.Tag = $Icon
-    $item.AutoSize = $true
-    $item.Margin = New-Object System.Windows.Forms.Padding(0, 0, 0, 0)
-    $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
-    [void]$Items.Add($item)
-    return $item
-}
-
 function New-PetMenu {
     # The plugin's only menu surface: a right-click on the pet. Commands the page
     # carries out come first, window actions after them.
@@ -3373,19 +3419,10 @@ function New-PetMenu {
             Send-MenuCommand 'chat'
         } catch { Write-Log $_.Exception.Message }
     })
-    # The sites the settings card owns, one level down: the list is the person's
-    # own and can be any length, so the entry itself opens nothing and the submenu
-    # is rebuilt from the published list at every open (see Update-SiteMenu), which
-    # is also what makes an edit reach a pet that is already running.
-    $sitesItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Sites 'globe'
-    $sitesItem.DropDown.ShowImageMargin = $false
-    $sitesItem.DropDown.ShowItemToolTips = $true
-    $sitesItem.DropDown.BackColor = $menu.BackColor
-    $sitesItem.DropDown.ForeColor = $menu.ForeColor
-    $sitesItem.add_DropDownOpening({
-        try { Update-SiteMenu } catch { Write-Log $_.Exception.Message }
-    })
-    $SCRIPT:SiteMenu = $sitesItem
+    # The sites the settings card owns, and the library page beside them: the entry
+    # the person clicks opens nothing itself, and both of the things under it are
+    # built together because they share that entry (see Add-SitesMenu).
+    [void](Add-SitesMenu $menu)
     # The Git page is the plugin's own tab type, so unlike Chat it needs nothing
     # shipped besides the right Sidebar; the page reads the repository of whatever
     # Session is in front. Showing DSH first is the same requirement.

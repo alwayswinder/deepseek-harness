@@ -28,7 +28,7 @@ export const exportDir = join(repositoryRoot, '_mytools', 'Note')
 export const FILE_HEADER = [
   '# 个人网站库，唯一的事实来源。浏览器导出的书签文件只在 import.mjs 里读过一次。',
   '# 字段：id url title group notes(Markdown) tags icon pinned addedAt updatedAt',
-  '# 展示页：桌宠右键菜单 -> 常用网站 -> 网站导航；格式说明见 README.md。',
+  '# 展示页：桌宠右键菜单 -> 网站 -> 网站导航；格式说明见 README.md。',
   '',
 ].join('\n')
 

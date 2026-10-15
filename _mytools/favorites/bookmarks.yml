@@ -7,600 +7,944 @@ bookmarks:
     url: https://cn.bing.com/?scope=web&FORM=EDNTHT
     title: 必应
     group: ""
+    autoTags:
+      - 搜索
     icon: assets/24a58ec94704.png
     addedAt: 2023-02-18T03:48:06.000Z
   - id: 3cf0ef1a5afd
     url: https://translate.google.cn/?sl=auto&tl=zh-CN&text=scrub&op=translate
     title: Google 翻译
     group: ""
+    autoTags:
+      - 工具
     icon: assets/3cf0ef1a5afd.png
     addedAt: 2021-03-11T06:23:03.000Z
   - id: dab13969edb6
     url: https://dev.epicgames.com/community/
     title: Epic Developer Community
     group: ""
+    autoTags:
+      - Unreal
+      - 社区
     icon: assets/dab13969edb6.png
     addedAt: 2022-05-27T07:11:03.000Z
   - id: f8f0659129fb
     url: https://www.google.co.jp/webhp?tab=Tw
     title: Google
     group: ""
+    autoTags:
+      - 搜索
     icon: assets/f8f0659129fb.png
     addedAt: 2023-03-16T03:59:24.000Z
   - id: 5082a1bf2b96
     url: https://medium.com/
     title: 中等
     group: ""
+    autoTags:
+      - 文章
+      - 平台
     icon: assets/5082a1bf2b96.png
     addedAt: 2023-03-06T08:01:10.000Z
   - id: fd5e94d59cbf
     url: https://tieba.baidu.com/
     title: 百度贴吧——全球领先的中文社区
     group: ""
+    autoTags:
+      - 社区
     icon: assets/fd5e94d59cbf.png
     addedAt: 2023-05-04T07:26:47.000Z
   - id: e57b36c8a49a
     url: https://blueprintue.com/profile/linfengzi/
     title: Profile of linfengzi | Page 1 | blueprintUE | PasteBin For Unreal Engine
     group: ""
+    autoTags:
+      - Unreal
+      - 工具
+      - 素材
     icon: assets/e57b36c8a49a.png
     addedAt: 2025-08-29T07:28:52.000Z
   - id: 75dd35892c8d
     url: https://pan.quark.cn/list#/list/all
     title: 夸克网盘
     group: ""
+    autoTags:
+      - 网盘
+      - 工具
     icon: assets/75dd35892c8d.png
     addedAt: 2023-10-25T08:56:09.000Z
   - id: 730bdff142ca
     url: https://herogames.feishu.cn/wiki/wikcnV8vN1Y93bNm58vZ6NjaiAc
-    title: ‌​⁡⁣⁤​﻿⁡⁢⁤‍⁤⁡‌⁢‬‌⁣‌⁢‌⁤‍⁢‬‬​​⁡‬⁤‍⁤⁣‌﻿⁡﻿‬⁢​‬​‬‍⁣⁢​​﻿光影工作室 - 英雄游戏云文档
+    title: 光影工作室 - 英雄游戏云文档
     group: Work
+    autoTags:
+      - 工作
+      - 文档
     icon: assets/730bdff142ca.png
     addedAt: 2023-03-06T01:57:48.000Z
   - id: fa82904af162
     url: https://www.tapd.cn/tapd_fe/my/work
     title: 我的工作-TAPD平台
     group: Work
+    autoTags:
+      - 工作
+      - 平台
     icon: assets/fa82904af162.png
     addedAt: 2025-05-07T03:23:05.000Z
   - id: 8476851c2064
     url: https://herogames.feishu.cn/wiki/GSXgw3OQgigICakpYbGcOHj4nAf
-    title: ‌⁠​​‍‌​​‌​‌‌​﻿​​‌‍​​⁠​‌​​‍​﻿‬​﻿‬​‍​﻿​​‌​﻿﻿​​‌﻿​‍5.1.3.8) -侯富林 - 英雄游戏云文档
+    title: 5.1.3.8) -侯富林 - 英雄游戏云文档
     group: Work
+    autoTags:
+      - 工作
+      - 文档
     icon: assets/8476851c2064.png
     addedAt: 2025-10-27T02:41:51.000Z
   - id: 99324fdb91b5
     url: http://8.147.235.154:2100/submit.html
     title: P4/Git推送权限申请
     group: Work
+    autoTags:
+      - 工作
+      - 工具
     addedAt: 2026-03-10T06:46:18.000Z
   - id: c1c47a9bd167
     url: https://herogames.feishu.cn/wiki/MWJdwvEjNiJwNYk9gh7cmK6OnDf?from=space_search
-    title: ‍​​⁠‌​⁠​​​​‌​​​​​‍​​﻿‬⁠​‍​‍⁠​​​​⁠​​‍​​‬‍‍​‍‌‬​‌﻿‍‍【梳理】【武器工具台/详情】需求调整/剩余功能 - 英雄游戏云文档
+    title: 【梳理】【武器工具台/详情】需求调整/剩余功能 - 英雄游戏云文档
     group: Work
+    autoTags:
+      - 工作
+      - 文档
     icon: assets/c1c47a9bd167.png
     addedAt: 2026-03-25T02:22:05.000Z
   - id: 647460f4a4cc
     url: https://herogames.feishu.cn/wiki/M5J6wCaJDiHey2ksG89cg7q2nCD
-    title: ‌⁠​‬‍​﻿​‍﻿‌‌﻿‌​‌​​​‬​​‍﻿⁠‬‌‌﻿‌‌​﻿‍‍‌​﻿​﻿‬​​​​‌⁠​​‬TA - 英雄游戏云文档
+    title: TA - 英雄游戏云文档
     group: Work
+    autoTags:
+      - 工作
+      - 文档
     icon: assets/647460f4a4cc.png
     addedAt: 2026-06-16T06:40:22.000Z
   - id: 8768d5a52c57
     url: https://www.jianguoyun.com/#/
     title: 我的坚果云 - 坚果云 - 云盘|网盘|企业网盘|同步|备份|无限空间|免费网络硬盘|企业云盘
     group: Work
+    autoTags:
+      - 网盘
+      - 工作
     icon: assets/8768d5a52c57.png
     addedAt: 2026-09-04T02:28:59.000Z
   - id: 86f5cc7e1338
     url: https://www.jianguoyun.com/d/home#/
     title: 我的坚果云 - 坚果云 - 云盘|网盘|企业网盘|同步|备份|无限空间|免费网络硬盘|企业云盘
     group: Work
+    autoTags:
+      - 网盘
+      - 工作
     icon: assets/86f5cc7e1338.png
     addedAt: 2026-09-07T02:00:41.000Z
   - id: 40d6085f3253
     url: https://www.gamersky.com/
     title: 游民星空 - 大型单机游戏门户 提供特色单机游戏资讯、下载
     group: 游戏
+    autoTags:
+      - 游戏
+      - 资讯
     icon: assets/40d6085f3253.png
     addedAt: 2023-02-22T09:58:41.000Z
   - id: 7e775bd373df
     url: https://nga.cn/
     title: NGA玩家社区 - NGA.CN
     group: 游戏
+    autoTags:
+      - 游戏
+      - 社区
     icon: assets/7e775bd373df.png
     addedAt: 2023-08-03T10:42:02.000Z
   - id: b8fe0995129b
     url: https://www.bilibili.com/video/BV1re4y1a7jp/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     title: 【UE5】简单好看的变形效果_哔哩哔哩_bilibili
     group: 游戏
+    autoTags:
+      - Unreal
+      - 视频
+      - 特效
     icon: assets/b8fe0995129b.png
     addedAt: 2023-09-12T02:55:51.000Z
   - id: fb68260a78a5
     url: https://www.huya.com/g/7
     title: DOTA2直播_DOTA2精彩解说直播_DOTA2视频 - 虎牙直播
     group: 游戏
+    autoTags:
+      - 游戏
+      - 直播
     icon: assets/fb68260a78a5.png
     addedAt: 2024-04-11T10:40:22.000Z
   - id: 3aa35e9ace06
     url: https://www.modelscope.cn/studios/MiDd1Eye/lulu-Bert-VITS2/summary
     title: AI雫るる · 创空间
     group: AI
+    autoTags:
+      - AI
+      - 平台
     icon: assets/3aa35e9ace06.png
     addedAt: 2024-01-19T08:43:20.000Z
   - id: 7e8e85a5e350
     url: https://gemini.google.com/app?hl=zh-cn
     title: Gemini
     group: AI
+    autoTags:
+      - AI
+      - 工具
     icon: assets/7e8e85a5e350.png
     addedAt: 2025-04-14T08:13:47.000Z
   - id: c8982ba74092
     url: https://github.com/chongdashu/unreal-mcp
     title: chongdashu/unreal-mcp：启用像Cursor、Windsurf和Claude Desktop这样的AI助手客户端，通过模型上下文协议（MCP）通过自然语言控制虚幻引擎。
     group: AI
+    autoTags:
+      - Unreal
+      - AI
+      - 代码库
     icon: assets/c8982ba74092.png
     addedAt: 2026-02-25T08:09:54.000Z
   - id: 7343773f8d52
     url: https://github.com/ChiR24/Unreal_mcp
     title: ChiR24/Unreal_mcp：一个全面的模型上下文协议（MCP）服务器，使AI助手能够通过原生的C++自动化桥插件控制虚幻引擎。采用 TypeScript、C++ 和 Rust（WebAssembly）构建，实现超高性能游戏开发自动化。
     group: AI
+    autoTags:
+      - Unreal
+      - AI
+      - 代码库
     icon: assets/7343773f8d52.png
     addedAt: 2026-02-25T08:12:12.000Z
   - id: 47ec9cdaf726
     url: https://github.com/ArtisanGameworks/SpecialAgentPlugin
     title: ArtisanGameworks/SpecialAgentPlugin：SpecialAgent 是一个 Unreal Engine 5 插件，实现了模型上下文协议（MCP）服务器，使大型语言模型如 Claude 能够程序化地与 UE5 项目交互。拥有跨14个服务类别的71+工具端点，LLM能够全面掌控构建复杂的三维环境。
     group: AI
+    autoTags:
+      - Unreal
+      - AI
+      - 代码库
     icon: assets/47ec9cdaf726.png
     addedAt: 2026-02-25T08:14:45.000Z
   - id: 86a8c38a378d
     url: https://github.com/flopperam/unreal-engine-mcp/tree/main#
     title: flopperam/unreal-engine-mcp：通过AI和自然语言控制虚幻引擎5.5+。用MCP构建令人难以置信的3D世界和建筑杰作。用AI指令创建完整的城镇、中世纪城堡、现代豪宅、富有挑战性的迷宫和复杂建筑。
     group: AI
+    autoTags:
+      - Unreal
+      - AI
+      - 代码库
     icon: assets/86a8c38a378d.png
     addedAt: 2026-02-28T03:33:49.000Z
   - id: 03f053aa7a22
     url: https://github.com/gsd-build/get-shit-done
     title: "gsd-build/get-shit-done: A light-weight and powerful meta-prompting, context engineering and spec-driven development system for Claude Code by TÂCHES."
     group: AI
+    autoTags:
+      - AI
+      - 代码库
     icon: assets/03f053aa7a22.png
     addedAt: 2026-03-18T09:18:21.000Z
   - id: b22ad9f6b573
     url: https://github.com/garrytan/gstack
     title: garrytan/gstack：使用Garry Tan的Claude代码配置：23个有主见的工具，分别担任CEO、设计师、工程经理、发布经理、文档工程师和质量保证
     group: AI
+    autoTags:
+      - AI
+      - 代码库
     icon: assets/b22ad9f6b573.png
     addedAt: 2026-03-31T03:39:13.000Z
   - id: 9fa086f6369c
     url: https://console.volcengine.com/ark/region:ark+cn-beijing/openManagement?LLM=%7B%7D&advancedActiveKey=subscribe
     title: 火山方舟管理控制台
     group: AI
+    autoTags:
+      - AI
+      - 平台
     icon: assets/9fa086f6369c.png
     addedAt: 2026-04-22T03:43:02.000Z
   - id: 3487233bff31
     url: https://platform.deepseek.com/top_up
     title: DeepSeek 开放平台
     group: AI
+    autoTags:
+      - AI
+      - 平台
     icon: assets/3487233bff31.png
     addedAt: 2026-04-24T06:00:58.000Z
   - id: f157a1cb00ef
     url: https://github.com/bobbyz1x2c3/layer-designer/
     title: "bobbyz1x2c3/layer-designer: 将 UI 设计拆解为可独立使用的透明图层，支持从需求到交付的完整工作流。"
     group: AI
+    autoTags:
+      - AI
+      - 代码库
+      - 设计
     icon: assets/f157a1cb00ef.png
     addedAt: 2026-05-06T08:33:52.000Z
   - id: d9569cde07a3
     url: https://github.com/Hmbown/DeepSeek-TUI
     title: Hmbown/DeepSeek-TUI：运行在终端中的DeepSeek模型编码代理
     group: AI
+    autoTags:
+      - AI
+      - 代码库
+      - 工具
     icon: assets/d9569cde07a3.png
     addedAt: 2026-05-06T10:08:29.000Z
   - id: 66a1412d1a1e
     url: https://holopix.cn/board/all?route_from=official-website&device_env=pc
     title: Holopix AI - 游戏美术设计神器 丨 低门槛、高可控的AI设计解决方案
     group: AI
+    autoTags:
+      - AI
+      - 美术
+      - 工具
     icon: assets/66a1412d1a1e.png
     addedAt: 2026-05-08T06:36:17.000Z
   - id: 5cb9cbc52235
     url: https://www.celiasu.com/2026/03/canva-magic-layers.html
     title: 17學 Canva｜Magic Layers 讓 AI 圖片自動拆解出多圖層
     group: AI
+    autoTags:
+      - AI
+      - 美术
+      - 教程
     icon: assets/5cb9cbc52235.png
     addedAt: 2026-05-09T01:51:23.000Z
   - id: ae9d5d04ecd8
     url: https://www.playmo.studio/
     title: PLAYMO 2D - AI Animation Tool
     group: AI
+    autoTags:
+      - AI
+      - 工具
+      - 动画
     icon: assets/ae9d5d04ecd8.png
     addedAt: 2026-05-21T01:57:22.000Z
   - id: 1595c0a5bb66
     url: https://github.com/xinkuang/china-stock-mcp
     title: "xinkuang/china-stock-mcp: MCP server that provides access to Chinese stock market data using akshare-one"
     group: AI
+    autoTags:
+      - AI
+      - 代码库
+      - 金融
     icon: assets/1595c0a5bb66.png
     addedAt: 2026-05-27T02:56:45.000Z
   - id: 4af4f60ed0b3
     url: https://opencode.ai/workspace/wrk_01KZZ9K54V1R77TX4Y37B3N304
     title: opencode
     group: AI
+    autoTags:
+      - AI
+      - 工具
+      - 代码库
     icon: assets/4af4f60ed0b3.png
     addedAt: 2026-08-27T10:51:28.000Z
   - id: 64213db178ad
     url: https://www.youtube.com/watch?v=1OoqGxN6i5A&list=PLXNFA1EysfYnWlvVy1ZzpzZd6Reyxmwxj
     title: "Houdini Foundations: PDG | Introduction - YouTube"
     group: Houdini
+    autoTags:
+      - Houdini
+      - 视频
+      - 教程
     icon: assets/64213db178ad.png
     addedAt: 2023-04-24T08:25:29.000Z
   - id: 01ea56180bcc
     url: https://grwsyw.gjj.beijing.gov.cn/ish/home?_r=0f19fbda4a0f4d7a21700756e3c4
     title: 个人首页
     group: 特殊
+    autoTags:
+      - 生活
+      - 政务
     icon: assets/01ea56180bcc.png
     addedAt: 2023-03-08T11:25:46.000Z
   - id: 6615a0a998ee
     url: https://search.chongbuluo.com/
     title: 虫部落快搜 - 搜索快人一步 - 微博搜索
     group: 特殊
+    autoTags:
+      - 搜索
+      - 工具
     icon: assets/6615a0a998ee.png
     addedAt: 2023-04-24T10:16:00.000Z
   - id: 654626b93fdd
     url: http://www.chnsatcom.com/?intldes=1989-039G
     title: CHNSATCOM
     group: 特殊
+    autoTags:
+      - 待整理
     addedAt: 2023-06-16T06:22:38.000Z
   - id: da2fc29a7f06
     url: https://www.16personalities.com/ch/%E4%BA%BA%E6%A0%BC%E6%B5%8B%E8%AF%95
     title: 免费性格测试 | 16Personalities
     group: 特殊
+    autoTags:
+      - 生活
+      - 心理
     icon: assets/da2fc29a7f06.png
     addedAt: 2024-01-09T09:47:28.000Z
   - id: b961626955dc
     url: https://www.bilibili.com/video/BV1C8411B7d5/?spm_id_from=333.337.top_right_bar_window_view_later.content.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     title: 这些Houdini核心技术 培训班是不会教你的_哔哩哔哩_bilibili
     group: 稍后再看
+    autoTags:
+      - Houdini
+      - 视频
+      - 教程
     icon: assets/b961626955dc.png
     addedAt: 2023-09-18T01:51:50.000Z
   - id: 3395d6422adb
     url: https://www.youtube.com/watch?v=NFs4D_G7t_Q
     title: (1) Creating a Spider Swarm in Unreal Engine Niagara - YouTube
     group: 稍后再看
+    autoTags:
+      - Unreal
+      - 特效
+      - 视频
     icon: assets/3395d6422adb.png
     addedAt: 2023-09-18T01:52:21.000Z
   - id: 5c9e1a319c63
     url: https://www.youtube.com/watch?v=PkLWiY2SBSQ
     title: (1) UE5 Demo Mesh Insect Swarn - Part 1 - YouTube
     group: 稍后再看
+    autoTags:
+      - Unreal
+      - 特效
+      - 视频
     icon: assets/5c9e1a319c63.png
     addedAt: 2023-09-18T01:52:26.000Z
   - id: 8a96b2533d39
     url: https://www.youtube.com/watch?v=WP-Bm65Q-1Y&list=PLFt_AvWsXl0eBW2EiBtl_sxmDtSgZBxB3&index=4
     title: "(2) Procedural Landmass Generation (E02: Noise Map) - YouTube"
     group: 稍后再看
+    autoTags:
+      - 程序化生成
+      - 教程
+      - 视频
     icon: assets/8a96b2533d39.png
     addedAt: 2023-11-03T06:48:32.000Z
   - id: 06e18a557ee0
     url: https://www.youtube.com/watch?v=f0m73RsBik4&list=PLFt_AvWsXl0eBW2EiBtl_sxmDtSgZBxB3&index=13
     title: "(3) Procedural Landmass Generation (E08: Threading) - YouTube"
     group: 稍后再看
+    autoTags:
+      - 程序化生成
+      - 教程
+      - 视频
     icon: assets/06e18a557ee0.png
     addedAt: 2024-02-19T02:26:54.000Z
   - id: a97af92db41f
     url: https://www.youtube.com/watch?v=-sBbk3nredU
     title: (1) Unreal 5.2 - Mesh to Voxel effect (NIAGARA TUTORIAL) - YouTube
     group: 武器变形
+    autoTags:
+      - Unreal
+      - 特效
+      - 视频
     icon: assets/a97af92db41f.png
     addedAt: 2023-09-18T06:51:49.000Z
   - id: ca97cec44139
     url: https://www.gdcvault.com/play/1028844/Advanced-Graphics-Summit-Reinventing-the
     title: "GDC Vault - Advanced Graphics Summit: Reinventing the Wheel for Snow Rendering"
     group: 学术
+    autoTags:
+      - 图形学
+      - 视频
+      - 学术
     icon: assets/ca97cec44139.png
     addedAt: 2023-10-17T08:27:53.000Z
   - id: 67272b1c5849
     url: https://www.ea.com/seed
     title: SEED - 官方网站
     group: 学术
+    autoTags:
+      - 图形学
+      - 学术
     icon: assets/67272b1c5849.png
     addedAt: 2023-11-15T02:05:56.000Z
   - id: 765e61d69232
     url: https://sms.playstation.com/stories/gdc-2023-presentations
     title: 圣莫尼卡工作室 - 圣莫尼卡工作室 GDC 2023 演示文稿
     group: 学术
+    autoTags:
+      - 图形学
+      - 视频
+      - 学术
     addedAt: 2023-11-15T02:08:03.000Z
   - id: e3b88ad856ab
     url: https://80.lv/articles/check-out-this-incredible-real-time-procedural-waterfall-generator-in-ue5/
     title: 在UE5中查看这个实时程序化瀑布生成器
     group: 学术
+    autoTags:
+      - Unreal
+      - 程序化生成
+      - 文章
     icon: assets/e3b88ad856ab.png
     addedAt: 2023-12-08T09:31:34.000Z
   - id: d119f19bf314
     url: http://neuralnetworksanddeeplearning.com/
     title: 神经网络和深度学习
     group: 学术
+    autoTags:
+      - AI
+      - 教程
     addedAt: 2023-12-11T08:39:35.000Z
   - id: 8704c2161bb4
     url: https://www.quodsoler.com/blog/motion-warping-character-attacks-using-blueprints-no-c-required
     title: How to use Motion Warping for Character Attacks using Blueprints ( No C++ required ) | Quod Soler
     group: 学术
+    autoTags:
+      - Unreal
+      - 教程
+      - 动画
     icon: assets/8704c2161bb4.png
     addedAt: 2024-01-17T02:12:58.000Z
   - id: 1b341fc57733
     url: http://www.ebook80.com/index.php?c=content&a=search&kw=%E9%98%BFq%E6%AD%A3%E4%BC%A0&submit=
     title: 搜索"阿q正传"-八零电子书
     group: 学术
+    autoTags:
+      - 电子书
     icon: assets/1b341fc57733.png
     addedAt: 2024-02-21T07:18:12.000Z
   - id: c07832ad5423
     url: https://www.youtube.com/watch?v=eDYyBc3cRmw&t=401s
     title: (2) Unreal 5.3 - Making a volumetric ray marching shader from scratch (part 1) - YouTube
     group: 学术
+    autoTags:
+      - Unreal
+      - 着色器
+      - 视频
     icon: assets/c07832ad5423.png
     addedAt: 2024-02-28T09:23:08.000Z
   - id: b95cc853e3e1
     url: https://www.sebastianaaltonen.com/blog/no-graphics-api
     title: No Graphics API — Sebastian Aaltonen
     group: 学术
+    autoTags:
+      - 图形学
+      - 文章
+      - 学术
     icon: assets/b95cc853e3e1.png
     addedAt: 2025-12-17T06:33:27.000Z
   - id: c7f757758025
     url: https://mp.weixin.qq.com/s/bq33iAWjuvCMpTY340GEjg
     title: 端午出游｜青色的城，走进历史走进博物馆
     group: 旅游
+    autoTags:
+      - 旅游
+      - 文章
     icon: assets/c7f757758025.png
     addedAt: 2023-10-17T09:13:07.000Z
   - id: 92fd278cdd53
     url: https://www.baidu.com/?tn=54093922_49_hao_pg
     title: 百度一下，你就知道
     group: ""
+    autoTags:
+      - 搜索
     icon: assets/92fd278cdd53.png
     addedAt: 2024-02-11T22:34:27.000Z
   - id: f700d68f667c
     url: https://dev.epicgames.com/community/learning/tutorials/l3E0/myth-busting-best-practices-in-unreal-engine
     title: 打破 Unreal Engine 中的“最佳实践” |Epic 开发者社区
     group: Unreal
+    autoTags:
+      - Unreal
+      - 文章
+      - 参考
     icon: assets/f700d68f667c.png
     addedAt: 2024-11-08T08:13:26.000Z
   - id: 96670255c2a4
     url: https://blueprintue.com/
     title: blueprintUE | PasteBin For Unreal Engine
     group: Unreal
+    autoTags:
+      - Unreal
+      - 工具
+      - 素材
     icon: assets/96670255c2a4.png
     addedAt: 2024-08-26T09:53:40.000Z
   - id: 416d5180af26
     url: https://github.com/fjz13/UnrealSpecifiers/blob/main/Doc/Meta/Meta.md
     title: UnrealSpecifiers/Doc/Meta/Meta.md at main · fjz13/UnrealSpecifiers · GitHub
     group: Unreal
+    autoTags:
+      - Unreal
+      - 文档
+      - 代码库
     icon: assets/416d5180af26.png
     addedAt: 2024-09-05T10:09:04.000Z
   - id: 8cc937436377
     url: https://dev.epicgames.com/community/learning/tutorials/WkwJ/unreal-engine-simple-compute-shader-with-cpu-readback
     title: Simple compute shader with CPU readback | Epic Developer Community
     group: Unreal
+    autoTags:
+      - Unreal
+      - 着色器
+      - 参考
     icon: assets/8cc937436377.png
     addedAt: 2024-05-15T08:04:14.000Z
   - id: 15f7a6f1336e
     url: https://runevision.com/tech/layerprocgen/documentation/
     title: "LayerProcGen: LayerProcGen"
     group: Unreal
+    autoTags:
+      - 程序化生成
+      - 代码库
+      - 参考
     icon: assets/15f7a6f1336e.png
     addedAt: 2024-04-18T12:01:38.000Z
   - id: ac5f3a3be735
     url: https://www.youtube.com/watch?v=KnFYRlSxshc&list=PLSeWTho026lMzw6FJnFm-bfM2COSrohMX
     title: (2) [UE5 - C++] Gameplay Ability System in Unreal Engine 5 - Part 01 - The Code - YouTube
     group: Unreal
+    autoTags:
+      - Unreal
+      - GAS
+      - 视频
     icon: assets/ac5f3a3be735.png
     addedAt: 2024-07-16T07:02:19.000Z
   - id: c4d5744aa7c1
     url: https://unreal.shadeup.dev/docs/compute
     title: Compute Shaders | Shadeup
     group: Unreal
+    autoTags:
+      - Unreal
+      - 着色器
+      - 教程
     icon: assets/c4d5744aa7c1.png
     addedAt: 2024-07-24T08:46:26.000Z
   - id: 891dcde6d4fe
     url: https://www.linkedin.com/pulse/5-obscure-features-pcg-ue5-ramil-roosileht-wvvyf?utm_source=share&utm_medium=member_android&utm_campaign=share_via
     title: UE5中PCG的5个晦涩特性
     group: Unreal
+    autoTags:
+      - Unreal
+      - 程序化生成
+      - 文章
     icon: assets/891dcde6d4fe.png
     addedAt: 2024-07-24T09:46:21.000Z
   - id: e37d975b9163
     url: https://dev.epicgames.com/community/learning/tutorials/w6l7/unreal-engine-custom-gravity-in-ue-5-4
     title: UE 5.4 中的自定义重力 |Epic开发者社区
     group: Unreal
+    autoTags:
+      - Unreal
+      - 文章
+      - 参考
     icon: assets/e37d975b9163.png
     addedAt: 2024-03-22T02:32:42.000Z
   - id: 9bf5dc8e3a4a
     url: https://dev.epicgames.com/community/unreal-engine/learning
     title: 学习 - Unreal Engine | Epic Developer Community
     group: Unreal
+    autoTags:
+      - Unreal
+      - 教程
+      - 文档
     icon: assets/9bf5dc8e3a4a.png
     addedAt: 2024-11-13T06:37:01.000Z
   - id: 5e3088100f2b
     url: https://zhuanlan.zhihu.com/p/516358714
     title: UE5中的MotionMatching(五) Mirroring Animation - 知乎
     group: Unreal
+    autoTags:
+      - Unreal
+      - 动画
+      - 文章
     icon: assets/5e3088100f2b.png
     addedAt: 2024-11-19T12:19:16.000Z
   - id: 0fdd325fe645
     url: https://unrealsource.com/
     title: 最新 • Unreal Source
     group: Unreal
+    autoTags:
+      - Unreal
+      - 资讯
+      - 资源站
     icon: assets/0fdd325fe645.png
     addedAt: 2024-12-27T02:30:01.000Z
   - id: e9c223d0803d
     url: https://www.fab.com/
     title: Fab
     group: Unreal
+    autoTags:
+      - 素材
+      - 平台
     icon: assets/e9c223d0803d.png
     addedAt: 2025-01-02T09:21:42.000Z
   - id: d44d536a544f
     url: https://nebukam.github.io/PCGExtendedToolkit/
     title: PCG Extended Toolkit - PCGExtendedToolkit
     group: Unreal
+    autoTags:
+      - 程序化生成
+      - 代码库
     addedAt: 2025-02-04T09:47:55.000Z
   - id: 5ee14dc5f70f
     url: https://dev.epicgames.com/community/learning/tutorials/7dr8/unreal-engine-nne-neural-post-processing
     title: NNE - 神经后处理 |Epic 开发者社区
     group: Unreal
+    autoTags:
+      - Unreal
+      - AI
+      - 文档
     icon: assets/5ee14dc5f70f.png
     addedAt: 2025-02-20T01:47:06.000Z
   - id: 9f193bc471c9
     url: https://zhuanlan.zhihu.com/p/24572592190
     title: UE5 GameplayCameras （一）基础框架 - 知乎
     group: Unreal
+    autoTags:
+      - Unreal
+      - 文章
+      - 参考
     icon: assets/9f193bc471c9.png
     addedAt: 2025-02-27T07:22:34.000Z
   - id: 82d2c9bceed6
     url: https://github.com/thejinchao/ue5-style-guide
     title: "GitHub - thejinchao/ue5-style-guide: 让Unreal Engine工程更加规范"
     group: Unreal
+    autoTags:
+      - Unreal
+      - 规范
+      - 代码库
     icon: assets/82d2c9bceed6.png
     addedAt: 2025-03-04T08:16:23.000Z
   - id: b4764b77ec69
     url: https://dev.epicgames.com/community/learning/tutorials/DPpd/unreal-engine-gameplay-ability-system-best-practices-for-setup
     title: Gameplay Ability System - 设置最佳实践 |Epic 开发者社区
     group: Unreal
+    autoTags:
+      - Unreal
+      - GAS
+      - 文档
     icon: assets/b4764b77ec69.png
     addedAt: 2025-03-06T03:15:10.000Z
   - id: 2767f85aa376
     url: https://blog.csdn.net/qq_36984465/article/details/109715123
     title: RGB 和 HSL 的转换和应用_rgb转hsl-CSDN博客
     group: Unreal
+    autoTags:
+      - 颜色
+      - 文章
     icon: assets/2767f85aa376.png
     addedAt: 2025-03-14T03:01:32.000Z
   - id: 3d74b55226d1
     url: https://zhuanlan.zhihu.com/p/486808688
     title: 【Unreal】虚幻GAS系统快速入门 - 知乎
     group: Unreal
+    autoTags:
+      - Unreal
+      - GAS
+      - 教程
     icon: assets/3d74b55226d1.png
     addedAt: 2025-03-25T14:55:02.000Z
   - id: "714984976e99"
     url: https://www.youtube.com/playlist?list=PLoHLpVCC9RmMMmW5eP1aAyJrTjxd46rx_
     title: (5) Unreal Engine 5 - Technical Shading With HLSL - YouTube
     group: Unreal
+    autoTags:
+      - Unreal
+      - 着色器
+      - 视频
     icon: assets/714984976e99.png
     addedAt: 2025-03-26T01:56:39.000Z
   - id: 81beb75ce21e
     url: https://www.youtube.com/playlist?list=PL6eAkiWr7AyJkHVoHAfyLCldr24QCorE1
     title: (5) UE5 Gameplay Ability System (GAS) Blueprints - YouTube
     group: Unreal/Study
+    autoTags:
+      - Unreal
+      - GAS
+      - 视频
     icon: assets/81beb75ce21e.png
     addedAt: 2025-03-26T02:00:19.000Z
   - id: 52308a759eed
     url: https://quaternius.com/packs/cubeworldkit.html
     title: Quaternius • Cube World Kit
     group: Unreal/资源
+    autoTags:
+      - 素材
+      - 3D模型
     icon: assets/52308a759eed.png
     addedAt: 2025-04-09T07:37:07.000Z
   - id: f144aa64b51c
     url: https://dev.epicgames.com/community/learning/tutorials/yjLn/unreal-engine-project-titan-mini-tutorials
     title: Project Titan Mini Tutorials | Epic Developer Community
     group: Unreal
+    autoTags:
+      - Unreal
+      - 教程
+      - 参考
     icon: assets/f144aa64b51c.png
     addedAt: 2025-05-06T02:35:37.000Z
   - id: e89af71f2961
     url: https://portal.productboard.com/epicgames/1-unreal-engine-public-roadmap/tabs/124-unreal-engine-5-6
     title: UNREAL ENGINE 5.6 - Unreal Engine Public Roadmap | Product Roadmap
     group: Unreal
+    autoTags:
+      - Unreal
+      - 资讯
+      - 参考
     icon: assets/e89af71f2961.png
     addedAt: 2025-09-18T03:49:49.000Z
   - id: d3cf7684cc9a
     url: https://dev.epicgames.com/community/learning/knowledge-base/r6wl/unreal-engine-world-building-guide
     title: 世界构建指南 |Epic开发者社区
     group: Unreal
+    autoTags:
+      - Unreal
+      - 文档
+      - 教程
     icon: assets/d3cf7684cc9a.png
     addedAt: 2025-12-09T01:53:50.000Z
   - id: 8296694e1cd2
     url: https://l4p914h72l.feishu.cn/drive/me/
     title: 我的空间 - 飞书云文档
     group: 我的
+    autoTags:
+      - 文档
+      - 网盘
     icon: assets/8296694e1cd2.png
     addedAt: 2024-04-29T03:16:46.000Z
   - id: b6883a12e468
     url: https://mail.qq.com/cgi-bin/frame_html?sid=HyFS3SRIEn86E1Uz&r=d60ae018f061ec92d0fdb2590dda18dd&lang=zh
     title: QQ邮箱
     group: 我的
+    autoTags:
+      - 邮箱
+      - 工具
     icon: assets/b6883a12e468.png
     addedAt: 2024-05-16T02:16:25.000Z
   - id: 126d22288121
     url: https://www.jiumodiary.com/
     title: Jiumo Search 鸠摩搜索 - 文档搜索引擎
     group: 文学
+    autoTags:
+      - 电子书
+      - 搜索
     icon: assets/126d22288121.png
     addedAt: 2024-04-30T06:45:53.000Z
   - id: f7c09faafda0
     url: https://www.bilibili.com/video/BV1ni421v7RM/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     title: 木箱：我出了一个名刀司命！_电子竞技热门视频
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - 视频
+      - 参考
     icon: assets/f7c09faafda0.png
     addedAt: 2025-02-06T03:39:19.000Z
   - id: aaacdb8df60f
     url: https://www.bilibili.com/video/BV1pWg1enEdD/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     title: <鸣潮冷知识>关于砸木箱子木栅栏_哔哩哔哩bilibili
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - 视频
     icon: assets/aaacdb8df60f.png
     addedAt: 2025-02-06T03:39:37.000Z
   - id: 734b9c768ebf
     url: https://www.bilibili.com/video/BV17D421M7vQ/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     title: 鸣潮 在限定时间内打碎所有陶罐_哔哩哔哩bilibili
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - 视频
     icon: assets/734b9c768ebf.png
     addedAt: 2025-02-06T03:39:40.000Z
   - id: 265cf136dff0
     url: https://www.bilibili.com/video/BV1p2TFebEdH/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     title: 流浪者营地击碎陶罐挑战_哔哩哔哩bilibili
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - 视频
     icon: assets/265cf136dff0.png
     addedAt: 2025-02-06T03:39:43.000Z
   - id: ced6beeb7245
     url: https://www.bilibili.com/video/BV1rX4y1c7Z8?spm_id_from=333.788.player.switch&vd_source=f7cf7de90459b8c6a73cd9bdf2093596&p=2
     title: 这是过程_哔哩哔哩_bilibili
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - 视频
     icon: assets/ced6beeb7245.png
     addedAt: 2025-02-06T03:39:46.000Z
   - id: d9856888333a
     url: https://hero.fandom.com/wiki/Ollie_(Swapped)
     title: Ollie (Swapped) | Heroes Wiki | Fandom
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - Wiki
     icon: assets/d9856888333a.png
     addedAt: 2026-06-08T10:41:33.000Z
   - id: c4a1dc3f0cdd
     url: https://dota2.fandom.com/wiki/Axe/Sounds
     title: Axe/Sounds - Dota 2 Wiki
     group: 游戏参考
+    autoTags:
+      - 游戏
+      - Wiki
+      - 素材
     icon: assets/c4a1dc3f0cdd.png
     addedAt: 2026-06-08T10:41:56.000Z
   - id: 1e996091f117
     url: https://www.rapidtables.org/zh-CN/convert/color/rgb-to-hsl.html
     title: RGB到HSL转换器| 颜色转换
     group: Math
+    autoTags:
+      - 颜色
+      - 工具
     icon: assets/1e996091f117.png
     addedAt: 2025-03-14T10:05:47.000Z
   - id: b3f218c6a911
     url: https://convertio.co/zh/download/fe49630bfccdd00edd2495d088bcb8d6e70ca1/
     title: 正在转换... — Convertio
     group: 工具
+    autoTags:
+      - 工具
     icon: assets/b3f218c6a911.png
     addedAt: 2025-05-06T07:56:53.000Z
   - id: 86a46494a037
     url: https://www.figma.com/files/team/1636305944373864909/recents-and-sharing?fuid=1636305942610647282
     title: 首页 – Figma
     group: 工具
+    autoTags:
+      - 设计
+      - 工具
     icon: assets/86a46494a037.png
     addedAt: 2026-05-25T10:33:49.000Z
   - id: 5ace3c5a7de1
     url: https://pixso.cn/app/recent
     title: 最近打开-Pixso
     group: 工具
+    autoTags:
+      - 设计
+      - 工具
     icon: assets/5ace3c5a7de1.png
     addedAt: 2026-05-26T03:24:03.000Z
   - id: 42a89c83108b
     url: https://x.com/home
     title: Home / X
     group: ""
+    autoTags:
+      - 社交
     icon: assets/42a89c83108b.png
     addedAt: 2025-08-11T09:32:25.000Z
   - id: 83c9cf0c5f39
     url: https://l4p914h72l.feishu.cn/drive/home/
     title: 主页 - 飞书云文档
     group: ""
+    autoTags:
+      - 文档
+      - 网盘
     icon: assets/83c9cf0c5f39.png
     addedAt: 2025-09-24T06:56:13.000Z

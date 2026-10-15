@@ -57,7 +57,8 @@ export function iconDataUri(entry, root = import.meta.dirname) {
  * @returns lower-cased search text.
  */
 export function searchText(entry) {
-  const parts = [entry.title, entry.url, entry.group, entry.notes ?? '', ...(entry.tags ?? [])]
+  const tags = Array.isArray(entry.autoTags) ? entry.autoTags : []
+  const parts = [entry.title, entry.url, entry.group, entry.notes ?? '', ...tags]
   return parts.join(' ').toLowerCase()
 }
 
@@ -105,9 +106,10 @@ export function renderCard(entry, root) {
       return ''
     }
   })()
+  const autoTags = Array.isArray(entry.autoTags) ? entry.autoTags.map(String) : []
   const marks = [
     entry.pinned === true ? '<span class="mark pin">置顶</span>' : '',
-    ...(entry.tags ?? []).map(tag => `<span class="mark tag">${escapeHtml(tag)}</span>`),
+    ...autoTags.map(tag => `<span class="mark ai">${escapeHtml(tag)}</span>`),
   ].join('')
   const notes = typeof entry.notes === 'string' && entry.notes.trim() !== ''
     ? `<div class="notes">${renderMarkdown(entry.notes)}</div>`
@@ -181,7 +183,7 @@ export function buildPage(library, options = {}) {
 <p class="meta">共 ${bookmarks.length} 个网站 · ${groups.size} 个分组 · 生成于 ${escapeHtml(stamp)}</p>
 </div>
 <div class="find">
-<input id="q" type="search" placeholder="搜索标题、网址、备注" autocomplete="off">
+<input id="q" type="search" placeholder="搜索标题、网址、备注、标签" autocomplete="off">
 <span class="count"><b id="count">${bookmarks.length}</b> / ${bookmarks.length}</span>
 </div>
 <nav class="chips">${chips}</nav>
@@ -271,6 +273,8 @@ main { padding: 18px 24px 40px; }
 .marks { display: flex; flex-wrap: wrap; gap: 5px; }
 .mark { padding: 1px 7px; font-size: 11px; color: var(--dim); background: var(--chip); border-radius: 999px; }
 .mark.pin { color: var(--panel); background: var(--accent); }
+/* Dashed, so a machine's tag never reads as something the person wrote. */
+.mark.ai { border: 1px dashed var(--line); }
 .notes {
   color: var(--dim); font-size: 12.5px; overflow: hidden;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
@@ -288,7 +292,7 @@ footer { padding: 0 24px 24px; color: var(--dim); font-size: 11px; }
 /** Page behaviour: filtering and folding, and nothing about any bookmark. */
 const SCRIPT = `
 const input = document.getElementById('q')
-const chips = Array.from(document.querySelectorAll('.chip'))
+const groupChips = Array.from(document.querySelectorAll('.chip[data-group]'))
 const cards = Array.from(document.querySelectorAll('.card'))
 const sections = Array.from(document.querySelectorAll('section.group'))
 const counter = document.getElementById('count')
@@ -308,10 +312,10 @@ const apply = () => {
   empty.hidden = shown !== 0
 }
 input.addEventListener('input', apply)
-for (const chip of chips) {
+for (const chip of groupChips) {
   chip.addEventListener('click', () => {
     group = chip.dataset.group
-    for (const other of chips) other.classList.toggle('on', other === chip)
+    for (const other of groupChips) other.classList.toggle('on', other === chip)
     apply()
   })
 }

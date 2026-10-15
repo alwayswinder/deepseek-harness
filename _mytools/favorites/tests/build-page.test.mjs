@@ -24,7 +24,7 @@ function libraryIn(directory) {
     bookmarks: [
       {
         id: 'one', url: 'https://one.example/a?x=1&y=2', title: '一 & <二>', group: '收藏夹栏',
-        notes: '# 备注\n**粗体**', tags: ['常用', '"引号"'], pinned: true, icon: 'assets/one.png',
+        notes: '# 备注\n**粗体**', autoTags: ['常用', '"引号"'], pinned: true, icon: 'assets/one.png',
       },
       { id: 'two', url: 'https://two.example/', title: '', group: '收藏夹栏/Work', addedAt: '2024-01-01T00:00:00.000Z' },
       { id: 'three', url: 'https://three.example/', title: '三', group: '收藏夹栏/Work' },
@@ -108,8 +108,29 @@ test('a missing icon file is a letter tile rather than a broken image', () => {
 })
 
 test('what a card is searched by is everything a person would type', () => {
-  const entry = { id: 'i', url: 'https://a.example/x', title: '标题', group: '组', notes: '备注', tags: ['标签'] }
+  const entry = { id: 'i', url: 'https://a.example/x', title: '标题', group: '组', notes: '备注', autoTags: ['标签'] }
   const text = searchText(entry)
   for (const part of ['标题', 'a.example', '组', '备注', '标签']) assert.ok(text.includes(part), part)
   assert.equal(text, text.toLowerCase())
+})
+
+test('the machine tags ride on the card, and the row above lists folders only', () => {
+  const bookmarks = [
+    { id: 'a', url: 'https://a.example/', title: 'a', group: 'g1', autoTags: ['工具', 'AI'] },
+    { id: 'b', url: 'https://b.example/', title: 'b', group: 'g2', autoTags: ['工具'] },
+    { id: 'c', url: 'https://c.example/', title: 'c', group: 'g2' },
+  ]
+  const html = buildPage({ version: 1, bookmarks }, { root: import.meta.dirname })
+  assert.match(html, /class="mark ai">工具<\/span>/u)
+  assert.match(html, /class="mark ai">AI<\/span>/u)
+  // The row above is the person's own classification, so a machine tag never becomes
+  // a chip there: the two systems do not compete for the same control.
+  const header = html.slice(html.indexOf('<header>'), html.indexOf('</header>'))
+  assert.doesNotMatch(header, /data-tag=|AI 标签/u)
+  assert.match(header, /data-group="g1"/u)
+  assert.match(header, /data-group="g2"/u)
+  // An entry with no tags shows none, rather than the word "undefined".
+  const card = html.slice(html.indexOf('data-search="c https'), html.indexOf('data-search="c https') + 400)
+  assert.match(card, /class="hit"/u)
+  assert.doesNotMatch(card, /class="mark ai"/u)
 })

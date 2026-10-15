@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
-  compactEntry, decodeEntities, groupPath, idFor, mergeLibrary, openableUrl, parseAttributes,
+  cleanText, compactEntry, decodeEntities, groupPath, idFor, mergeLibrary, openableUrl, parseAttributes,
   parseNetscape, parseStamp, writeIcon,
 } from '../library.mjs'
 
@@ -139,11 +139,19 @@ test('mergeLibrary never drops an entry the export no longer has', () => {
 
 test('compactEntry leaves out the fields that carry no value', () => {
   const written = compactEntry({
-    id: 'i', url: 'u', title: 't', group: 'g', notes: '', tags: [], icon: '', pinned: false, addedAt: undefined,
+    id: 'i', url: 'u', title: 't', group: 'g', notes: '', autoTags: [], icon: '', pinned: false, addedAt: undefined,
   })
   assert.deepEqual(written, { id: 'i', url: 'u', title: 't', group: 'g' })
   assert.deepEqual(
-    compactEntry({ id: 'i', url: 'u', title: 't', group: 'g', notes: 'n', tags: ['x'], pinned: true }),
-    { id: 'i', url: 'u', title: 't', group: 'g', notes: 'n', tags: ['x'], pinned: true },
+    compactEntry({ id: 'i', url: 'u', title: 't', group: 'g', notes: 'n', autoTags: ['x'], pinned: true }),
+    { id: 'i', url: 'u', title: 't', group: 'g', notes: 'n', autoTags: ['x'], pinned: true },
   )
+})
+
+test('cleanText drops the characters a copied title carries invisibly', () => {
+  // A Feishu document title arrives with a few dozen zero-width characters in
+  // front: they render as a gap and no search ever matches them.
+  assert.equal(cleanText('\u200b\u200c\u200d\u2060\u2061\u2063\u2064\u202c\ufeff光影工作室'), '光影工作室')
+  assert.equal(cleanText('  too\u200b   many   spaces  '), 'too many spaces')
+  assert.equal(cleanText(undefined), '')
 })

@@ -134,6 +134,25 @@ export function parseStamp(value) {
 }
 
 /**
+ * Characters a document can carry without ever showing them: zero-width spaces and
+ * joiners, bidirectional controls, and the byte-order mark. A title copied out of a
+ * Feishu document arrives with a few dozen of them in front, which the card then
+ * renders as a gap and the search index matches nothing against.
+ */
+const INVISIBLE = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]/gu
+
+/**
+ * One line of text as the library records it: no invisible characters, and the
+ * whitespace they leave behind folded into single spaces. Titles and folder names
+ * go through this; a note does not, because its line breaks are the author's.
+ * @param value - raw text from the export.
+ * @returns the cleaned text.
+ */
+export function cleanText(value) {
+  return String(value ?? '').replace(INVISIBLE, '').replace(/\s+/gu, ' ').trim()
+}
+
+/**
  * Folder names a browser puts around the whole export rather than around a set of
  * bookmarks: Chrome's own toolbar container. Every path would carry the same name,
  * and the name says nothing a reader does not already know, so a path that starts
@@ -183,7 +202,7 @@ export function parseNetscape(html) {
       continue
     }
     if (/^<H3/iu.test(text)) {
-      pending = decodeEntities(match[2]).trim()
+      pending = cleanText(decodeEntities(match[2]))
       continue
     }
     const attributes = parseAttributes(match[3])
@@ -191,10 +210,10 @@ export function parseNetscape(html) {
     const group = groupPath(folders)
     const url = openableUrl(raw)
     if (url === undefined) {
-      skipped.push({ url: raw, title: decodeEntities(match[4]).trim(), group, reason: 'address' })
+      skipped.push({ url: raw, title: cleanText(decodeEntities(match[4])), group, reason: 'address' })
       continue
     }
-    const title = decodeEntities(match[4]).trim()
+    const title = cleanText(decodeEntities(match[4]))
     entries.push({
       id: idFor(url),
       url,
@@ -264,7 +283,9 @@ export function compactEntry(entry) {
     group: entry.group,
   }
   if (typeof entry.notes === 'string' && entry.notes !== '') written.notes = entry.notes
-  if (Array.isArray(entry.tags) && entry.tags.length > 0) written.tags = entry.tags
+  // The machine's own tags sit beside the folder the person files an entry under:
+  // two classifications, and only this one is ever regenerated from scratch.
+  if (Array.isArray(entry.autoTags) && entry.autoTags.length > 0) written.autoTags = entry.autoTags
   if (typeof entry.icon === 'string' && entry.icon !== '') written.icon = entry.icon
   if (entry.pinned === true) written.pinned = true
   if (typeof entry.addedAt === 'string') written.addedAt = entry.addedAt

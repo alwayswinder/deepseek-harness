@@ -41,7 +41,7 @@ bookmarks:
   - id: 6f3a1c2b9d40              # 规范化 URL 的 sha1 前 12 位，分配后不再变
     url: https://www.bilibili.com/
     title: b站
-    group: 收藏夹栏/Unreal/Study   # 导出文件里的文件夹路径，斜杠分层
+    group: Unreal/Study            # 导出文件里的文件夹路径，斜杠分层；浏览器自己那层容器不算
     notes: |
       素材站，**收藏向**
     tags: [素材, 常用]
@@ -54,7 +54,8 @@ bookmarks:
 - **`id` 是关键**：跨机合并靠它对不对得上。改标题、换分组、搬目录都不要动它；改 `url` 也一样
   （备注和图标跟着 id 走）。新建条目按 URL 派生 id，撞上了就说明这条已经在库里。
 - 可空字段（`notes`/`tags`/`icon`/`pinned`/`updatedAt`）没有值就省略，文件里一条一个块，diff 干净。
-- `group` 为空的条目在页面上归到「未分组」。
+- `group` 为空的条目在页面上归到「未分组」（直接放在浏览器工具栏下的条目就是这种）。
+- 浏览器自己那层容器目录（中文界面的「收藏夹栏」、英文的 `Bookmarks bar`）不进 `group`：每个路径都带一遍它没有信息量。规则在 `library.mjs` 的 `CONTAINER_FOLDERS` 里，导入和以后的编辑器共用。
 - 文件末尾由脚本按固定格式重写（块序列、`lineWidth: 0`），所以手改之后最好再跑一次
   `build-page.mjs` 让页面跟上；`git` 的合并冲突按条目手解即可。
 

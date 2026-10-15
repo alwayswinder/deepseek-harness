@@ -134,6 +134,31 @@ export function parseStamp(value) {
 }
 
 /**
+ * Folder names a browser puts around the whole export rather than around a set of
+ * bookmarks: Chrome's own toolbar container. Every path would carry the same name,
+ * and the name says nothing a reader does not already know, so a path that starts
+ * with one drops it — `收藏夹栏/Work` is `Work` — while a bookmark sitting directly
+ * in it keeps no group at all. Chrome localizes this name with the browser's
+ * language, so the list covers the languages this library has been imported from;
+ * a name that is not listed is kept exactly as the export spelled it.
+ */
+const CONTAINER_FOLDERS = new Set([
+  '收藏夹栏', '书签栏', '書籤列', 'Bookmarks bar', 'Bookmarks Bar', 'Bookmarks Toolbar', 'ブックマーク バー',
+])
+
+/**
+ * The folder path one bookmark sits in, without the container the browser wrapped
+ * the whole export in.
+ * @param folders - the open folder names, outermost first, root included.
+ * @returns the path as the library records it, empty for a bookmark at the top.
+ */
+export function groupPath(folders) {
+  const path = folders.slice(1).filter(name => name !== '')
+  const trimmed = path.length > 0 && CONTAINER_FOLDERS.has(path[0]) ? path.slice(1) : path
+  return trimmed.join('/')
+}
+
+/**
  * Read one exported bookmark file.
  * @param html - the file's text.
  * @returns `entries` in file order and the addresses `skipped` with their reason.
@@ -163,7 +188,7 @@ export function parseNetscape(html) {
     }
     const attributes = parseAttributes(match[3])
     const raw = attributes.HREF ?? ''
-    const group = folders.slice(1).filter(name => name !== '').join('/')
+    const group = groupPath(folders)
     const url = openableUrl(raw)
     if (url === undefined) {
       skipped.push({ url: raw, title: decodeEntities(match[4]).trim(), group, reason: 'address' })

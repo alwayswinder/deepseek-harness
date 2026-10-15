@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 
 import {
-  compactEntry, decodeEntities, idFor, mergeLibrary, openableUrl, parseAttributes,
+  compactEntry, decodeEntities, groupPath, idFor, mergeLibrary, openableUrl, parseAttributes,
   parseNetscape, parseStamp, writeIcon,
 } from '../library.mjs'
 
@@ -75,7 +75,7 @@ test('parseNetscape reads folders, entities, and icons in file order', () => {
   const { entries, skipped } = parseNetscape(EXPORT)
   assert.equal(entries.length, 3)
   assert.deepEqual(entries.map(entry => entry.title), ['A & B', 'B', 'unquoted'])
-  assert.deepEqual(entries.map(entry => entry.group), ['收藏夹栏', '收藏夹栏/Work', '收藏夹栏/Work'])
+  assert.deepEqual(entries.map(entry => entry.group), ['', 'Work', 'Work'])
   assert.equal(entries[0].url, 'https://a.example/1')
   assert.equal(entries[0].icon, `data:image/png;base64,${PNG}`)
   assert.equal(typeof entries[0].addedAt, 'string')
@@ -87,6 +87,20 @@ test('parseNetscape reads folders, entities, and icons in file order', () => {
 test('parseNetscape carries a folder name with no bookmarks as nothing at all', () => {
   const { entries } = parseNetscape(EXPORT)
   assert.equal(entries.some(entry => entry.group.includes('新建文件夹')), false)
+})
+
+test('the container folder the browser wraps the export in is not part of a path', () => {
+  // `收藏夹栏` is Chrome's own toolbar container in a Chinese UI: every path would
+  // repeat it, and a bookmark sitting directly in it has no folder of its own.
+  assert.equal(groupPath(['', '收藏夹栏']), '')
+  assert.equal(groupPath(['', '收藏夹栏', 'Work']), 'Work')
+  assert.equal(groupPath(['', '收藏夹栏', 'Unreal', 'Study']), 'Unreal/Study')
+  // The English spelling of the same container, and a folder that merely shares the
+  // name: only the outermost one is the browser's.
+  assert.equal(groupPath(['', 'Bookmarks bar', 'Work']), 'Work')
+  assert.equal(groupPath(['', 'Work', '收藏夹栏']), 'Work/收藏夹栏')
+  // A container this list does not know stays as the export spelled it.
+  assert.equal(groupPath(['', 'Favoritos', 'Work']), 'Favoritos/Work')
 })
 
 test('writeIcon writes a real PNG and refuses a payload that only claims to be one', () => {

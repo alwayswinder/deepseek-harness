@@ -36,7 +36,6 @@ config:
       url: https://dev.epicgames.com/community/assistant/unreal-engine/conversations/01m4pywv24npzdv8hzxyw7gff4
     - name: gemini
       url: https://gemini.google.com/app/bfc7db8629e94204?utm_source=deepmind.google&utm_medium=referral&utm_campaign=gdm&utm_content=
-  coopAutoStart: false
   musicLinks:
     - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.788.videopod.episodes&vd_source=f7cf7de90459b8c6a73cd9bdf2093596&p=2

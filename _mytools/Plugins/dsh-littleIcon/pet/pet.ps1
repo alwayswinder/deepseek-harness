@@ -461,22 +461,6 @@ function Get-Labels {
         QuitDshConfirm        = 'Quit DSH? A running task will be interrupted.'
         Features              = 'Special'
         TempSpace             = 'Temp space'
-        Coop                  = 'Multi-machine'
-        CoopStart             = 'Start and connect'
-        CoopStop              = 'Stop'
-        CoopOff               = 'Not running'
-        CoopHostWaiting       = 'Host - waiting for the other computer'
-        CoopHostConnected     = 'Host - connected'
-        CoopHostConnectedRtt  = 'Host - connected ({0} ms)'
-        CoopRemote            = 'remote mode'
-        CoopJoin              = '{0} - {1}'
-        CoopAgentConnected    = 'Client - connected'
-        CoopAgentWaiting      = 'Client - reconnecting'
-        CoopAddress           = 'Host address: {0}'
-        CoopHotkey            = 'Hotkey {0}: switch local/remote'
-        CoopNoExe             = 'MouseShare.exe is missing; run _mytools\MouseShare\build.bat once.'
-        CoopNoAddress         = 'The host address is empty; set it under Settings first.'
-        CoopSpawnFailed       = 'Multi-machine could not be started; see the DSH log.'
         Music                 = 'Music'
         MusicPlay             = 'Play'
         MusicPause            = 'Pause'
@@ -612,11 +596,6 @@ $SCRIPT:SiteMenu = $null
 # this machine has no library to show. The page is a build product, so the menu
 # entry is offered only once there is one to open.
 $SCRIPT:FavoritesPage = ''
-# Multi-machine: the configuration and run state the host publishes, and the
-# submenu itself. The submenu is rebuilt at every open because the link quality
-# and the run state change while it is closed.
-$SCRIPT:Coop = $null
-$SCRIPT:CoopMenu = $null
 # Music: the library the host published, the MediaPlayer that owns the audio, what
 # this process last reported about it, and the submenu itself. The submenu is
 # rebuilt at every open because a download that finished in between, a volume the
@@ -1269,38 +1248,6 @@ function Open-NavigationPage([string]$Page, [string]$BrowserCommand = '') {
     }
 }
 
-# ---- multi-machine (MouseShare) ---------------------------------------------
-
-function Get-CoopStatusText {
-    # One grey line at the top of the submenu. The live part - connected, latency,
-    # remote mode - comes from the status file MouseShare writes (`--status`), read
-    # here at every open, so the menu never shows a stale link.
-    $coop = $SCRIPT:Coop
-    if ($null -eq $coop -or -not [bool]$coop.running) {
-        if ($null -ne $coop) {
-            switch ([string]$coop.error) {
-                'exe' { return $SCRIPT:Labels.CoopNoExe }
-                'address' { return $SCRIPT:Labels.CoopNoAddress }
-                'spawn' { return $SCRIPT:Labels.CoopSpawnFailed }
-            }
-        }
-        return $SCRIPT:Labels.CoopOff
-    }
-    $live = Read-Json (Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'coop.json')
-    $connected = $null -ne $live -and [bool]$live.connected
-    if ([string]$coop.role -ne 'host') {
-        if ($connected) { return $SCRIPT:Labels.CoopAgentConnected }
-        return $SCRIPT:Labels.CoopAgentWaiting
-    }
-    if (-not $connected) { return $SCRIPT:Labels.CoopHostWaiting }
-    $rtt = -1
-    if ($null -ne $live.rttMs) { $rtt = [int]$live.rttMs }
-    $text = $SCRIPT:Labels.CoopHostConnected
-    if ($rtt -ge 0) { $text = $SCRIPT:Labels.CoopHostConnectedRtt -f $rtt }
-    if ([bool]$live.remote) { $text = $SCRIPT:Labels.CoopJoin -f $text, $SCRIPT:Labels.CoopRemote }
-    return $text
-}
-
 function Add-MenuLine($Menu, [string]$Text) {
     # A fact, not a choice: shown for reading, never clickable.
     $item = New-Object System.Windows.Forms.ToolStripMenuItem
@@ -1310,53 +1257,6 @@ function Add-MenuLine($Menu, [string]$Text) {
     $item.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
     [void]$Menu.DropDownItems.Add($item)
     return $item
-}
-
-function Update-CoopMenu {
-    # Rebuilt whole at every open, the way the sites submenu is: the run state, the
-    # address, and the hotkey all come from the host and can change in between, and
-    # the list is short enough that rebuilding costs nothing.
-    if ($null -eq $SCRIPT:CoopMenu) { return }
-    while ($SCRIPT:CoopMenu.DropDownItems.Count -gt 0) {
-        $stale = $SCRIPT:CoopMenu.DropDownItems[0]
-        $SCRIPT:CoopMenu.DropDownItems.RemoveAt(0)
-        $stale.Dispose()
-    }
-    $coop = $SCRIPT:Coop
-    [void](Add-MenuLine $SCRIPT:CoopMenu (Get-CoopStatusText))
-    if ($null -ne $coop -and -not [string]::IsNullOrWhiteSpace([string]$coop.address)) {
-        [void](Add-MenuLine $SCRIPT:CoopMenu ($SCRIPT:Labels.CoopAddress -f [string]$coop.address))
-    }
-    if ($null -ne $coop -and -not [string]::IsNullOrWhiteSpace([string]$coop.hotkey)) {
-        [void](Add-MenuLine $SCRIPT:CoopMenu ($SCRIPT:Labels.CoopHotkey -f [string]$coop.hotkey))
-    }
-    [void]$SCRIPT:CoopMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    $running = $null -ne $coop -and [bool]$coop.running
-    $toggle = New-Object System.Windows.Forms.ToolStripMenuItem
-    if ($running) { $toggle.Text = $SCRIPT:Labels.CoopStop } else { $toggle.Text = $SCRIPT:Labels.CoopStart }
-    $toggle.Tag = 'system'
-    $toggle.AutoSize = $true
-    $toggle.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
-    if ($running) {
-        $toggle.add_Click({ try { Send-MenuCommand 'coop-stop' } catch { Write-Log $_.Exception.Message } })
-    } else {
-        $toggle.add_Click({ try { Send-MenuCommand 'coop-start' } catch { Write-Log $_.Exception.Message } })
-    }
-    [void]$SCRIPT:CoopMenu.DropDownItems.Add($toggle)
-    # The same page entry the main menu's own Settings opens: the role rule and the
-    # address are configured there, so the way to change them belongs here too.
-    $manage = New-Object System.Windows.Forms.ToolStripMenuItem
-    $manage.Text = $SCRIPT:Labels.Settings
-    $manage.Tag = 'gear'
-    $manage.AutoSize = $true
-    $manage.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
-    $manage.add_Click({
-        try {
-            Show-DshWindow
-            Send-MenuCommand 'settings'
-        } catch { Write-Log $_.Exception.Message }
-    })
-    [void]$SCRIPT:CoopMenu.DropDownItems.Add($manage)
 }
 
 # ---- music ------------------------------------------------------------------
@@ -2281,7 +2181,7 @@ function Add-MusicItem($Menu, [string]$Text, [string]$Icon, [bool]$Enabled, $OnC
 }
 
 function Update-MusicMenu {
-    # Rebuilt whole at every open, the way the sites and multi-machine submenus are:
+    # Rebuilt whole at every open, the way the sites submenu is:
     # the tracks, the volume, and a download's progress all move while it is closed,
     # and reading the library here is also what makes an edit in the settings card
     # reach a pet that is already running.
@@ -2366,7 +2266,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Coop) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -2496,33 +2396,6 @@ if ($SelfTest) {
     ) })
     [void]$siteMenuProbe.Add((@($published) | ForEach-Object { "$($_.Name)=$($_.Url)" }) -join '|')
     Write-Output "site-menu: $($siteMenuProbe -join ' >> ')"
-    # Multi-machine is rebuilt from the host's state at every open too, so the three
-    # states it can be in - nothing started, the host side, the client side - are
-    # rendered here, and the toggle's command is fired for the first of them. No
-    # status file exists beside a self-test state file, so "not connected yet" is
-    # what these lines must read.
-    $SCRIPT:CoopMenu = New-Object System.Windows.Forms.ToolStripMenuItem
-    $coopProbe = New-Object System.Collections.Generic.List[string]
-    foreach ($coopCase in @(
-        [pscustomobject]@{ running = $false; role = ''; address = '192.168.1.3:15180'; hotkey = 'ctrl+alt+f12'; error = '' },
-        [pscustomobject]@{ running = $true; role = 'host'; address = '192.168.1.3:15180'; hotkey = 'ctrl+alt+f12'; error = '' },
-        [pscustomobject]@{ running = $true; role = 'agent'; address = '192.168.1.3:15180'; hotkey = 'ctrl+alt+f12'; error = '' }
-    )) {
-        $SCRIPT:Coop = $coopCase
-        Update-CoopMenu
-        [void]$coopProbe.Add((@($SCRIPT:CoopMenu.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)" }) -join '|')
-    }
-    $SCRIPT:Coop = [pscustomobject]@{ running = $false; role = ''; address = '192.168.1.3:15180'; hotkey = 'ctrl+alt+f12'; error = '' }
-    Update-CoopMenu
-    if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
-    ($SCRIPT:CoopMenu.DropDownItems | Where-Object { $_.Text -eq $SCRIPT:Labels.CoopStart })[0].PerformClick()
-    $coopClicked = Read-Json $probeCommand
-    if ($null -eq $coopClicked) { [void]$coopProbe.Add('click=no-command') }
-    else { [void]$coopProbe.Add("click=$($coopClicked.command)") }
-    $SCRIPT:CoopMenu.Dispose()
-    $SCRIPT:CoopMenu = $null
-    $SCRIPT:Coop = $null
-    Write-Output "coop-menu: $($coopProbe -join ' >> ')"
     # Music is rebuilt from the library the host publishes at every open, so what is
     # worth checking here is what each library turns into: the status line, the three
     # transport entries, the download entry's count, and the one entry that leaves
@@ -2943,10 +2816,6 @@ function Apply-State($State) {
     # path only once a page exists there, so a missing value is the ordinary state
     # of a machine that has not built one yet.
     $SCRIPT:FavoritesPage = if ($null -eq $State.favoritesPage) { '' } else { [string]$State.favoritesPage }
-    # Multi-machine: whether it runs, which side this machine was taken for, the
-    # address and hotkey to show. The link itself lives in coop.json, which the
-    # submenu reads when it opens.
-    if ($null -ne $State.coop) { $SCRIPT:Coop = $State.coop }
     # The host asks for a tuck once the user has left DSH untouched long enough;
     # the request says nothing about the current window state, so it only ever
     # hides, and hiding an already hidden window is a no-op.
@@ -3583,24 +3452,12 @@ function New-PetMenu {
     # Settings ends the list on both profiles: it opens a page of DSH's own rather
     # than a window this process controls, so the web profile keeps it too. The pet
     # never offers to quit itself: the plugin's own switch owns its lifetime.
-    # Capabilities that start something of their own live one level down, under
-    # Special: the entry itself opens nothing, so a second one can join without
-    # reshaping the menu. Multi-machine starts MouseShare as this machine's host or
-    # client, so the submenu reports what it found and offers the toggle and the
-    # settings page that owns the role rule and the address.
+    # Capabilities that live one level down sit under Special: the entry itself
+    # opens nothing, so another one can join without reshaping the menu.
     $featuresItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Features 'globe'
     $featuresItem.DropDown.ShowImageMargin = $false
     $featuresItem.DropDown.BackColor = $menu.BackColor
     $featuresItem.DropDown.ForeColor = $menu.ForeColor
-    $coopItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.Coop 'globe'
-    $coopItem.DropDown.ShowImageMargin = $false
-    $coopItem.DropDown.ShowItemToolTips = $true
-    $coopItem.DropDown.BackColor = $menu.BackColor
-    $coopItem.DropDown.ForeColor = $menu.ForeColor
-    $coopItem.add_DropDownOpening({
-        try { Update-CoopMenu } catch { Write-Log $_.Exception.Message }
-    })
-    $SCRIPT:CoopMenu = $coopItem
     # The temp space is a page of DSH's own rather than a window this process
     # controls, so the click only names it and the page selects the panel: DSH
     # has to be on screen first, because a panel selected in a hidden window is

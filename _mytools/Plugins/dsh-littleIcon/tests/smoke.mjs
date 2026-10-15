@@ -30,7 +30,6 @@ const {
   pullGitRepository, discardGitChanges, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
   resolveFavorites, favoritesAt,
-  coopRoleFor, coopPortFor, coopAutoAction,
 } = internals
 const {
   MusicLibrary, musicView, parseBilibiliRef, musicEntryId, sanitizeFileStem,
@@ -459,28 +458,6 @@ rmSync(musicHome, { recursive: true, force: true })
 rmSync(fillHome, { recursive: true, force: true })
 console.log('little-icon smoke: music library ok')
 
-// ---- multi-machine side and port --------------------------------------------
-
-// Which side a machine takes is read off its own adapters, so one address shared by
-// both machines decides it: the machine that carries the IP hosts, the other dials
-// in. The loopback address stands in for "an adapter this machine has" and a
-// documentation address for one it does not, so the answer is the same everywhere.
-const adapters = { lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }
-assert.equal(coopRoleFor('127.0.0.1:15180', adapters), 'host', 'the machine carrying the address hosts')
-assert.equal(coopRoleFor('203.0.113.9:15180', adapters), 'agent', 'a machine without it dials in')
-assert.equal(coopRoleFor('', adapters), 'agent', 'a blank address leaves no host side to take')
-assert.equal(coopRoleFor('127.0.0.1', adapters), 'host', 'a missing port does not change the side')
-assert.equal(coopPortFor('192.168.1.3:15180'), '15180', 'the configured port is the listened one')
-assert.equal(coopPortFor('192.168.1.3:9999'), '9999', 'a host on another port is honoured')
-assert.equal(coopPortFor('192.168.1.3'), '15180', 'a missing port falls back to MouseShare default')
-assert.equal(coopPortFor('192.168.1.3:abc'), '15180', 'an unusable port falls back too')
-// Only the switch's own transition touches the link: a write to another field
-// must not restart what the menu stopped, and turning the switch off must end it.
-assert.equal(coopAutoAction(true, false), 'start', 'turning the switch on starts the link')
-assert.equal(coopAutoAction(false, true), 'stop', 'turning it off ends the link')
-assert.equal(coopAutoAction(true, true), 'none', 'a write while it is on leaves a stopped link stopped')
-assert.equal(coopAutoAction(false, false), 'none', 'and one while it is off starts nothing')
-
 // ---- busy predicate ---------------------------------------------------------
 
 /** @param {object} options - which services exist and what they report. */
@@ -884,7 +861,6 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /常用网站/, 'the self test must report the sites entry too')
   assert.match(selfTest.stdout, /特殊功能/, 'the self test must report the Special submenu too')
   assert.match(selfTest.stdout, /临时空间/, 'the self test must report the temp-space entry too')
-  assert.match(selfTest.stdout, /多机协同/, 'the self test must report the multi-machine entry too')
   // Bringing DSH back is not one command: SW_RESTORE also returns a maximized or
   // fullscreen window to the size it had before, so a window this pet hid is shown
   // and only a minimized one is restored. Getting this backwards drops DSH out of
@@ -956,24 +932,6 @@ if (process.platform === 'win32') {
     'clicking a site entry must write its own command and address')
   assert.equal(published, ['Chat=https://chat.deepseek.com/', 'https://bare.test/=https://bare.test/'].join('|'),
     'a published row is the entry, and a row with no note is named by its address')
-  // Multi-machine is the other submenu rebuilt at every open: its three states are
-  // rendered, and what the toggle writes is fired for the one that offers a start.
-  // No status file exists beside a self-test state file, so the two running states
-  // must read as "not connected yet" — that is the file, not a guess, being read.
-  const coopMenu = /coop-menu: (.*)/.exec(selfTest.stdout)
-  assert.ok(coopMenu !== null, 'the self test must report the multi-machine submenu')
-  const [coopOff, coopHost, coopClient, coopClicked] = coopMenu[1].trim().split(' >> ')
-  assert.equal(coopOff.split('|')[0], `ToolStripMenuItem=${labels.CoopOff}`,
-    'an idle submenu says so, and only then does it offer to start')
-  assert.ok(coopOff.includes(`ToolStripMenuItem=${labels.CoopStart}`),
-    'the idle submenu offers the start entry')
-  assert.ok(coopHost.includes(`ToolStripMenuItem=${labels.CoopHostWaiting}`),
-    'the host side with nothing connected yet waits for the other computer')
-  assert.ok(coopClient.includes(`ToolStripMenuItem=${labels.CoopAgentWaiting}`),
-    'the client side with nothing connected yet reports reconnecting')
-  assert.ok(coopHost.includes(`ToolStripMenuItem=${labels.CoopStop}`),
-    'a running submenu offers the stop entry instead')
-  assert.equal(coopClicked, 'click=coop-start', 'clicking the start entry writes its command')
   // Music is the third submenu rebuilt at every open, and the odd one out: the
   // transport entries act on this process (the pet owns the audio, so it keeps
   // playing while DSH is tucked away), while filling the library in and opening its
@@ -1312,11 +1270,6 @@ rmSync(openDir, { recursive: true, force: true })
       { name: 'Chat', url: 'chat.deepseek.com' },
       { name: 'Local', url: 'file:///C:/notes.txt' },
     ]),
-    // Multi-machine would start a process; this stub keeps the run in the loopback
-    // address space where the role rule takes the client side, and the link off.
-    coopAddress: fixed('192.168.1.3:15180'),
-    coopHotkey: fixed('ctrl+alt+f12'),
-    coopAutoStart: fixed(false),
   }
   try {
     apply(hostCtx, config)
@@ -2405,7 +2358,7 @@ const pageNodes = flatten(render({ musicLinks: ['BV1'] }))
 assert.deepEqual(pageNodes
   .filter(node => node.props?.className === 'dli-section')
   .map(node => node.children[0].children[0].children[0]),
-[t('groupPet'), t('groupSites'), t('groupMusic'), t('groupLook'), t('groupBehavior'), t('groupShot'), t('groupCoop')],
+[t('groupPet'), t('groupSites'), t('groupMusic'), t('groupLook'), t('groupBehavior'), t('groupShot')],
 'the card names each group of settings')
 assert.ok(pageNodes.some(node => node.props?.className === 'dli-details'),
   'and the advanced group is still a group of its own')
@@ -3199,7 +3152,6 @@ console.log('little-icon smoke: browser half ok')
       frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3_000), boredEverySeconds: fixed(60),
       boredMs: fixed(60_000), sleepAfterSeconds: fixed(600), tuckWhenBehind: fixed(false),
       shotDir: fixed(''), clickAction: fixed('toggle'), sites: fixed([]),
-      coopAddress: fixed(''), coopHotkey: fixed(''), coopAutoStart: fixed(false),
       musicLinks: fixed(musicLinks), musicDir: fixed(''), musicVolume: fixed(70),
       musicPlaylist: fixed(options.playlist ?? ''), musicShuffle: fixed(options.shuffle ?? false),
     }
@@ -3419,11 +3371,6 @@ if (process.argv.includes('--pet')) {
     musicDuckHoldSeconds: ref(3),
     musicDuckMode: ref('fade'),
     musicDuckLevel: ref(20),
-    coopAddress: ref('192.168.1.3:15180'),
-    coopHotkey: ref('ctrl+alt+f12'),
-    // Off: this suite must not start the multi-machine process on a machine that
-    // happens to carry the configured address.
-    coopAutoStart: ref(false),
   }
 
   const countPetProcesses = () => {

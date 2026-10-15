@@ -133,7 +133,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 | 文件 | 说明 |
 | --- | --- |
-| `settings\pet-settings.yml` | 桌宠设置（大小、透明度、动画帧速、常用网站、截图目录、多机地址与热键）。内容就是 profile 里 `little-icon` 段的 `config`；本机那份在 `$DSH_HOME\profiles\desktop\cordis.patch.yml`。可以手改：改完和"在设置页里改"等价，没写到的字段用插件默认值。 |
+| `settings\pet-settings.yml` | 桌宠设置（大小、透明度、动画帧速、常用网站、截图目录）。内容就是 profile 里 `little-icon` 段的 `config`；本机那份在 `$DSH_HOME\profiles\desktop\cordis.patch.yml`。可以手改：改完和"在设置页里改"等价，没写到的字段用插件默认值。 |
 | `settings\keybindings.json` | Desktop 的快捷键覆盖，逐字就是 `$DSH_HOME\desktop\electron-user-data\keybindings.json`（Electron 主进程拥有的那份文档，`profiles` 按 `desktop:windows` 这样的运行时+平台分键）。 |
 | `settings\sync-settings.mjs` | 实体，三个模式：`export`（抄出本机）、`apply`（写回本机）、`status`（只看差异，不写文件）；`--only pet|keybindings` 只跑一份，`--force` 无视哈希守卫。 |
 | `settings\save-settings.bat` | 手动保存一份：双击即可，用于别的 profile（`save-settings.bat web`）、或插件的自动保存没生效时（例如插件被装成 `file:` 副本、不在仓库里，那时宿主会记一条 info 说明跳过）。 |
@@ -143,7 +143,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 - **只有对应文件变了才会覆盖本机**：已应用的内容按哈希记在 `$DSH_HOME\settings-sync\state.json`（`pet` 按 profile 记，`keybindings` 记一份），同一份文件重复启动什么都不做。所以本机临时改的值会保留到文件下次更新；要强制退回文件里的值，跑 `node _mytools\settings\sync-settings.mjs apply --force`。
 - **哪个 profile**：默认 `desktop`，`--profile web` 可换，但只影响桌宠那份（快捷键不属于任何 profile）。profile 没装桌宠插件时桌宠那份拒绝写入并说明原因，免得给用不上的 profile 留一条死配置。
 - **写进快捷键文档前会先验一遍**（JSON 能不能解析、`schemaVersion` 是不是产品认的 1/2、顶层只有 `schemaVersion` 和 `profiles`）：产品读到读不懂的文件会拒读并锁住快捷键编辑，所以宁可拒绝写，也不把坏文件带到另一台机器上。
-- **不同步的东西**：窗口坐标（`position.json`）、当前状态、多机连接状态是运行时产物，由每台机器的屏幕和网络决定；凭据在 `$DSH_HOME\.credentials.yaml`，永不进仓库。
+- **不同步的东西**：窗口坐标（`position.json`）、当前状态是运行时产物，由每台机器的屏幕决定；凭据在 `$DSH_HOME\.credentials.yaml`，永不进仓库。
 - 合并桌宠那份用的是 harness 自己写 profile patch 的那套 YAML 文档读写，所以其它条目的注释和 `!!js` 表达式都原样保留；本机 patch 的 `little-icon` 段里若出现 `!!js`，导出直接报错，而不是把它写成普通字符串。
 
 ## 其它文件
@@ -169,7 +169,6 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\dsh-web.log` | `build\start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
 | `ai-game\` | 个人东西（ATB 回合制战斗 demo，纯 HTML/CSS/JS），与 DSH 运行无关。 |
 | `bg\` | 背景图素材。 |
-| `MouseShare\` | 一套键鼠控制两台 Windows 电脑的软 KVM，**反向连接**（被控端拨入），两台不在同一网段也能用。说明见 [MouseShare\README.md](MouseShare/README.md)；`build.bat` 用系统自带 csc.exe 编译，无需 .NET SDK。 |
 
 ## 约定
 

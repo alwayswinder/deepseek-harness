@@ -435,6 +435,9 @@ function Get-Labels {
         Sites                 = 'Sites'
         SitesEmpty            = 'No sites yet. Add one under Settings.'
         SitesManage           = 'Manage sites'
+        Nav                   = 'Site list'
+        NavMissing            = 'Site list (not generated yet)'
+        NavFailed             = 'No browser would open it. Check the default browser setting.'
         Games                 = 'Mini games'
         Aquarium              = 'Glass aquarium'
         Shot                  = 'Screenshot'
@@ -604,6 +607,10 @@ $SCRIPT:UpdateMenuItem = $null
 # edit in the settings card reaches a pet that is already running.
 $SCRIPT:Sites = @()
 $SCRIPT:SiteMenu = $null
+# The generated navigation page's path, as the host publishes it, and empty when
+# this machine has no library to show. The page is a build product, so the menu
+# entry is offered only once there is one to open.
+$SCRIPT:FavoritesPage = ''
 # Multi-machine: the configuration and run state the host publishes, and the
 # submenu itself. The submenu is rebuilt at every open because the link quality
 # and the run state change while it is closed.
@@ -1163,6 +1170,25 @@ function Update-SiteMenu {
     # The way to a list that is empty, and to a longer one: the settings card owns
     # the list, so this is the same page entry the main menu's own Settings opens.
     [void]$SCRIPT:SiteMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    # The whole library, where the entries above are the handful configured by hand.
+    # This is the one entry in the submenu that opens a page of its own instead of an
+    # address: the page is a local file, so the browser association opens it and this
+    # process needs nothing from the host at the click. Until the host has built one
+    # there is no file to open, and saying so beats an entry that does nothing.
+    $nav = New-Object System.Windows.Forms.ToolStripMenuItem
+    $nav.AutoSize = $true
+    $nav.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    if ([string]::IsNullOrWhiteSpace($SCRIPT:FavoritesPage) -or -not (Test-Path -LiteralPath $SCRIPT:FavoritesPage)) {
+        $nav.Text = $SCRIPT:Labels.NavMissing
+        $nav.Enabled = $false
+    } else {
+        $nav.Text = $SCRIPT:Labels.Nav
+        $nav.Tag = 'globe'
+        $nav.add_Click({
+            try { Open-NavigationPage $SCRIPT:FavoritesPage } catch { Write-Log $_.Exception.Message }
+        })
+    }
+    [void]$SCRIPT:SiteMenu.DropDownItems.Add($nav)
     $manage = New-Object System.Windows.Forms.ToolStripMenuItem
     $manage.Text = $SCRIPT:Labels.SitesManage
     $manage.Tag = 'gear'
@@ -1175,6 +1201,71 @@ function Update-SiteMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     [void]$SCRIPT:SiteMenu.DropDownItems.Add($manage)
+}
+
+# ---- opening the navigation page --------------------------------------------
+#
+# The page is a local HTML file, and that is not the same thing as "open a file":
+# a machine whose `.html` association points at a browser that is gone (the ProgId
+# is left behind with no open command) answers a plain open with "No application is
+# associated with the specified file for this operation", and a click that throws
+# into a log looks exactly like a click that missed. The browser registered for the
+# web is reachable either way, so that is asked for first and the file association
+# is kept as the fallback.
+
+function Get-BrowserExe([string]$Command) {
+    # Windows registers a browser as a command line built around `%1`. Only the
+    # executable is taken from it: the address is passed as a plain argument
+    # instead, so a switch this or that browser wants for a shell hand-off cannot be
+    # what fails the open.
+    if ([string]::IsNullOrWhiteSpace($Command)) { return '' }
+    $trimmed = $Command.Trim()
+    if ($trimmed.StartsWith('"')) {
+        $end = $trimmed.IndexOf('"', 1)
+        if ($end -gt 1) { return $trimmed.Substring(1, $end - 1) }
+        return ''
+    }
+    $match = [regex]::Match($trimmed, '^[^\s]+\.exe')
+    if ($match.Success) { return $match.Value }
+    return ''
+}
+
+function Get-WebBrowserCommand {
+    # `http`, then `https`: the two are normally the same browser, and a machine that
+    # has only one of them set still answers.
+    foreach ($scheme in @('http', 'https')) {
+        $choice = "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\$scheme\UserChoice"
+        $progId = [string](Get-ItemProperty -LiteralPath $choice -ErrorAction SilentlyContinue).ProgId
+        if ([string]::IsNullOrWhiteSpace($progId)) { continue }
+        foreach ($root in @('HKCU:\Software\Classes', 'HKLM:\Software\Classes')) {
+            $command = [string](Get-ItemProperty -LiteralPath "$root\$progId\shell\open\command" -ErrorAction SilentlyContinue).'(default)'
+            if (-not [string]::IsNullOrWhiteSpace($command)) { return $command }
+        }
+    }
+    return ''
+}
+
+function Open-NavigationPage([string]$Page, [string]$BrowserCommand = '') {
+    # The browser command is a parameter so the self test can drive both arms
+    # without reading this machine's registry.
+    if ([string]::IsNullOrWhiteSpace($BrowserCommand)) { $BrowserCommand = Get-WebBrowserCommand }
+    $exe = Get-BrowserExe $BrowserCommand
+    if ($exe -ne '' -and (Test-Path -LiteralPath $exe)) {
+        try {
+            Start-Process -FilePath $exe -ArgumentList ([System.Uri]::new($Page).AbsoluteUri)
+            return
+        } catch {
+            Write-Log "opening the navigation page in $exe failed: $($_.Exception.Message)"
+        }
+    }
+    try {
+        Start-Process -FilePath $Page
+    } catch {
+        # A click that opens nothing reads as a click that missed, so the failure is
+        # said above the pet as well as written where nobody looks.
+        Write-Log "opening the navigation page failed: $($_.Exception.Message)"
+        Show-PetNotice $SCRIPT:Labels.Nav $SCRIPT:Labels.NavFailed
+    }
 }
 
 # ---- multi-machine (MouseShare) ---------------------------------------------
@@ -2345,6 +2436,54 @@ if ($SelfTest) {
     $clicked = Read-Json $probeCommand
     if ($null -eq $clicked) { [void]$siteMenuProbe.Add('click=no-command') }
     else { [void]$siteMenuProbe.Add("click=$($clicked.command)|$($clicked.url)") }
+    # The navigation entry is the one row in this submenu that opens a page rather
+    # than an address, and it is offered only once that page is on disk. The probe
+    # gives it one and then fires it down all three roads: with a browser registered
+    # (the arm a healthy machine takes), with only the file association left, and
+    # with neither, where the failure has to become something the person sees,
+    # because a click that opens nothing is indistinguishable from a click that
+    # missed. Start-Process, Show-PetNotice, and the registry read are shadowed for
+    # these few lines, the way Show-DshWindow is above, so a self test never opens a
+    # browser and never depends on how this machine is configured.
+    $navProbe = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'nav-probe.html'
+    Set-Content -LiteralPath $navProbe -Value '<!DOCTYPE html>' -Encoding UTF8
+    $SCRIPT:FavoritesPage = $navProbe
+    Update-SiteMenu
+    $navItems = @($SCRIPT:SiteMenu.DropDownItems)
+    $navItem = $navItems[$navItems.Count - 2]
+    $SCRIPT:NavProbeExe = ''
+    $SCRIPT:NavProbeUrl = ''
+    $SCRIPT:NavProbeNotice = ''
+    $SCRIPT:NavProbeBrowser = ''
+    function Start-Process { param([string]$FilePath, [string[]]$ArgumentList) $SCRIPT:NavProbeExe = $FilePath; $SCRIPT:NavProbeUrl = [string]$ArgumentList }
+    function Show-PetNotice { param([string]$Title, [string]$Detail) $SCRIPT:NavProbeNotice = "$Title|$Detail" }
+    function Get-WebBrowserCommand { return $SCRIPT:NavProbeBrowser }
+    $navItem.PerformClick()
+    [void]$siteMenuProbe.Add("nav=$($navItem.Text)|$($navItem.Enabled)|$($SCRIPT:NavProbeExe)")
+    # The registered browser is asked for first, and it is handed a file address
+    # rather than the file's path: this is the arm that works on a machine whose
+    # `.html` association is broken, which is the machine this was written on.
+    $SCRIPT:NavProbeBrowser = '"' + (Join-Path $PSHOME 'powershell.exe') + '" --single-argument %1'
+    $navItem.PerformClick()
+    [void]$siteMenuProbe.Add("nav-browser=$($SCRIPT:NavProbeExe)|$($SCRIPT:NavProbeUrl)")
+    function Start-Process { param([string]$FilePath, [string[]]$ArgumentList) throw 'no handler for this file' }
+    $navItem.PerformClick()
+    [void]$siteMenuProbe.Add("nav-fail=$($SCRIPT:NavProbeNotice)")
+    Remove-Item -LiteralPath 'function:\Start-Process' -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath 'function:\Show-PetNotice' -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath 'function:\Get-WebBrowserCommand' -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $navProbe -Force -ErrorAction SilentlyContinue
+    $SCRIPT:FavoritesPage = ''
+    # What Windows registers a browser as, and the executable this process takes out
+    # of it: the quoted form Edge uses, the one Firefox puts a switch in, a bare
+    # path, and one that names no executable at all.
+    $browserCommands = @(
+        '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --single-argument %1',
+        '"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url "%1"',
+        'C:\tools\plain.exe %1',
+        'not-a-command'
+    )
+    Write-Output "browser-exe: $((@($browserCommands) | ForEach-Object { Get-BrowserExe $_ }) -join '|')"
     $SCRIPT:SiteMenu.Dispose()
     $SCRIPT:SiteMenu = $null
     # What the host publishes, read back the way Apply-State reads it: the note names
@@ -2799,6 +2938,10 @@ function Apply-State($State) {
     # The sites the menu offers; the submenu redraws itself from this list the next
     # time it opens.
     $SCRIPT:Sites = Get-SiteList $State
+    # The navigation page the host built from the website library. It arrives as a
+    # path only once a page exists there, so a missing value is the ordinary state
+    # of a machine that has not built one yet.
+    $SCRIPT:FavoritesPage = if ($null -eq $State.favoritesPage) { '' } else { [string]$State.favoritesPage }
     # Multi-machine: whether it runs, which side this machine was taken for, the
     # address and hotkey to show. The link itself lives in coop.json, which the
     # submenu reads when it opens.

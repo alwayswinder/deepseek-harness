@@ -230,6 +230,13 @@ const SETTINGS_SYNC_DEBOUNCE_MS = 1_500
 const SETTINGS_SYNC_PROFILE = 'desktop'
 
 /**
+ * How long to wait before trying to build the navigation page again after a build
+ * failed. The attempt runs from the sampling tick, so without a wait a broken
+ * library or a missing tool would start one node process per tick.
+ */
+const FAVORITES_RETRY_MS = 120_000
+
+/**
  * How many commits one page of the history column holds. The page asks for the
  * next one when the list is scrolled to its end, so this is what the column
  * shows before the reader asks for more rather than a cap on the list.
@@ -1628,6 +1635,54 @@ function resolveSettingsSync(profileDir) {
 }
 
 /**
+ * The website library this repository carries: the YAML file that is the source of
+ * truth, the page generated from it, and the generator. The plugin is normally a
+ * junction into the repository, so its own location answers this in one step; a
+ * profile that holds a copy of it instead names the source directory in its own
+ * manifest, which is the second attempt.
+ * @param profileDir - the active profile's directory.
+ * @returns the three paths, or undefined when this plugin is mounted outside the repository.
+ */
+function resolveFavorites(profileDir) {
+  const beside = fileURLToPath(new URL('../../favorites/', import.meta.url))
+  const direct = favoritesAt(beside)
+  if (direct !== undefined) return direct
+  // The second attempt needs the profile manifest, which a context that names no
+  // profile directory does not have; there is nothing to trace without it.
+  if (typeof profileDir !== 'string' || profileDir === '') return undefined
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8'))
+  } catch {
+    // No readable profile manifest: this half cannot trace the plugin back to a repository.
+    return undefined
+  }
+  for (const value of Object.values(manifest.dependencies ?? {})) {
+    const source = String(value).replace(/^(?:link|file):/u, '').replace(/\\/gu, '/')
+    const at = source.indexOf('/_mytools/Plugins/dsh-littleIcon')
+    if (at <= 0) continue
+    const found = favoritesAt(`${source.slice(0, at)}/_mytools/favorites`)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/**
+ * The library's paths inside one directory, when that directory holds a library.
+ * @param directory - candidate directory.
+ * @returns the paths, or undefined when the directory holds no `bookmarks.yml`.
+ */
+function favoritesAt(directory) {
+  const library = join(directory, 'bookmarks.yml')
+  if (!existsSync(library)) return undefined
+  return {
+    library,
+    page: join(directory, 'dist', 'index.html'),
+    build: join(directory, 'build-page.mjs'),
+  }
+}
+
+/**
  * The Desktop's shortcut document, resolved the way the settings tool resolves
  * it: the userData directory the launcher pins under the harness home, or the
  * development override when one is set.
@@ -2126,6 +2181,84 @@ export function apply(ctx, config) {
     return { visible: dshVisible, foreground: dshForeground, behindSince }
   }
 
+  // ---- website library ------------------------------------------------------
+  //
+  // `_mytools/favorites/bookmarks.yml` is the source of truth and lives in the
+  // repository, so the page the pet opens is a build product: it is regenerated
+  // whenever the library moved ahead of it. That is what makes an edit made in the
+  // plugin's own page, or a library that arrived with `git pull`, show up at the
+  // next click instead of at the next restart.
+  const favorites = { paths: undefined, resolved: false }
+  let favoritesRebuilding = false
+  let favoritesRetryAt = 0
+
+  /**
+   * The library's paths, resolved once on first use: resolving at load would read
+   * the profile context before the Loader has necessarily provided it, and a copy of
+   * this plugin outside the checkout can only be traced through that context.
+   * @returns the paths, or undefined when this machine has no library.
+   */
+  const favoritesPaths = () => {
+    if (!favorites.resolved) {
+      favorites.paths = resolveFavorites(ctx.get('profileContext')?.dir)
+      favorites.resolved = true
+    }
+    return favorites.paths
+  }
+
+  /** Regenerate the navigation page from the library, reporting its own failure. */
+  const rebuildFavoritesPage = () => {
+    const paths = favoritesPaths()
+    if (paths === undefined) return
+    favoritesRebuilding = true
+    const child = spawn(process.execPath, [paths.build], {
+      // The desktop host is itself an Electron process in Node mode, so the tool
+      // it starts has to be told the same thing rather than opening a second app.
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      stdio: ['ignore', 'ignore', 'pipe'],
+      windowsHide: true,
+    })
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (chunk) => {
+      const text = String(chunk).trim()
+      if (text !== '') ctx.logger.warn('little-icon favorites: %s', text)
+    })
+    child.once('error', (error) => {
+      favoritesRebuilding = false
+      favoritesRetryAt = Date.now() + FAVORITES_RETRY_MS
+      ctx.logger.warn('little-icon: could not build the navigation page: %s', String(error))
+    })
+    child.once('exit', (code) => {
+      favoritesRebuilding = false
+      if (code !== 0) {
+        favoritesRetryAt = Date.now() + FAVORITES_RETRY_MS
+        ctx.logger.warn('little-icon: building the navigation page exited with code %s', String(code))
+      }
+    })
+  }
+
+  /**
+   * The generated page to open, rebuilding it first when the library is newer.
+   * @returns the page's path, or '' when this machine has no library to show.
+   */
+  const favoritesPagePath = () => {
+    const paths = favoritesPaths()
+    if (paths === undefined) return ''
+    try {
+      if (!favoritesRebuilding && Date.now() >= favoritesRetryAt) {
+        const built = existsSync(paths.page) ? statSync(paths.page).mtimeMs : 0
+        if (built < statSync(paths.library).mtimeMs) rebuildFavoritesPage()
+      }
+    } catch (error) {
+      // The library went away between being resolved and being read, which a branch
+      // switch is enough to do. This tick has nothing to open; the next one resolves
+      // the same path again and picks the library back up.
+      ctx.logger.warn('little-icon: could not read the website library: %s', String(error))
+      return ''
+    }
+    return existsSync(paths.page) ? paths.page : ''
+  }
+
   const publish = () => {
     const now = Date.now()
     const current = values()
@@ -2159,6 +2292,10 @@ export function apply(ctx, config) {
       // submenu from this list whenever it opens, so an edit here reaches a
       // running pet without restarting either half.
       sites: current.sites,
+      // The generated navigation page, or absent until this machine has one. The
+      // pet offers the menu entry only when a file is really there, so a build that
+      // has not run yet leaves a hint rather than an entry that opens nothing.
+      favoritesPage: favoritesPagePath(),
       // Multi-machine: whether it runs, which side this machine was taken for, the
       // configured address and hotkey, and why a start last failed. The link itself
       // — connected, latency, remote mode — is in the status file MouseShare writes,
@@ -2900,6 +3037,8 @@ export const internals = {
   resolveDshHome,
   resolveShotDir,
   resolveSites,
+  resolveFavorites,
+  favoritesAt,
   coopRoleFor,
   coopPortFor,
   coopAutoAction,

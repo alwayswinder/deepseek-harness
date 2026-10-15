@@ -1,0 +1,6 @@
+# 浏览器导出的收藏夹文件只用于一次性导入：数据已经进了 favorites/bookmarks.yml，
+# 导出件本身带着整份浏览记录，不跟着仓库走。
+Note/favorites_*.html
+
+# 网站导航页是生成物，每台机器自己从 bookmarks.yml 生成。
+favorites/dist/

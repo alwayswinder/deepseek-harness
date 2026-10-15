@@ -29,6 +29,7 @@ const {
   readGitRepository, readGitCommits, readGitRemoteStatus,
   pullGitRepository, discardGitChanges, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
+  resolveFavorites, favoritesAt,
   coopRoleFor, coopPortFor, coopAutoAction,
 } = internals
 const {
@@ -917,13 +918,36 @@ if (process.platform === 'win32') {
   // entries an empty list still needs.
   const siteMenu = /site-menu: (.*)/.exec(selfTest.stdout)
   assert.ok(siteMenu !== null, 'the self test must report the sites submenu')
-  const [emptyList, twoSites, clickedEntry, published] = siteMenu[1].trim().split(' >> ')
+  const [emptyList, twoSites, clickedEntry, nav, navBrowser, navFail, published] = siteMenu[1].trim().split(' >> ')
   assert.equal(emptyList,
-    `ToolStripMenuItem=${labels.SitesEmpty}|ToolStripSeparator=|ToolStripMenuItem=${labels.SitesManage}`,
-    'an empty list says so and still offers the way to fill it')
+    `ToolStripMenuItem=${labels.SitesEmpty}|ToolStripSeparator=|ToolStripMenuItem=${labels.NavMissing}|ToolStripMenuItem=${labels.SitesManage}`,
+    'an empty list says so, offers the library page as a hint until one exists, and still offers the way to fill it')
   assert.equal(twoSites,
-    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.SitesManage}@`].join('|'),
-    'each configured site is one entry carrying its own address, then the way to manage them')
+    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.NavMissing}@`, `${labels.SitesManage}@`].join('|'),
+    'each configured site is one entry carrying its own address, then the library page, then the way to manage them')
+  // The library entry is the one that opens a page instead of an address, so what
+  // matters is that a page on disk turns it on, that the browser registered for the
+  // web is preferred over the file association, and that a machine where neither
+  // works says so instead of doing nothing: that silence is what a broken `.html`
+  // association produced the first time this was clicked.
+  const [navLabel, navEnabled, navOpened] = nav.split('|')
+  assert.equal(navLabel, `nav=${labels.Nav}`, 'a page on disk turns the library entry into the real one')
+  assert.equal(navEnabled, 'True', 'and makes it clickable')
+  assert.match(navOpened, /nav-probe\.html$/u, 'clicking it opens the page the host published')
+  assert.match(navBrowser, /^nav-browser=.*powershell\.exe\|file:\/\/\/.*nav-probe\.html$/u,
+    'a registered browser is preferred, and it is handed a file address rather than a path')
+  assert.equal(navFail, `nav-fail=${labels.Nav}|${labels.NavFailed}`,
+    'a page that no browser would open is reported above the pet, never silently dropped')
+  // What the registered command line is read for: the executable, whatever switches
+  // the browser wants around `%1`, and nothing at all when there is no executable.
+  const browserExe = /browser-exe: (.*)/.exec(selfTest.stdout)
+  assert.ok(browserExe !== null, 'the self test must report what a browser command line resolves to')
+  assert.deepEqual(browserExe[1].trim().split('|'), [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+    'C:\\tools\\plain.exe',
+    '',
+  ], 'a browser is whatever executable its registered command line starts with')
   // Firing one entry is what proves the handler carries *that* entry's address: a
   // handler reading the wrong scope still shows the right text and tooltip, and
   // still writes a command — just with no address in it.
@@ -1082,6 +1106,21 @@ if (process.platform === 'win32') {
   assert.ok(settingsSync !== null, 'the self test must report the settings sync script')
   assert.equal(settingsSync[1].trim(), join(root, '..', '..', '..', '_mytools', 'settings', 'sync-settings.mjs'),
     'a checkout whose apps/desktop is running must resolve its settings tool too')
+  // The website library sits in the same checkout, and the host finds it the same
+  // way: the plugin's own location answers it, so the page the pet opens is the one
+  // built from this repository's `bookmarks.yml` rather than from a second copy.
+  const favorites = resolveFavorites(join(root, '..', '..', '..', '_mytools', 'settings'))
+  const expected = join(root, '..', '..', '..', '_mytools', 'favorites')
+  assert.equal(favorites?.library, join(expected, 'bookmarks.yml'),
+    'the plugin must resolve this checkout website library')
+  assert.equal(favorites?.page, join(expected, 'dist', 'index.html'),
+    'and the page generated from it')
+  assert.equal(favorites?.build, join(expected, 'build-page.mjs'), 'and the generator')
+  // A directory that holds no library is not one, and a copy of the plugin outside
+  // the checkout has to fall through to the profile manifest rather than guess.
+  assert.equal(favoritesAt(join(root, 'assets')), undefined, 'a directory without a library is not the library')
+  assert.deepEqual(resolveFavorites(join(root, 'assets')), favorites,
+    'a plugin inside the checkout resolves beside itself, whatever the profile says')
 
   // The capture itself, taken for real: the sheet is not drawn and nobody drags, so
   // what is left under test is the screen read, the encoder, and the directory. A

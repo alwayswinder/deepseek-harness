@@ -62,6 +62,15 @@ rem pulled plugin change is what this launch loads.
 call "%~dp0sync-plugins.bat" desktop
 if errorlevel 1 goto :pluginFailure
 
+rem Register the local 3ds Max agent-mode bundle into this machine's profile.
+rem The install record lives under DSH_HOME and never syncs with the repository,
+rem so a fresh clone needs this once per machine; the script is idempotent, and a
+rem missing PowerShell or a failed registration is reported without blocking.
+if exist "%~dp0..\Mode\dsh-3dsmax\install.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Mode\dsh-3dsmax\install.ps1" -SkipCheck >nul 2>&1
+    if errorlevel 1 echo [desktop] 3ds Max mode registration reported a problem - see _mytools\Mode\dsh-3dsmax\README.md
+)
+
 rem Merge the checked-in portable settings into this machine before the app reads
 rem them, so a pulled change is in effect on this launch: the pet's profile
 rem section and the Desktop's shortcut document. A value edited on this machine

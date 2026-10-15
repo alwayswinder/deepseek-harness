@@ -40,16 +40,25 @@ try {
 
 const presets = []
 let current
+let inPlugins = false
 for (const line of composed.split(/\r?\n/u)) {
   const topLevel = /^- id:\s+(.+)$/u.exec(line)
   if (topLevel !== null) {
     current = topLevel[1].startsWith('preset-')
       ? { id: topLevel[1].slice('preset-'.length), packages: new Set() }
       : undefined
+    inPlugins = false
     if (current !== undefined) presets.push(current)
     continue
   }
   if (current === undefined) continue
+  // A preset row's own `name` is a display label, not a package. Only child plugin
+  // rows nested under `plugins:` name resolvable packages.
+  if (/^\s+plugins:\s*$/u.test(line)) {
+    inPlugins = true
+    continue
+  }
+  if (!inPlugins) continue
   const named = /^\s+name:\s+['"]?([^'"]+)['"]?\s*$/u.exec(line)
   if (named === null || named[1].startsWith('cordis:')) continue
   current.packages.add(named[1])

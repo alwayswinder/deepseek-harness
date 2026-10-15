@@ -1,0 +1,11 @@
+interface:
+  display_name: "3ds Max Live MCP"
+  short_description: "Operate the active 3ds Max scene through MCP"
+  default_prompt: "Use $3dsmax-live-mcp to inspect or edit the active 3ds Max scene."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "3dsmax-mcp"
+      description: "Local MCP server that controls the running Autodesk 3ds Max session."
+      transport: "stdio"

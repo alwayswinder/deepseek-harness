@@ -1,0 +1,9 @@
+# install.ps1 把 3dsmax-mcp 服务器 clone 到这里（钉定 tag），不进 git：
+# 版本由 install.ps1 顶部的 $UpstreamTag 锁定，clone 由脚本可复现地重建。
+upstream/
+
+# uv sync 在本目录下创建的解释器环境，每台机器自己建。
+.venv/
+
+__pycache__/
+*.pyc

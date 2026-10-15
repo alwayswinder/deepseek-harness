@@ -154,6 +154,6 @@
               args:
                 - run
                 - --directory
-                - !!js process.env.DSH_3DSMAX_MCP_DIR || 'E:/AI/3dMax/3dsmax-mcp-master'
+                - !!js process.env.DSH_3DSMAX_MCP_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@local/dsh-mode-3dsmax/package.json')), 'upstream', '3dsmax-mcp')
                 - 3dsmax-mcp
               failOnStartupError: false

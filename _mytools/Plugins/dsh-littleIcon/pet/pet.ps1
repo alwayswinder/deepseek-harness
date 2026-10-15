@@ -460,6 +460,7 @@ function Get-Labels {
         QuitDsh               = 'Quit DSH'
         QuitDshConfirm        = 'Quit DSH? A running task will be interrupted.'
         Features              = 'Special'
+        TempSpace             = 'Temp space'
         Coop                  = 'Multi-machine'
         CoopStart             = 'Start and connect'
         CoopStop              = 'Stop'
@@ -2365,7 +2366,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.Coop) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Coop) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -3600,6 +3601,18 @@ function New-PetMenu {
         try { Update-CoopMenu } catch { Write-Log $_.Exception.Message }
     })
     $SCRIPT:CoopMenu = $coopItem
+    # The temp space is a page of DSH's own rather than a window this process
+    # controls, so the click only names it and the page selects the panel: DSH
+    # has to be on screen first, because a panel selected in a hidden window is
+    # one nobody sees. It is the plugin's own tab type the way the Git page is,
+    # so nothing shipped has to be present for the entry to work.
+    $tempSpaceItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.TempSpace 'folder'
+    $tempSpaceItem.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'temp-space'
+        } catch { Write-Log $_.Exception.Message }
+    })
     $settingsItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Settings 'gear'
     $settingsItem.add_Click({
         try {

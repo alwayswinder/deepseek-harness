@@ -1,0 +1,8 @@
+# temp-space bundle patch: one host row mounting the plugin package. The host
+# half (index.js) owns the space directory under $DSH_HOME — state, bytes, and
+# the Git operations — and serves it on same-origin routes; the browser half
+# (client/client.js) draws the canvas in the main column and opens it from the
+# desktop pet's 特殊功能 menu.
+- insert:
+    - id: temp-space
+      name: '@local/dsh-temp-space'

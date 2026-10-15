@@ -35,6 +35,7 @@
   "QuitDsh": "退出 DSH",
   "QuitDshConfirm": "退出 DSH？正在运行的任务会被中断。",
   "Features": "特殊功能",
+  "TempSpace": "临时空间",
   "Coop": "多机协同",
   "CoopStart": "启动并连接",
   "CoopStop": "停止",

@@ -2768,6 +2768,17 @@ window.__ModuleLoader__.load({
             }
             aquarium.open()
           },
+          'temp-space': () => {
+            // The temp space is the same shape as the aquarium: another plugin's
+            // panel, opened through the service it provides, so a profile without
+            // that plugin says so instead of failing at the click.
+            const space = ctx.get('tempSpace')
+            if (space === undefined) {
+              console.warn('little-icon: the temp-space plugin is not installed, so no canvas opens')
+              return
+            }
+            space.open()
+          },
           'music-volume': ({ value }) => {
             // Configuration, so it is written from this half; the Host says the new
             // number above the pet once the configuration carries it, because the menu

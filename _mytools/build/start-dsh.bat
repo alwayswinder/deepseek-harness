@@ -85,7 +85,7 @@ rem Out-of-tree plugins this launcher enables on the web profile before every
 rem start (see :ensureLocalPlugins): the usage & balance card on the settings
 rem page and the fish-tank aquarium overlay. Space-separated directory names
 rem under Plugins\; add one here when a new profile plugin joins.
-set "DSH_LOCAL_PLUGINS=deepseek-usage dsh-fish-tank dsh-littleIcon"
+set "DSH_LOCAL_PLUGINS=deepseek-usage dsh-fish-tank dsh-littleIcon dsh-temp-space"
 
 rem Back up this machine's DSH and Codex conversation records once per launch. The
 rem worker keeps one snapshot per day, so a second start the same day only

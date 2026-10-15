@@ -883,6 +883,7 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
   assert.match(selfTest.stdout, /常用网站/, 'the self test must report the sites entry too')
   assert.match(selfTest.stdout, /特殊功能/, 'the self test must report the Special submenu too')
+  assert.match(selfTest.stdout, /临时空间/, 'the self test must report the temp-space entry too')
   assert.match(selfTest.stdout, /多机协同/, 'the self test must report the multi-machine entry too')
   // Bringing DSH back is not one command: SW_RESTORE also returns a maximized or
   // fullscreen window to the size it had before, so a window this pet hid is shown

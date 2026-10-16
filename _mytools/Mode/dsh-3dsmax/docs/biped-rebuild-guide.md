@@ -194,7 +194,12 @@ c.figureMode = false
 | 最大朝向误差 | **0.056°** |
 | 四条肢长 | `19.7845 / 20.6696 / 35.3003 / 45.3889`（与 B 精确一致；旧文写 `45.3890`，末位差属取整） |
 
-> 每一步改完要 `redrawViews()` **并二次读值**：Max 对 Biped 是惰性求值，第一次读常拿到旧值（实测：改动后第一次读 0.0000，第二次才 16.93）。
+> ⚠ **读数协议（2026-10-16 两轮实测修正；旧文"`redrawViews()` + 二次读值"不足）**
+> - **写入循环内**：每次 `biped.setTransform` 之后用 **`completeRedraw()`**。`redrawViews()` 在同一调用内会让多次读值反复返回同一个旧数（实测冻结在 `115.971`），不动点循环因此**假收敛**（首轮就 exit）。
+> - **下任何结论之前**：`figureMode = false` + `completeRedraw()`，**在同一次调用里**读值，并连读两次确认稳定。
+>   实测同一场景三种读法：调用内 = 假阳性 `0.0398`；新调用不刷新 = 假阴性 `6.96 / 10.68°`；**同调用内退出 figure 模式再读** = 真值 `0.0399 / 0.056°`。
+> - **换纯几何指标复核**：用"Biped 骨指向 vs UE 骨指向"（由各自子骨位置算夹角）验证方向，不经过四元数。实测臂/腿方向 ≤ `0.028°`，与位置/朝向指标一致。
+> - ⚠ `quat as string` 的打印顺序是 `(x y z w)`，而 `.w/.x/.y/.z` 取值器是常规 `wxyz`。**不要用打印文本算分量，也不要自己拼 `matrix3` 再 `rotationpart`**（MAXScript 会转置：实测把真值 `116.8°` 算成 `3.79°`）。
 
 ### 步骤 5 —— 建“测量基准”驱动点（不挂父子）
 
@@ -309,6 +314,10 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 | `Unknown property: "setCurrent"` | Max 2026 的 LayerProperties 没有该方法 | 建完图层用 `layer.addNode` 逐骨移层 |
 | `Unable to convert: undefined to type: Point3` | 用下标取列表控制器槽（拿到 `SubAnim` 包装） | `(getSubAnim c j).controller` 再取 `.value` |
 | 脚本报 `undefined` 类型错误、函数"不存在" | 短函数名与内置冲突（例如 `fn rp`） | 换全长名（`restPosOf` 之类） |
+| 拟合"调用内自测"完美、换一次调用就崩 | 调用内读到的是刚写入的 figure 值 ⇒ **假阳性** | 按上面"读数协议"：写后 `completeRedraw()`；**结论**必须"`figureMode=false` + `completeRedraw()` + 同调用内读两次" |
+| 新调用不刷新就读出 67.8 / 173° 这类大误差 | 读到的是上次求值的缓存 ⇒ **假阴性** | 同上；并用**纯几何方向**指标交叉验证，别只信一次读值 |
+| 数 `classof o == Dummy` 得到 68 而不是 55 | Biped 的 13 个 `*Nub` **`classof` 也是 `Dummy`** | 「55 根 UE 骨」只在**建 Biped 之前**数，或按名字表筛 |
+| 锁骨怎么解都差 16–80° | 锁骨只有 **2 个自由度**（朝向），由一对"锁骨值"驱动且没有 setter（`biped.getClavicleVals` 只读） | 判定锁骨用**方向**指标（别拿完整世界旋转当目标）；需要时可"不动点 + 实测雅可比 + 随机重启"，并把锁骨**放在最后**解 |
 | **静止对得上、一抬脚就炸**（膝/肘环偏 2.5–4.6 单位 ⇒ 小腿/前臂甩 15–30°） | 源 rig 的**辅助 IK 链静止几何仍是源角色的**（本案例腿 `36.61/43.96`、臂 `18.34/23.28`） | 按 §7.1 把链的静止几何重拟到 B 的骨关节（只写 `p1`、按"方向 × 目标骨长"；环落在链关节上）；**不要再**靠"关节环的固定补偿偏移"凑对 |
 | 移控制器时"骨长不守恒"、中关节飘 | 段长 = `p1 + p2`：伸缩线挂在 `零位置 XYZ` 的 **X** 上（腿 `+0.0385513`），而**臂的长度分量在 `p2.y`** | 只写 `p1`（冻结位置），按"方向 × 目标骨长"构造（§7.1；旧写法"只改 `.x`"只对腿成立） |
 | 极向点怎么转都不收敛 | 目标肢体**接近全伸展**（静止时中关节几乎在起—末端轴上），平面退化 | **段长在静止拟合、极向点在弯姿势对齐**（见 §7）；两者不能在同一轮里做 |
@@ -341,6 +350,10 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 | 列表控制器取值 | `getSubAnim c j` → 再 `.controller` | `c[j]` 得到的是 `SubAnim` 包装，遍历会在列表控制器处中断（曾只找到 12/59 个引用） |
 | 冻结/零偏移 | `<Point>.pos.controller[1]`（冻结位置）、`[2]`（零位置 XYZ） | 冻结值 `.value = [...]` 可写；改链段长就是改这个（不是 `.pos`） |
 | 层操作 | `LayerManager.getLayerFromName "<层>".addNode <obj>`、`.isHidden`（父层隐藏会连带） | ⚠ `.setCurrent()` 在 Max 2026 **不存在**；`getNodes()` 在该版本也不存在 |
+| 强制求值 | `completeRedraw()` | 每次写入后读值必须用它；同一调用内 `redrawViews()` 不足 |
+| 锁骨值（只读） | `biped.getClavicleVals <锁骨>` → `[a,b]` | 锁骨是 2 自由度；没有 `setClavicleVals` |
+| Biped 父节点 | `biped.getRotParentNode <骨>` / `getPosParentNode <骨>` | ⚠ 与场景 `.parent` **可能不同**（实测锁骨：前者 `bip001 Spine2`、后者 `bip001 Neck`） |
+| 姿态复制 | `biped.copyPosture` / `pastePosture` / `copyBipPose` / `pasteBipPose` | 已确认存在；整体对齐的备选路线 |
 
 **Biped 结构参数**（在 `bipRoot.controller` 上）：
 `spineLinks / neckLinks / legLinks / fingers / fingerLinks / toes / toeLinks / upperarmTwistLinks / forearmTwistLinks / thighTwistLinks / calfTwistLinks / ponytail1Links / ponytail2Links / tailLinks`。

@@ -1,3 +1,6 @@
+> ⚠ **历史留档（2026-10-15 原技能内容，2026-10-16 迁入本包）**：本文是个案记录 / 当时的配方，其中算法与结论可能已被 2026-10-16 的复现修正覆盖。
+> **现行做法以 [../quick-runbook.md](../quick-runbook.md) 与两份指南为准**；本文只用于追溯"当时为什么这么定"。
+> 来源：`E:\AI\3dMax\3dsmax-mcp-master\.agents\skills\3dsmax-rig-controller-transfer\references\`（原技能的 `scripts/04`、`05` 描述的是已作废的 `S7_*` 驱动点架构，**未迁入**）。
 # Seven → Quinn 身体控制器迁移案例
 
 ## 产物与范围

@@ -9,7 +9,7 @@ DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，`3
 1. 重启 DSH（宿主侧改动需要重启才生效）。
 2. 新建会话时在**模式选择器**里选 **「3ds Max」**（`id: 3dsmax`，roster 里排第 5）。
 3. 会话里应能看到一批 `mcp__3dsmax__*` 工具（`query_scene`、`manage_layers`、`merge_from_file`…），
-   以及技能目录里的 `3dsmax-rig-controller-transfer` 与 `3dsmax-live-mcp`。
+   以及技能目录里的 `3dsmax-live-mcp`。
 
 > 默认模式没有改动，仍是 `standard`。本模式是**可选**的。
 
@@ -179,15 +179,18 @@ node _mytools\build\check-presets.mjs     # 期望 exit 0，且 3dsmax: ok
 > 校验脚本 `_mytools/build/check-presets.mjs` 2026-10-15 修过一处误报：它会把 preset 行自己的
 > `name:`（显示名）当成包名。现在只统计 `plugins:` 之下的 `name:`。
 
-## 技能副本与 3ds Max 仓库的关系
+## 技能与 rig 文档的关系
 
-`skills/` 下的两个技能是从 `E:\AI\3dMax\3dsmax-mcp-master\.agents\skills\` 复制过来的：
+`skills/` 下现在只有 `3dsmax-live-mcp/`（从 `E:\AI\3dMax\3dsmax-mcp-master\.agents\skills\` 复制）。
 
-- `3dsmax-rig-controller-transfer/`（含 `references/`、`scripts/` 6 个 .ms）
-- `3dsmax-live-mcp/`
+**`3dsmax-rig-controller-transfer/` 已于 2026-10-16 移除**：它描述的 `S7_*` 驱动点直接驱动 B 骨架构，与已验收的路线 1（由迁移过来的环驱动骨、`BIPDRV_*` 只作测量基准）冲突，留着会让人照旧做法复现"动控制器不驱动角色"。它的内容由 `docs/` 接管：
 
-**注意这是两份副本，会漂移。** 建议把这里的 `_mytools` 版本当权威（它跟着 git 走到每台机器），
-在 3ds Max 仓库那边改完技能后同步过来。
+- 权威入口：`docs/quick-runbook.md`（一次跑通的顺序/门槛/实测基准）
+- 规范：`docs/biped-rebuild-guide.md`、`docs/controller-migration-guide.md`
+- 历史留档（2026-10-16 迁入）：`docs/references/seven-stan.md`（路线 2 故障复盘）、`docs/references/seven-quinn.md`
+- 未迁入、留在 3ds Max 仓库（只作追溯，勿按它执行）：`E:\AI\3dMax\3dsmax-mcp-master\.agents\skills\3dsmax-rig-controller-transfer\`（`SKILL.md`、`recipe.md`、`scripts/01/04/05/06`）
+
+> `3dsmax-live-mcp` 仍是两份副本、仍会漂移：改完以 `_mytools` 这份为准，再同步回 3ds Max 仓库。
 
 ## 回滚
 
@@ -213,7 +216,7 @@ Remove-Item "<仓库父目录>\dsh-3dsmax-mcp" -Recurse -Force
 ## 实测记录
 
 - **2026-10-16，模式在运行中的 DSH 里验证通过**：会话内可见 `mcp__3dsmax__*` 工具与
-  `3dsmax-live-mcp`、`3dsmax-rig-controller-transfer` 两个技能；`query_scene`、`capture_viewport`
+  `3dsmax-live-mcp` 技能（rig 迁移技能同日移除，见上）；`query_scene`、`capture_viewport`
   对 pid 17464（`Seven_Skin.max`）可用（截图 534×1128 PNG，`source: active`），
   另一个实例 pid 61676（`Stan01.max`）也能通过 `select_max_instance` 切换后驱动。
 - **同一轮定位到上面那个 Low 完整性标签坑**：checkout 在 `E:\AI\DSH` 下时，MCP 的

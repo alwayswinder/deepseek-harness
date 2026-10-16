@@ -309,7 +309,7 @@ async function paint(answers) {
 // A fresh space: the header, the quota, and the empty state.
 const empty = await paint({})
 const emptyText = texts(empty)
-for (const label of ['临时空间', '+ 文字', '保存', '拉取', '刷新']) {
+for (const label of ['临时空间', '+ 文字', '保存', '拉取', '丢弃', '刷新']) {
   assert.ok(emptyText.includes(label), `a fresh panel draws ${label}`)
 }
 assert.ok(emptyText.includes('0 B / 100.0 MB'), 'a fresh panel draws the quota it was given')
@@ -657,6 +657,90 @@ assert.ok((await press('保存')).some(text => text.includes('已提交并上传
 assert.ok(calls.some(entry => entry.method === 'POST' && String(entry.body).includes('"action":"save"')),
   'the save control reaches the Git route with one action, not two')
 assert.ok((await press('拉取')).some(text => text.includes('已拉取')), 'a pull says so')
+
+// Discarding is the one header control that destroys local work, so it asks
+// first and the first press reaches no route at all. What the host counted is
+// what the notice names afterwards.
+const discardBodies = []
+globalThis.fetch = (url, init) => {
+  if (String(url).includes('/git') && init?.method === 'POST') {
+    discardBodies.push(String(init.body))
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({
+      ok: true, acted: 'discard', discarded: 2, branch: 'main', detached: false, changes: 0,
+      commit: null, relation: 'up-to-date', ahead: 0, behind: 0, upstream: 'origin/main',
+    }) })
+  }
+  return live(url, init)
+}
+assert.ok((await press('丢弃')).some(text => text.includes('再点一次')), 'the discard asks before throwing anything away')
+assert.equal(discardBodies.length, 0, 'the first press reaches no route at all')
+assert.ok((await press('丢弃')).some(text => text.includes('已丢弃 2 处本地改动')),
+  'confirming discards and says how much went')
+assert.deepEqual(discardBodies, ['{"action":"discard","message":""}'],
+  'and the confirmed press asks for exactly that one action')
+globalThis.fetch = live
+
+// A space with nothing to discard is answered at once: a second press only to
+// hear that there was nothing to lose would be noise.
+let nothingDiscarded = 0
+const tidy = mountWith({
+  state: loadedAnswers.state,
+  git: { ok: true, branch: 'main', detached: false, changes: 0, commit: null, relation: 'up-to-date', ahead: 0, behind: 0, upstream: 'origin/main' },
+}, {
+  gitAction: async () => { nothingDiscarded += 1; return { ok: true, acted: 'discard', discarded: 0 } },
+})
+let tidyTree = await tidy.settle()
+elements(tidyTree).find(node => node.type === 'button' && texts(node).includes('丢弃')).props.onClick()
+tidyTree = await tidy.settle()
+assert.equal(nothingDiscarded, 1, 'a clean space is answered rather than asked about')
+assert.ok(texts(tidyTree).some(text => text.includes('没有可丢弃的改动')), 'and the answer says there was nothing to discard')
+
+// The browser half reloads with the page and the host half does not, so a page
+// that already knows this control can meet a host that does not: it says which
+// half is behind instead of reporting an unnamed failure.
+const stale = mountWith({
+  state: loadedAnswers.state,
+  git: { ok: true, branch: 'main', detached: false, changes: 1, commit: null, relation: 'up-to-date', ahead: 0, behind: 0, upstream: 'origin/main' },
+}, {
+  gitAction: async () => ({ ok: false, reason: 'unknown-action' }),
+})
+let staleTree = await stale.settle()
+const staleDiscard = () => elements(staleTree).find(node => node.type === 'button' && texts(node).includes('丢弃'))
+staleDiscard().props.onClick()
+staleTree = await stale.settle()
+staleDiscard().props.onClick()
+staleTree = await stale.settle()
+assert.ok(texts(staleTree).some(text => text.includes('重启 DSH')), 'a host half without the action names itself')
+
+// The undo history goes with what a discard removed: a snapshot would put back a
+// card whose bytes are gone. This panel is the last one mounted, so the keys
+// below reach it.
+const discarding = mountWith(loadedAnswers, {
+  gitAction: async () => ({ ok: true, acted: 'discard', discarded: 1 }),
+})
+let thrownAway = await discarding.settle()
+const notesBefore = elements(thrownAway).filter(node => node.type === 'textarea').length
+const addNoteButton = () => elements(thrownAway).find(node => node.type === 'button' && texts(node).includes('+ 文字'))
+const discardButton = () => elements(thrownAway).find(node => node.type === 'button' && texts(node).includes('丢弃'))
+addNoteButton().props.onClick()
+thrownAway = await discarding.settle()
+assert.equal(elements(thrownAway).filter(node => node.type === 'textarea').length, notesBefore + 1,
+  'the new note is one thing to undo')
+pressKey('z', { ctrlKey: true })
+thrownAway = await discarding.settle()
+assert.equal(elements(thrownAway).filter(node => node.type === 'textarea').length, notesBefore,
+  'Ctrl+Z walks that note back, so the history is real')
+addNoteButton().props.onClick()
+thrownAway = await discarding.settle()
+discardButton().props.onClick()
+thrownAway = await discarding.settle()
+discardButton().props.onClick()
+thrownAway = await discarding.settle()
+assert.ok(texts(thrownAway).some(text => text.includes('已丢弃 1 处本地改动')), 'the confirmed discard is reported')
+pressKey('z', { ctrlKey: true })
+thrownAway = await discarding.settle()
+assert.ok(texts(thrownAway).some(text => text.includes('没有可撤回的操作')),
+  'and nothing is left to undo afterwards')
 
 // A save that committed but could not upload says exactly that, rather than
 // reporting one undifferentiated failure.

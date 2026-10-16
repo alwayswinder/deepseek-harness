@@ -4,7 +4,7 @@
  * Drives the real routes over a real HTTP listener and a real Git repository in
  * a temporary directory, so the checks cover what the page would actually meet:
  * name sanitization against traversal, both quota refusals, the state revision
- * that keeps two writers apart, the byte round trip, the four Git actions, the
+ * that keeps two writers apart, the byte round trip, the Git actions, the
  * refusals of the reveal route, and the clipboard commands the page cannot build
  * for itself. Nothing here needs DSH_HOME, a browser, or a network remote.
  *
@@ -305,6 +305,36 @@ try {
   // The state file is what a Git clone carries, so it has to be on disk as JSON.
   const stored = JSON.parse(readFileSync(join(space, 'index.json'), 'utf8'))
   assert.equal(stored.revision, 2, 'the state file holds the revision the page was told')
+
+  // Discarding is the way back: every local change goes, the ones nothing has
+  // committed yet included, because a file left behind is still something to
+  // commit. What HEAD holds comes back, which for the deleted file means its
+  // bytes, and the answer counts what actually went.
+  writeFileSync(join(space, 'files', 'scratch.bin'), 'draft')
+  writeFileSync(join(space, 'notes.txt'), 'draft')
+  const toDiscard = await json(await fetch(`${origin}${GIT_PATH}`))
+  assert.ok(toDiscard.body.changes >= 3, 'the space under test has changes of both kinds to discard')
+  const discarded = await json(await fetch(`${origin}${GIT_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'discard' }),
+  }))
+  assert.equal(discarded.status, 200, 'a discard is served')
+  assert.equal(discarded.body.ok, true, 'a discard succeeds')
+  assert.equal(discarded.body.acted, 'discard', 'the answer names the action it performed')
+  assert.equal(discarded.body.discarded, toDiscard.body.changes, 'the answer counts what went')
+  assert.equal(discarded.body.changes, 0, 'nothing is left to commit')
+  assert.equal(existsSync(join(space, 'files', 'scratch.bin')), false, 'a file nothing committed is removed')
+  assert.equal(existsSync(join(space, 'notes.txt')), false, 'and so is one outside the files directory')
+  assert.equal(readFileSync(join(space, 'files', 'escape.txt'), 'utf8'), 'changed',
+    'a tracked file comes back to what was committed')
+  const discardedAgain = await json(await fetch(`${origin}${GIT_PATH}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action: 'discard' }),
+  }))
+  assert.equal(discardedAgain.body.ok, true, 'discarding a space with nothing to discard is still an answer')
+  assert.equal(discardedAgain.body.discarded, 0, 'and says that nothing went')
 
   // A space that is not a repository is refused by name rather than by a Git error.
   const bare = mkdtempSync(join(tmpdir(), 'temp-space-bare-'))

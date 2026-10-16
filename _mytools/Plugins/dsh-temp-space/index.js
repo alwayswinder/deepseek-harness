@@ -22,7 +22,10 @@
  * The space directory is the person's own Git repository, so nothing here
  * merges, rebases or resolves conflicts: pull is fast-forward only and push is
  * refused while the branch is behind, which leaves every conflict to the person
- * and a terminal.
+ * and a terminal. Discarding is the way back from a canvas changed by mistake:
+ * the index and the working tree return to the last commit and the files nothing
+ * has committed yet are removed with them, so the space ends with nothing to
+ * commit and the remote is untouched.
  */
 
 import { execFile, spawn } from 'node:child_process'
@@ -45,7 +48,7 @@ const STATE_PATH = `${ROUTE_PREFIX}/state`
 /** The stored bytes: read one back, write one, delete one. */
 const BLOB_PATH = `${ROUTE_PREFIX}/blob`
 
-/** Git status, and the four operations the page may ask for. */
+/** Git status, and the three operations the page may ask for. */
 const GIT_PATH = `${ROUTE_PREFIX}/git`
 
 /** Show one stored file in the system file manager, which the page cannot reach. */
@@ -655,17 +658,27 @@ async function readGitStatus(dir, timeoutMs) {
 /**
  * Perform one Git operation the page asked for.
  *
- * There are two, and they are the two the page offers: saving (commit whatever
- * the canvas wrote, then upload it) and pulling. Saving is one action rather
- * than two because a commit that was never uploaded is not what "saved" means
- * when the space lives on more than one machine — and because two round trips
- * leave a window where the page has committed and the person has looked away.
+ * There are three, and they are the three the page offers: saving (commit
+ * whatever the canvas wrote, then upload it), pulling, and discarding every
+ * local change. Saving is one action rather than two because a commit that was
+ * never uploaded is not what "saved" means when the space lives on more than one
+ * machine — and because two round trips leave a window where the page has
+ * committed and the person has looked away.
  *
  * A push is attempted only when there is something to push, and never when the
  * branch is behind: the remote would refuse it anyway, and saying so before the
  * attempt keeps the reason out of Git's own transport wording.
+ *
+ * Discarding throws local work away irreversibly, so it is one action too: the
+ * index and the working tree are reset to HEAD and the untracked files go with
+ * them, because a file nothing has committed yet is a local change like any
+ * other and would otherwise leave the space with something to commit. Nothing
+ * here reaches the network, so what a discard ends at is always the last commit
+ * this machine already had. An initial repository has no commit to reset to,
+ * where `reset --hard HEAD` fails and emptying the index is the same thing: the
+ * clean below leaves the working tree holding exactly what HEAD holds.
  * @param dir - the space directory.
- * @param action - `save` or `pull`.
+ * @param action - `save`, `pull`, or `discard`.
  * @param options - the remote to push to, the commit prefix, and the deadline.
  * @returns the refreshed status, plus what the operation did.
  */
@@ -676,6 +689,17 @@ async function runGitAction(dir, action, options) {
     if (!pulled.ok) return { ok: false, reason: pulled.timedOut ? 'timed-out' : 'failed', message: pulled.message }
     const pulledStatus = await readGitStatus(dir, timeoutMs)
     return pulledStatus.ok ? { ...pulledStatus, acted: 'pull' } : pulledStatus
+  }
+  if (action === 'discard') {
+    const before = await execGit(dir, ['status', '--porcelain=v1'], timeoutMs)
+    const discarded = before.ok ? before.stdout.split('\n').filter(line => line.trim() !== '').length : 0
+    const head = await execGit(dir, ['rev-parse', '--verify', '--quiet', 'HEAD'], timeoutMs)
+    const reset = await execGit(dir, head.ok ? ['reset', '--hard', 'HEAD'] : ['reset'], timeoutMs)
+    if (!reset.ok) return { ok: false, reason: 'failed', message: reset.message }
+    const cleaned = await execGit(dir, ['clean', '-fd'], timeoutMs)
+    if (!cleaned.ok) return { ok: false, reason: 'failed', message: cleaned.message }
+    const status = await readGitStatus(dir, timeoutMs)
+    return status.ok ? { ...status, acted: 'discard', discarded } : status
   }
   if (action !== 'save') return { ok: false, reason: 'unknown-action' }
 

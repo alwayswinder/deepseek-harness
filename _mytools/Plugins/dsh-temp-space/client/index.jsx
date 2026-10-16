@@ -135,6 +135,7 @@ const zh = {
   refresh: '刷新',
   save: '保存',
   pull: '拉取',
+  discard: '丢弃',
   working: '正在{action}…',
   refreshed: '已刷新',
   confirmRemove: '再点一次 × 就删掉「{name}」',
@@ -157,11 +158,13 @@ const zh = {
   clean: '清理',
   confirmClean: '再点一次就删除 {count} 个没有卡片引用的文件（{size}）',
   cleaned: '已清理 {count} 个未引用文件（{size}）；撤销历史已清空',
+  confirmDiscard: '再点一次就丢弃这 {count} 处本地改动：工作区回到上次提交，还没提交的文件会被删掉，远端不受影响',
   copyNothing: '没有选中卡片：先点一张或用框选选几张，再按 Ctrl+C',
   copiedFiles: '已把 {count} 个文件放进系统剪贴板，去文件管理器或其他程序里粘贴',
   copiedText: '已把 {count} 张便签的文字放进系统剪贴板',
   copyFailed: '系统剪贴板没有接受：{message}',
   hostStale: '宿主半边还没有这条路由：重启 DSH 之后再试（浏览器半边刷新页面就会更新，宿主不是）',
+  hostStaleAction: '宿主半边还不认识「丢弃」这个动作：重启 DSH 之后再试（浏览器半边刷新页面就会更新，宿主不是）',
   pasted: '已从剪贴板存入 {count} 个文件',
   pastedText: '已从剪贴板新建一张便签',
   gitBranch: '分支 {branch}',
@@ -180,6 +183,8 @@ const zh = {
   savedUnpushed: '已提交到本机，但上传失败：{message}',
   savedBehind: '已提交到本机，但远端领先，先拉取再保存',
   pulled: '已拉取',
+  discarded: '已丢弃 {count} 处本地改动，本机已回到上次提交',
+  discardedNothing: '和上次提交一致，没有可丢弃的改动',
   failed: '失败：{message}',
   conflict: '这个画布在别处被改过，已重新载入。',
   tooLarge: '单个文件最多 10 MB，这个没存进去。',
@@ -198,6 +203,7 @@ const en = {
   refresh: 'Refresh',
   save: 'Save',
   pull: 'Pull',
+  discard: 'Discard',
   working: '{action}…',
   refreshed: 'Refreshed',
   confirmRemove: 'Press × again to remove "{name}"',
@@ -220,11 +226,13 @@ const en = {
   clean: 'Clean up',
   confirmClean: 'Press again to delete {count} files no card points at ({size})',
   cleaned: 'Cleaned up {count} unreferenced files ({size}); the undo history is empty now',
+  confirmDiscard: 'Press again to discard these {count} local changes: the working tree goes back to the last commit and files that were never committed are deleted; the remote is untouched',
   copyNothing: 'Nothing is selected: click a card or sweep a few, then press Ctrl+C',
   copiedFiles: 'Put {count} files on the system clipboard — paste them in the file manager or another application',
   copiedText: 'Put the text of {count} notes on the system clipboard',
   copyFailed: 'The system clipboard would not take it: {message}',
   hostStale: 'The host half has no such route yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)',
+  hostStaleAction: 'The host half does not know this action yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)',
   pasted: 'Stored {count} files from the clipboard',
   pastedText: 'Left a new note holding what the clipboard had',
   gitBranch: 'branch {branch}',
@@ -243,6 +251,8 @@ const en = {
   savedUnpushed: 'Committed, but the upload failed: {message}',
   savedBehind: 'Committed here, but the remote is ahead — pull first',
   pulled: 'Pulled',
+  discarded: 'Discarded {count} local changes; this machine is back at the last commit',
+  discardedNothing: 'Already at the last commit, so there is nothing to discard',
   failed: 'Failed: {message}',
   conflict: 'This canvas changed elsewhere; it was reloaded.',
   tooLarge: 'One file may hold at most 10 MB; that one was not stored.',
@@ -290,6 +300,8 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   /** The box being swept on the canvas, in content coordinates, or null. */
   const [marquee, setMarquee] = useState(null)
   const [confirmClean, setConfirmClean] = useState(false)
+  /** Whether the discard control has been pressed once and is waiting for the second press. */
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
   const revision = useRef(0)
   const itemsRef = useRef([])
   const dirty = useRef(false)
@@ -1174,7 +1186,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   }, [say])
 
   const act = useCallback(async (name) => {
-    say(t('working', { action: name === 'save' ? t('save') : t('pull') }))
+    say(t('working', { action: t(name) }))
     const describe = name === 'save'
       ? (result) => {
         if (result.ok) return result.pushed === true ? t('savedAll') : t('savedNothing')
@@ -1187,10 +1199,59 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         }
         return t('failed', { message: result.message ?? result.reason })
       }
-      : (result) => (result.ok ? t('pulled') : t('failed', { message: result.message ?? result.reason }))
+      : name === 'discard'
+        ? (result) => {
+          if (!result.ok) {
+            // A host half that predates this action says so by name; the generic
+            // failure line would read as this plugin being broken rather than as
+            // the half that needs restarting.
+            return result.reason === 'unknown-action'
+              ? t('hostStaleAction')
+              : t('failed', { message: result.message ?? result.reason })
+          }
+          // The host counts what actually went, which is what makes the answer
+          // truthful when the working tree had nothing left to discard.
+          return result.discarded === 0
+            ? t('discardedNothing')
+            : t('discarded', { count: result.discarded })
+        }
+        : (result) => (result.ok ? t('pulled') : t('failed', { message: result.message ?? result.reason }))
     const result = await run(name, () => gitAction(name, ''), describe)
     if (result.ok) await refresh()
+    return result
   }, [gitAction, refresh, run, say, t])
+
+  /**
+   * Throw away every local change, which is the way back from a canvas someone
+   * changed and does not want.
+   *
+   * It cannot be undone, so it asks first, the way the clean-up does. The pending
+   * write is cancelled rather than flushed — a save here would put back the very
+   * canvas the host is about to reset — and the undo history goes with it, since
+   * a snapshot would restore cards whose bytes the discard removed.
+   */
+  const discardChanges = useCallback(async () => {
+    const changes = git?.changes ?? 0
+    // Something to discard is what makes the second press worth asking for: with
+    // a clean tree the answer is the same either way, so it is given at once.
+    if (!confirmDiscard && changes > 0) {
+      setConfirmDiscard(true)
+      setConfirmClean(false)
+      say(t('confirmDiscard', { count: changes }))
+      return
+    }
+    setConfirmDiscard(false)
+    clearTimeout(timer.current)
+    const result = await act('discard')
+    if (result.ok) {
+      history.current = []
+      setSelected(new Set())
+      return
+    }
+    // A discard that failed moved nothing, so the write it paused goes back to
+    // disk on the usual delay: the canvas on screen is still the person's.
+    if (dirty.current) timer.current = setTimeout(() => { void flush() }, SAVE_DEBOUNCE_MS)
+  }, [act, confirmDiscard, flush, git, say, t])
 
   /** Reload both halves of the header, and say that it happened. */
   const reload = useCallback(async () => {
@@ -1464,6 +1525,20 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   button(t('addText'), addText, false),
   button(t('save'), () => { guard(() => act('save')) }, false),
   button(t('pull'), () => { guard(() => act('pull')) }, false),
+  // The one control that throws local work away, so it turns into the danger
+  // colour while it is waiting for the second press that confirms it. Nothing
+  // here reaches the remote.
+  h('button', {
+    type: 'button',
+    onClick: () => { guard(() => discardChanges()) },
+    disabled: busy !== '',
+    style: {
+      font: 'inherit', cursor: 'pointer', height: 28, padding: '0 12px', borderRadius: 999, fontSize: 13,
+      border: '1px solid var(--dsw-alias-border-l2, #d9dde6)',
+      background: confirmDiscard ? 'var(--dsw-alias-state-danger-primary, #d9534f)' : 'var(--dsw-alias-bg-layer-1, #fff)',
+      color: confirmDiscard ? '#fff' : 'var(--dsw-alias-label-primary, inherit)',
+    },
+  }, t('discard')),
   button(t('refresh'), () => { guard(reload) }, false)),
   notice === ''
     ? null
@@ -1505,12 +1580,14 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       event.preventDefault()
     },
     onClick: (event) => {
-      // A click on the canvas itself is the way out of a pending removal and out
-      // of a pending clean-up; a click on a card is not, so this reads the target
-      // rather than relying on the event having stopped anywhere.
+      // A click on the canvas itself is the way out of a pending removal, out of
+      // a pending clean-up, and out of a pending discard; a click on a card is
+      // not, so this reads the target rather than relying on the event having
+      // stopped anywhere.
       if (!isCanvasBackground(event)) return
       setConfirmRemove(null)
       setConfirmClean(false)
+      setConfirmDiscard(false)
     },
     // A drag that began inside the panel — a card, a note's selected text — is not
     // a file arriving: refusing it here keeps the drop hint away and stops the

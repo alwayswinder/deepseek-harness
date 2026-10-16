@@ -86,6 +86,7 @@ var zh = {
   refresh: "\u5237\u65B0",
   save: "\u4FDD\u5B58",
   pull: "\u62C9\u53D6",
+  discard: "\u4E22\u5F03",
   working: "\u6B63\u5728{action}\u2026",
   refreshed: "\u5DF2\u5237\u65B0",
   confirmRemove: "\u518D\u70B9\u4E00\u6B21 \xD7 \u5C31\u5220\u6389\u300C{name}\u300D",
@@ -108,11 +109,13 @@ var zh = {
   clean: "\u6E05\u7406",
   confirmClean: "\u518D\u70B9\u4E00\u6B21\u5C31\u5220\u9664 {count} \u4E2A\u6CA1\u6709\u5361\u7247\u5F15\u7528\u7684\u6587\u4EF6\uFF08{size}\uFF09",
   cleaned: "\u5DF2\u6E05\u7406 {count} \u4E2A\u672A\u5F15\u7528\u6587\u4EF6\uFF08{size}\uFF09\uFF1B\u64A4\u9500\u5386\u53F2\u5DF2\u6E05\u7A7A",
+  confirmDiscard: "\u518D\u70B9\u4E00\u6B21\u5C31\u4E22\u5F03\u8FD9 {count} \u5904\u672C\u5730\u6539\u52A8\uFF1A\u5DE5\u4F5C\u533A\u56DE\u5230\u4E0A\u6B21\u63D0\u4EA4\uFF0C\u8FD8\u6CA1\u63D0\u4EA4\u7684\u6587\u4EF6\u4F1A\u88AB\u5220\u6389\uFF0C\u8FDC\u7AEF\u4E0D\u53D7\u5F71\u54CD",
   copyNothing: "\u6CA1\u6709\u9009\u4E2D\u5361\u7247\uFF1A\u5148\u70B9\u4E00\u5F20\u6216\u7528\u6846\u9009\u9009\u51E0\u5F20\uFF0C\u518D\u6309 Ctrl+C",
   copiedFiles: "\u5DF2\u628A {count} \u4E2A\u6587\u4EF6\u653E\u8FDB\u7CFB\u7EDF\u526A\u8D34\u677F\uFF0C\u53BB\u6587\u4EF6\u7BA1\u7406\u5668\u6216\u5176\u4ED6\u7A0B\u5E8F\u91CC\u7C98\u8D34",
   copiedText: "\u5DF2\u628A {count} \u5F20\u4FBF\u7B7E\u7684\u6587\u5B57\u653E\u8FDB\u7CFB\u7EDF\u526A\u8D34\u677F",
   copyFailed: "\u7CFB\u7EDF\u526A\u8D34\u677F\u6CA1\u6709\u63A5\u53D7\uFF1A{message}",
   hostStale: "\u5BBF\u4E3B\u534A\u8FB9\u8FD8\u6CA1\u6709\u8FD9\u6761\u8DEF\u7531\uFF1A\u91CD\u542F DSH \u4E4B\u540E\u518D\u8BD5\uFF08\u6D4F\u89C8\u5668\u534A\u8FB9\u5237\u65B0\u9875\u9762\u5C31\u4F1A\u66F4\u65B0\uFF0C\u5BBF\u4E3B\u4E0D\u662F\uFF09",
+  hostStaleAction: "\u5BBF\u4E3B\u534A\u8FB9\u8FD8\u4E0D\u8BA4\u8BC6\u300C\u4E22\u5F03\u300D\u8FD9\u4E2A\u52A8\u4F5C\uFF1A\u91CD\u542F DSH \u4E4B\u540E\u518D\u8BD5\uFF08\u6D4F\u89C8\u5668\u534A\u8FB9\u5237\u65B0\u9875\u9762\u5C31\u4F1A\u66F4\u65B0\uFF0C\u5BBF\u4E3B\u4E0D\u662F\uFF09",
   pasted: "\u5DF2\u4ECE\u526A\u8D34\u677F\u5B58\u5165 {count} \u4E2A\u6587\u4EF6",
   pastedText: "\u5DF2\u4ECE\u526A\u8D34\u677F\u65B0\u5EFA\u4E00\u5F20\u4FBF\u7B7E",
   gitBranch: "\u5206\u652F {branch}",
@@ -131,6 +134,8 @@ var zh = {
   savedUnpushed: "\u5DF2\u63D0\u4EA4\u5230\u672C\u673A\uFF0C\u4F46\u4E0A\u4F20\u5931\u8D25\uFF1A{message}",
   savedBehind: "\u5DF2\u63D0\u4EA4\u5230\u672C\u673A\uFF0C\u4F46\u8FDC\u7AEF\u9886\u5148\uFF0C\u5148\u62C9\u53D6\u518D\u4FDD\u5B58",
   pulled: "\u5DF2\u62C9\u53D6",
+  discarded: "\u5DF2\u4E22\u5F03 {count} \u5904\u672C\u5730\u6539\u52A8\uFF0C\u672C\u673A\u5DF2\u56DE\u5230\u4E0A\u6B21\u63D0\u4EA4",
+  discardedNothing: "\u548C\u4E0A\u6B21\u63D0\u4EA4\u4E00\u81F4\uFF0C\u6CA1\u6709\u53EF\u4E22\u5F03\u7684\u6539\u52A8",
   failed: "\u5931\u8D25\uFF1A{message}",
   conflict: "\u8FD9\u4E2A\u753B\u5E03\u5728\u522B\u5904\u88AB\u6539\u8FC7\uFF0C\u5DF2\u91CD\u65B0\u8F7D\u5165\u3002",
   tooLarge: "\u5355\u4E2A\u6587\u4EF6\u6700\u591A 10 MB\uFF0C\u8FD9\u4E2A\u6CA1\u5B58\u8FDB\u53BB\u3002",
@@ -148,6 +153,7 @@ var en = {
   refresh: "Refresh",
   save: "Save",
   pull: "Pull",
+  discard: "Discard",
   working: "{action}\u2026",
   refreshed: "Refreshed",
   confirmRemove: 'Press \xD7 again to remove "{name}"',
@@ -170,11 +176,13 @@ var en = {
   clean: "Clean up",
   confirmClean: "Press again to delete {count} files no card points at ({size})",
   cleaned: "Cleaned up {count} unreferenced files ({size}); the undo history is empty now",
+  confirmDiscard: "Press again to discard these {count} local changes: the working tree goes back to the last commit and files that were never committed are deleted; the remote is untouched",
   copyNothing: "Nothing is selected: click a card or sweep a few, then press Ctrl+C",
   copiedFiles: "Put {count} files on the system clipboard \u2014 paste them in the file manager or another application",
   copiedText: "Put the text of {count} notes on the system clipboard",
   copyFailed: "The system clipboard would not take it: {message}",
   hostStale: "The host half has no such route yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)",
+  hostStaleAction: "The host half does not know this action yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)",
   pasted: "Stored {count} files from the clipboard",
   pastedText: "Left a new note holding what the clipboard had",
   gitBranch: "branch {branch}",
@@ -193,6 +201,8 @@ var en = {
   savedUnpushed: "Committed, but the upload failed: {message}",
   savedBehind: "Committed here, but the remote is ahead \u2014 pull first",
   pulled: "Pulled",
+  discarded: "Discarded {count} local changes; this machine is back at the last commit",
+  discardedNothing: "Already at the last commit, so there is nothing to discard",
   failed: "Failed: {message}",
   conflict: "This canvas changed elsewhere; it was reloaded.",
   tooLarge: "One file may hold at most 10 MB; that one was not stored.",
@@ -228,6 +238,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   const [selected, setSelected] = (0, import_react.useState)(/* @__PURE__ */ new Set());
   const [marquee, setMarquee] = (0, import_react.useState)(null);
   const [confirmClean, setConfirmClean] = (0, import_react.useState)(false);
+  const [confirmDiscard, setConfirmDiscard] = (0, import_react.useState)(false);
   const revision = (0, import_react.useRef)(0);
   const itemsRef = (0, import_react.useRef)([]);
   const dirty = (0, import_react.useRef)(false);
@@ -787,17 +798,43 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     }
   }, [say]);
   const act = (0, import_react.useCallback)(async (name2) => {
-    say(t("working", { action: name2 === "save" ? t("save") : t("pull") }));
+    say(t("working", { action: t(name2) }));
     const describe = name2 === "save" ? (result2) => {
       if (result2.ok) return result2.pushed === true ? t("savedAll") : t("savedNothing");
       if (result2.committed === true) {
         return result2.reason === "behind" ? t("savedBehind") : t("savedUnpushed", { message: result2.message ?? result2.reason });
       }
       return t("failed", { message: result2.message ?? result2.reason });
+    } : name2 === "discard" ? (result2) => {
+      if (!result2.ok) {
+        return result2.reason === "unknown-action" ? t("hostStaleAction") : t("failed", { message: result2.message ?? result2.reason });
+      }
+      return result2.discarded === 0 ? t("discardedNothing") : t("discarded", { count: result2.discarded });
     } : (result2) => result2.ok ? t("pulled") : t("failed", { message: result2.message ?? result2.reason });
     const result = await run(name2, () => gitAction(name2, ""), describe);
     if (result.ok) await refresh();
+    return result;
   }, [gitAction, refresh, run, say, t]);
+  const discardChanges = (0, import_react.useCallback)(async () => {
+    const changes = git?.changes ?? 0;
+    if (!confirmDiscard && changes > 0) {
+      setConfirmDiscard(true);
+      setConfirmClean(false);
+      say(t("confirmDiscard", { count: changes }));
+      return;
+    }
+    setConfirmDiscard(false);
+    clearTimeout(timer.current);
+    const result = await act("discard");
+    if (result.ok) {
+      history.current = [];
+      setSelected(/* @__PURE__ */ new Set());
+      return;
+    }
+    if (dirty.current) timer.current = setTimeout(() => {
+      void flush();
+    }, SAVE_DEBOUNCE_MS);
+  }, [act, confirmDiscard, flush, git, say, t]);
   const reload = (0, import_react.useCallback)(async () => {
     await refresh();
     say(t("refreshed"));
@@ -1152,6 +1189,27 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       button(t("pull"), () => {
         guard(() => act("pull"));
       }, false),
+      // The one control that throws local work away, so it turns into the danger
+      // colour while it is waiting for the second press that confirms it. Nothing
+      // here reaches the remote.
+      (0, import_react.createElement)("button", {
+        type: "button",
+        onClick: () => {
+          guard(() => discardChanges());
+        },
+        disabled: busy !== "",
+        style: {
+          font: "inherit",
+          cursor: "pointer",
+          height: 28,
+          padding: "0 12px",
+          borderRadius: 999,
+          fontSize: 13,
+          border: "1px solid var(--dsw-alias-border-l2, #d9dde6)",
+          background: confirmDiscard ? "var(--dsw-alias-state-danger-primary, #d9534f)" : "var(--dsw-alias-bg-layer-1, #fff)",
+          color: confirmDiscard ? "#fff" : "var(--dsw-alias-label-primary, inherit)"
+        }
+      }, t("discard")),
       button(t("refresh"), () => {
         guard(reload);
       }, false)
@@ -1195,6 +1253,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
             if (!isCanvasBackground(event)) return;
             setConfirmRemove(null);
             setConfirmClean(false);
+            setConfirmDiscard(false);
           },
           // A drag that began inside the panel — a card, a note's selected text — is not
           // a file arriving: refusing it here keeps the drop hint away and stops the

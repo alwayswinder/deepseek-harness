@@ -671,6 +671,7 @@ assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens th
 assert.equal(labels.Settings, '设置', 'the menu entry that opens the plugin settings page')
 assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang under')
 assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens the aquarium')
+assert.equal(labels.FishTank, '像素鱼缸', 'the mini game entry that opens the pixel fish tank')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 assert.equal(labels.Sites, '网站', 'the menu entry the site list and the library page hang under')
 assert.equal(labels.SitesFavorites, '常用网站', 'the submenu the configured sites hang under')
@@ -681,7 +682,7 @@ assert.equal(labels.MusicPause, '暂停', 'the music entry that pauses')
 assert.equal(labels.MusicNext, '换歌', 'the music entry that steps to the next song')
 assert.equal(labels.System, '系统', 'the menu entry the DSH lifecycle entries hang under')
 for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
-  'Settings', 'Sites', 'SitesFavorites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'Shot', 'ShotHint', 'ShotSaved',
+  'Settings', 'Sites', 'SitesFavorites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
   'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
@@ -701,6 +702,7 @@ for (const key of Object.keys(labels).filter(name => name.startsWith('Music'))) 
 // The mini-games submenu is drawn by the pet process, so the two halves only meet
 // on the command id: the pet must send the one the page carries out.
 assert.match(petSource, /Send-MenuCommand 'aquarium'/, 'the pet menu must send the aquarium command')
+assert.match(petSource, /Send-MenuCommand 'fish-tank'/, 'the pet menu must send the fish-tank command')
 // A configured site is the same handshake plus the address the entry named, and
 // the submenu is rebuilt at every open rather than fixed at startup: the list is
 // the settings card's, and editing it must not need a restarted pet.
@@ -865,6 +867,7 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /系统/, 'the self test must report the system entry too')
   assert.match(selfTest.stdout, /小游戏/, 'the self test must report the mini-games entry too')
   assert.match(selfTest.stdout, /玻璃鱼缸/, 'the self test must report the aquarium entry too')
+  assert.match(selfTest.stdout, /像素鱼缸/, 'the self test must report the fish-tank entry too')
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
   assert.match(selfTest.stdout, /更新 DSH/, 'the self test must report the update entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
@@ -2002,15 +2005,24 @@ try {
   clientServices.aquarium3d = undefined
   commands.onmessage({ data: '{"command":"aquarium"}' })
   assert.deepEqual(openedAquariums, ['open'], 'without the aquarium plugin nothing may open')
+  // "Pixel fish tank" is the second mini game, and it follows the same rule:
+  // the menu names that plugin's service instead of reaching into its overlay.
+  const openedTanks = []
+  clientServices.fishTank = { open: () => { openedTanks.push('open') } }
+  commands.onmessage({ data: '{"command":"fish-tank"}' })
+  assert.deepEqual(openedTanks, ['open'], 'the fish-tank command must open the other plugin\'s tank')
+  clientServices.fishTank = undefined
+  commands.onmessage({ data: '{"command":"fish-tank"}' })
+  assert.deepEqual(openedTanks, ['open'], 'without the fish-tank plugin nothing may open')
 } finally {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
 // One unknown command, the retired link command the card now owns, a volume frame
 // naming no number, the two refusals above in each of their two forms, the settings
-// entry with no Plugins page to reach, and the aquarium entry with no aquarium plugin
-// installed.
-assert.equal(warned.length, 9, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// entry with no Plugins page to reach, and the two mini-game entries with their
+// plugin missing.
+assert.equal(warned.length, 10, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // The "sites" entry is the one menu command that carries its own address: the
 // frame names it, and the page opens it where the chat entry would open one. A

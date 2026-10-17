@@ -4,11 +4,13 @@
  * The module system executes this file, which registers the bundle factory
  * through window.__ModuleLoader__.load. The factory requires only the
  * platform-table react module and contributes one `shell.overlay` entry: a
- * floating pixel-fish button on the right edge that toggles a fullscreen
- * aquarium. The aquarium is one canvas driven by requestAnimationFrame with
- * deltaTime, a plugin-owned small engine (fish AI, pellets, bubbles,
- * seaweed, corals, light rays), a translucent pixel-styled action panel
- * (feed / blow bubbles), and localStorage persistence of the tank.
+ * fullscreen aquarium, mounted only while it is open, plus the `fishTank`
+ * service that opens and closes it. This plugin draws no entry of its own:
+ * the desktop pet's 小游戏 menu calls that service. The aquarium is one
+ * canvas driven by requestAnimationFrame with deltaTime, a plugin-owned
+ * small engine (fish AI, pellets, bubbles, seaweed, corals, light rays), a
+ * translucent pixel-styled action panel (feed / blow bubbles), and
+ * localStorage persistence of the tank.
  *
  * The background is the concept image served by the host half at
  * /api/fish-tank/background; when that route is absent the engine draws a
@@ -31,7 +33,6 @@ window.__ModuleLoader__.load({
     // ---- locale -----------------------------------------------------------
 
     const zh = {
-      enter: '进入海底世界',
       exit: '退出海底世界',
       feed: '投喂',
       bubbles: '吹泡泡',
@@ -40,7 +41,6 @@ window.__ModuleLoader__.load({
     }
 
     const en = {
-      enter: 'Enter the aquarium',
       exit: 'Leave the aquarium',
       feed: 'Feed',
       bubbles: 'Bubbles',
@@ -158,14 +158,6 @@ window.__ModuleLoader__.load({
         spriteCache.set(key, sprite)
       }
       return sprite
-    }
-
-    /** Draw the entry-button icon (a resting clownfish at 2x). */
-    function drawFishIcon(canvas) {
-      const g = canvas.getContext('2d')
-      g.imageSmoothingEnabled = false
-      g.clearRect(0, 0, canvas.width, canvas.height)
-      g.drawImage(getSprite('clownfish', 0, 2), 0, 0)
     }
 
     // ---- engine -----------------------------------------------------------
@@ -774,13 +766,11 @@ window.__ModuleLoader__.load({
       '.dft-btn:active{transform:scale(.95);}',
       '.dft-status{font-family:ui-monospace,Consolas,monospace;font-size:11px;letter-spacing:1px;color:#8fd4ff;',
       'text-shadow:1px 1px 0 #06121f;text-align:center;}',
-      '.dft-entry{position:fixed;z-index:1500;display:flex;align-items:center;padding:7px 9px;',
-      'background:rgba(7,26,48,.88);border:2px solid #37c8ff;',
-      'box-shadow:0 0 0 2px #04101d,4px 4px 0 2px rgba(2,10,20,.6);cursor:pointer;image-rendering:pixelated;}',
-      '.dft-entry:hover{filter:brightness(1.25);}',
-      '.dft-entry:active{filter:brightness(.9);}',
-      '.dft-icon{display:block;transform-origin:center;transition:transform .12s;}',
-      '.dft-entry:hover .dft-icon{transform:scale(1.15);}',
+      '.dft-close{position:absolute;right:14px;top:14px;z-index:2;font-family:ui-monospace,Consolas,monospace;',
+      'font-size:12px;letter-spacing:2px;color:#cbeeff;background:rgba(6,24,46,.72);border:2px solid #2fa8e0;',
+      'box-shadow:0 0 0 2px #04101d,3px 3px 0 2px rgba(2,10,20,.55);padding:8px 12px;cursor:pointer;',
+      'text-shadow:1px 1px 0 #06121f;}',
+      '.dft-close:hover{filter:brightness(1.2);}',
     ].join('')
 
     /** Insert the plugin stylesheet once per document. */
@@ -793,23 +783,43 @@ window.__ModuleLoader__.load({
       document.head.appendChild(tag)
     }
 
-    // ---- components ---------------------------------------------------------
+    // ---- overlay control --------------------------------------------------
 
-    /** The floating pixel-fish button: entry handle when closed, corner exit when open. */
-    function FishButton({ t, open, onClick }) {
-      const canvasRef = React.useRef(null)
-      React.useEffect(() => {
-        if (canvasRef.current !== null) drawFishIcon(canvasRef.current)
-      }, [])
-      return h('button', {
-        type: 'button',
-        onClick,
-        className: 'dft-entry',
-        style: open ? { right: '12px', top: '12px' } : { right: '0px', top: '50%', transform: 'translateY(-50%)' },
-        title: open ? t('exit') : t('enter'),
-        'aria-label': open ? t('exit') : t('enter'),
-      }, h('canvas', { ref: canvasRef, className: 'dft-icon', width: 40, height: 18 }))
+    /**
+     * Whether the aquarium overlay is open. The state lives here rather than
+     * inside the component because the desktop pet's 小游戏 menu opens it from
+     * another plugin: `subscribeTank` and `tankIsOpen` are the read side the
+     * component binds to, and the `fishTank` service below is the write side.
+     */
+    let tankOpen = false
+    const tankListeners = new Set()
+
+    /**
+     * Subscribe to the overlay's open state.
+     * @param listener - called after every change.
+     * @returns the unsubscribe function.
+     */
+    function subscribeTank(listener) {
+      tankListeners.add(listener)
+      return () => { tankListeners.delete(listener) }
     }
+
+    /** @returns whether the overlay is open right now. */
+    function tankIsOpen() {
+      return tankOpen
+    }
+
+    /**
+     * Put the overlay into one state and wake its subscribers.
+     * @param next - the state the overlay should be in.
+     */
+    function setTankOpen(next) {
+      if (tankOpen === next) return
+      tankOpen = next
+      for (const listener of tankListeners) listener()
+    }
+
+    // ---- components ---------------------------------------------------------
 
     /** The translucent action panel: feed, blow bubbles, tank status. */
     function FishTankPanel({ t, status, onFeed, onBlow }) {
@@ -876,6 +886,12 @@ window.__ModuleLoader__.load({
             if (engine !== null) engine.poke(event.nativeEvent.offsetX, event.nativeEvent.offsetY)
           },
         }),
+        h('button', {
+          type: 'button',
+          className: 'dft-close',
+          onClick: onClose,
+          'aria-label': t('exit'),
+        }, t('exit')),
         h(FishTankPanel, {
           t, status,
           onFeed: () => engineAction('feed'),
@@ -884,17 +900,30 @@ window.__ModuleLoader__.load({
       )
     }
 
-    /** The shell.overlay entry: entry button plus the open aquarium. */
-    function FishTankEntry(props) {
-      const [open, setOpen] = React.useState(false)
-      const toggle = () => { setOpen((value) => !value) }
-      return h(React.Fragment, null,
-        h(FishButton, { key: 'button', t: props.t, open, onClick: toggle }),
-        open ? h(FishTankGame, { key: 'game', t: props.t, onClose: () => { setOpen(false) } }) : null,
-      )
+    /**
+     * The shell.overlay entry: the aquarium, mounted only while it is open.
+     *
+     * There is deliberately no button of this plugin's own. The only way in is
+     * a caller of the `fishTank` service — today the desktop pet's 小游戏 menu
+     * — so nothing floats over the window until someone asks for the tank.
+     */
+    function FishTankOverlay(props) {
+      const open = React.useSyncExternalStore(subscribeTank, tankIsOpen)
+      const close = React.useCallback(() => { setTankOpen(false) }, [])
+      if (!open) return null
+      return h(FishTankGame, { t: props.t, onClose: close })
     }
 
     // ---- plugin -------------------------------------------------------------
+
+    /** The control object every caller of the service shares. */
+    const control = {
+      open: () => { setTankOpen(true) },
+      close: () => { setTankOpen(false) },
+      toggle: () => { setTankOpen(!tankOpen) },
+      isOpen: tankIsOpen,
+      subscribe: subscribeTank,
+    }
 
     const plugin = {
       name: 'fish-tank-client',
@@ -905,12 +934,16 @@ window.__ModuleLoader__.load({
           injectStyles()
           return () => {}
         }, 'fish-tank: stylesheet')
+        // The way in: the desktop pet's 小游戏 menu asks for this service instead
+        // of reaching into the overlay's DOM, and a profile without this plugin
+        // simply has no such service.
+        ctx.effect(() => ctx.reflect.provide('fishTank', control), 'fish-tank: overlay control')
         ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
           name: 'shell.overlay',
           id: 'fish-tank',
           order: 300,
           locale: NS,
-        }, FishTankEntry)), 'fish-tank: shell overlay entry')
+        }, FishTankOverlay)), 'fish-tank: shell overlay entry')
       },
     }
 

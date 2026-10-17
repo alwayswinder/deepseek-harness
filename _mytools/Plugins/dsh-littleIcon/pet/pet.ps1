@@ -301,6 +301,17 @@ namespace DshPet
                         }
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 10.6f, 13f), P(bounds, 13.4f, 11.2f), P(bounds, 13.4f, 14.8f), P(bounds, 10.6f, 13f) });
                         break;
+                    case "fish-tank":
+                        using (GraphicsPath body = RoundedPath(Rectangle.Round(R(bounds, 2.6f, 6.4f, 11.2f, 7.6f)), 3))
+                        {
+                            graphics.DrawPath(pen, body);
+                        }
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 13.8f, 8f), P(bounds, 17.4f, 6.2f), P(bounds, 17.4f, 14.2f), P(bounds, 13.8f, 12.4f) });
+                        using (SolidBrush eye = new SolidBrush(Ink))
+                        {
+                            graphics.FillEllipse(eye, R(bounds, 4.8f, 9f, 1.8f, 1.8f));
+                        }
+                        break;
                     case "gear":
                         graphics.DrawEllipse(pen, R(bounds, 4.6f, 4.6f, 10.8f, 10.8f));
                         PointF hub = P(bounds, 10f, 10f);
@@ -441,6 +452,7 @@ function Get-Labels {
         NavFailed             = 'No browser would open it. Check the default browser setting.'
         Games                 = 'Mini games'
         Aquarium              = 'Glass aquarium'
+        FishTank              = 'Pixel fish tank'
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
@@ -2321,7 +2333,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesFavorites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesFavorites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.FishTank) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -3442,10 +3454,10 @@ function New-PetMenu {
         try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
     })
     # The mini games live one level down: the entry itself opens nothing, so
-    # more of them can join without touching this menu's shape again. Its first
-    # child is the glass aquarium, which the page owns like the entries above,
-    # and therefore raises DSH for the same reason: a fullscreen overlay in a
-    # hidden window is an overlay nobody sees.
+    # more of them can join without touching this menu's shape again. Each child
+    # is a game another plugin owns, opened through that plugin's service like
+    # the entries above, and therefore raises DSH for the same reason: a
+    # fullscreen overlay in a hidden window is an overlay nobody sees.
     $gamesItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Games 'games'
     $gamesItem.DropDown.ShowImageMargin = $false
     $gamesItem.DropDown.BackColor = $menu.BackColor
@@ -3462,6 +3474,18 @@ function New-PetMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     [void]$gamesItem.DropDownItems.Add($aquariumItem)
+    $fishTankItem = New-Object System.Windows.Forms.ToolStripMenuItem
+    $fishTankItem.Text = $SCRIPT:Labels.FishTank
+    $fishTankItem.Tag = 'fish-tank'
+    $fishTankItem.AutoSize = $true
+    $fishTankItem.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $fishTankItem.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'fish-tank'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    [void]$gamesItem.DropDownItems.Add($fishTankItem)
     # Music is this process's own capability, the way the capture is: the audio plays
     # here rather than in the page, so the entries act on this process - except the
     # two that need the host (filling the library in, and opening its folder) and the

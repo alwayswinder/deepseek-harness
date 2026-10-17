@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write _mytools/Plugins/dsh-fish-tank/README.md
+/dsh-fish-tank:
+  en: 047e6dc79f7ea89a
+  zh: 5fa9b4f24364bbe7
+/dsh-fish-tank/how-it-works:
+  en: b249d765e2215d14
+  zh: 9168bd78bb2010ad
+/dsh-fish-tank/opening-it-from-the-pet-menu:
+  en: 31b2033135e491a4
+  zh: 088f95530a6974b5
+/dsh-fish-tank/installation:
+  en: cff11e0097f84fe0
+  zh: df2b0a4b38415510
+/dsh-fish-tank/verification:
+  en: c270401f189211ee
+  zh: ed33ede425fcbb31
+/dsh-fish-tank/model-experience:
+  en: 003080e8bed4da66
+  zh: a0b47e4a92bef5b1
+/dsh-fish-tank/known-limitations-and-deferred-work:
+  en: 38f1acd40bde7a28
+  zh: 06260f20db2fe77b

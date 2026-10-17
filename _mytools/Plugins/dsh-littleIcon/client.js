@@ -2723,6 +2723,17 @@ window.__ModuleLoader__.load({
             }
             aquarium.open()
           },
+          'fish-tank': () => {
+            // The pixel fish tank is another plugin's overlay, reached through
+            // the service that plugin provides, the same way the glass aquarium
+            // is: a profile without it says so instead of failing at the click.
+            const tank = ctx.get('fishTank')
+            if (tank === undefined) {
+              console.warn('little-icon: the fish-tank plugin is not installed, so no tank opens')
+              return
+            }
+            tank.open()
+          },
           'temp-space': () => {
             // The temp space is the same shape as the aquarium: another plugin's
             // panel, opened through the service it provides, so a profile without

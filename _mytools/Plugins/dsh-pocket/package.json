@@ -11,13 +11,15 @@
       "default": "./lib/index.js"
     },
     "./client": "./client/client.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "bin",
     "lib",
     "client",
     "cordis.patch.yml",
+    "locale",
     "README.md",
     "LICENSE"
   ],

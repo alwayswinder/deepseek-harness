@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "3D Glass Aquarium",
+    "description": "A fullscreen WebGL glass aquarium opened from a floating button: glass refraction, water reflections, caustics, and a live fish school."
+  }
+}

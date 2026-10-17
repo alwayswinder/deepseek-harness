@@ -242,8 +242,19 @@ foreach ($profile in $Profiles) {
         Write-Host "[$profile] junction 已就绪"
     }
 
-    $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    # Get-Content 解码时会吃掉 BOM，所以按字节判断；Harness 用 JSON.parse 读这份清单，
+    # 带 BOM 会让 Desktop 直接起不来，发现就标记重写（写成无 BOM）
+    $bytes = [System.IO.File]::ReadAllBytes($manifestPath)
+    $hasBom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $raw = Get-Content -Raw -LiteralPath $manifestPath
     $changed = $false
+    if ($hasBom) {
+        if ($raw.Length -gt 0 -and $raw[0] -eq [char]0xFEFF) {
+            $raw = $raw.Substring(1)
+        }
+        $changed = $true
+    }
+    $manifest = $raw | ConvertFrom-Json
 
     if ($null -eq $manifest.dependencies) {
         $manifest | Add-Member -NotePropertyName 'dependencies' -NotePropertyValue ([pscustomobject]@{}) -Force
@@ -272,7 +283,8 @@ foreach ($profile in $Profiles) {
     if ($changed) {
         $json = $manifest | ConvertTo-Json -Depth 12
         $null = $json | ConvertFrom-Json          # 写之前确认能解析回来
-        Set-Content -LiteralPath $manifestPath -Value $json -Encoding UTF8
+        # 不能用 Set-Content -Encoding UTF8：Windows PowerShell 5.1 会加 BOM
+        [System.IO.File]::WriteAllText($manifestPath, $json, (New-Object System.Text.UTF8Encoding($false)))
         Write-Host "[$profile] package.json 已更新（dependencies + bundles 末尾）"
     }
     else {

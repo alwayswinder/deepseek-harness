@@ -37,6 +37,7 @@ const PANEL_ID = 'temp-space'
 const STATE_PATH = '/api/temp-space/state'
 const BLOB_PATH = '/api/temp-space/blob'
 const GIT_PATH = '/api/temp-space/git'
+const SPACE_PATH = '/api/temp-space/space'
 const REVEAL_PATH = '/api/temp-space/reveal'
 const CLIPBOARD_PATH = '/api/temp-space/clipboard'
 
@@ -189,7 +190,39 @@ const zh = {
   conflict: '这个画布在别处被改过，已重新载入。',
   tooLarge: '单个文件最多 10 MB，这个没存进去。',
   full: '临时空间满了（上限 100 MB），先删掉一些再放。',
-  noDir: '找不到临时空间目录 {dir}。先在这台机器上把它克隆下来。',
+  noDir: '找不到临时空间目录 {dir}。在下面选一个目录，拉取远端仓库或直接使用已有仓库。',
+  path: '路径',
+  pathTitle: '本地仓库',
+  pathMissingTitle: '这台机器上还没有临时空间的本地仓库',
+  pathMissingBody: '选一个目录：里面已经是从这个项目拉下来的仓库，就直接使用；空目录或新目录，就从远端拉取下来。',
+  pathTip: '选一个目录：已经是临时空间的仓库就直接使用；空目录或新目录就从远端拉取。',
+  pathCurrent: '当前：{dir}',
+  pathPlaceholder: '绝对路径，例如 D:\\AI\\temp-space',
+  pathBrowse: '浏览…',
+  pathBrowseUnavailable: '这个外壳没有可用的目录选择器，直接把路径粘贴到输入框里。',
+  pathUse: '直接使用',
+  pathPull: '拉取到此路径',
+  pathCancel: '取消',
+  pathEmpty: '先填一个本地仓库路径。',
+  pathMissing: '这个路径不存在：{dir}',
+  pathNotDirectory: '这个路径不是目录：{dir}',
+  pathNotRepo: '{dir} 不是 Git 仓库。请选已有的仓库，或换一个空目录再拉取。',
+  pathNotEmpty: '这个目录既不是空目录，也不是 Git 仓库：{dir}。请换一个空目录，或选已有的仓库。',
+  pathNoParent: '上级目录不存在：{dir}',
+  pathNotAbsolute: '请填绝对路径。',
+  remoteLabel: '远端仓库地址',
+  remotePlaceholder: '拉取新仓库时填写，例如 git@github.com:you/TmpSpace.git',
+  remoteHint: '已经有本地仓库时不需要填；拉取成功后会记住。',
+  remoteRequired: '拉取新仓库要填远端仓库地址。',
+  noGit: '这台机器上没有可用的 git 命令。',
+  pathAdopted: '已使用本地仓库：{dir}',
+  pathPulled: '已使用并拉取：{dir}',
+  pathCloned: '已拉取到：{dir}',
+  pathPullFailed: '已使用 {dir}，但拉取失败：{message}',
+  pathReset: '已恢复配置里的路径：{dir}',
+  pathDefault: '恢复配置路径',
+  pathOverride: '这里选的路径只在这台机器上生效，会覆盖插件配置里的 dataDir。',
+  hostStaleSpace: '宿主半边还没有路径设置这条路由：重启 DSH 之后再试（浏览器半边刷新页面就会更新，宿主不是）',
 }
 
 const en = {
@@ -257,7 +290,39 @@ const en = {
   conflict: 'This canvas changed elsewhere; it was reloaded.',
   tooLarge: 'One file may hold at most 10 MB; that one was not stored.',
   full: 'The space is full (100 MB); remove something first.',
-  noDir: 'The space directory {dir} is missing. Clone it on this machine first.',
+  noDir: 'The space directory {dir} is missing. Choose a directory below to pull the remote repository, or to use an existing one.',
+  path: 'Path',
+  pathTitle: 'Local repository',
+  pathMissingTitle: 'This machine has no local space repository yet',
+  pathMissingBody: 'Choose a directory: if it already holds this project\'s repository, use it as is; if it is empty or new, the remote is pulled into it.',
+  pathTip: 'Choose a directory: an existing space repository is used as is; an empty or new directory is pulled into.',
+  pathCurrent: 'Current: {dir}',
+  pathPlaceholder: 'An absolute path, for example D:\\AI\\temp-space',
+  pathBrowse: 'Browse…',
+  pathBrowseUnavailable: 'This shell has no directory picker; paste the path into the field instead.',
+  pathUse: 'Use this path',
+  pathPull: 'Pull here',
+  pathCancel: 'Cancel',
+  pathEmpty: 'Enter a local repository path first.',
+  pathMissing: 'That path does not exist: {dir}',
+  pathNotDirectory: 'That path is not a directory: {dir}',
+  pathNotRepo: '{dir} is not a Git repository. Choose an existing repository, or an empty directory to pull into.',
+  pathNotEmpty: 'That directory is neither empty nor a Git repository: {dir}. Choose an empty directory, or an existing repository.',
+  pathNoParent: 'The parent directory does not exist: {dir}',
+  pathNotAbsolute: 'Enter an absolute path.',
+  remoteLabel: 'Remote repository URL',
+  remotePlaceholder: 'Needed to pull a new repository, for example git@github.com:you/TmpSpace.git',
+  remoteHint: 'Not needed when a local repository already exists; it is remembered after a successful pull.',
+  remoteRequired: 'A remote repository URL is needed to pull a new repository.',
+  noGit: 'No git command is available on this machine.',
+  pathAdopted: 'Using the local repository: {dir}',
+  pathPulled: 'Using and pulled: {dir}',
+  pathCloned: 'Pulled into: {dir}',
+  pathPullFailed: 'Using {dir}, but the pull failed: {message}',
+  pathReset: 'Back to the configured path: {dir}',
+  pathDefault: 'Use configured path',
+  pathOverride: 'A path chosen here applies to this machine only and overrides the plugin\'s dataDir.',
+  hostStaleSpace: 'The host half has no path route yet: restart DSH and try again (the browser half updates on a page refresh, the host does not)',
 }
 
 /** Format one byte count for the headers. */
@@ -283,12 +348,20 @@ function blobUrl(name) {
  * Draw the canvas, its quota, and the Git bar.
  * @param props - framework-derived props, including this entry's inject face.
  */
-function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, reveal, clipboard, t }) {
+function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, spaceInfo, spaceAction, pickDirectory, reveal, clipboard, t }) {
   const [phase, setPhase] = useState('loading')
   const [items, setItems] = useState([])
   const [files, setFiles] = useState([])
   const [usage, setUsage] = useState({ usedBytes: 0, maxTotalBytes: 0, maxFileBytes: 0 })
   const [git, setGit] = useState(null)
+  /** What the host says about the space directory, whether or not it is usable. */
+  const [space, setSpace] = useState(null)
+  /** Whether the missing-space notice should be replaced by the path setup. */
+  const [needsPath, setNeedsPath] = useState(false)
+  /** Whether the path setup is open over a space that is already usable. */
+  const [showPath, setShowPath] = useState(false)
+  const [pathDraft, setPathDraft] = useState('')
+  const [remoteDraft, setRemoteDraft] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState('')
   const [dropping, setDropping] = useState(false)
@@ -437,14 +510,25 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
 
   const refresh = useCallback(async () => {
     setPhase('loading')
-    const [state, status] = await Promise.all([load(), gitStatus()])
+    const [state, status, info] = await Promise.all([load(), gitStatus(), spaceInfo()])
+    // The directory is reported even when the state route refuses it, which is
+    // what lets the setup form show where the configuration points before any
+    // path has been chosen.
+    if (info !== undefined && info.ok === true) {
+      setSpace(info)
+      setPathDraft(info.dir ?? '')
+      setRemoteDraft(info.repoUrl ?? '')
+    }
     if (!state.ok) {
       setPhase('error')
-      say(state.reason === 'no-dir' || state.reason === 'not-a-repo'
-        ? t('noDir', { dir: state.dir ?? state.message ?? '' })
+      const pathProblem = state.reason === 'no-dir' || state.reason === 'not-a-repo'
+      setNeedsPath(pathProblem)
+      say(pathProblem
+        ? t('noDir', { dir: state.dir ?? info?.dir ?? state.message ?? '' })
         : t('failed', { message: state.message ?? state.reason }))
       return
     }
+    setNeedsPath(false)
     revision.current = state.revision
     itemsRef.current = state.items
     setItems(state.items)
@@ -453,7 +537,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     setGit(status.ok ? status : null)
     dirty.current = false
     setPhase('ready')
-  }, [gitStatus, load, say, t])
+  }, [gitStatus, load, say, spaceInfo, t])
 
   useEffect(() => {
     void latest.current.refresh()
@@ -1259,6 +1343,79 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     say(t('refreshed'))
   }, [refresh, say, t])
 
+  /** Name the reason a path was refused, rather than showing a raw code. */
+  const pathFailure = useCallback((result, dir) => {
+    if (result.reason === 'invalid-path') return t('pathNotAbsolute')
+    if (result.reason === 'no-dir') return t('pathMissing', { dir: result.dir ?? dir })
+    if (result.reason === 'not-a-directory') return t('pathNotDirectory', { dir: result.dir ?? dir })
+    if (result.reason === 'not-a-repo') return t('pathNotRepo', { dir: result.dir ?? dir })
+    if (result.reason === 'dir-not-empty') return t('pathNotEmpty', { dir: result.dir ?? dir })
+    if (result.reason === 'no-parent') return t('pathNoParent', { dir: result.dir ?? dir })
+    if (result.reason === 'no-repo-url') return t('remoteRequired')
+    if (result.reason === 'no-git') return t('noGit')
+    return t('failed', { message: result.message ?? result.reason })
+  }, [t])
+
+  /**
+   * Adopt a path, or pull a repository into one.
+   *
+   * `pull` is the one control that does two things because the person does one:
+   * a directory that already holds the repository is adopted and pulled, and a
+   * missing or empty one is cloned. `use` never reaches the network, which is
+   * the way to point the page at a checkout that is already right.
+   * @param action - `pull`, `use`, or `reset`.
+   */
+  const applyPath = useCallback(async (action) => {
+    const dir = pathDraft.trim()
+    if (action !== 'reset' && dir === '') { say(t('pathEmpty')); return }
+    setBusy('path')
+    say(t('working', { action: action === 'use' ? t('pathUse') : action === 'reset' ? t('pathDefault') : t('pathPull') }))
+    try {
+      const result = await spaceAction(
+        action,
+        action === 'reset' ? '' : dir,
+        // The URL field belongs to pulling a new clone; adopting a checkout
+        // keeps whatever remote it already has (or learns it from that remote).
+        action === 'pull' ? remoteDraft.trim() : '',
+      )
+      if (result.reason === 'transport') {
+        say(result.status === 404
+          ? t('hostStaleSpace')
+          : t('failed', { message: result.message ?? result.reason }))
+        return
+      }
+      if (result.ok) {
+        await refresh()
+        setShowPath(false)
+        if (result.mode === 'reset') say(t('pathReset', { dir: result.dir ?? '' }))
+        else if (result.mode === 'cloned') say(t('pathCloned', { dir: result.dir ?? dir }))
+        else if (result.mode === 'pulled') say(t('pathPulled', { dir: result.dir ?? dir }))
+        else say(t('pathAdopted', { dir: result.dir ?? dir }))
+        return
+      }
+      if (result.connected === true) {
+        // The repository is usable even though the network half failed; draw it
+        // and keep the failure as its own sentence rather than hiding either.
+        await refresh()
+        setShowPath(false)
+        say(t('pathPullFailed', { dir: result.dir ?? dir, message: result.message ?? result.reason }))
+        return
+      }
+      say(pathFailure(result, dir))
+    } finally {
+      setBusy('')
+    }
+  }, [pathDraft, pathFailure, refresh, remoteDraft, say, spaceAction, t])
+
+  /** Ask the shell's directory picker, when this profile has one. */
+  const browsePath = useCallback(() => {
+    guard(async () => {
+      const picked = await pickDirectory()
+      if (typeof picked === 'string' && picked !== '') setPathDraft(picked)
+      else if (picked === undefined) say(t('pathBrowseUnavailable'))
+    })
+  }, [guard, pickDirectory, say, t])
+
   const gitLine = useMemo(() => {
     if (git === null) return t('gitNone')
     if (git.detached === true) return t('gitDetached')
@@ -1271,10 +1428,11 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     return `${t('gitBranch', { branch: git.branch })} · ${relation} · ${changes}`
   }, [git, t])
 
-  const button = (label, onClick, disabled) => h('button', {
+  const button = (label, onClick, disabled, title) => h('button', {
     type: 'button',
     onClick,
     disabled: disabled === true || busy !== '',
+    title,
     style: {
       font: 'inherit', cursor: 'pointer', height: 28, padding: '0 12px', borderRadius: 999, fontSize: 13,
       border: '1px solid var(--dsw-alias-border-l2, #d9dde6)',
@@ -1282,6 +1440,76 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       color: 'var(--dsw-alias-label-primary, inherit)',
     },
   }, label)
+
+  /**
+   * The local-repository path setting.
+   *
+   * It is drawn twice on purpose: as the only content when the space is missing
+   * (there is nothing else to do), and as a fold-out above the canvas when the
+   * space works but the path is the wrong one. Both write the same state, and
+   * both explain why the current path is not usable.
+   * @returns the setup block.
+   */
+  const pathSettings = () => {
+    const current = space?.dir ?? pathDraft
+    return h('div', {
+      style: {
+        display: 'flex', flexDirection: 'column', gap: 8,
+        padding: needsPath ? '24px 28px' : '12px 14px',
+        maxWidth: needsPath ? 720 : undefined,
+        margin: needsPath ? '40px auto 0' : undefined,
+        borderBottom: '1px solid var(--dsw-alias-border-l2, #eef1f5)',
+      },
+    },
+    h('strong', { style: { fontSize: 14 } },
+      needsPath ? t('pathMissingTitle') : t('pathTitle')),
+    h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary, #4b5563)' } },
+      needsPath ? t('pathMissingBody') : t('pathTip')),
+    current === ''
+      ? null
+      : h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)', wordBreak: 'break-all' } },
+        t('pathCurrent', { dir: current })),
+    h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
+      h('input', {
+        value: pathDraft,
+        onChange: (event) => { setPathDraft(event.target.value) },
+        placeholder: t('pathPlaceholder'),
+        spellCheck: false,
+        'aria-label': t('pathTitle'),
+        style: {
+          flex: '1 1 320px', minWidth: 0, height: 28, padding: '0 10px', font: 'inherit', fontSize: 13,
+          border: '1px solid var(--dsw-alias-border-l2, #d9dde6)', borderRadius: 8,
+          background: 'var(--dsw-alias-bg-layer-1, #fff)',
+          color: 'var(--dsw-alias-label-primary, inherit)',
+        },
+      }),
+      pickDirectory === undefined
+        ? null
+        : button(t('pathBrowse'), browsePath, false)),
+    h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
+      h('input', {
+        value: remoteDraft,
+        onChange: (event) => { setRemoteDraft(event.target.value) },
+        placeholder: t('remotePlaceholder'),
+        spellCheck: false,
+        'aria-label': t('remoteLabel'),
+        style: {
+          flex: '1 1 320px', minWidth: 0, height: 28, padding: '0 10px', font: 'inherit', fontSize: 13,
+          border: '1px solid var(--dsw-alias-border-l2, #d9dde6)', borderRadius: 8,
+          background: 'var(--dsw-alias-bg-layer-1, #fff)',
+          color: 'var(--dsw-alias-label-primary, inherit)',
+        },
+      })),
+    h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)' } }, t('remoteHint')),
+    h('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' } },
+      button(t('pathPull'), () => { guard(() => applyPath('pull')) }, false),
+      button(t('pathUse'), () => { guard(() => applyPath('use')) }, false),
+      needsPath ? null : button(t('pathCancel'), () => { setShowPath(false) }, false),
+      space?.override === true
+        ? button(t('pathDefault'), () => { guard(() => applyPath('reset')) }, false)
+        : null),
+    h('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-tertiary, #6b7280)' } }, t('pathOverride')))
+  }
 
   const itemCard = (item) => {
     const missing = item.kind === 'file' && !present.has(item.file)
@@ -1539,6 +1767,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       color: confirmDiscard ? '#fff' : 'var(--dsw-alias-label-primary, inherit)',
     },
   }, t('discard')),
+  button(t('path'), () => { setShowPath(value => !value) }, false, t('pathTitle')),
   button(t('refresh'), () => { guard(reload) }, false)),
   notice === ''
     ? null
@@ -1549,9 +1778,14 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
         borderBottom: '1px solid var(--dsw-alias-border-l2, #eef1f5)',
       },
     }, notice),
-  h('div', {
-    style: { flex: '1 1 auto', minHeight: 0, position: 'relative' },
-  },
+  // The path setting takes the whole column when the space is missing: there is
+  // no canvas to draw and nowhere else to say what to do about it.
+  (showPath || needsPath) ? pathSettings() : null,
+  needsPath
+    ? null
+    : h('div', {
+      style: { flex: '1 1 auto', minHeight: 0, position: 'relative' },
+    },
   h('div', {
     ref: canvas,
     onPointerDown: (event) => {
@@ -1756,6 +1990,19 @@ export function apply(ctx) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action, message }),
       })),
+      spaceInfo: async () => readJson(await fetch(SPACE_PATH, { headers: { accept: 'application/json' } })),
+      spaceAction: async (action, dir, repoUrl) => readJson(await fetch(SPACE_PATH, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action, dir, repoUrl }),
+      })),
+      // The picker belongs to the shell, and a profile without the workspace UI
+      // simply has none: the path field stays typeable either way.
+      pickDirectory: async () => {
+        const workspace = ctx.get('uiWorkspace')
+        if (workspace === undefined || typeof workspace.pickDirectory !== 'function') return undefined
+        return workspace.pickDirectory()
+      },
       reveal: async (name) => readJson(await fetch(REVEAL_PATH, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

@@ -295,6 +295,12 @@ export const Config = z.object({
   topmost: z.boolean().default(true).volatile(),
   /** Click behaviour: tuck/restore DSH, minimize only, or nothing. */
   clickAction: z.union(['toggle', 'minimize', 'none']).default('toggle').volatile(),
+  /**
+   * Whether an agent that starts waiting for the user also gets a notice above the
+   * pet and a short sound. The face is the signal for somebody already looking at
+   * the pet; this is for the window that is not, so it fires once per question.
+   */
+  alertNotice: z.boolean().default(true).volatile(),
   /** Milliseconds an upstream check or pull may spend contacting its remote. */
   gitPullTimeoutMs: z.number().step(1000).min(1000).max(300000).default(GIT_PULL_TIMEOUT_MS).volatile(),
   /**
@@ -2043,6 +2049,7 @@ export function apply(ctx, config) {
     autoHideSeconds: config.autoHideSeconds.get(),
     topmost: config.topmost.get(),
     clickAction: config.clickAction.get(),
+    alertNotice: config.alertNotice.get(),
     shotDir: config.shotDir.get(),
     sites: resolveSites(config.sites.get()),
   })
@@ -2196,6 +2203,10 @@ export function apply(ctx, config) {
       frameMs: current.frameMs,
       topmost: current.topmost,
       clickAction: current.clickAction,
+      // Whether the pet also speaks when an agent starts waiting for an answer.
+      // The pet treats a missing field as the default, so an older state file
+      // does not silence the reminder.
+      alertNotice: current.alertNotice,
       // Where a capture goes. Absent while the setting is blank, which is what
       // leaves the pet on its own directory beside the state file.
       shotDir: resolveShotDir(current.shotDir),

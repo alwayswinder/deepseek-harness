@@ -668,28 +668,30 @@ assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
 assert.equal(labels.UpdateDsh, '更新 DSH', 'the menu entry that builds the current checkout')
 assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
-assert.equal(labels.Settings, '设置', 'the menu entry that opens the plugin settings page')
+assert.equal(labels.Chat, '网页对话', 'the menu entry that opens the web chat')
+assert.equal(labels.AlertNotice, '有任务在等你回答，点桌宠回到 DSH', 'the reminder for a question nobody has seen')
+assert.equal(labels.Settings, '桌宠设置', 'the menu entry that opens the plugin settings page')
 assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang under')
 assert.equal(labels.Aquarium, '玻璃鱼缸', 'the mini game entry that opens the aquarium')
 assert.equal(labels.FishTank, '像素鱼缸', 'the mini game entry that opens the pixel fish tank')
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 assert.equal(labels.Sites, '网站', 'the menu entry the site list and the library page hang under')
-assert.equal(labels.SitesFavorites, '常用网站', 'the submenu the configured sites hang under')
-assert.equal(labels.SitesManage, '常用网站设置', 'the entry that opens the settings card for them')
+assert.equal(labels.SitesManage, '网站设置', 'the entry that opens the settings card for them')
 assert.equal(labels.Music, '听歌', 'the menu entry the music hangs under')
+assert.equal(labels.MusicSettings, '听歌设置', 'the entry that opens the settings card for the music')
 assert.equal(labels.MusicPlay, '开始', 'the music entry that starts playing')
 assert.equal(labels.MusicPause, '暂停', 'the music entry that pauses')
 assert.equal(labels.MusicNext, '换歌', 'the music entry that steps to the next song')
 assert.equal(labels.System, '系统', 'the menu entry the DSH lifecycle entries hang under')
-for (const key of ['PetName', 'Chat', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
-  'Settings', 'Sites', 'SitesFavorites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
+for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
+  'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
   'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
   'Music', 'MusicPlay', 'MusicPause', 'MusicNext', 'MusicPrev', 'MusicNowPlaying', 'MusicPaused',
   'MusicReady', 'MusicEmpty', 'MusicEmptyHint', 'MusicMissing', 'MusicSync', 'MusicSyncCount',
   'MusicSyncing', 'MusicSyncNone', 'MusicSynced', 'MusicSyncRunning', 'MusicOpenDir', 'MusicOpenFailed',
-  'MusicFailed',
+  'MusicFailed', 'MusicSettings',
   'RestartDsh', 'RestartDshConfirm', 'RestartDshUnavailable', 'RestartDshFailed', 'QuitDsh', 'QuitDshConfirm']) {
   assert.ok(typeof labels[key] === 'string' && labels[key].length > 0, `labels.json is missing ${key}`)
 }
@@ -704,21 +706,22 @@ for (const key of Object.keys(labels).filter(name => name.startsWith('Music'))) 
 assert.match(petSource, /Send-MenuCommand 'aquarium'/, 'the pet menu must send the aquarium command')
 assert.match(petSource, /Send-MenuCommand 'fish-tank'/, 'the pet menu must send the fish-tank command')
 // A configured site is the same handshake plus the address the entry named, and
-// the submenu is rebuilt at every open rather than fixed at startup: the list is
-// the settings card's, and editing it must not need a restarted pet.
+// the submenu is rebuilt whenever the menu opens rather than fixed at startup: the
+// list is the settings card's, and editing it must not need a restarted pet.
 assert.match(petSource, /Send-MenuCommand 'site' \$Site\.Url/, 'the pet menu must send the site command with its address')
-assert.match(petSource, /add_DropDownOpening/, 'the sites submenu must rebuild itself when it opens')
+assert.match(petSource, /\$menu\.add_Opening/, 'the sites submenu must be rebuilt before the menu opens')
 assert.match(petSource, /function Update-SiteMenu/, 'the sites submenu needs its rebuild step')
-// The configured sites are one level below the entry the right click reaches, with
-// the library page as that entry's other child: a list of any length must not push
-// the page out of the menu, and the page must not be rebuilt with the list.
-assert.match(petSource, /Add-PetMenuItem \$sitesItem\.DropDownItems \$SCRIPT:Labels\.SitesFavorites/,
-  'the configured sites must hang under a submenu of their own')
-assert.match(petSource, /New-NavigationItem \$sitesItem\.DropDownItems/,
-  'the library page must be a sibling of that submenu rather than one of its rows')
-assert.match(petSource, /function Update-NavigationEntry/, 'the library entry is refreshed rather than rebuilt')
+// The configured sites are direct children of the entry the right click reaches,
+// with the library page and the settings entry beside them: the list is one level
+// down, not two, and a list of any length must not push those fixed entries out.
+assert.match(petSource, /Add-SiteMenuItem \$items \$site/, 'the configured sites must be rows of the sites submenu itself')
+assert.match(petSource, /New-NavigationItem \$items/, 'the library page must be a sibling of the site rows')
+assert.match(petSource, /Add-PetMenuItem \$items \$SCRIPT:Labels\.SitesManage 'gear'/, 'and so must the settings entry')
+assert.match(petSource, /function Update-NavigationEntry/, 'the library entry is refreshed after its rebuild')
 assert.match(petSource, /\$SCRIPT:Sites = Get-SiteList \$State/, 'the published sites must reach the submenu')
 assert.match(petSource, /case "globe":/, 'the sites entry needs its icon, like every other entry')
+assert.match(petSource, /case "sparkles":/, 'the special-features entry needs an icon of its own')
+assert.equal(labels.SitesFavorites, undefined, 'the sites list no longer hides under a Favourite sites submenu')
 // The three entries that act on the running application share one parent rather
 // than sitting at the top level, so the divider opens a submenu.
 assert.match(petSource, /Add-PetMenuItem \$systemItem\.DropDownItems \$SCRIPT:Labels\.UpdateDsh/,
@@ -862,8 +865,9 @@ if (process.platform === 'win32') {
   // The self test prints the labels it loaded from labels.json, so this proves
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
+  assert.match(selfTest.stdout, /网页对话/, 'the self test must report the web-chat entry too')
   assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
-  assert.match(selfTest.stdout, /设置/, 'the self test must report the settings entry too')
+  assert.match(selfTest.stdout, /桌宠设置/, 'the self test must report the settings entry too')
   assert.match(selfTest.stdout, /系统/, 'the self test must report the system entry too')
   assert.match(selfTest.stdout, /小游戏/, 'the self test must report the mini-games entry too')
   assert.match(selfTest.stdout, /玻璃鱼缸/, 'the self test must report the aquarium entry too')
@@ -871,8 +875,8 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /截图/, 'the self test must report the capture entry too')
   assert.match(selfTest.stdout, /更新 DSH/, 'the self test must report the update entry too')
   assert.match(selfTest.stdout, /重启 DSH/, 'the self test must report the restart entry too')
-  assert.match(selfTest.stdout, /网站 \/ 常用网站 \/ 常用网站设置/,
-    'the self test must report the sites entry, the list under it, and the settings entry for that list')
+  assert.match(selfTest.stdout, /网站 \/ 网站设置/,
+    'the self test must report the sites entry and the settings entry for that list')
   assert.match(selfTest.stdout, /特殊功能/, 'the self test must report the Special submenu too')
   assert.match(selfTest.stdout, /临时空间/, 'the self test must report the temp-space entry too')
   // Bringing DSH back is not one command: SW_RESTORE also returns a maximized or
@@ -886,6 +890,11 @@ if (process.platform === 'win32') {
   // another application hide DSH, which is the opposite of what it asked for.
   assert.match(selfTest.stdout, /click-intent: front=hide behind=show hidden=show minimized=show/,
     'a click must hide only an in-front window and raise every other one')
+  // The reminder is for somebody who is not looking at the pet, so it must fire on
+  // the step into "waiting for you" and only then: not on the first state applied,
+  // not again while the same question stands, and not when the switch is off.
+  assert.match(selfTest.stdout, /alert-notice: enter=True seeded=False same=False off=False/,
+    'the alert reminder must fire once per question and never on a seeded or repeated state')
   // Stepping the music aside for another application is decided by a pure function,
   // so the cases that matter are printed from it: a sound has to last two samples
   // before the music pauses (a notification ding does not), and only a pause this
@@ -905,25 +914,22 @@ if (process.platform === 'win32') {
     'the player volume must keep its fraction through the clamp')
   // The sites entry is the menu's only part built from configuration, so the self
   // test builds it for an empty list and for a list of two and prints what each
-  // turned into: the two rows the right click reaches, what an entry reads, the
-  // address it carries, and the one entry an empty list still needs.
+  // turned into: the rows the right click reaches directly, what an entry reads, the
+  // address it carries, and the two fixed entries an empty list still needs.
   const siteMenu = /site-menu: (.*)/.exec(selfTest.stdout)
   assert.ok(siteMenu !== null, 'the self test must report the sites entry')
-  const [sitesEntry, emptyList, twoSites, clickedEntry, nav, navBrowser, navFail, published] =
+  const [emptyList, twoSites, clickedEntry, nav, navBrowser, navFail, published] =
     siteMenu[1].trim().split(' >> ')
-  // The entry the right click reaches holds the configured list and the library
-  // page as two separate rows, and the page is unclickable, not absent, until the
-  // host has built one: an entry that vanishes is what a person reports as a
+  // An empty list says so, and the two fixed entries sit beside it: the library
+  // page (unclickable, not absent, until the host has built one) and the settings
+  // card that fills the list. A vanishing entry is what a person reports as a
   // missing feature.
-  assert.equal(sitesEntry,
-    `ToolStripMenuItem=${labels.SitesFavorites}[True]|ToolStripMenuItem=${labels.NavMissing}[False]`,
-    'the sites entry holds the configured list and the library page side by side')
   assert.equal(emptyList,
-    `ToolStripMenuItem=${labels.SitesEmpty}|ToolStripSeparator=|ToolStripMenuItem=${labels.SitesManage}`,
-    'an empty list says so and still offers the settings card that fills it')
+    `ToolStripMenuItem=${labels.SitesEmpty}[False]|ToolStripSeparator=[True]|ToolStripMenuItem=${labels.NavMissing}[False]|ToolStripMenuItem=${labels.SitesManage}[True]`,
+    'an empty list says so and still offers the library page and the settings card')
   assert.equal(twoSites,
-    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.SitesManage}@`].join('|'),
-    'each configured site is one entry carrying its own address, then the way to manage them')
+    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.NavMissing}@`, `${labels.SitesManage}@`].join('|'),
+    'each configured site is one entry carrying its own address, then the fixed entries')
   // The library entry is the one that opens a page instead of an address, so what
   // matters is that a page on disk turns it on, that the browser registered for the
   // web is preferred over the file association, and that a machine where neither
@@ -1285,7 +1291,7 @@ rmSync(openDir, { recursive: true, force: true })
     frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
-    gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''),
+    alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''),
     // One usable row and one the Browser tab cannot open: what reaches the pet is
     // the resolved list, so an unusable row never becomes a menu entry.
     sites: fixed([
@@ -1327,6 +1333,8 @@ rmSync(openDir, { recursive: true, force: true })
     // it can offer, and a bare host has already become the address to open.
     assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).sites,
       [{ name: 'Chat', url: 'https://chat.deepseek.com/' }], 'the pet is told the sites it may offer')
+    assert.equal(JSON.parse(readFileSync(statePath, 'utf8')).alertNotice, true,
+      'and whether it should speak when a task starts waiting for an answer')
 
     // A chosen entry comes back the other way: the pet writes the command and the
     // address it named, and this half relays both to every listening page. The
@@ -3407,6 +3415,7 @@ if (process.argv.includes('--pet')) {
     autoHideSeconds: ref(0),
     topmost: ref(true),
     clickAction: ref('toggle'),
+    alertNotice: ref(true),
     gitPullTimeoutMs: ref(60_000),
     sites: ref([]),
     // Where the capture menu writes, and the music section's own fields: the host

@@ -21,11 +21,13 @@
  * by this process's parent — the Electron main process.
  *
  * State and window position live under `$DSH_HOME/little-icon/`, so they stay
- * per machine and never sync with the repository. The settings do sync: this
+ * per machine and never sync with the repository. Most settings do sync: this
  * half copies the profile's `little-icon` section and the Desktop's shortcut
  * document into the repository's `_mytools/settings/` when either changes, and
  * the launcher — or the pet, on a restart from its own menu — merges those files
- * back into a machine before the next start.
+ * back into a machine before the next start. The volume, the playlist, and the
+ * shuffle choice are the exception: they are this machine's own listening
+ * preferences and live beside the library, in `music-preferences.json`.
  *
  * The menu's Git entry needs repository facts the page cannot read: this half
  * runs `git` itself and serves the result on same-origin routes, because the
@@ -165,8 +167,21 @@ const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
 /** POST `?action=`: ask the pet to play, pause, toggle, or step. */
 const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
 
+/** POST `?volume=`, `?playlist=`, or `?shuffle=`: this machine's listening choices. */
+const MUSIC_PREFERENCES_PATH = '/api/little-icon/music/preferences'
+
 /** The playback commands that route accepts; anything else is refused. */
 const MUSIC_COMMANDS = new Set(['play', 'pause', 'toggle', 'next', 'prev'])
+
+/**
+ * Menu entries the page performs. Everything else the pet writes is either handled
+ * here (music sync, the folder, the volume) or belongs to a menu entry that no
+ * longer exists, so it must not reach a listener that would only warn about it.
+ */
+const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'open-cwd', 'aquarium', 'fish-tank', 'temp-space'])
+
+/** Volume a machine that has not chosen one plays at. */
+const MUSIC_VOLUME_DEFAULT = 70
 
 /** The Git executable; a machine without one on PATH is reported, not guessed at. */
 const GIT_EXECUTABLE = 'git'
@@ -311,16 +326,6 @@ export const Config = z.object({
    * reported rather than used quietly, because those files would be committed.
    */
   musicDir: z.string().default('').volatile(),
-  /** Volume the pet plays at, 0-100. */
-  musicVolume: z.number().step(1).min(0).max(100).default(70).volatile(),
-  /**
-   * Which playlist the pet plays: blank plays every downloaded song, a playlist id
-   * plays that one. One link is one playlist — every part of a video, or every episode
-   * of a collection — and its files sit together in that playlist's own folder.
-   */
-  musicPlaylist: z.string().default('').volatile(),
-  /** Whether the next song is drawn at random from the playlist being played. */
-  musicShuffle: z.boolean().default(false).volatile(),
   /**
    * Whether the pet steps aside while another application plays sound on the
    * default output device. The pet reads the audio sessions there itself — the
@@ -1697,6 +1702,57 @@ export function apply(ctx, config) {
     ctx.logger.warn('little-icon music: could not write %s: %s', musicFile, String(error))
   })
   /**
+   * What this machine plays at, which playlist it plays, and whether it draws the
+   * next song at random. None is a setting: they describe this machine's speakers
+   * and this machine's listening, so they live beside the audio and never travel in
+   * the repository's settings file.
+   */
+  const musicPreferencesFile = join(dataDir, 'music-preferences.json')
+
+  /**
+   * Read the listening choices this machine stored. A missing file is a machine
+   * that has not chosen yet; an unreadable one is reported and treated the same
+   * way, because the defaults are still a playable library.
+   * @returns the volume, playlist, and shuffle choice this machine last made.
+   */
+  const readMusicPreferences = () => {
+    let stored
+    try {
+      stored = JSON.parse(readFileSync(musicPreferencesFile, 'utf8'))
+    } catch (error) {
+      if (error?.code !== 'ENOENT') {
+        ctx.logger.warn('little-icon music: could not read %s: %s', musicPreferencesFile, String(error))
+      }
+    }
+    const volume = clampVolume(stored?.volume)
+    return {
+      volume: volume === undefined ? MUSIC_VOLUME_DEFAULT : volume,
+      playlist: typeof stored?.playlist === 'string' ? stored.playlist : '',
+      shuffle: stored?.shuffle === true,
+    }
+  }
+
+  /** @type {{ volume: number, playlist: string, shuffle: boolean }} */
+  let musicPreferences = readMusicPreferences()
+
+  /**
+   * Store the listening choices. The file is rewritten whole; only this half reads
+   * it. A failure is reported rather than thrown, because a preferences file that
+   * cannot be written must not take DSH down with it.
+   * @returns whether the file was written.
+   */
+  const writeMusicPreferences = () => {
+    const text = `${JSON.stringify({ version: 1, ...musicPreferences }, null, 2)}\n`
+    try {
+      writeFileSync(musicPreferencesFile, text, 'utf8')
+      return true
+    } catch (error) {
+      ctx.logger.warn('little-icon music: could not write %s: %s', musicPreferencesFile, String(error))
+      return false
+    }
+  }
+
+  /**
    * The checkout this plugin lives in, when it lives in one. A music directory
    * inside it would put the downloaded audio in the repository, which is the one
    * thing this feature must not do, so it is reported instead.
@@ -1709,19 +1765,10 @@ export function apply(ctx, config) {
   /** Download outcome the pet has not shown yet, as a notice above the pet. */
   let musicNotice
   /**
-   * The volume the pet was last told the configuration holds, so a change - from the
-   * card or from the menu's slider, which the page writes - is reported above the pet
-   * exactly once.
+   * The volume the pet was last told this machine plays at, so a change from the
+   * card or from the menu's slider is reported above the pet exactly once.
    */
-  let lastConfiguredVolume
-  /**
-   * The volume the page was asked to write and has not written yet, published in the
-   * meantime so the number the menu just chose does not snap back while the write
-   * lands. Dropped when the configuration catches up, or after a few seconds, so a
-   * page that never wrote it cannot leave the pet on a volume no file holds.
-   */
-  let pendingVolume
-  let pendingVolumeUntil = 0
+  let lastPublishedVolume
   let library
   let libraryDir = ''
 
@@ -1799,14 +1846,11 @@ export function apply(ctx, config) {
     }
   }
 
-  // The menu's volume and link entries are configuration, so they are written the way
-  // the settings card writes: through the settings service, from the page. This half
-  // cannot make that write. The service refuses any write attempted inside an HMR
-  // transaction, and this plugin's own timer runs in the context of the load that
-  // created it, so a write from a tick is refused as nested. Both commands are
-  // therefore forwarded to the page (see forwardCommand), whose request context is
-  // outside that transaction; the download they ask for stays here, on the route the
-  // card already uses, because a download is this half's own work.
+  // The menu's volume is this machine's own choice, so it is written here, in the
+  // preferences file beside the library, and the pet is told on the next publish.
+  // The link list is not here at all: adding and removing links belongs to the
+  // card, where a text field and a list can be shown, and both the list and every
+  // download stay the Host's work.
 
   /**
    * Publish what the pet may play. Absolute paths travel because the pet opens the
@@ -1817,26 +1861,19 @@ export function apply(ctx, config) {
     // A download that finishes after the plugin unloaded would otherwise write a
     // file for a pet that is already gone.
     if (disposed) return
-    const configured = config.musicVolume.get()
-    // A volume that changed - from the card, or from the menu, which is the page's
-    // write - is said above the pet once. The first publish only records it: the
-    // value the run started with is not news.
-    if (lastConfiguredVolume !== undefined && configured !== lastConfiguredVolume) {
-      musicNotice = { at: Date.now(), kind: 'volume', percent: Math.round(configured) }
+    const volume = musicPreferences.volume
+    // A volume that changed - from the card or from the menu's slider - is said
+    // above the pet once. The first publish only records it: the value the run
+    // started with is not news.
+    if (lastPublishedVolume !== undefined && volume !== lastPublishedVolume) {
+      musicNotice = { at: Date.now(), kind: 'volume', percent: Math.round(volume) }
     }
-    lastConfiguredVolume = configured
-    // A pending volume is published until the configuration carries it, or until the
-    // page has had long enough to write it: one that never did must not leave the pet
-    // on a volume no file holds.
-    if (pendingVolume !== undefined && (configured === pendingVolume || Date.now() > pendingVolumeUntil)) {
-      pendingVolume = undefined
-    }
-    const volume = pendingVolume ?? configured
+    lastPublishedVolume = volume
     const { dir, warning } = musicDirNow()
     const current = musicLibrary()
     const links = resolveMusicLinks(config.musicLinks.get())
-    const selected = config.musicPlaylist.get()
-    const shuffle = config.musicShuffle.get() === true
+    const selected = musicPreferences.playlist
+    const shuffle = musicPreferences.shuffle
     // The playlist being played is the list the pet gets, so "next" steps inside it.
     // Every playlist the links name is published too, whether or not its songs are here
     // yet, because the card offers what a person can choose.
@@ -1871,8 +1908,13 @@ export function apply(ctx, config) {
     }
     // The playlist the pet gets, and the one a person picked when it still exists: a
     // selection whose links were all removed falls back to everything rather than
-    // leaving the pet with nothing to play.
+    // leaving the pet with nothing to play, and that fallback is remembered so the
+    // card does not keep offering a playlist this machine no longer has.
     const selectedKnown = selected === '' || playlists.has(selected)
+    if (!selectedKnown) {
+      musicPreferences = { ...musicPreferences, playlist: '' }
+      writeMusicPreferences()
+    }
     const scoped = selectedKnown ? tracks.filter(track => selected === '' || track.playlist === selected) : tracks
     musicWriter.write({
       version: 1,
@@ -2208,20 +2250,21 @@ export function apply(ctx, config) {
       guarded('music folder', () => { openMusicDir(); publishMusic() })
       return
     }
-    // The menu's volume is configuration, which the settings card owns, and only the
-    // page can write it: the settings service refuses a write made inside an HMR
-    // transaction, which is the context this timer runs in. The link list is not here
-    // at all — adding and removing links belongs to the card, where a text field and a
-    // list can be shown.
+    // The menu's volume is this machine's own choice, not configuration: the card
+    // writes it through the preferences route and this branch does the same for the
+    // pet's menu, in the same file, whether or not a page is listening.
     if (pressed.command === 'music-volume') {
       const value = clampVolume(pressed.value)
       if (value === undefined) return
-      pendingVolume = value
-      pendingVolumeUntil = Date.now() + 5000
+      musicPreferences = { ...musicPreferences, volume: value }
+      writeMusicPreferences()
       publishMusic()
-      publishCommand('music-volume', { value })
       return
     }
+    // Only menu entries the page performs cross the stream: a retired command, or
+    // one a newer pet learned and this half does not, is not a click anyone can
+    // complete.
+    if (!PAGE_COMMANDS.has(pressed.command)) return
     publishCommand(pressed.command, pressed.url === undefined ? {} : { url: pressed.url })
   }
 
@@ -2572,8 +2615,9 @@ export function apply(ctx, config) {
 
   // The music routes: the settings card reads the library here and asks for work
   // here, because the page can neither list a directory nor reach Bilibili. The
-  // pet's own menu does not use them — it plays local files and asks this half for
-  // a download through the command file, which works with no page listening.
+  // pet's own menu does not use them — it plays local files, writes its volume into
+  // the preferences file through this half, and asks for a download through the
+  // command file, which works with no page listening.
   ctx.inject(['webServer'], (webCtx) => {
     /**
      * Whether a request may be answered: the connection's own check, then the
@@ -2613,13 +2657,61 @@ export function apply(ctx, config) {
             entries: current.entries,
             dir,
             warning,
-            volume: config.musicVolume.get(),
+            volume: musicPreferences.volume,
+            playlist: musicPreferences.playlist,
+            shuffle: musicPreferences.shuffle,
             sync: current.progress,
             player: readMusicPlayer(),
           })
         })
       },
     }), `little-icon: GET ${MUSIC_PATH}`)
+
+    // The listening choices that belong to this machine: the volume the pet plays
+    // at, the playlist it plays, and whether it draws the next song at random. They
+    // are stored beside the library rather than in the profile configuration, so the
+    // repository's settings file carries none of them and every machine picks its
+    // own. One request may set any of them.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: MUSIC_PREFERENCES_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        serveJson(res, () => {
+          const query = queryOf(req)
+          const next = { ...musicPreferences }
+          if (query.has('volume')) {
+            const volume = clampVolume(query.get('volume'))
+            if (volume === undefined) return { ok: false, reason: 'volume' }
+            next.volume = volume
+          }
+          if (query.has('playlist')) next.playlist = query.get('playlist') ?? ''
+          if (query.has('shuffle')) {
+            const shuffle = query.get('shuffle')
+            if (shuffle !== 'true' && shuffle !== 'false') return { ok: false, reason: 'shuffle' }
+            next.shuffle = shuffle === 'true'
+          }
+          const changed = next.volume !== musicPreferences.volume
+            || next.playlist !== musicPreferences.playlist
+            || next.shuffle !== musicPreferences.shuffle
+          const previous = musicPreferences
+          musicPreferences = next
+          // The pet is told the new choice only when it is safely stored: a write
+          // that failed leaves both the card and the pet on the value they had.
+          if (changed && !writeMusicPreferences()) {
+            musicPreferences = previous
+            return { ok: false, reason: 'write' }
+          }
+          if (changed) publishMusic()
+          return {
+            ok: true,
+            volume: musicPreferences.volume,
+            playlist: musicPreferences.playlist,
+            shuffle: musicPreferences.shuffle,
+          }
+        })
+      },
+    }), `little-icon: POST ${MUSIC_PREFERENCES_PATH}`)
 
     // Filling the whole library in is one click on a machine that just pulled the
     // link list, and it is this half's own work: the answer says how many started,
@@ -2822,9 +2914,11 @@ export function apply(ctx, config) {
     else if (!wasEnabled) startPet()
     wasEnabled = enabled
     guarded('publish', publish)
-    // The link list, the music directory, and the volume all reach the pet through
-    // its own file, so a settings write is what tells a pet that is already running
-    // about a new song or a new volume — neither half restarts for it.
+    // The link list and the music directory reach the pet through its own file, so
+    // a settings write is what tells a pet that is already running about a new song
+    // or a new folder — neither half restarts for it. The volume, the playlist, and
+    // the shuffle choice are not settings and arrive through the preferences route
+    // instead.
     guarded('music publish', publishMusic)
     schedule()
     scheduleSettingsSync()
@@ -2896,6 +2990,7 @@ export const internals = {
   MUSIC_ADDED_PATH,
   MUSIC_REMOVE_PATH,
   MUSIC_COMMAND_PATH,
+  MUSIC_PREFERENCES_PATH,
   GIT_DIFF_MAX_CHARS,
   GIT_DISCARD_MAX_BYTES,
   GIT_LOG_PAGE,

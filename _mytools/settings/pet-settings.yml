@@ -8,7 +8,7 @@
 
 version: 1
 exportedFrom: desktop
-exportedAt: 2026-10-14T02:56:11.623Z
+exportedAt: 2026-10-17T10:23:24.925Z
 name: "@local/dsh-little-icon"
 config:
   enabled: true
@@ -588,6 +588,3 @@ config:
     - https://www.bilibili.com/video/BV1vm411Z7ZN?p=199
     - https://www.bilibili.com/video/BV1vm411Z7ZN?p=200
   musicDir: D:\AI\Music
-  musicVolume: 4
-  musicPlaylist: BV1vm411Z7ZN
-  musicShuffle: false

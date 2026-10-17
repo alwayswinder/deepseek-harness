@@ -76,6 +76,15 @@ const YAML = loadYaml()
 /** Profile patch entry id of the pet plugin, as its `cordis.patch.yml` inserts it. */
 const ENTRY_ID = 'little-icon'
 
+/**
+ * Pet fields that are not settings: the volume, the playlist, and the shuffle
+ * choice are this machine's own listening preferences, kept in
+ * `$DSH_HOME/little-icon/music-preferences.json`. A patch written before they
+ * moved still names them, and exporting that would put one machine's choice back
+ * into every machine's settings file.
+ */
+const LEGACY_PET_FIELDS = ['musicVolume', 'musicPlaylist', 'musicShuffle']
+
 /** Package name the pet is registered under, used to check a profile really loads it. */
 const PACKAGE_NAME = 'dsh-little-icon'
 
@@ -376,6 +385,7 @@ function exportSettings(options, patchPath, statePath) {
     throw new Error(`${patchPath}: the "${ENTRY_ID}" section holds a !!js expression, which this file cannot carry`)
   }
   const config = valueIn(document, [index, 'config']) ?? {}
+  for (const field of LEGACY_PET_FIELDS) delete config[field]
   const name = document.getIn([index, 'name'])
   const next = {
     version: FORMAT_VERSION,
@@ -422,6 +432,31 @@ function exportSettings(options, patchPath, statePath) {
 }
 
 /**
+ * The machine-local listening choices the pet keeps beside its library. They used
+ * to be configuration fields; the first apply after that move copies what the
+ * patch still carries into that file, so a machine keeps its own volume, playlist,
+ * and shuffle choice instead of starting from the plugin defaults. A machine that
+ * already has the file is left alone.
+ * @param {Record<string, unknown>} current - the pet's config section as this patch has it.
+ */
+function migratePetPreferences(current) {
+  const path = join(resolveDshHome(), 'little-icon', 'music-preferences.json')
+  if (existsSync(path)) return
+  const volume = typeof current.musicVolume === 'number' ? current.musicVolume : undefined
+  const playlist = typeof current.musicPlaylist === 'string' ? current.musicPlaylist : ''
+  const shuffle = typeof current.musicShuffle === 'boolean' ? current.musicShuffle : undefined
+  if (volume === undefined && playlist === '' && shuffle === undefined) return
+  const value = {
+    version: 1,
+    volume: volume === undefined ? 70 : Math.min(100, Math.max(0, Math.round(volume))),
+    playlist,
+    shuffle: shuffle === true,
+  }
+  mkdirSync(dirname(path), { recursive: true })
+  writeAtomic(path, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+/**
  * Merge `pet-settings.yml` into a profile patch, unless that profile already
  * applied this exact file.
  * @param {object} options - parsed CLI options.
@@ -447,6 +482,7 @@ function applySettings(options, patchPath, statePath, profileDir) {
     return 0
   }
   const current = index < 0 ? undefined : valueIn(document, [index, 'config'])
+  if (current !== undefined) migratePetPreferences(current)
   const changed = differences(current ?? {}, parsed.config, '')
   if (index < 0) {
     document.add(document.createNode({

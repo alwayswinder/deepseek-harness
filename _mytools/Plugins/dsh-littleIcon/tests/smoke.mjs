@@ -23,7 +23,7 @@ const {
   GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH,
   GIT_DISCARD_PATH, OPEN_PATH,
   MUSIC_PATH, MUSIC_SYNC_PATH, MUSIC_DOWNLOAD_PATH, MUSIC_EXPAND_PATH, MUSIC_ADDED_PATH,
-  MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH,
+  MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH, MUSIC_PREFERENCES_PATH,
   GIT_DIFF_MAX_CHARS, GIT_DISCARD_MAX_BYTES, GIT_LOG_PAGE,
   parseGitStatus, parseGitLog, parseGitAuthors, parseGitCommitFiles,
   readGitRepository, readGitCommits, readGitRemoteStatus,
@@ -1945,27 +1945,12 @@ try {
   commands.onmessage({ data: '{"command":"nonsense"}' })
   commands.onmessage({ data: 'not json' })
   assert.equal(openedTabs.length, 2, 'only known commands open anything')
-  // The menu's volume is configuration, and the Host cannot write configuration from
-  // its own timer: the settings service refuses a write made inside an HMR transaction.
-  // The page writes it instead, at the revision it read, the way the card writes every
-  // other field. Links are not in this menu at all: the card owns the list.
-  const formBefore = form.snapshot
-  form.snapshot = { ...form.snapshot, revision: 7, value: { musicLinks: [firstLink] } }
-  form.writes.length = 0
-  commands.onmessage({ data: '{"command":"music-volume","value":33}' })
-  assert.deepEqual(form.writes[0], { ops: [{ op: 'set', path: ['musicVolume'], value: 33 }], revision: 7 },
-    'a volume the menu set is written to the configuration the way the card writes it')
+  // The volume is no longer a menu command the page performs: it is this machine's
+  // own preference, so the Host writes it and the page never hears about it. Links
+  // are not in this menu either: the card owns the list.
   commands.onmessage({ data: `{"command":"music-add-link","link":"${firstLink}"}` })
   await new Promise((resolve) => setTimeout(resolve, 20))
-  assert.equal(form.writes.length, 1, "a link command is no longer this half's to act on")
-  // A frame that names no volume is refused here rather than written as a number
-  // nothing can use.
-  commands.onmessage({ data: '{"command":"music-volume","value":"loud"}' })
-  assert.equal(form.writes.length, 1, 'a volume that is not a number changes nothing')
-  // The card's own writes are counted from the first one, so this probe leaves the
-  // form as it found it.
-  form.snapshot = formBefore
-  form.writes.length = 0
+  assert.equal(form.writes.length, 0, "a link command is no longer this half's to act on")
   // A Web profile may leave the Browser tab disabled and a build without the right
   // Sidebar provides no service at all. The preference still asked for the in-app
   // tab, so the address goes to the system browser — the same fallback ui-chat's
@@ -2018,11 +2003,10 @@ try {
   console.warn = realWarn
   clientServices.sidebarRight = { openTab: (kind, options) => { openedTabs.push({ kind, options }) } }
 }
-// One unknown command, the retired link command the card now owns, a volume frame
-// naming no number, the two refusals above in each of their two forms, the settings
-// entry with no Plugins page to reach, and the two mini-game entries with their
-// plugin missing.
-assert.equal(warned.length, 10, `a command that cannot run must say so: ${warned.join(' | ')}`)
+// One unknown command, the retired link command the card now owns, the two refusals
+// above in each of their two forms, the settings entry with no Plugins page to reach,
+// and the two mini-game entries with their plugin missing.
+assert.equal(warned.length, 9, `a command that cannot run must say so: ${warned.join(' | ')}`)
 
 // The "sites" entry is the one menu command that carries its own address: the
 // frame names it, and the page opens it where the chat entry would open one. A
@@ -2423,11 +2407,15 @@ globalThis.fetch = async (url, options) => {
   const answer = musicAnswers.length > 0 ? musicAnswers.shift() : { ok: true }
   return { ok: true, json: async () => answer }
 }
+/** The requests that are not the card re-reading the library, which every action also does. */
+const askedUrls = () => musicFetches.filter(call => call.url !== MUSIC_PATH).map(call => call.url)
 /** One render of the section with the Host's answer and the form seeded, as above. */
 const renderMusic = (library, draft, extra = {}) => {
   // In the order the component reads them: the library, the busy flag, its message,
-  // the read error, the box being typed in, and which sets are unfolded.
-  seeded.push(library, extra.busy ?? '', extra.message ?? '', extra.libraryError ?? '', extra.link ?? '', extra.openSets ?? {})
+  // the read error, the box being typed in, the volume being dragged, and which sets
+  // are unfolded.
+  seeded.push(library, extra.busy ?? '', extra.message ?? '', extra.libraryError ?? '', extra.link ?? '',
+    extra.volumeDraft, extra.openSets ?? {})
   return flatten(musicSectionType({
     t,
     editable: extra.editable ?? true,
@@ -2443,6 +2431,8 @@ const sampleLibrary = {
   dir: 'D:\\audio',
   warning: '',
   volume: 40,
+  playlist: '',
+  shuffle: false,
   sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
   player: { playing: false, id: '', title: '', positionMs: 0, error: '' },
   entries: [
@@ -2453,16 +2443,23 @@ const sampleLibrary = {
   missing: 1,
 }
 
-// The volume and the folder are config fields like any other, so they are written
-// the way the rest of the card writes them: the slider through the field writer, the
-// path once the box is left, and the picker with what it answered.
-const musicElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDir: '', musicVolume: 40 })
+// The volume is this machine's own preference, so the slider shows what the Host
+// answered and writes it back through the preferences route once the drag settles;
+// the folder remains a config field and is written the way the card writes fields.
+const musicElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDir: '' })
 // Found by its own row rather than by its bounds: the fade-level slider below
 // covers the same 0-100 range, and a test that takes whichever comes first would
 // follow the layout instead of the field.
 const volumeSlider = musicElements.find(node => node.props?.label === t('musicVolume')).props.control
 assert.ok(volumeSlider !== undefined, 'the volume slider is missing')
-assert.equal(volumeSlider.props.value, 40, 'the slider starts from the stored volume')
+assert.equal(volumeSlider.props.value, 40, 'the slider starts from the volume the Host keeps')
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 55, playlist: '', shuffle: false })
+volumeSlider.props.onChange({ target: { value: 55 } })
+await new Promise((resolve) => setTimeout(resolve, 400))
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?volume=55`],
+  'a volume is written to this machine’s own preferences route')
+assert.equal(musicFetches.find(call => call.url !== MUSIC_PATH).method, 'POST')
 const musicDirField = musicElements.find(node => node.type === 'input' && node.props.type === 'text'
   && node.props.placeholder === t('musicDirPlaceholder'))
 assert.ok(musicDirField !== undefined, 'the music folder field is missing')
@@ -2489,8 +2486,6 @@ assert.deepEqual(rowText(musicRows[2]), ['Orphan', t('musicReady'), t('musicExtr
 musicFetches.length = 0
 await musicElements.filter(node => node.type === 'button' && node.children?.includes(t('musicNext')))[0].props.onClick()
 await new Promise((resolve) => setTimeout(resolve, 20))
-/** The requests that are not the card re-reading the library, which every action also does. */
-const askedUrls = () => musicFetches.filter(call => call.url !== MUSIC_PATH).map(call => call.url)
 assert.deepEqual(askedUrls(), [`${MUSIC_COMMAND_PATH}?action=next`],
   'the next button asks the pet to step')
 assert.equal(musicFetches.find(call => call.url !== MUSIC_PATH).method, 'POST')
@@ -2607,8 +2602,11 @@ assert.ok(strings(manyFolded).includes(t('musicSetCount', { count: 150, ready: 0
   'and the line says how many songs the set holds and how many are here')
 
 // The playlist picker and the shuffle switch: the picker offers All and one entry per
-// playlist with its size, and each control writes through the form like every field.
-const setupElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: '', musicShuffle: false, musicDuck: true, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 })
+// playlist with its size, and both write this machine's own preference rather than a
+// settings field.
+const setupElements = renderMusic(
+  { ...sampleLibrary, playlist: '', shuffle: false },
+  { musicLinks: ['BV1', 'BV2'], musicDuck: true, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 })
 const picker = setupElements.find(node => node.type === 'select')
 assert.ok(picker !== undefined, 'the playlist picker is missing')
 assert.equal(picker.props.value, '', 'it starts on All')
@@ -2624,12 +2622,20 @@ const shuffleBox = setupElements.find(node => node.type === 'input' && node.prop
 assert.ok(shuffleBox !== undefined, 'the shuffle switch is missing')
 assert.equal(shuffleBox.props.checked, false, 'and starts unticked')
 musicWrites.length = 0
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 40, playlist: 'BV1', shuffle: false })
 picker.props.onChange({ target: { value: 'BV1' } })
-assert.deepEqual(musicWrites.at(-1), { patch: { musicPlaylist: 'BV1' }, immediate: true },
-  'picking a playlist writes it at once')
+await new Promise((resolve) => setTimeout(resolve, 20))
+assert.deepEqual(musicWrites, [], 'picking a playlist is not a settings write')
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?playlist=BV1`],
+  'the selection is written to this machine’s own preferences route')
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 40, playlist: 'BV1', shuffle: true })
 shuffleBox.props.onChange({ target: { checked: true } })
-assert.deepEqual(musicWrites.at(-1), { patch: { musicShuffle: true }, immediate: true },
-  'and ticking shuffle writes that')
+await new Promise((resolve) => setTimeout(resolve, 20))
+assert.deepEqual(musicWrites, [], 'ticking shuffle is not a settings write either')
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?shuffle=true`],
+  'and it is written to the same local preferences route')
 // Stepping aside for another player is a switch of its own, on by default, with the
 // way it steps aside, the level it fades to, and the silence it waits for beside it:
 // each of those is disabled while the switch is off, because a control nothing reads
@@ -2680,7 +2686,7 @@ assert.ok(duckedCard('pause').includes(t('musicDucked', { title: 'Song One' })),
   'and a pause as a pause, whichever way the card itself is set')
 // A selection whose playlist is no longer in the list shows All rather than a stale name,
 // which is the same fallback the Host makes when it publishes the pet's list.
-const staleElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicPlaylist: 'BVgone' })
+const staleElements = renderMusic({ ...sampleLibrary, playlist: 'BVgone' }, { musicLinks: ['BV1', 'BV2'] })
 assert.equal(staleElements.find(node => node.type === 'select').props.value, '',
   'a playlist that is gone falls back to All')
 
@@ -3163,7 +3169,7 @@ console.log('little-icon smoke: browser half ok')
     },
   }
   /** Mount the host half with one `musicLinks` value and hand back its route answers. */
-  const mount = async (musicLinks, options = {}) => {
+  const mount = async (musicLinks) => {
     const disposers = []
     const routes = []
     const fixed = (value) => ({ get: () => value })
@@ -3183,8 +3189,7 @@ console.log('little-icon smoke: browser half ok')
       frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3_000), boredEverySeconds: fixed(60),
       boredMs: fixed(60_000), sleepAfterSeconds: fixed(600), tuckWhenBehind: fixed(false),
       shotDir: fixed(''), clickAction: fixed('toggle'), sites: fixed([]),
-      musicLinks: fixed(musicLinks), musicDir: fixed(''), musicVolume: fixed(70),
-      musicPlaylist: fixed(options.playlist ?? ''), musicShuffle: fixed(options.shuffle ?? false),
+      musicLinks: fixed(musicLinks), musicDir: fixed(''),
     }
     // A field this test does not name is read as unset rather than missing: the sample
     // only needs the settings the routes and the publisher touch.
@@ -3286,7 +3291,18 @@ console.log('little-icon smoke: browser half ok')
     writeFileSync(join(home, 'little-icon', 'music-index.json'),
       `${JSON.stringify({ version: 1, entries: Object.fromEntries(libraryEntries.map(row => [row.id, row])) }, null, 2)}\n`, 'utf8')
     const publishedWith = async (options) => {
-      const host = await mount(['BVp', 'BVp?p=2', 'BVs'], options)
+      // The volume, the playlist, and shuffle are this machine's own, read from its
+      // preferences file rather than from the profile configuration: write the
+      // choices a mount should start from, then publish through the route.
+      mkdirSync(join(home, 'little-icon'), { recursive: true })
+      writeFileSync(join(home, 'little-icon', 'music-preferences.json'),
+        `${JSON.stringify({
+          version: 1,
+          volume: 70,
+          playlist: options.playlist ?? '',
+          shuffle: options.shuffle === true,
+        })}\n`, 'utf8')
+      const host = await mount(['BVp', 'BVp?p=2', 'BVs'])
       // The mount publishes on load; the added route publishes again, which is the same
       // work and needs no waiting.
       await host.answer(MUSIC_ADDED_PATH, 'count=1')
@@ -3313,6 +3329,8 @@ console.log('little-icon smoke: browser half ok')
     assert.deepEqual(stale.tracks.map(track => track.id), ['BVp', 'BVp-p2', 'BVs'],
       'a selection whose links are gone falls back to everything rather than playing nothing')
     assert.equal(stale.playlist, '', 'and is published as no selection, which is what the card shows')
+    assert.equal(JSON.parse(readFileSync(join(home, 'little-icon', 'music-preferences.json'), 'utf8')).playlist, '',
+      'and the fallback is remembered in this machine’s preferences')
   } finally {
     globalThis.fetch = answeredFetch
     if (previousHome === undefined) delete process.env.DSH_HOME
@@ -3397,7 +3415,6 @@ if (process.argv.includes('--pet')) {
     shotDir: ref(''),
     musicLinks: ref([]),
     musicDir: ref(''),
-    musicVolume: ref(70),
     musicDuck: ref(true),
     musicDuckHoldSeconds: ref(3),
     musicDuckMode: ref('fade'),
@@ -3499,7 +3516,8 @@ $found
         `exact ${GIT_PULL_PATH}`,
         `exact ${GIT_DISCARD_PATH}`,
         `exact ${OPEN_PATH}`,
-        `exact ${MUSIC_PATH}`, `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
+        `exact ${MUSIC_PATH}`, `exact ${MUSIC_PREFERENCES_PATH}`,
+        `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
         `exact ${MUSIC_EXPAND_PATH}`, `exact ${MUSIC_ADDED_PATH}`,
         `exact ${MUSIC_REMOVE_PATH}`, `exact ${MUSIC_COMMAND_PATH}`])
 
@@ -3630,21 +3648,41 @@ $found
     const musicDownloadRoute = routes.find((route) => route.path === MUSIC_DOWNLOAD_PATH)
     const musicRemoveRoute = routes.find((route) => route.path === MUSIC_REMOVE_PATH)
     const musicCommandRoute = routes.find((route) => route.path === MUSIC_COMMAND_PATH)
+    const musicPreferencesRoute = routes.find((route) => route.path === MUSIC_PREFERENCES_PATH)
     const pluginHome = join(home, 'little-icon')
     const musicFolder = join(home, 'audio')
     const musicId = 'BV1GJ411x7h7'
     const readMusicFile = () => JSON.parse(readFileSync(join(pluginHome, 'music.json'), 'utf8'))
+    const readPreferencesFile = () => JSON.parse(readFileSync(join(pluginHome, 'music-preferences.json'), 'utf8'))
     const readPlayerFile = () => {
       try { return JSON.parse(readFileSync(join(pluginHome, 'music-player.json'), 'utf8')) } catch { return {} }
     }
     config.musicDir.set(musicFolder)
-    config.musicVolume.set(33)
     config.musicLinks.set([firstLink])
     handlers.get('loader/volatile-update')()
+    // The volume, the playlist, and shuffle are this machine's own, so they are
+    // written on a route of their own and stored beside the library — never in the
+    // profile row.
+    const volumeAnswer = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?volume=33`)
+    assert.deepEqual(volumeAnswer.body, { ok: true, volume: 33, playlist: '', shuffle: false })
+    assert.deepEqual(readPreferencesFile(), { version: 1, volume: 33, playlist: '', shuffle: false })
+    const gonePlaylist = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?playlist=BVgone00000`)
+    assert.deepEqual(gonePlaylist.body, { ok: true, volume: 33, playlist: '', shuffle: false },
+      'a playlist no link names falls back to every song, and the route says so')
+    assert.deepEqual(readPreferencesFile(), { version: 1, volume: 33, playlist: '', shuffle: false },
+      'and this machine keeps the fallback rather than the stale id')
+    const shuffled = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?shuffle=true`)
+    assert.deepEqual(shuffled.body, { ok: true, volume: 33, playlist: '', shuffle: true })
+    assert.equal(readPreferencesFile().shuffle, true, 'the shuffle choice stays on this machine')
+    assert.equal(readMusicFile().shuffle, true, 'and reaches the pet that draws the next song')
+    const badShuffle = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?shuffle=loud`)
+    assert.deepEqual(badShuffle.body, { ok: false, reason: 'shuffle' }, 'a shuffle that is not a boolean is refused')
     const musicViewAnswer = await askGit(musicRoute, 'GET', MUSIC_PATH)
     assert.equal(musicViewAnswer.status, 200)
     assert.equal(musicViewAnswer.body.dir, musicFolder)
     assert.equal(musicViewAnswer.body.volume, 33)
+    assert.equal(musicViewAnswer.body.shuffle, true, 'the view reports the local shuffle choice')
+    assert.equal(musicViewAnswer.body.playlist, '', 'the playlist starts at every song on this machine too')
     assert.deepEqual(musicViewAnswer.body.entries.map(row => [row.link, row.state]), [[firstLink, 'missing']],
       'a link with no file yet is reported as missing')
     assert.equal(musicViewAnswer.body.missing, 1)
@@ -3663,12 +3701,12 @@ $found
       const added = await askGit(musicDownloadRoute, 'POST',
         `${MUSIC_DOWNLOAD_PATH}?url=${encodeURIComponent(firstLink)}`)
       assert.deepEqual([added.body.ok, added.body.title], [true, 'Song One'])
-      assert.equal(existsSync(join(musicFolder, 'Song One.m4a')), true, 'the audio lands in the configured folder')
+      assert.equal(existsSync(join(musicFolder, 'Song One', 'Song One.m4a')), true, 'the audio lands in the configured folder')
       // And the track reaches the pet through its own file, with the absolute path the
       // pet opens: it plays local files rather than asking this half for them.
       const published = readMusicFile()
       assert.deepEqual(published.tracks.map(track => [track.id, track.title]), [[musicId, 'Song One']])
-      assert.equal(published.tracks[0].file, join(musicFolder, 'Song One.m4a'))
+      assert.equal(published.tracks[0].file, join(musicFolder, 'Song One', 'Song One.m4a'))
       assert.equal(published.missing, 0)
 
       // A playback command from the card rides in that same file, and the pet — the
@@ -3705,13 +3743,13 @@ $found
       assert.equal(syncView.body.sync.added, 0, 'the link already downloaded is not fetched again')
       assert.deepEqual(syncView.body.sync.failed.map(item => item.link), ['BV1fail00000'],
         'and the one that cannot be read is reported without stopping the rest')
-      assert.equal(existsSync(join(musicFolder, 'Song One.m4a')), true)
+      assert.equal(existsSync(join(musicFolder, 'Song One', 'Song One.m4a')), true)
 
       // Removing a link deletes this machine's file with its record: the audio is
       // derived, and nothing derived is kept for a link nobody lists.
       const removed = await askGit(musicRemoveRoute, 'POST', `${MUSIC_REMOVE_PATH}?id=${musicId}`)
       assert.deepEqual(removed.body, { ok: true })
-      assert.equal(existsSync(join(musicFolder, 'Song One.m4a')), false)
+      assert.equal(existsSync(join(musicFolder, 'Song One', 'Song One.m4a')), false)
       assert.deepEqual(readMusicFile().tracks, [])
 
       // A music folder inside the checkout is not used at all, only reported: those
@@ -3765,11 +3803,10 @@ $found
     assert.equal(stream.frames.length, 2, 'a menu command must reach the open stream')
     assert.match(stream.frames[1], /^data: \{"command":"chat"\}\n\n$/)
 
-    // The menu's volume and link entries are configuration, and configuration is
-    // written through the settings service - which refuses any write made inside an
-    // HMR transaction, the context this Host's own timer runs in. Both commands
-    // therefore travel to the page, which writes them the way the card does, and the
-    // Host only answers for the links it can judge itself.
+    // The menu's volume is this machine's own preference rather than configuration,
+    // so this half writes it itself — in the preferences file beside the library —
+    // and tells the pet; no page is involved. Links are not in this menu at all: the
+    // card owns the list.
     /** Write one menu command; wait for it to reach the page, or for this half to answer. */
     const menuCommand = async (payload, forwarded) => {
       const before = stream.frames.length
@@ -3781,15 +3818,17 @@ $found
       return stream.frames.length > before ? stream.frames.at(-1) : undefined
     }
 
-    const volumeBefore = config.musicVolume.get()
-    const volumeFrame = await menuCommand({ command: 'music-volume', at: Date.now() + 20, value: 21 }, true)
-    assert.equal(volumeFrame, 'data: {"command":"music-volume","value":21}\n\n',
-      'a volume the menu set must reach the page as a number')
-    assert.equal(config.musicVolume.get(), volumeBefore, 'the Host must not write the volume itself')
-    assert.equal(readMusicFile().volume, 21,
-      'the pet keeps the number the menu chose while the page writes it')
-    assert.notEqual(readMusicFile().notice?.kind, 'volume',
-      'and nothing is announced until the configuration carries it')
+    // "Open working directory" is the page's work too: the directory is the one
+    // the main view holds, which only the page knows, so the frame must cross.
+    const openCwdFrame = await menuCommand({ command: 'open-cwd', at: Date.now() + 10 }, true)
+    assert.equal(openCwdFrame, 'data: {"command":"open-cwd"}\n\n',
+      'the working-directory entry must reach the page that names the directory')
+
+    const volumeFrame = await menuCommand({ command: 'music-volume', at: Date.now() + 20, value: 21 }, false)
+    assert.equal(volumeFrame, undefined, 'a volume the menu set must not be forwarded to the page')
+    assert.equal(readPreferencesFile().volume, 21, 'the Host stores the volume in this machine’s preferences')
+    assert.equal(readMusicFile().volume, 21, 'and the pet keeps the number the menu chose')
+    assert.equal(readMusicFile().notice?.kind, 'volume', 'the pet is told once that the volume changed')
 
     // A link command the menu no longer offers reaches nothing: the card owns the list,
     // so this half neither judges a link nor forwards one.

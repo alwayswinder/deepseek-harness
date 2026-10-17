@@ -776,13 +776,15 @@ export class MusicLibrary {
  * @param options.entries - index entries by id.
  * @param options.dir - absolute music directory.
  * @param options.warning - what is wrong with that directory, if anything.
- * @param options.volume - configured volume, 0-100.
+ * @param options.volume - the volume this machine plays at, 0-100.
+ * @param options.playlist - the playlist this machine picked, blank for every song.
+ * @param options.shuffle - whether the pet draws the next song at random.
  * @param options.sync - sync progress.
  * @param options.player - the pet's playback state, when it reported one.
  * @param options.exists - file-existence check, injectable for tests.
  * @returns the view's JSON payload.
  */
-export function musicView({ links, entries, dir, warning = '', volume, sync, player, exists = existsSync }) {
+export function musicView({ links, entries, dir, warning = '', volume, playlist, shuffle, sync, player, exists = existsSync }) {
   const rows = []
   const claimed = new Set()
   // A link the last fill-in could not download is reported as failed rather than as
@@ -855,6 +857,8 @@ export function musicView({ links, entries, dir, warning = '', volume, sync, pla
     dir,
     warning,
     volume,
+    playlist: typeof playlist === 'string' ? playlist : '',
+    shuffle: shuffle === true,
     sync,
     player: player ?? { playing: false, ducked: false, duckedMode: 'fade', id: '', title: '', positionMs: 0, error: '' },
     entries: rows,

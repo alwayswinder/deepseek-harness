@@ -4,13 +4,14 @@ chcp 65001 >nul
 
 rem ============================================================
 rem Turn a Tonghuashun ledger export into the position snapshot this plugin
-rem reads. It sits beside that snapshot, so this directory holds everything the
-rem plugin needs: the code, the data, and the tool that rewrites the data.
+rem reads. The snapshot is personal data and never lives in this (public)
+rem plugin directory: the output is the path chosen on the plugin's settings
+rem page (Settings, then Plugins, then dsh-ths-holdings), or
+rem %DSH_HOME%\ths-holdings\positions.json when nothing has been chosen.
 rem
 rem Usage: drag the exported .xlsx onto this file, or run
 rem   ths-export-positions.bat "C:\path\to\export.xlsx"
 rem
-rem Output: positions.json next to this script - the one file the plugin reads.
 rem Trade again? Export a fresh sheet and run this again; the strip picks the new
 rem positions up on its next refresh, with no restart.
 rem ============================================================

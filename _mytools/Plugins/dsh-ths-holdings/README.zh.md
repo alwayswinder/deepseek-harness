@@ -84,11 +84,12 @@ dsh plugin --profile web add dsh-ths-holdings
 - **改** — 直接改表格里的代码 / 名称 / 数量 / 成本，点「保存」写回持仓文件；「放弃修改 / 重新载入」退回上一次载入的状态。
 - **增删** — 「添加一行」加一条空行，行尾的「删除」去掉一条。
 - **先校验再落盘** — 保存前整份列表都会被检查（6 位代码、数量 > 0、成本 ≥ 0、代码不重复）；不合格的行标红并逐条给出原因，只要有一行不合格就什么都不写。
-- **写回** — 保存原子替换 `positions.json`，保留导出流程写入的 `exported_at` / `export_date` / `source_file`，另记一个 `updated_at`；盈亏卡片在下一次轮询（约 20 秒）后使用新数据，不需要重启。
+- **写回** — 保存原子替换当前持仓文件，保留导出流程写入的 `exported_at` / `export_date` / `source_file`，另记一个 `updated_at`；盈亏卡片在下一次轮询（约 20 秒）后使用新数据，不需要重启。
+- **选文件** — 表格上方的「持仓文件位置」一行会显示当前文件以及这个路径的来源。可以直接填绝对路径，或点「选择目录…」用外壳的目录选择器；**保存位置** 只在本机记住它（写在 `$DSH_HOME/ths-holdings.location.json`），**恢复默认** 忘掉这个选择。默认位置是 `$DSH_HOME/ths-holdings/positions.json`；本机没有选过路径时使用 profile 里的 `positionsFile` 配置，选过的路径优先于它。
 
 > 已配置账本 Cookie 时，卡片的数字来自账本接口，这一页的编辑只在「导出持仓 + 公开行情」这条本地通路上生效——页面顶部会如实说明这一点。
 
-这条通路与 `.xlsx` 拖拽导入共用同一个文件：随时可以再把账本导出的表格拖到 `ths-export-positions.bat` 上整份覆盖，之后继续在插件页面里微调。
+持仓快照属于个人数据，不会放在这个包里：把上面的位置指向你实际保存它的地方即可，例如私有仓库里的 `D:\holdings\positions.json`。这条通路与 `.xlsx` 导入共用同一个文件：随时可以再把账本导出的表格拖到 `ths-export-positions.bat` 上整份覆盖（它写入同一个配置路径），之后继续在插件页面里微调。
 
 ## 特性
 
@@ -100,6 +101,7 @@ dsh plugin --profile web add dsh-ths-holdings
 - **🖥 自动获取 Cookie** — 一键弹出 Edge 登录窗口，登录即自动保存，无需 F12
 - **✓ 保存即校验** — 粘贴或自动获取后当场验证 Cookie 是否被账本接受
 - **⚙ 持仓管理页** — 设置 → 插件 → 点开 `dsh-ths-holdings`：改成本 / 数量、增删持仓，带实时市值与盈亏
+- **📁 文件位置设置** — 自己选持仓快照放在哪（默认 `$DSH_HOME/ths-holdings/positions.json`），真实持仓因此不进入这个公开包，也可以放进私有仓库
 - **↕ 可拖动** — 沿右侧边缘上下拖动标题栏（位置存 localStorage）
 - **⚙ 就地设置** — 粘贴 Cookie、选择组合，全在卡片上完成
 - **🔒 凭据安全** — Cookie 始终留在宿主进程
@@ -142,7 +144,7 @@ node 半区每次请求通过凭据引用通道（`ctx.credentials`）读取登�
 | `pnlUrl` | 同花顺 `time_share` 端点 | 盈亏端点覆盖（测试指向脚本化服务器）。 |
 | `indexUrl` | 同花顺 `getQuotes` 端点 | 指数端点覆盖（测试指向脚本化服务器）。 |
 | `quoteUrl` | 腾讯 `qt.gtimg.cn/q=` | 本地行情源的批量报价端点覆盖，盈亏卡片与持仓管理页共用（测试指向脚本化服务器）。 |
-| `positionsFile` | 包目录下的 `positions.json` | 导出的持仓快照路径；持仓管理页读写的也是这个文件。 |
+| `positionsFile` | `$DSH_HOME/ths-holdings/positions.json` | 导出的持仓快照路径，持仓管理页读写的也是这个文件。插件页面上选过的路径优先于这个值（见「管理持仓」）。 |
 | `pollMs` | `20000` | 卡片使用的轮询间隔（毫秒）；随每次响应的 `poll_ms` 上报给浏览器。 |
 | `minuteRefreshMs` | `120000` | 一张分时曲线缓存多久（毫秒）。 |
 
@@ -156,6 +158,7 @@ dsh-ths-holdings/
 ├── fetch.js                # Tonghuashun ledger API calls + auto-discovery + cookie verify
 ├── acquire.js              # auto-acquire cookie (playwright-core drives Edge/Chrome)
 ├── local.js                # local quote source: exported holdings + Tencent quote feed
+├── location.js             # where the holdings file lives: default, machine choice, validation
 ├── positions.js            # holdings page: validate and write
 ├── client.js               # browser half: the holdings manager on this plugin's own page
 ├── cordis.patch.yml        # dsh.bundle patch layer
@@ -168,7 +171,7 @@ dsh-ths-holdings/
 测试（在插件目录里跑；不需要先构建任何东西）：
 
 ```sh
-..\..\..\node_modules\.bin\vitest.CMD run    # host half: 37 specs
+..\..\..\node_modules\.bin\vitest.CMD run    # host half: 40 specs
 node tests\positions-ui.smoke.mjs            # browser half: register, render, edit, save
 node tests\host.smoke.mjs                    # boot the package by row name and drive the routes
 ```
@@ -189,7 +192,8 @@ node tests\host.smoke.mjs                    # boot the package by row name and 
 | 在插件列表里找不到这一条 | 这一半走宿主启动时算出的插件清单：改完插件要**重启 DSH**（桌面端重启应用，网页版重启 `dsh web`）；位置是 **设置 → 插件 → `dsh-ths-holdings`**（在 bundle 那一组里，和桌宠同一条路）。 |
 | 保存成功但卡片数字没变 | 卡片按 `pollMs`（默认 20 秒）轮询一次，等一轮即可；若已配置账本 Cookie，卡片走账本通路，本页只改本地快照。 |
 | 保存被拒、某行标红 | 按提示修该字段：代码必须是 6 位数字、数量 > 0、成本 ≥ 0、代码不能重复；全部合格才会写文件。 |
-| 持仓管理页一片空白 | 该机器还没有 `positions.json`——直接「添加一行」保存即可创建；页面上会显示它将要写入的路径。 |
+| 持仓管理页一片空白 | 当前持仓文件里还没有持仓——「持仓文件位置」那一行会显示当前用的是哪个文件；直接「添加一行」保存即可创建，或把位置指到已经有持仓的文件。 |
+| 持仓文件不在插件目录里了 | 现在默认如此：插件不再随包提供、也不读取包目录里的 `positions.json`。某台机器还需要旧列表时，把「持仓文件位置」指到列表实际所在处（例如私有仓库的克隆），或重新跑一次 `ths-export-positions.bat`；旧的已提交副本仍留在这个仓库的历史里。 |
 
 ## Model Experience
 
@@ -205,7 +209,7 @@ node tests\host.smoke.mjs                    # boot the package by row name and 
 - **组合列表端点（`account_list`）需要先保存 Cookie** — 粘贴有效 Cookie 后组合选择器才会出现。
 - **自动获取复用系统浏览器** — 依赖 `playwright-core`（本副本不再随包安装，需要 `npm i -g playwright-core` 或放进插件目录的 `node_modules`），自动选择已安装的 Edge / Chrome；找不到时自动获取不可用（退化为手动粘贴），页面会给出明确提示。
 - **无服务端轮询** — 路由按请求拉取，卡片按配置的 `pollMs` 间隔轮询；没有共享缓存或推送通道。
-- **持仓管理页只改本地快照** — 它读写 `positions.json`，不会写回同花顺账本；账本侧仍需在投资账本里维护（改完再导出一次 `.xlsx` 即可整份覆盖）。
+- **持仓管理页只改本地快照** — 它读写当前配置的持仓文件，不会写回同花顺账本；账本侧仍需在投资账本里维护（改完再导出一次 `.xlsx` 即可整份覆盖）。
 - **它挂在插件自己的页面上** — 用的是 Plugins 页给 bundle 的 `plugins.bundle.config` 位置（与桌宠设置同一处），因此只有这一条 bundle 被打开时才渲染；这一页需要浏览器重新加载插件清单，所以改完插件必须重启 DSH。
 
 ## License

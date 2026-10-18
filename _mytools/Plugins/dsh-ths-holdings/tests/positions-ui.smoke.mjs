@@ -148,7 +148,8 @@ function type(label, value) {
 
 /** Every input value in render order: the editable columns are inputs, not text. */
 function values() {
-  return findAll(tree, node => node.type === 'input').map(node => node.props.value)
+  return findAll(tree, node => node.type === 'input' && node.props['aria-label'] !== '持仓文件路径')
+    .map(node => node.props.value)
 }
 
 /** Press the `row`-th button carrying `label` (row controls repeat once per holding). */
@@ -174,6 +175,8 @@ const flush = () => new Promise(resolve => { setTimeout(resolve, 0) })
 
 const FIXTURE = {
   file: 'D:/plugin/positions.json',
+  file_source: 'config',
+  file_default: 'C:/Users/me/.dsh/ths-holdings/positions.json',
   exported_at: '2026-05-01T15:00:00+08:00',
   export_date: '2026-05-01',
   updated_at: '2026-05-02T09:30:00+08:00',
@@ -196,6 +199,10 @@ const FIXTURE = {
 
 const requests = []
 
+/** The file the stubbed host serves, so a chosen location changes what a reload reads. */
+let activeFile = FIXTURE.file
+let activeSource = FIXTURE.file_source
+
 /** Price one saved row the way the host's quote feed would. */
 function priced(row) {
   const known = FIXTURE.positions.find(candidate => candidate.code === row.code)
@@ -206,10 +213,30 @@ function priced(row) {
 
 globalThis.fetch = (url, init) => {
   requests.push({ url, init })
+  if (String(url).endsWith('/location')) {
+    const body = JSON.parse(String(init.body))
+    if (body.positionsFile === 'relative.json') {
+      return Promise.resolve(new Response(JSON.stringify({
+        ok: false,
+        message: '请填写绝对路径（以盘符或 / 开头）：relative.json',
+      }), { status: 400, headers: { 'content-type': 'application/json' } }))
+    }
+    if (body.positionsFile === '') {
+      activeFile = FIXTURE.file
+      activeSource = 'config'
+    } else {
+      activeFile = body.positionsFile
+      activeSource = 'machine'
+    }
+    return Promise.resolve(new Response(JSON.stringify({
+      ok: true, file: activeFile, file_source: activeSource, file_default: FIXTURE.file_default,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+  }
+  const view = { ...FIXTURE, file: activeFile, file_source: activeSource }
   const body = init === undefined || init.body === undefined ? undefined : JSON.parse(String(init.body))
   const payload = init === undefined
-    ? FIXTURE
-    : { ok: true, errors: [], view: { ...FIXTURE, positions: body.positions.map(priced) } }
+    ? view
+    : { ok: true, errors: [], view: { ...view, positions: body.positions.map(priced) } }
   return Promise.resolve(new Response(JSON.stringify(payload), {
     status: 200,
     headers: { 'content-type': 'application/json' },
@@ -236,8 +263,15 @@ assert.equal(typeof plugin.apply, 'function')
 
 // ---- registration -----------------------------------------------------------
 
+/** What the shell's directory picker answers; the page turns it into a file path. */
+const picked = { value: undefined }
+
 let registration = null
 const fakeCtx = {
+  get(name) {
+    if (name !== 'uiWorkspace') return undefined
+    return { pickDirectory: async () => picked.value }
+  },
   slots: {
     inject(name, setup) {
       assert.equal(name, 'plugins.bundle.config')
@@ -253,10 +287,11 @@ const fakeCtx = {
 
 plugin.apply(fakeCtx)
 assert.ok(registration !== null, 'apply must register the bundle configuration')
-assert.deepEqual(registration.options, {
-  name: 'plugins.bundle.config',
-  key: 'dsh-ths-holdings',
-})
+assert.deepEqual(
+  { name: registration.options.name, key: registration.options.key },
+  { name: 'plugins.bundle.config', key: 'dsh-ths-holdings' },
+)
+assert.equal(typeof registration.options.inject, 'function', 'the page receives the shell picker through the slot')
 
 // The Plugins page asks a list row for the summary view and the open bundle for
 // the page view; only the latter may touch the host.
@@ -272,7 +307,7 @@ async function draw() {
     cursor = 0
     pendingEffects = []
     stateMoved = false
-    tree = PositionsManager({ view: 'page' })
+    tree = PositionsManager({ view: 'page', ...registration.options.inject() })
     for (const effect of pendingEffects) {
       if (typeof effect.fn !== 'function') continue
       const current = hooks[effect.at]
@@ -295,6 +330,8 @@ assert.equal(requests[0].url, '/api/stock-pnl/positions')
 const loadedText = textOf(tree)
 assert.ok(loadedText.includes('持仓管理'), 'the section names itself')
 assert.ok(loadedText.includes('D:/plugin/positions.json'), 'the page shows which file it edits')
+assert.ok(loadedText.includes('当前来源：插件配置'), 'the page says the path came from the plugin configuration')
+assert.equal(input('持仓文件路径').props.value, 'D:/plugin/positions.json', 'the location field starts at the active file')
 assert.deepEqual(values(), ['600941', '中国移动', '400', '87.291', '601668', '中国建筑', '15000', '4.478'],
   'both holdings render their editable fields')
 assert.ok(loadedText.includes('¥102,700.00'), 'the totals price the loaded quantities')
@@ -318,7 +355,11 @@ assert.ok(findAll(tree, node => node.type === 'button').some(node => textOf(node
 
 press('添加一行')
 await draw()
-assert.equal(findAll(tree, node => node.type === 'input').length, 12, 'a third row adds four inputs')
+assert.equal(
+  findAll(tree, node => node.type === 'input' && node.props['aria-label'] !== '持仓文件路径').length,
+  12,
+  'a third row adds four inputs',
+)
 
 type('代码 第 3 行', '000895')
 type('名称 第 3 行', '双汇发展')
@@ -349,6 +390,47 @@ const savedText = textOf(tree)
 assert.ok(savedText.includes('已保存'), 'the page confirms the save')
 assert.ok(!savedText.includes('有未保存的修改'), 'the saved list is the new baseline')
 assert.equal(button('保存').props.disabled, true, 'nothing left to save')
+
+// ---- switching the holdings file from the settings row -----------------------
+
+// The shell picker fills the field with the snapshot name inside the directory.
+picked.value = 'D:\\private-repo'
+press('选择目录…')
+await draw()
+assert.equal(input('持仓文件路径').props.value, 'D:\\private-repo\\positions.json',
+  'a picked directory becomes the snapshot path inside it')
+
+press('保存位置')
+await draw()
+const locationRequest = requests.find(request => String(request.url) === '/api/stock-pnl/positions/location')
+assert.ok(locationRequest !== undefined, 'saving the location posts to the location route')
+assert.equal(locationRequest.init.method, 'POST')
+assert.equal(locationRequest.init.headers['content-type'], 'application/json')
+assert.deepEqual(JSON.parse(String(locationRequest.init.body)), { positionsFile: 'D:\\private-repo\\positions.json' })
+const switchedText = textOf(tree)
+assert.ok(switchedText.includes('已切换到 D:\\private-repo\\positions.json'), 'the page confirms the switch')
+assert.ok(switchedText.includes('当前来源：本机设置'), 'the page reports that this machine chose the path')
+assert.equal(input('持仓文件路径').props.value, 'D:\\private-repo\\positions.json', 'the reloaded view keeps the chosen path')
+assert.ok(findAll(tree, node => node.type === 'button').some(node => textOf(node).trim() === '恢复默认'),
+  'a machine-chosen path can be reset')
+
+// A refused path keeps the dialog open with the host's explanation.
+type('持仓文件路径', 'relative.json')
+await draw()
+press('保存位置')
+await draw()
+assert.ok(textOf(tree).includes('请填写绝对路径'), 'a refused location reports why')
+
+// Resetting forgets the machine choice and returns to the configured path.
+type('持仓文件路径', 'D:\\private-repo\\positions.json')
+await draw()
+press('恢复默认')
+await draw()
+const resetText = textOf(tree)
+assert.ok(resetText.includes('当前来源：插件配置'), 'resetting falls back to the plugin configuration')
+assert.equal(input('持仓文件路径').props.value, 'D:/plugin/positions.json', 'the configured file is shown again')
+assert.ok(!findAll(tree, node => node.type === 'button').some(node => textOf(node).trim() === '恢复默认'),
+  'the reset control is gone when the configuration is in force')
 
 // ---- a rejected save marks the offending row ---------------------------------
 

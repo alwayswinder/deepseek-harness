@@ -57,6 +57,7 @@
     "fetch.js",
     "acquire.js",
     "local.js",
+    "location.js",
     "positions.js",
     "client.js",
     "cordis.patch.yml",

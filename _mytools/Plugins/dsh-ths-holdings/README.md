@@ -85,11 +85,12 @@ This working copy ships the host half of `dsh-ths-holdings` only, so the day-to-
 - **Edit** — change the code, name, quantity, or cost straight in the table and click save to write it back to the holdings file; discard-and-reload returns to the last loaded state.
 - **Add and delete** — "添加一行" appends an empty row, and the row's "删除" control drops one.
 - **Validate before writing** — the whole list is checked before anything is written (six-digit code, quantity > 0, cost ≥ 0, no repeated code); a rejected row is marked and explained, and one bad row means nothing is written at all.
-- **Write-back** — saving replaces `positions.json` atomically, keeps the `exported_at` / `export_date` / `source_file` the export flow wrote, and records an `updated_at`; the P&L card picks the new data up on its next poll (about 20 seconds), with no restart.
+- **Write-back** — saving replaces the holdings file atomically, keeps the `exported_at` / `export_date` / `source_file` the export flow wrote, and records an `updated_at`; the P&L card picks the new data up on its next poll (about 20 seconds), with no restart.
+- **Choose the file** — the 持仓文件位置 row above the table shows the file in force and where that path came from. Type an absolute path or use 选择目录… (the shell's directory picker); **保存位置** remembers it for this machine only, in `$DSH_HOME/ths-holdings.location.json`, and **恢复默认** forgets it. The default is `$DSH_HOME/ths-holdings/positions.json`; the profile's `positionsFile` configuration applies when this machine has not chosen a path, and a chosen path overrides it.
 
 > With a ledger Cookie configured, the card's figures come from the ledger API and the edits on this page only take effect on the "exported holdings + public quotes" local path — the page says so at the top.
 
-That path shares one file with the `.xlsx` import: drop a fresh ledger export onto `ths-export-positions.bat` at any time to replace the whole list, then keep fine-tuning it on the plugin's page.
+The snapshot is personal data and never lives inside this package: point the setting at wherever you keep it, for example `D:\holdings\positions.json` inside a private checkout. That one file is shared with the `.xlsx` import: drop a fresh ledger export onto `ths-export-positions.bat` at any time to replace the whole list (it writes the same configured path), then keep fine-tuning it on the plugin's page.
 
 ## Features
 
@@ -101,6 +102,7 @@ That path shares one file with the `.xlsx` import: drop a fresh ledger export on
 - **🖥 Auto-acquire Cookie** — one click pops the Edge sign-in window; the cookie is saved automatically, no F12 needed
 - **✓ Validate on save** — the stored cookie is checked against the ledger right after paste or auto-acquire
 - **⚙ Holdings manager page** — Settings → Plugins → open `dsh-ths-holdings`: edit cost and quantity, add and delete holdings, with live market value and P&L
+- **📁 File location setting** — choose where the holdings snapshot lives (default `$DSH_HOME/ths-holdings/positions.json`), so the real positions stay out of this public package and can sit in a private repository
 - **↕ Draggable** — drag the title bar vertically along the right edge (position persists in localStorage)
 - **⚙ In-place settings** — paste Cookie and select portfolio from the card itself
 - **🔒 Credential-safe** — the Cookie never leaves the host process
@@ -143,7 +145,7 @@ Auto-acquire runs an in-host state machine (`acquire.ts`): click the button → 
 | `pnlUrl` | Tonghuashun `time_share` endpoint | P&L endpoint override (tests point at a scripted server). |
 | `indexUrl` | Tonghuashun `getQuotes` endpoint | Index endpoint override (tests point at a scripted server). |
 | `quoteUrl` | Tencent `qt.gtimg.cn/q=` | Batch quote endpoint override for the local source, shared by the P&L card and the holdings page (tests point at a scripted server). |
-| `positionsFile` | `positions.json` beside this package | Path of the exported holdings snapshot; the holdings page reads and writes the same file. |
+| `positionsFile` | `$DSH_HOME/ths-holdings/positions.json` | Path of the exported holdings snapshot the holdings page reads and writes. A path chosen on the plugin's page wins over this value (see Managing holdings). |
 | `pollMs` | `20000` | Poll interval (ms) the card uses; reported to the browser in each response's `poll_ms`. |
 | `minuteRefreshMs` | `120000` | How long one intraday series stays cached, in milliseconds. |
 
@@ -157,6 +159,7 @@ dsh-ths-holdings/
 ├── fetch.js                # Tonghuashun ledger API calls + auto-discovery + cookie verify
 ├── acquire.js              # auto-acquire cookie (playwright-core drives Edge/Chrome)
 ├── local.js                # local quote source: exported holdings + Tencent quote feed
+├── location.js             # where the holdings file lives: default, machine choice, validation
 ├── positions.js            # holdings page: validate and write
 ├── client.js               # browser half: the holdings manager on this plugin's own page
 ├── cordis.patch.yml        # dsh.bundle patch layer
@@ -169,7 +172,7 @@ dsh-ths-holdings/
 Tests (run them from the plugin directory; nothing needs building first):
 
 ```sh
-..\..\..\node_modules\.bin\vitest.CMD run    # host half: 37 specs
+..\..\..\node_modules\.bin\vitest.CMD run    # host half: 40 specs
 node tests\positions-ui.smoke.mjs            # browser half: register, render, edit, save
 node tests\host.smoke.mjs                    # boot the package by row name and drive the routes
 ```
@@ -190,7 +193,8 @@ node tests\host.smoke.mjs                    # boot the package by row name and 
 | The plugin row has no holdings manager | The browser half follows the plugin roster the host computes at startup: **restart DSH** after changing the plugin (the desktop app, or `dsh web`); the page is **Settings → Plugins → `dsh-ths-holdings`** (the bundle group, the same route the desktop pet takes). |
 | Saved, but the card's figures did not move | The card polls once per `pollMs` (20 seconds by default), so give it a round; with a ledger Cookie configured the card reads the ledger and this page only edits the local snapshot. |
 | The save is refused and a row is marked | Fix the field it names: the code must be six digits, the quantity above 0, the cost 0 or more, and no code may repeat; nothing is written until the whole list passes. |
-| The holdings page is empty | This machine has no `positions.json` yet — add a row and save to create it; the page shows the path it will write. |
+| The holdings page is empty | The file in force has no holdings yet — the 持仓文件位置 row shows which file that is; add a row and save to create it, or point the setting at the file that already has your positions. |
+| The holdings file moved out of the plugin directory | That is the default now: the plugin no longer ships or reads a `positions.json` inside its own package. On a machine that still needs the old list, set 持仓文件位置 to where the list lives (for example a private repository clone), or re-run `ths-export-positions.bat`; the old committed copy remains in this repository's history. |
 
 ## Model Experience
 
@@ -206,7 +210,7 @@ None — the plugin contributes no prompt, schema, or result.
 - **The portfolio list endpoint (`account_list`) requires the Cookie to be saved first** — the portfolio selector appears after you paste a valid Cookie.
 - **Auto-acquire reuses a system browser** — it needs `playwright-core` (no longer installed with this copy: run `npm i -g playwright-core` or put it in the plugin directory's own `node_modules`) and drives whichever of Edge / Chrome is installed (first found wins); with neither present auto-acquire is unavailable (manual paste still works) and the page says so explicitly.
 - **No server-side polling** — the route fetches on each request and the card polls at the configured `pollMs` interval; there is no shared cache or push channel.
-- **The holdings page only edits the local snapshot** — it reads and writes `positions.json` and never writes back to the Tonghuashun ledger; the ledger side is still maintained in the ledger itself (re-export the `.xlsx` to replace the whole list).
+- **The holdings page only edits the local snapshot** — it reads and writes the configured holdings file and never writes back to the Tonghuashun ledger; the ledger side is still maintained in the ledger itself (re-export the `.xlsx` to replace the whole list).
 - **It lives on the plugin's own page** — it uses the `plugins.bundle.config` seat the Plugins page gives a bundle (the desktop pet's settings use the same one), so it renders only while that bundle is open, and the browser has to reload the plugin roster: restart DSH after changing the plugin.
 
 ## License

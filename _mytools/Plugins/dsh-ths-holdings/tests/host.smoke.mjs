@@ -10,7 +10,7 @@
  */
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -56,6 +56,9 @@ async function listen(handler) {
 }
 
 const root = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-built-'))
+// The location file the plugin remembers a chosen path in lives under the
+// harness home; this smoke must never read or write the real one.
+process.env.DSH_HOME = root
 const positionsFile = join(root, 'positions.json')
 await writeFile(positionsFile, `${JSON.stringify(POSITIONS, null, 2)}\n`, 'utf8')
 
@@ -130,6 +133,43 @@ const rejected = await fetch(base, {
   body: JSON.stringify({ positions: [{ code: '600941', name: 'AAA', qty: 0, cost: 1 }] }),
 })
 assert.equal(rejected.status, 400, 'the package refuses an invalid row')
+
+// The page can point the routes at another file; the choice is remembered for
+// this machine, and an empty path returns to the configured one.
+assert.equal(view.file_source, 'config', 'the view says where the path came from')
+const alternateDir = join(root, 'private-repo')
+await mkdir(alternateDir, { recursive: true })
+const alternate = join(alternateDir, 'positions.json')
+await writeFile(alternate, `${JSON.stringify({ positions: [{ code: '000895', name: 'CCC', qty: 1700, cost: 25 }] }, null, 2)}\n`, 'utf8')
+
+const switched = await fetch(`${base}/location`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ positionsFile: alternate }),
+})
+assert.equal(switched.status, 200, 'the package accepts a chosen holdings file')
+const chosen = await switched.json()
+assert.equal(chosen.ok, true)
+assert.equal(chosen.file_source, 'machine')
+assert.equal((await fetch(`${base}/location`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ positionsFile: join(root, 'nope', 'positions.json') }),
+})).status, 400, 'a missing directory is refused')
+
+const moved = await (await fetch(base)).json()
+assert.equal(moved.file.replaceAll('\\', '/'), alternate.replaceAll('\\', '/'))
+assert.deepEqual(moved.positions.map(row => row.code), ['000895'])
+assert.equal((await readFile(join(root, 'ths-holdings.location.json'), 'utf8')).includes('private-repo'), true)
+
+const reset = await fetch(`${base}/location`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ positionsFile: '' }),
+})
+assert.equal(reset.status, 200)
+assert.equal((await reset.json()).file_source, 'config')
+assert.deepEqual((await (await fetch(base)).json()).positions.map(row => row.code), ['600941'])
 
 await context.fiber.dispose()
 await new Promise(resolve => { quotes.server.close(resolve) })

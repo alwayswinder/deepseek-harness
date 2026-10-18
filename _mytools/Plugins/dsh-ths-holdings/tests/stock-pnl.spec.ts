@@ -8,9 +8,10 @@
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
@@ -23,6 +24,9 @@ import WebServer from '@deepseek-ai/dsh-host-webserver'
 import * as uiStockPnl from '../index.js'
 import { CookieAcquirer, cookiesToHeader, isSignedIn } from '../acquire.js'
 import { collectStats, cookieField, listPortfolios, verifyCookie } from '../fetch.js'
+import {
+  clearPositionsLocation, inspectPositionsChoice, LOCATION_FILE, resolvePositionsLocation, writePositionsLocation,
+} from '../location.js'
 import { parsePositionEntries, readPositionsView, savePositions } from '../positions.js'
 
 /** A playwright cookie, as these tests hand it to the acquirer. */
@@ -44,6 +48,8 @@ type FetchLike = (url: string, init: RequestInit) => Promise<Response>
 /** The `/api/stock-pnl/positions` view, as these tests read it. */
 interface PositionsView {
   file: string
+  file_source?: 'machine' | 'config' | 'default'
+  file_default?: string
   exported_at?: string
   export_date?: string
   updated_at?: string
@@ -219,6 +225,8 @@ let context: Context | undefined
 let ledgerServer: Server | undefined
 let quoteServer: Server | undefined
 let ledgerCookie: string | undefined
+/** The `$DSH_HOME` the test process started with, restored after every case. */
+const originalDshHome = process.env.DSH_HOME
 /** Absolute path of the snapshot file the composition test's management route reads and writes. */
 let positionsPath: string | undefined
 
@@ -227,6 +235,8 @@ afterEach(async () => {
   context = undefined
   if (root !== undefined) await rm(root, { recursive: true, force: true })
   root = undefined
+  if (originalDshHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = originalDshHome
   if (ledgerServer !== undefined) await new Promise<void>(resolve => { ledgerServer?.close(() => { resolve() }) })
   ledgerServer = undefined
   if (quoteServer !== undefined) await new Promise<void>(resolve => { quoteServer?.close(() => { resolve() }) })
@@ -239,6 +249,9 @@ afterEach(async () => {
 /** Boot the node half plus a webserver and credentials provider through the real Loader. */
 async function loadComposition(): Promise<number> {
   root = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-loader-'))
+  // The host half remembers a machine-chosen holdings path under the harness
+  // home; a test must never read or write the real one.
+  process.env.DSH_HOME = root
 
   ledgerCookie = ''
   ledgerServer = createServer((req, res) => {
@@ -711,6 +724,47 @@ describe('readPositionsView', () => {
   })
 })
 
+describe('resolvePositionsLocation', () => {
+  it('prefers the machine choice, then the profile config, then the harness home default', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-location-'))
+    try {
+      const locationPath = join(dir, LOCATION_FILE)
+      const configured = join(dir, 'configured.json')
+      const chosen = join(dir, 'chosen.json')
+      const fallback = { file: join(dir, 'ths-holdings', 'positions.json'), source: 'default' }
+
+      expect(resolvePositionsLocation({ home: dir, configured: '', locationPath })).toEqual(fallback)
+      expect(resolvePositionsLocation({ home: dir, configured, locationPath })).toEqual({ file: configured, source: 'config' })
+
+      writePositionsLocation(locationPath, chosen)
+      expect(JSON.parse(await readFile(locationPath, 'utf8'))).toEqual({ positionsFile: chosen })
+      expect(resolvePositionsLocation({ home: dir, configured, locationPath })).toEqual({ file: chosen, source: 'machine' })
+
+      clearPositionsLocation(locationPath)
+      expect(existsSync(locationPath)).toBe(false)
+      expect(resolvePositionsLocation({ home: dir, configured, locationPath })).toEqual({ file: configured, source: 'config' })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('inspectPositionsChoice', () => {
+  it('accepts a file in an existing directory and refuses paths the page cannot use', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-choice-'))
+    try {
+      expect(inspectPositionsChoice(join(dir, 'positions.json'))).toEqual({ ok: true, file: join(dir, 'positions.json') })
+      expect(inspectPositionsChoice('positions.json')).toMatchObject({ ok: false })
+      expect(inspectPositionsChoice('')).toMatchObject({ ok: false })
+      expect(inspectPositionsChoice(dir)).toMatchObject({ ok: false, message: expect.stringContaining('是目录') })
+      expect(inspectPositionsChoice(join(dir, 'missing', 'positions.json')))
+        .toMatchObject({ ok: false, message: expect.stringContaining('所在目录不存在') })
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('positions management route', () => {
   it('prices the exported holdings and reports the ledger state', { timeout: 60_000 }, async () => {
     const port = await loadComposition()
@@ -720,6 +774,8 @@ describe('positions management route', () => {
     const view = (await response.json()) as PositionsView
     // The config passes the path with forward slashes, which is how the view reports it back.
     expect(view.file.replaceAll('\\', '/')).toBe(positionsPath!.replaceAll('\\', '/'))
+    expect(view.file_source).toBe('config')
+    expect(view.file_default).toBe(join(root!, 'ths-holdings', 'positions.json'))
     expect(view.exported_at).toBe(POSITION_FIXTURE.exported_at)
     expect(view.export_date).toBe(POSITION_FIXTURE.export_date)
     expect(view.cookie_configured).toBe(true)
@@ -802,6 +858,71 @@ describe('positions management route', () => {
     const response = await fetch(`http://127.0.0.1:${String(port)}/api/stock-pnl/positions`, { method: 'DELETE' })
     expect(response.status).toBe(405)
     expect(response.headers.get('allow')).toBe('GET, POST')
+  })
+
+  it('switches the holdings file for this machine and resets to the configured path', { timeout: 60_000 }, async () => {
+    const port = await loadComposition()
+    const base = `http://127.0.0.1:${String(port)}/api/stock-pnl/positions`
+    const locationPath = join(root!, LOCATION_FILE)
+    const alternate = join(root!, 'private-repo', 'positions.json')
+    await mkdir(dirname(alternate), { recursive: true })
+    await writeFile(alternate, `${JSON.stringify({ positions: [{ code: '000895', name: 'CCC', qty: 1700, cost: 25 }] }, null, 2)}\n`, 'utf8')
+
+    const switched = await fetch(`${base}/location`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ positionsFile: alternate }),
+    })
+    expect(switched.status).toBe(200)
+    const chosen = (await switched.json()) as { ok: boolean, file: string, file_source: string }
+    expect(chosen.ok).toBe(true)
+    expect(chosen.file_source).toBe('machine')
+    expect(chosen.file.replaceAll('\\', '/')).toBe(alternate.replaceAll('\\', '/'))
+
+    // The choice is remembered and the same routes now read the new file.
+    expect(JSON.parse(await readFile(locationPath, 'utf8'))).toEqual({ positionsFile: alternate })
+    const view = (await (await fetch(base)).json()) as PositionsView
+    expect(view.file_source).toBe('machine')
+    expect(view.file.replaceAll('\\', '/')).toBe(alternate.replaceAll('\\', '/'))
+    expect(view.positions.map(row => row.code)).toEqual(['000895'])
+
+    const refused = await fetch(`${base}/location`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ positionsFile: join(root!, 'missing-dir', 'positions.json') }),
+    })
+    expect(refused.status).toBe(400)
+    expect(((await refused.json()) as { message: string }).message).toContain('所在目录不存在')
+
+    // Saving a holding writes the chosen file, not the configured one.
+    const saved = await fetch(base, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ positions: [{ code: '000895', name: 'CCC', qty: 1800, cost: 25 }] }),
+    })
+    expect(saved.status).toBe(200)
+    expect(JSON.parse(await readFile(alternate, 'utf8')).positions[0].qty).toBe(1800)
+    expect(JSON.parse(await readFile(positionsPath!, 'utf8'))).toEqual(POSITION_FIXTURE)
+
+    // An empty path forgets the machine choice and returns to the config.
+    const reset = await fetch(`${base}/location`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ positionsFile: '' }),
+    })
+    expect(reset.status).toBe(200)
+    expect(((await reset.json()) as { file_source: string }).file_source).toBe('config')
+    expect(existsSync(locationPath)).toBe(false)
+    const back = (await (await fetch(base)).json()) as PositionsView
+    expect(back.file.replaceAll('\\', '/')).toBe(positionsPath!.replaceAll('\\', '/'))
+
+    const notJson = await fetch(`${base}/location`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: `{"positionsFile":"${alternate.replaceAll('\\', '\\\\')}"}`,
+    })
+    expect(notJson.status).toBe(415)
+    expect((await fetch(`${base}/location`)).status).toBe(405)
   })
 })
 

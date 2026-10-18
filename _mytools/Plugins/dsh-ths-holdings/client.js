@@ -24,6 +24,8 @@ window.__ModuleLoader__.load({
 
     /** The host route that reads and rewrites the holdings. */
     const API = '/api/stock-pnl/positions'
+    /** The host route that chooses which file `API` reads and writes. */
+    const LOCATION_API = API + '/location'
     /**
      * The bundle this configuration belongs to: the Plugins page keys this slot
      * by the bundle's package name, spelled the way the profile's bundle list does.
@@ -102,6 +104,16 @@ window.__ModuleLoader__.load({
       },
       inputText: { textAlign: 'left' },
       inputBad: { borderColor: 'var(--dsw-alias-state-error-primary)' },
+      inputPath: {
+        font: 'inherit', fontSize: '12px', flex: '1 1 360px', minWidth: '0', padding: '4px 8px',
+        borderRadius: '5px', border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent',
+        color: 'inherit',
+      },
+      fileBlock: {
+        display: 'flex', flexDirection: 'column', gap: '6px', padding: '8px 10px',
+        border: '1px solid var(--dsw-alias-border-l1)', borderRadius: '8px',
+      },
+      fileLabel: { fontSize: '12px', fontWeight: 500 },
       summary: { display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px' },
     }
 
@@ -143,6 +155,21 @@ window.__ModuleLoader__.load({
       return index
     }
 
+    /** How the host says it found the file in force. */
+    const SOURCE_LABEL = { machine: '本机设置', config: '插件配置', default: '默认位置' }
+
+    /**
+     * The file path a picked directory implies: the snapshot the plugin reads,
+     * unless the picker already named a JSON file.
+     * @param {string} picked - the absolute directory (or file) the picker returned.
+     * @returns {string} the path to put in the field.
+     */
+    function pathFromPicked(picked) {
+      const base = picked.replace(/[\\/]+$/, '')
+      if (/\.json$/i.test(base)) return base
+      return base + (picked.includes('\\') ? '\\' : '/') + 'positions.json'
+    }
+
     // ---- page -------------------------------------------------------------
 
     /**
@@ -167,6 +194,11 @@ window.__ModuleLoader__.load({
       const [fieldErrors, setFieldErrors] = useState([])
       const [notice, setNotice] = useState('')
       const [saving, setSaving] = useState(false)
+      const [fileDraft, setFileDraft] = useState('')
+      const [fileFailure, setFileFailure] = useState('')
+      const [fileNotice, setFileNotice] = useState('')
+      const [fileSaving, setFileSaving] = useState(false)
+      const pickDirectory = props !== undefined ? props.pickDirectory : undefined
 
       /** Adopt one host view as both the shown facts and the saved baseline. */
       const adopt = useCallback((next) => {
@@ -174,6 +206,7 @@ window.__ModuleLoader__.load({
         setView(next)
         setDraft(rows)
         setBaseline(JSON.stringify(rows))
+        setFileDraft(typeof next.file === 'string' ? next.file : '')
       }, [])
 
       const load = useCallback(() => {
@@ -214,6 +247,56 @@ window.__ModuleLoader__.load({
           })
           .finally(() => { setSaving(false) })
       }, [adopt, draft])
+
+      /**
+       * Ask the host to switch the holdings file, then reload the rows from it.
+       *
+       * An empty path returns to the profile's `positionsFile` or the default
+       * under the harness home. The choice is remembered for this machine only.
+       * @param {string} positionsFile - the absolute path, or an empty string to reset.
+       */
+      const applyFile = useCallback((positionsFile) => {
+        setFileSaving(true)
+        setFileFailure('')
+        setFileNotice('')
+        fetch(LOCATION_API, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ positionsFile }),
+        })
+          .then(async (response) => {
+            const body = await response.json().catch(() => null)
+            if (!response.ok || body === null || body.ok !== true) {
+              setFileFailure(body !== null && typeof body.message === 'string' && body.message !== ''
+                ? body.message
+                : response.status === 404
+                  ? '宿主半边还没有这个路由：重启 DSH 再试'
+                  : 'HTTP ' + String(response.status))
+              return
+            }
+            setFileNotice(typeof body.file === 'string' && body.file !== '' ? '已切换到 ' + body.file : '已切换持仓文件')
+            load()
+          })
+          .catch((error) => {
+            setFileFailure(String(error && error.message ? error.message : error))
+          })
+          .finally(() => { setFileSaving(false) })
+      }, [load])
+
+      /** Ask the shell's directory picker, when this profile has one. */
+      const browseFile = useCallback(() => {
+        if (typeof pickDirectory !== 'function') return
+        setFileFailure('')
+        setFileNotice('')
+        Promise.resolve(pickDirectory())
+          .then((picked) => {
+            if (typeof picked !== 'string' || picked === '') return
+            setFileDraft(pathFromPicked(picked))
+          })
+          .catch((error) => {
+            setFileFailure('选择目录失败：' + String(error && error.message ? error.message : error))
+          })
+      }, [pickDirectory])
 
       const updateField = useCallback((index, field, value) => {
         setDraft(rows => rows.map((row, at) => (at === index ? { ...row, [field]: value } : row)))
@@ -327,6 +410,38 @@ window.__ModuleLoader__.load({
           typeof view.export_date === 'string' && view.export_date !== '' ? ` · 导出 ${view.export_date}` : '',
           typeof view.updated_at === 'string' && view.updated_at !== '' ? ` · 更新 ${fmtTime(view.updated_at)}` : ''),
         ...notes.map((text, index) => h('div', { key: 'note' + String(index), style: S.note }, text)),
+        h('div', { style: S.fileBlock },
+          h('div', { style: S.fileLabel }, '持仓文件位置'),
+          h('div', { style: S.bar },
+            h('input', {
+              style: S.inputPath,
+              value: fileDraft,
+              spellCheck: false,
+              placeholder: '绝对路径，例如 D:\\holdings\\positions.json',
+              'aria-label': '持仓文件路径',
+              onChange: (event) => {
+                setFileDraft(event.currentTarget.value)
+                setFileFailure('')
+                setFileNotice('')
+              },
+            }),
+            typeof pickDirectory === 'function'
+              ? h(Button, { disabled: fileSaving, onClick: browseFile }, '选择目录…')
+              : null,
+            h(Button, {
+              primary: true,
+              disabled: fileSaving || fileDraft.trim() === '' || fileDraft.trim() === String(view.file),
+              onClick: () => { applyFile(fileDraft.trim()) },
+            }, fileSaving ? '切换中…' : '保存位置'),
+            view.file_source === 'machine'
+              ? h(Button, { disabled: fileSaving, onClick: () => { applyFile('') } }, '恢复默认')
+              : null),
+          h('div', { style: S.sub },
+            `当前来源：${SOURCE_LABEL[view.file_source] ?? '未知'}`
+              + (view.file_source === 'default' ? '' : ` · 默认位置 ${String(view.file_default)}`)),
+          h('div', { style: S.sub }, '这里选的路径只在这台机器上生效，会覆盖插件配置里的 positionsFile。'),
+          fileFailure === '' ? null : h('div', { style: S.error }, fileFailure),
+          fileNotice === '' ? null : h('div', { style: S.sub }, fileNotice)),
         h('div', { style: S.summary },
           h('span', null, `共 ${String(draft.length)} 条`),
           totals.unquoted > 0 ? h('span', { style: S.sub }, `有价 ${String(totals.quoted)} 条`) : null,
@@ -368,16 +483,27 @@ window.__ModuleLoader__.load({
 
     // ---- plugin -----------------------------------------------------------
 
+    /** The shell service that opens a native directory picker, when the profile has one. */
+    function pickDirectoryFrom(ctx) {
+      const workspace = typeof ctx.get === 'function' ? ctx.get('uiWorkspace') : undefined
+      if (workspace === undefined || typeof workspace.pickDirectory !== 'function') return undefined
+      return () => workspace.pickDirectory()
+    }
+
     const plugin = {
       name: 'ths-holdings-client',
       inject: ['slots'],
       apply(ctx) {
+        // The picker belongs to the shell; a profile without the workspace UI
+        // simply has none, and the path field stays typeable either way.
+        const pickDirectory = pickDirectoryFrom(ctx)
         // This plugin's own page in Settings → Plugins, the way the desktop
         // pet's settings are contributed; the page renders the entry in `page`
         // view once the bundle is open.
         ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({
           name: 'plugins.bundle.config',
           key: BUNDLE,
+          inject: () => ({ pickDirectory }),
         }, PositionsManager))
       },
     }

@@ -1,8 +1,15 @@
 # dsh-mode-3dsmax —— 3ds Max MCP 编辑模式（本地覆盖层，不属于上游仓库）
 #
-# 生成方式：本文件的 plugins 清单由上游 packages/bundle/web-app/presets/standard.patch.yml
-# 复制而来，再追加 skill-filesystem.customSkillDirs 与 mcp-3dsmax 两处改动。
-# preset 没有继承机制，所以上游改 standard 后需要按 README 里的命令重新生成。
+# 本文件由 sync-preset.mjs 生成：plugins 清单复制自上游
+# packages/bundle/web-app/presets/standard.patch.yml，再追加本模式的两处改动
+# （skill-filesystem 的 customSkillDirs、末尾的 mcp-3dsmax 行）。
+# preset 没有继承机制，上游改 standard 后重跑：
+#
+#   node _mytools/Mode/dsh-3dsmax/sync-preset.mjs
+#
+# 上游删掉某个 config 键（例如 tool-subagent 的 toolFilter）会让整个 preset
+# 挂载失败；挂载失败的 preset 不会出现在模式选择器里（选择器只列能组出会话的
+# preset），只在「设置 → Agent 预设」里带错误标记显示。
 #
 # 该 presets 的 plugins 是"子插件清单"：MCP 与技能都只在这个模式的作用域内注册，
 # 其它模式（standard / ptc）不受影响，因此不为它们付 token。
@@ -106,23 +113,11 @@
                   provider: spawn
                   toolName: subagent
                   modelSelectionSettings: true
-                  toolFilter:
-                    deny:
-                      - schedule_create
-                      - schedule_delete
-                      - schedule_list
-                      - schedule_update
               - id: tool-subagent-fork
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
                   provider: fork
                   toolName: subagent_fork
-                  toolFilter:
-                    deny:
-                      - schedule_create
-                      - schedule_delete
-                      - schedule_list
-                      - schedule_update
               - id: workflow-ptc
                 name: '@deepseek-ai/dsh-workflow-ptc'
                 config:
@@ -144,6 +139,9 @@
             name: '@deepseek-ai/dsh-tool-present'
           - id: tool-plugin-manager
             name: '@deepseek-ai/dsh-plugin-manager/tools'
+            disabled: true
+          - id: tool-plugin-market
+            name: '@deepseek-ai/dsh-plugin-market/tools'
             disabled: true
           - id: mcp-3dsmax
             name: '@deepseek-ai/dsh-mcp-client'

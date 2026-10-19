@@ -12,6 +12,9 @@ DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，`3
    以及技能目录里的 `3dsmax-live-mcp`。
 
 > 默认模式没有改动，仍是 `standard`。本模式是**可选**的。
+>
+> 选择器里没有「3ds Max」时，先看 **设置 → Agent 预设**：那里的卡片会显示挂载错误，
+> 选择器则不显示挂载失败的 preset（见下面"上游更新后要重新生成 preset"）。
 
 ## 这个模式包含什么
 
@@ -166,18 +169,54 @@ powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-3dsmax\install.ps1 -B
 
 **preset 没有继承机制**，所以本文件的 `plugins` 清单是上游
 `packages/bundle/web-app/presets/standard.patch.yml` 的复制。上游改了 standard（新增工具、改默认配置）后，
-本模式不会自动跟上。发现模式里少了新工具时，重新生成：
+本模式不会自动跟上，必须重新生成 —— 由 `sync-preset.mjs` 做：
 
 ```powershell
-# 1. 取上游 plugins 块，套上本模式的头部与两处新增（skill-filesystem.customSkillDirs、mcp-3dsmax）
-#    生成逻辑见 git 历史里本文件的首次提交；关键点：plugins 块原样复制，
-#    再给 skill-filesystem 补 config.customSkillDirs、末尾追加 mcp-3dsmax 行。
-# 2. 校验
-node _mytools\build\check-presets.mjs     # 期望 exit 0，且 3dsmax: ok
+node _mytools\Mode\dsh-3dsmax\sync-preset.mjs          # 重新生成 cordis.patch.yml
+node _mytools\Mode\dsh-3dsmax\sync-preset.mjs --check   # 只检查是否漂移（exit 1 = 漂移）
+node _mytools\build\check-presets.mjs                   # 期望 exit 0，且 3dsmax: ok
 ```
 
+生成器把上游 `plugins` 块原样复制，再套上本模式的四处差异：preset 的
+`id` / `name` / `description` / `order`，`skill-filesystem` 的 `config.customSkillDirs`，
+末尾追加的 `mcp-3dsmax` 行。上游结构变了（找不到它要改的行）时它 exit 2 报错，不会写出半成品。
+
+`install.ps1` 的校验段会顺带跑 `--check`，漂移时只告警、不自动改写。
+
+### 为什么"模式不见了"通常就是 preset 挂载失败
+
+模式选择器只列**能组出会话的** preset（选择器选的是下一个会话的组合方式），
+挂载失败的 preset 会被过滤掉：
+
+- `packages/client/ui-agent-preset/src/client/settings-store.ts` 里
+  `presets.filter(preset => preset.broken === undefined)` 就是那道过滤；
+- 挂载失败的原因不打印在日志里，只挂在 roster 行的 `broken` 字段上 —— 在
+  **设置 → Agent 预设** 里能看到带错误标记的卡片，模式选择器里看不到。
+
+**2026-10-19 实测**：上游删掉了 `tool-subagent` 的 `toolFilter`（改由 Agent Preset 配置
+persona/工具，见 `packages/subagent/tool-subagent/src/index.ts` 那句
+"toolFilter is no longer supported"），而本 preset 还是旧副本，于是整个 preset 挂载失败，
+选择器里只剩 standard / PTC / 极简 / 创造。用 `sync-preset.mjs` 重新生成即修复。
+
+复现这条链路不用重启 DSH：desktop host 带 `--inspect=127.0.0.1:9230`，`tools/probe-presets.mjs`
+连上去读活着的 roster（含每行的 `broken`）：
+
+```powershell
+node _mytools\Mode\dsh-3dsmax\tools\probe-presets.mjs        # 打印 5 行 preset 与各自的 broken
+node _mytools\Mode\dsh-3dsmax\tools\probe-presets.mjs 9231   # 指定的 inspector 端口
+```
+
+> `tools/probe-host.mjs "<表达式>"` 是同一套连接方式，用来在 host 进程里求值任意表达式
+> （排查其它宿主侧状态时用）。两个脚本都在 `tools/`（`work/` 是本机验证产物，不进 git）。
+>
+> 判断"改完的 preset 到底能不能挂载"，不必动正在跑的 DSH：用一个临时 `DSH_HOME`
+> 另起一个 web profile（把 `profiles\web` 的几个小文件复制过去、重建 `node_modules\@local`
+> 的 junction），带 `--inspect=9231` 启动 `node apps\cli\lib\bin.js web --no-open --port <port>`，
+> 再按上面第二行读 roster，`broken: null` 即挂载成功；测完杀掉进程、删掉临时目录。
+
 > 校验脚本 `_mytools/build/check-presets.mjs` 2026-10-15 修过一处误报：它会把 preset 行自己的
-> `name:`（显示名）当成包名。现在只统计 `plugins:` 之下的 `name:`。
+> `name:`（显示名）当成包名。现在只统计 `plugins:` 之下的 `name:`。它只验证**包能不能解析**，
+> 验证不了 config 键是否受支持 —— 上面那种 `toolFilter` 失效它检不出来，那正是 `--check` 的由来。
 
 ## 技能与 rig 文档的关系
 

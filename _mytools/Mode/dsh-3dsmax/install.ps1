@@ -327,6 +327,17 @@ if (-not $SkipCheck) {
     else {
         Write-Warning "找不到 $check，跳过校验（需要先 build 出 apps\cli\lib）"
     }
+
+    # 上游改过 standard 后本 preset 会漂移：包名照样能解析，但某个 config 键可能已经
+    # 不再受支持，整个 preset 挂载失败并从模式选择器里消失。这里只报告，不自动改写。
+    $sync = Join-Path $packageRoot 'sync-preset.mjs'
+    if (Test-Path $sync) {
+        Write-Host '[mode-3dsmax] 校验 preset 是否与上游 standard 同步 ……'
+        & node $sync --check
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'preset 与上游 standard 漂移；跑 node _mytools\Mode\dsh-3dsmax\sync-preset.mjs 重新生成后重启 DSH'
+        }
+    }
 }
 
 Write-Host ''

@@ -11,6 +11,8 @@ dist/
 *.tgz
 
 # The exported holdings snapshot, and any ledger export dropped here: real
-# positions. They stay machine-local because this repository is public. Remove
-# these lines only for a private clone.
+# positions. They stay machine-local because this repository is public, and the
+# plugin reads them from a path chosen in its own settings page instead of from
+# this directory. Remove these lines only for a private clone.
+positions.json
 *.xlsx

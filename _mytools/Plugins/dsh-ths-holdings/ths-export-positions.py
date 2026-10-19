@@ -8,8 +8,10 @@ row. Only each holding's quantity reaches the plugin: the day P&L there is
 measured against the previous close the quote feed reports, so the exported cost
 is carried for reference rather than used as a baseline.
 
-The default output is positions.json next to this script - the one file the
-plugin reads, and the one file to replace when the holdings change.
+The default output is the file the plugin reads: the path chosen on the
+plugin's settings page (`$DSH_HOME/ths-holdings.location.json`), or
+`$DSH_HOME/ths-holdings/positions.json` when nothing has been chosen. Real
+holdings never live inside the plugin's own (public) directory.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,11 +31,38 @@ except ImportError:  # pragma: no cover - environment guidance only
 SHEET = "持仓数据"
 SUMMARY_LABEL = "汇总"
 SNAPSHOT_NAME = "positions.json"
+DEFAULT_DIRECTORY = "ths-holdings"
+LOCATION_FILE = "ths-holdings.location.json"
+
+
+def dsh_home() -> Path:
+    """Resolve the harness home the way the harness does."""
+    raw = os.environ.get("DSH_HOME", "").strip()
+    if raw == "":
+        return Path.home() / ".dsh"
+    if raw == "~":
+        return Path.home()
+    if raw.startswith("~/") or raw.startswith("~\\"):
+        return Path.home() / raw[2:]
+    return Path(raw).expanduser()
+
+
+def stored_location() -> Path | None:
+    """The snapshot path chosen on the plugin's page, when this machine has one."""
+    try:
+        parsed = json.loads((dsh_home() / LOCATION_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    value = parsed.get("positionsFile") if isinstance(parsed, dict) else None
+    if not isinstance(value, str) or value.strip() == "":
+        return None
+    path = Path(value.strip())
+    return path if path.is_absolute() else None
 
 
 def default_output() -> Path:
-    """The plugin's own snapshot file, resolved from this script's location."""
-    return Path(__file__).resolve().parent / SNAPSHOT_NAME
+    """The file the plugin reads, resolved the same way the host half resolves it."""
+    return stored_location() or (dsh_home() / DEFAULT_DIRECTORY / SNAPSHOT_NAME)
 
 
 def number(value) -> float | None:

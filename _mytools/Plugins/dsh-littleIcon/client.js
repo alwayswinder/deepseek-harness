@@ -117,6 +117,8 @@ window.__ModuleLoader__.load({
     const MUSIC_ADDED_PATH = '/api/little-icon/music/added'
     const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
     const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
+    /** POST `?volume=`, `?playlist=`, or `?shuffle=`: this machine's listening choices. */
+    const MUSIC_PREFERENCES_PATH = '/api/little-icon/music/preferences'
 
     /**
      * How often the card re-reads the library while it is on screen: a download's
@@ -125,7 +127,7 @@ window.__ModuleLoader__.load({
      */
     const MUSIC_POLL_MS = 4_000
 
-    /** Volume a fresh install plays at; mirrors the Host schema default. */
+    /** Volume a machine that has not chosen one plays at; mirrors the Host default. */
     const MUSIC_VOLUME_DEFAULT = 70
 
     /** Seconds of silence before the pet resumes; mirrors the Host schema default. */
@@ -133,17 +135,6 @@ window.__ModuleLoader__.load({
 
     /** Where a fade leaves the volume; mirrors the Host schema default. */
     const MUSIC_DUCK_LEVEL_DEFAULT = 20
-
-    /**
-     * Clamp a volume the pet's menu reported to the range the player accepts.
-     * @param value - the number the frame carried.
-     * @returns the volume to write, or undefined when the frame named no number.
-     */
-    const clampMusicVolume = (value) => {
-      const number = Number(value)
-      if (!Number.isFinite(number)) return undefined
-      return Math.max(0, Math.min(100, Math.round(number)))
-    }
 
     /**
      * The links one pasted link stands for, asked of the Host so that the parsing and
@@ -198,11 +189,11 @@ window.__ModuleLoader__.load({
       sleepWhenHiddenSeconds: 20,
       autoHide: true,
       autoHideSeconds: 0,
+      alertNotice: true,
       shotDir: '',
       sites: [],
       musicLinks: [],
       musicDir: '',
-      musicVolume: MUSIC_VOLUME_DEFAULT,
       musicDuck: true,
       musicDuckHoldSeconds: MUSIC_DUCK_HOLD_DEFAULT,
       musicDuckMode: 'fade',
@@ -250,6 +241,8 @@ window.__ModuleLoader__.load({
       autoHide: '切到别的应用就收起 DSH',
       autoHideHint: 'DSH 还在屏幕上、但前面是别的应用时把它收起来；DSH 自己在最前面时永不自动收起。0 秒就是一切到后台立刻收。',
       autoHideSeconds: '到后台多久才收起',
+      alertNotice: '等你回答时提醒',
+      alertNoticeHint: '有任务等你回答时，桌宠上方会弹出提示并响一声。',
       pace: '表情节奏',
       paceHint: '每帧停留的毫秒数。',
       advanced: '更多',
@@ -269,7 +262,7 @@ window.__ModuleLoader__.load({
       shotDirPlaceholder: '留空 = 默认位置',
       shotDirBrowse: '浏览…',
       sites: '常用网站',
-      sitesHint: '右键桌宠菜单的「网站 → 常用网站」按这里的顺序列出，点一条就在右侧的 Browser 标签里打开；备注是菜单上显示的名字，留空就用网址的域名。',
+      sitesHint: '右键桌宠菜单的「网站」按这里的顺序列出，点一条就在右侧的 Browser 标签里打开；备注是菜单上显示的名字，留空就用网址的域名。',
       sitesLogin: '登录状态由右侧的浏览器按工作区保存，桌面端重启、重新 build 都不用重登。',
       siteNotePlaceholder: '备注（菜单上显示的名字）',
       siteAddressPlaceholder: '网址，例如 chat.deepseek.com',
@@ -282,7 +275,7 @@ window.__ModuleLoader__.load({
       musicDirHint: '音频文件的存放位置；留空就是 DSH 自己的 little-icon/music。指到仓库里的目录会被忽略、改用默认目录——那些文件会被一起提交。',
       musicDirPlaceholder: '留空 = DSH 自己的 little-icon/music',
       musicVolume: '音量',
-      musicVolumeHint: '桌宠播放的音量；这一项跟着设置文件走，每台机器共用。',
+      musicVolumeHint: '桌宠播放的音量；只存在这台机器上，不写进设置文件，也不跟别的机器同步。',
       groupPet: '桌宠',
       groupSites: '常用网站',
       groupMusic: '听歌',
@@ -290,12 +283,12 @@ window.__ModuleLoader__.load({
       groupBehavior: '行为',
       groupShot: '截图',
       musicPlaylist: '歌单',
-      musicPlaylistHint: '桌宠播放哪个歌单；一条链接就是一个歌单，「全部」按库里所有歌的顺序放。',
+      musicPlaylistHint: '桌宠播放哪个歌单；一条链接就是一个歌单，「全部」按库里所有歌的顺序放。只在这台机器上生效，不跟别的机器同步。',
       musicPlaylistAll: '全部（{count} 个歌单）',
       musicPlaylistAllValue: '全部',
       musicPlaylistOption: '{title}（{count} 首）',
       musicShuffle: '随机播放',
-      musicShuffleHint: '勾选后换歌在选中的歌单里随机挑一首，不按顺序。',
+      musicShuffleHint: '勾选后换歌在选中的歌单里随机挑一首，不按顺序。只在这台机器上生效，不跟别的机器同步。',
       musicDuck: '别人放音视频时先让开',
       musicDuckHint: '桌宠自己看 Windows 的音频会话：默认出声设备上有别的应用在放（约一秒以上）就先让开，等它安静了再回来。你手动暂停的不算，不会被自动恢复。',
       musicDuckMode: '让开的方式',
@@ -355,6 +348,7 @@ window.__ModuleLoader__.load({
       musicReasonRunning: '桌宠正在补全歌曲，等它下完再添加。',
       musicReasonUnknown: '这条记录找不到了，刷新一下。',
       musicReadFailed: '读不到音乐库：{message}',
+      musicPreferenceFailed: '本机没记住这个选择，稍后再试。',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} 秒',
@@ -460,6 +454,8 @@ window.__ModuleLoader__.load({
       autoHide: 'Tuck DSH away behind another app',
       autoHideHint: 'Tucks DSH away while it is still on screen but another application is in front of it; DSH itself in front is never tucked away. Zero seconds tucks it the moment it goes behind.',
       autoHideSeconds: 'Tuck away after going behind',
+      alertNotice: 'Remind me when a task waits for an answer',
+      alertNoticeHint: 'When a task is waiting for your answer, the pet shows a notice above itself and plays a short sound.',
       pace: 'Animation pace',
       paceHint: 'Milliseconds each frame stays on screen.',
       advanced: 'More',
@@ -479,7 +475,7 @@ window.__ModuleLoader__.load({
       shotDirPlaceholder: 'Empty = the default location',
       shotDirBrowse: 'Browse…',
       sites: 'Sites',
-      sitesHint: 'The right-click menu lists these under "Sites → Favourite sites", in this order; choosing one opens it in the Browser tab beside the conversation. The note is the name the menu shows — leave it empty to use the address\'s host.',
+      sitesHint: 'The right-click menu lists these under "Sites", in this order; choosing one opens it in the Browser tab beside the conversation. The note is the name the menu shows — leave it empty to use the address\'s host.',
       sitesLogin: 'Sign-ins are kept by that Browser tab per workspace, so a restart or a rebuild does not ask for them again.',
       siteNotePlaceholder: 'Note (the name in the menu)',
       siteAddressPlaceholder: 'Address, for example chat.deepseek.com',
@@ -492,7 +488,7 @@ window.__ModuleLoader__.load({
       musicDirHint: 'Where the audio files go; leave it empty for DSH\'s own little-icon/music. A folder inside the repository is ignored in favour of the default one, because those files would be committed with the links.',
       musicDirPlaceholder: 'Empty = DSH\'s own little-icon/music',
       musicVolume: 'Volume',
-      musicVolumeHint: 'What the pet plays at; this one travels with the settings file, so both machines share it.',
+      musicVolumeHint: 'What the pet plays at; it stays on this machine and never travels in the settings file.',
       groupPet: 'The pet',
       groupSites: 'Sites',
       groupMusic: 'Music',
@@ -500,12 +496,12 @@ window.__ModuleLoader__.load({
       groupBehavior: 'Behaviour',
       groupShot: 'Screenshots',
       musicPlaylist: 'Playlist',
-      musicPlaylistHint: 'Which playlist the pet plays. One link is one playlist; All plays every song in the library.',
+      musicPlaylistHint: 'Which playlist the pet plays. One link is one playlist; All plays every song in the library. Only this machine; it does not travel with the settings file.',
       musicPlaylistAll: 'All ({count} playlists)',
       musicPlaylistAllValue: 'All',
       musicPlaylistOption: '{title} ({count} songs)',
       musicShuffle: 'Shuffle',
-      musicShuffleHint: 'When ticked, the next song is drawn from the chosen playlist rather than being the next in line.',
+      musicShuffleHint: 'When ticked, the next song is drawn from the chosen playlist rather than being the next in line. Only this machine; it does not travel with the settings file.',
       musicDuck: 'Step aside for other audio',
       musicDuckHint: 'The pet reads the audio sessions on the default output device itself: while another application is playing there (for about a second), the music steps aside, and it comes back once that application has gone quiet. A pause you asked for is not touched.',
       musicDuckMode: 'How it steps aside',
@@ -565,6 +561,7 @@ window.__ModuleLoader__.load({
       musicReasonRunning: 'The pet is filling the library in; try again once it finishes.',
       musicReasonUnknown: 'That entry is gone; refresh the card.',
       musicReadFailed: 'The library could not be read: {message}',
+      musicPreferenceFailed: 'This machine could not keep that choice; try again.',
       pixels: '{value} px',
       percent: '{value}%',
       seconds: '{value} s',
@@ -1003,12 +1000,13 @@ window.__ModuleLoader__.load({
      * The music part of the pet's settings card.
      *
      * Three things live here because they are one decision each: the volume the pet
-     * plays at (a config field, shared through the settings file), the folder this
-     * machine downloads into (a config field too, but machine-shaped — a path that
+     * plays at, the playlist it plays, and whether it shuffles — all this machine's
+     * own, stored beside the library rather than in the settings file — the folder
+     * this machine downloads into (a config field, but machine-shaped — a path that
      * does not exist here is reported rather than obeyed), and the links themselves,
-     * which are the only part of the feature the repository carries. What this machine
-     * has for each link comes from the Host, which is also where every download runs,
-     * so the card never handles audio and never needs DSH to be in front.
+     * which are the part of the feature the repository carries. What this machine has
+     * for each link comes from the Host, which is also where every download runs, so
+     * the card never handles audio and never needs DSH to be in front.
      * @param props - `t`, editability, the form draft, the config writer, the slider
      *   factory the other rows use, and the directory picker.
      * @returns the section.
@@ -1020,6 +1018,10 @@ window.__ModuleLoader__.load({
       const [message, setMessage] = React.useState('')
       const [libraryError, setLibraryError] = React.useState('')
       const [link, setLink] = React.useState('')
+      // A volume that is being dragged is shown at once and written once the drag
+      // settles, the same way the settings sliders behave; the Host's answer clears it.
+      const [volumeDraft, setVolumeDraft] = React.useState(undefined)
+      const volumeTimer = React.useRef(undefined)
       // Which sets are unfolded. The songs are the detail behind a set's own line, so a
       // hundred-part video does not push everything else off the card.
       const [openSets, setOpenSets] = React.useState(() => ({}))
@@ -1061,17 +1063,60 @@ window.__ModuleLoader__.load({
         }
         void load()
         const timer = setInterval(() => { void load() }, MUSIC_POLL_MS)
-        return () => { cancelled = true; clearInterval(timer) }
+        return () => { cancelled = true; clearInterval(timer); clearTimeout(volumeTimer.current) }
       }, [])
+
+      /**
+       * Write one of this machine's listening choices on the Host. They are not
+       * settings: the Host keeps them beside the library, and its answer carries what
+       * it kept, so the card shows that without a second read.
+       * @param patch - `volume`, `playlist`, or both.
+       */
+      const savePreferences = async (patch) => {
+        const params = new URLSearchParams()
+        if (patch.volume !== undefined) params.set('volume', String(patch.volume))
+        if (patch.playlist !== undefined) params.set('playlist', patch.playlist)
+        if (patch.shuffle !== undefined) params.set('shuffle', String(patch.shuffle === true))
+        try {
+          const response = await fetch(`${MUSIC_PREFERENCES_PATH}?${params}`, { method: 'POST' })
+          const answer = await response.json()
+          if (answer?.ok !== true) throw new Error(String(answer?.reason ?? response.status))
+          setLibrary((current) => current === null ? current : {
+            ...current,
+            volume: answer.volume,
+            playlist: answer.playlist,
+            shuffle: answer.shuffle,
+          })
+        } catch (error) {
+          // The Host kept the old value, so the slider goes back to it rather than
+          // showing a choice that was not written.
+          if (patch.volume !== undefined) setVolumeDraft(undefined)
+          setMessage(t('musicPreferenceFailed'))
+        }
+      }
 
       const links = Array.isArray(draft.musicLinks) ? draft.musicLinks : []
       const { rows, extras } = musicRows(library, links)
       // One line per source rather than one per song: a playlist is what a person added,
       // and the songs inside it are what they open when they want them.
       const groups = musicGroups(rows)
-      const playlistChoice = typeof draft.musicPlaylist === 'string'
-        && groups.some(group => group.base === draft.musicPlaylist) ? draft.musicPlaylist : ''
+      // What the Host kept is the one selection there is; a playlist whose links are
+      // gone is shown as All, the same fallback the Host made when it published.
+      const playlistChoice = typeof library?.playlist === 'string'
+        && groups.some(group => group.base === library.playlist) ? library.playlist : ''
       const selectedGroup = groups.find(group => group.base === playlistChoice)
+      /** The volume on the Host, and a drag that has not been written yet. */
+      const libraryVolume = typeof library?.volume === 'number' ? library.volume : MUSIC_VOLUME_DEFAULT
+      const volumeValue = volumeDraft ?? libraryVolume
+      React.useEffect(() => {
+        setVolumeDraft((current) => current === undefined || current === libraryVolume ? undefined : current)
+      }, [libraryVolume])
+      /** Show a volume at once and write it once the drag settles. */
+      const changeVolume = (value) => {
+        setVolumeDraft(value)
+        clearTimeout(volumeTimer.current)
+        volumeTimer.current = setTimeout(() => { void savePreferences({ volume: value }) }, WRITE_DELAY_MS)
+      }
       /** What the playlist picker offers: everything, then one row per playlist. */
       const playlistOptions = [
         h('option', { value: '', key: 'all' }, t('musicPlaylistAll', { count: groups.length })),
@@ -1299,14 +1344,14 @@ window.__ModuleLoader__.load({
           text: t('musicPlaylistHint'), disabled: !editable,
           control: h('select', {
             className: 'dli-select', disabled: !editable, value: playlistChoice,
-            onChange: (event) => write({ musicPlaylist: event.target.value }, true),
+            onChange: (event) => { void savePreferences({ playlist: event.target.value }) },
           }, playlistOptions),
         }),
         h(Row, {
           label: t('musicShuffle'), text: t('musicShuffleHint'), inline: true, disabled: !editable,
           control: h('input', {
-            type: 'checkbox', disabled: !editable, checked: draft.musicShuffle === true,
-            onChange: (event) => write({ musicShuffle: event.target.checked }, true),
+            type: 'checkbox', disabled: !editable, checked: library?.shuffle === true,
+            onChange: (event) => { void savePreferences({ shuffle: event.target.checked }) },
           }),
         }),
         // Not playing over somebody else's video is the pet's own decision, made
@@ -1372,11 +1417,12 @@ window.__ModuleLoader__.load({
 
       return h('div', null,
         h(Row, {
-          label: t('musicVolume'), value: t('percent', { value: Math.round(draft.musicVolume ?? MUSIC_VOLUME_DEFAULT) }),
+          label: t('musicVolume'), value: t('percent', { value: Math.round(volumeValue) }),
           text: t('musicVolumeHint'), disabled: !editable,
           control: h('input', {
+            className: 'dli-slider', type: 'range', disabled: !editable, value: volumeValue,
             min: MUSIC_VOLUME.min, max: MUSIC_VOLUME.max, step: MUSIC_VOLUME.step,
-            ...slider('musicVolume'),
+            onChange: (event) => changeVolume(Number(event.target.value)),
           }),
         }),
         h(Row, {
@@ -1561,6 +1607,10 @@ window.__ModuleLoader__.load({
             ...slider('autoHideSeconds'),
             disabled: !editable || draft.autoHide !== true,
           }),
+        }),
+        h(Row, {
+          label: t('alertNotice'), text: t('alertNoticeHint'), inline: true, disabled: !editable,
+          control: h('input', toggle('alertNotice')),
         }),
         h(Row, {
           label: t('pace'), value: t('milliseconds', { value: draft.frameMs }), text: t('paceHint'), disabled: !editable,
@@ -2622,39 +2672,11 @@ window.__ModuleLoader__.load({
           window.open(url, '_blank', 'noopener,noreferrer')
         }
 
-        /** The settings form this plugin's card edits: the Host document, mirrored here. */
-        const musicForm = () => ctx.configForms.get(NS)
-
-        /**
-         * Write music configuration the way the card writes it: one form edit, sent
-         * from this half. The Host cannot make this write, because the settings
-         * service refuses a write attempted inside an HMR transaction and the Host's
-         * timer runs in the context of the load that created it, so the menu's volume
-         * and link entries are carried out here. What the Host publishes afterwards -
-         * the notice above the pet included - follows from this write.
-         * @param patch - field values to set.
-         * @returns after the edit was accepted or refused.
-         */
-        const writeMusicConfig = (patch) => {
-          const form = musicForm()
-          if (form === undefined) {
-            console.warn('little-icon: this build has no settings form to write music configuration through')
-            return Promise.resolve()
-          }
-          const ops = Object.entries(patch).map(([field, value]) => ({ op: 'set', path: [field], value }))
-          return form.mutate(ops, form.getSnapshot().revision).then(
-            (accepted) => {
-              if (!accepted) console.warn('little-icon: the music configuration the menu changed was not saved')
-            },
-            (error) => {
-              console.warn('little-icon: the music configuration the menu changed failed to save', error)
-            },
-          )
-        }
-
         /**
          * Carry out one menu command the pet reported. The pet window belongs to
-         * another process, so the page is what acts on a choice made there.
+         * another process, so the page is what acts on a choice made there. The
+         * volume is not one of them: it is this machine's own preference, so the
+         * Host writes it without a page listening.
          * @param payload - the frame's `{ command, url }`; only the site entry
          *   carries an address, and the Host has already checked it.
          */
@@ -2723,6 +2745,17 @@ window.__ModuleLoader__.load({
             }
             aquarium.open()
           },
+          'fish-tank': () => {
+            // The pixel fish tank is another plugin's overlay, reached through
+            // the service that plugin provides, the same way the glass aquarium
+            // is: a profile without it says so instead of failing at the click.
+            const tank = ctx.get('fishTank')
+            if (tank === undefined) {
+              console.warn('little-icon: the fish-tank plugin is not installed, so no tank opens')
+              return
+            }
+            tank.open()
+          },
           'temp-space': () => {
             // The temp space is the same shape as the aquarium: another plugin's
             // panel, opened through the service it provides, so a profile without
@@ -2733,17 +2766,6 @@ window.__ModuleLoader__.load({
               return
             }
             space.open()
-          },
-          'music-volume': ({ value }) => {
-            // Configuration, so it is written from this half; the Host says the new
-            // number above the pet once the configuration carries it, because the menu
-            // that set it has already closed.
-            const percent = clampMusicVolume(value)
-            if (percent === undefined) {
-              console.warn('little-icon: a volume command named no volume: %s', String(value))
-              return
-            }
-            void writeMusicConfig({ musicVolume: percent })
           },
         }
 

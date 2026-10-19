@@ -1,9 +1,10 @@
 /**
  * Stock P&L plugin, node half: registers `/api/stock-pnl` on the shared web
  * server. While no Cookie is configured the route answers from the exported
- * position file that ships in this package, priced with the public quote feed;
- * with a Cookie it answers from the Tonghuashun ledger API instead. The Cookie
- * itself never leaves the host process.
+ * position snapshot this plugin reads — a file outside the package, chosen on
+ * the plugin's own page — priced with the public quote feed; with a Cookie it
+ * answers from the Tonghuashun ledger API instead. The Cookie itself never
+ * leaves the host process.
  *
  * Hand-written ESM, the way this working copy's other out-of-tree plugins are
  * written: this file is the artifact, so the plugin needs no bundler and no
@@ -11,13 +12,16 @@
  * @module dsh-ths-holdings
  */
 
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { CookieAcquirer, resolvePlaywright } from './acquire.js'
 import { collectStats, cookieField, fetchFundKey, INDEX_URL, listPortfolios, normalizeCookie, PNL_URL, verifyCookie } from './fetch.js'
 import { collectLocalStats, DEFAULT_MINUTE_REFRESH_MS, QUOTE_URL } from './local.js'
+import {
+  clearPositionsLocation, defaultPositionsFile, inspectPositionsChoice, LOCATION_FILE,
+  resolveDshHome, resolvePositionsLocation, writePositionsLocation,
+} from './location.js'
 import { savePositions, readPositionsView } from './positions.js'
 
 export const name = 'ui-stock-pnl'
@@ -29,8 +33,14 @@ export const ROUTE_PATH = '/api/stock-pnl'
 /** The same-origin route this plugin's page reads and writes the holdings through. */
 export const POSITIONS_PATH = '/api/stock-pnl/positions'
 
+/** The route that switches which file the holdings routes read and write. */
+export const POSITIONS_LOCATION_PATH = '/api/stock-pnl/positions/location'
+
 /** Largest accepted holdings-save body: a few hundred rows of four short fields. */
 const MAX_POSITIONS_BODY_BYTES = 256 * 1024
+
+/** Largest accepted location body: one path. */
+const MAX_LOCATION_BODY_BYTES = 4 * 1024
 
 /** Schemastery config for the routes. */
 export const Config = z.object({
@@ -64,19 +74,6 @@ function resolveConfig(config) {
     positionsFile: config.positionsFile ?? '',
     minuteRefreshMs: config.minuteRefreshMs ?? DEFAULT_MINUTE_REFRESH_MS,
   }
-}
-
-/** The package directory (this module's own directory). */
-const PACKAGE_ROOT = fileURLToPath(new URL('.', import.meta.url))
-
-/**
- * The exported-position snapshot the local quote source reads by default: one
- * file in the plugin directory, so swapping the holdings is copying one file
- * into the package rather than hunting a path under the DSH home directory.
- * @returns {string} the absolute snapshot path.
- */
-function defaultPositionsFile() {
-  return path.join(PACKAGE_ROOT, 'positions.json')
 }
 
 /**
@@ -116,6 +113,19 @@ function writeJson(res, status, value) {
  */
 export function apply(ctx, config = {}) {
   const spec = resolveConfig(config)
+  const home = resolveDshHome()
+  const locationPath = join(home, LOCATION_FILE)
+  // The holdings file in force. The page may switch it without a restart, so
+  // every route reads `location` instead of the configuration captured here; a
+  // path chosen on this machine wins over the profile's `positionsFile`.
+  let location = resolvePositionsLocation({ home, configured: spec.positionsFile, locationPath })
+  const currentFile = () => location.file
+  /** The location fields every holdings answer carries, so the page can draw its setting. */
+  const locationView = () => ({
+    file: location.file,
+    file_source: location.source,
+    file_default: defaultPositionsFile(home),
+  })
   const route = {
     kind: 'exact',
     path: ROUTE_PATH,
@@ -128,7 +138,7 @@ export function apply(ctx, config = {}) {
         // deployment that never signs in.
         if (cookie === undefined || cookie.length === 0) {
           const local = await collectLocalStats({
-            positionsFile: spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile,
+            positionsFile: currentFile(),
             quoteUrl: spec.quoteUrl,
             minuteRefreshMs: spec.minuteRefreshMs,
           })
@@ -228,7 +238,7 @@ export function apply(ctx, config = {}) {
       const cookie = await resolveCredential(ctx, spec.cookieEnv)
       if (cookie === undefined || cookie.length === 0) {
         const local = await collectLocalStats({
-          positionsFile: spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile,
+          positionsFile: currentFile(),
           quoteUrl: spec.quoteUrl,
           minuteRefreshMs: spec.minuteRefreshMs,
         })
@@ -263,13 +273,12 @@ export function apply(ctx, config = {}) {
   // source prices and writes an edited list back to it. A save is accepted
   // only as an `application/json` body, which also keeps a cross-origin form
   // post from reaching this write.
-  const positionsFile = () => spec.positionsFile === '' ? defaultPositionsFile() : spec.positionsFile
   addRoute(POSITIONS_PATH, async (req, res) => {
     try {
       const cookie = await resolveCredential(ctx, spec.cookieEnv)
       const cookieConfigured = cookie !== undefined && cookie.length > 0
       const input = {
-        file: positionsFile(),
+        file: currentFile(),
         cookieConfigured,
         quoteUrl: spec.quoteUrl,
       }
@@ -295,7 +304,8 @@ export function apply(ctx, config = {}) {
           return
         }
         const result = await savePositions({ ...input, body })
-        writeJson(res, result.ok ? 200 : 400, result)
+        writeJson(res, result.ok ? 200 : 400,
+          result.ok ? { ...result, view: { ...result.view, ...locationView() } } : result)
         return
       }
 
@@ -304,7 +314,62 @@ export function apply(ctx, config = {}) {
         res.end()
         return
       }
-      writeJson(res, 200, await readPositionsView(input))
+      writeJson(res, 200, { ...(await readPositionsView(input)), ...locationView() })
+    } catch (error) {
+      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+      if (res.headersSent) { res.destroy(); return }
+      res.writeHead(500)
+      res.end()
+    }
+  })
+
+  // Where the holdings file lives. The path is remembered for this machine only
+  // (never in the package), and an empty value returns to the profile's
+  // `positionsFile` or the default under the harness home.
+  addRoute(POSITIONS_LOCATION_PATH, async (req, res) => {
+    try {
+      if (req.method !== 'POST') {
+        res.writeHead(405, { Allow: 'POST' })
+        res.end()
+        return
+      }
+      const contentType = req.headers['content-type'] ?? ''
+      if (!contentType.toLowerCase().startsWith('application/json')) {
+        writeJson(res, 415, { ok: false, message: '请求的 Content-Type 必须是 application/json' })
+        return
+      }
+      const body = await readJsonBody(req, MAX_LOCATION_BODY_BYTES)
+      if (typeof body !== 'object' || body === null || typeof body.positionsFile !== 'string') {
+        writeJson(res, 400, { ok: false, message: `请求体需要 positionsFile 字符串，且不超过 ${String(MAX_LOCATION_BODY_BYTES)} 字节` })
+        return
+      }
+
+      const raw = body.positionsFile.trim()
+      if (raw === '') {
+        try {
+          clearPositionsLocation(locationPath)
+        } catch (error) {
+          writeJson(res, 500, { ok: false, message: `清除本机设置失败：${error instanceof Error ? error.message : String(error)}` })
+          return
+        }
+        location = resolvePositionsLocation({ home, configured: spec.positionsFile, locationPath })
+        writeJson(res, 200, { ok: true, ...locationView() })
+        return
+      }
+
+      const choice = inspectPositionsChoice(raw)
+      if (!choice.ok) {
+        writeJson(res, 400, { ok: false, message: choice.message })
+        return
+      }
+      try {
+        writePositionsLocation(locationPath, choice.file)
+      } catch (error) {
+        writeJson(res, 500, { ok: false, message: `写入本机设置失败：${error instanceof Error ? error.message : String(error)}` })
+        return
+      }
+      location = { file: choice.file, source: 'machine' }
+      writeJson(res, 200, { ok: true, ...locationView() })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
       if (res.headersSent) { res.destroy(); return }

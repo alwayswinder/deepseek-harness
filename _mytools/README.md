@@ -133,7 +133,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 | 文件 | 说明 |
 | --- | --- |
-| `settings\pet-settings.yml` | 桌宠设置（大小、透明度、动画帧速、常用网站、截图目录）。内容就是 profile 里 `little-icon` 段的 `config`；本机那份在 `$DSH_HOME\profiles\desktop\cordis.patch.yml`。可以手改：改完和"在设置页里改"等价，没写到的字段用插件默认值。 |
+| `settings\pet-settings.yml` | 桌宠设置（大小、透明度、动画帧速、常用网站、截图目录、听歌链接）。内容就是 profile 里 `little-icon` 段的 `config`；本机那份在 `$DSH_HOME\profiles\desktop\cordis.patch.yml`。可以手改：改完和"在设置页里改"等价，没写到的字段用插件默认值。音量、歌单与随机播放是每台机器自己的选择，存在 `$DSH_HOME\little-icon\music-preferences.json`，不属于这份文件（旧 patch 里残留的 `musicVolume`/`musicPlaylist`/`musicShuffle` 导出时会被跳过）。 |
 | `settings\keybindings.json` | Desktop 的快捷键覆盖，逐字就是 `$DSH_HOME\desktop\electron-user-data\keybindings.json`（Electron 主进程拥有的那份文档，`profiles` 按 `desktop:windows` 这样的运行时+平台分键）。 |
 | `settings\sync-settings.mjs` | 实体，三个模式：`export`（抄出本机）、`apply`（写回本机）、`status`（只看差异，不写文件）；`--only pet|keybindings` 只跑一份，`--force` 无视哈希守卫。 |
 | `settings\save-settings.bat` | 手动保存一份：双击即可，用于别的 profile（`save-settings.bat web`）、或插件的自动保存没生效时（例如插件被装成 `file:` 副本、不在仓库里，那时宿主会记一条 info 说明跳过）。 |

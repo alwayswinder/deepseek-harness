@@ -85,11 +85,15 @@ assert.equal(typeof plugin.apply, 'function')
 
 const localeDicts = {}
 let overlayRegistration = null
+const provided = {}
 const fakeCtx = {
   effect(fn) { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {} },
   locale: {
     register: (ns, dicts) => { localeDicts[ns] = dicts; return () => {} },
     bind: (ns) => (key) => ns + '.' + key,
+  },
+  reflect: {
+    provide: (name, value) => { provided[name] = value; return () => {} },
   },
   slots: {
     inject: (name, setup) => { setup(); return () => {} },
@@ -106,6 +110,17 @@ assert.equal(overlayRegistration.options.name, 'shell.overlay')
 assert.equal(overlayRegistration.options.id, 'fish-tank')
 assert.equal(overlayRegistration.options.locale, 'fishTank')
 assert.equal(typeof overlayRegistration.component, 'function')
+// The desktop pet's 小游戏 menu opens the tank through this service; without it
+// there is no other way in, so its control surface is part of the plugin shape.
+assert.ok(provided.fishTank !== undefined, 'the fishTank service is provided')
+for (const method of ['open', 'close', 'toggle', 'isOpen', 'subscribe']) {
+  assert.equal(typeof provided.fishTank[method], 'function', `fishTank.${method} is callable`)
+}
+assert.equal(provided.fishTank.isOpen(), false, 'the overlay starts closed')
+provided.fishTank.open()
+assert.equal(provided.fishTank.isOpen(), true, 'the service opens the overlay')
+provided.fishTank.close()
+assert.equal(provided.fishTank.isOpen(), false, 'the service closes the overlay')
 
 // ---- engine: movement -------------------------------------------------------
 

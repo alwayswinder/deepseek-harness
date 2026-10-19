@@ -33,7 +33,7 @@ import {
   createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, extname, join, resolve } from 'node:path'
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 
@@ -50,6 +50,9 @@ const BLOB_PATH = `${ROUTE_PREFIX}/blob`
 
 /** Git status, and the three operations the page may ask for. */
 const GIT_PATH = `${ROUTE_PREFIX}/git`
+
+/** The local space directory itself: read it, adopt one, or pull a new one into a path. */
+const SPACE_PATH = `${ROUTE_PREFIX}/space`
 
 /** Show one stored file in the system file manager, which the page cannot reach. */
 const REVEAL_PATH = `${ROUTE_PREFIX}/reveal`
@@ -86,6 +89,13 @@ const GIT_TIMEOUT_MS = 60_000
 
 /** The Git executable every operation runs. */
 const GIT_EXECUTABLE = 'git'
+
+/**
+ * The machine-local file that remembers the path the page chose. It lives in the
+ * harness home rather than in the space, because the whole point of choosing one
+ * is that the space is not where the configuration says it is yet.
+ */
+const LOCATION_FILE = 'temp-space.location.json'
 
 // Windows refuses to replace a file another process holds open, and the page
 // may be reading the state while a save replaces it. Retry briefly rather than
@@ -131,6 +141,11 @@ export const Config = z.object({
   dataDir: z.string().default(''),
   /** Remote a push and a fetch name, as it is configured in the space repository. */
   gitRemote: z.string().default('origin'),
+  /**
+   * Remote URL a space is cloned from when this machine has none yet. The page
+   * may set it as well; a URL set there is remembered in `LOCATION_FILE`.
+   */
+  repoUrl: z.string().default(''),
   /** Most bytes one stored file may have. */
   maxFileBytes: z.number().step(1).min(1024).default(10 * 1024 * 1024),
   /** Most bytes every stored file may have together. */
@@ -153,6 +168,65 @@ function resolveDshHome() {
   if (value === '~') return homedir()
   if (value.startsWith('~/') || value.startsWith('~\\')) return join(homedir(), value.slice(2))
   return resolve(value)
+}
+
+/**
+ * Turn a page-typed path into an absolute one, or nothing when it is not one.
+ *
+ * `~` and `~/` expand the way the harness home does, because a path copied from
+ * a terminal may use them. Anything else that is not already absolute is
+ * refused rather than resolved against a process directory the person cannot
+ * see.
+ * @param raw - the path as typed or picked.
+ * @returns the normalized absolute path, or undefined.
+ */
+function absolutePath(raw) {
+  const value = String(raw ?? '').trim()
+  if (value === '') return undefined
+  let expanded = value
+  if (value === '~') expanded = homedir()
+  else if (value.startsWith('~/') || value.startsWith('~\\')) expanded = join(homedir(), value.slice(2))
+  if (!isAbsolute(expanded)) return undefined
+  return resolve(expanded)
+}
+
+/**
+ * What one candidate space directory is, without changing anything.
+ * @param dir - the directory to inspect.
+ * @returns whether it exists, is a directory, is a Git repository, and is empty.
+ */
+function spaceFacts(dir) {
+  let exists = false
+  let directory = false
+  try {
+    directory = statSync(dir).isDirectory()
+    exists = true
+  } catch {
+    // A path that cannot be read is treated as absent; the caller reports that.
+  }
+  let repo = false
+  let empty = false
+  if (directory) {
+    repo = existsSync(join(dir, '.git'))
+    if (!repo) {
+      try {
+        empty = readdirSync(dir).length === 0
+      } catch {
+        // A directory that cannot be listed is not a safe clone target either.
+        empty = false
+      }
+    }
+  }
+  return { exists, directory, repo, empty }
+}
+
+/**
+ * The two paths every route derives from a space directory.
+ * @param dir - the active space directory.
+ * @returns the stored-bytes directory and the canvas state file.
+ */
+function pathsOf(dir) {
+  return { filesDir: join(dir, 'files'), statePath: join(dir, 'index.json') }
 }
 
 /** Block without yielding, so no two attempts at one replacement interleave. */
@@ -615,6 +689,58 @@ function execGit(dir, args, timeoutMs) {
 }
 
 /**
+ * Read the URL one remote is configured with.
+ * @param dir - a Git repository.
+ * @param remote - the remote name.
+ * @param timeoutMs - command deadline.
+ * @returns the URL, or an empty string when it is not configured.
+ */
+async function remoteUrlOf(dir, remote, timeoutMs) {
+  const configured = await execGit(dir, ['remote', 'get-url', remote], timeoutMs)
+  return configured.ok ? configured.stdout.trim() : ''
+}
+
+/**
+ * Clone a space repository into a directory this machine does not hold yet.
+ *
+ * The target must be absent or an empty directory: an existing repository is
+ * adopted instead, and anything else is refused rather than written into. The
+ * remote is created under the configured name, so the rest of this plugin does
+ * not have to care how the repository arrived.
+ * @param dir - the target directory.
+ * @param url - the remote URL to clone.
+ * @param remote - the remote name the clone should use.
+ * @param timeoutMs - command deadline.
+ * @returns whether it cloned, and why it did not.
+ */
+async function cloneSpace(dir, url, remote, timeoutMs) {
+  const facts = spaceFacts(dir)
+  if (facts.repo) {
+    return { ok: false, reason: 'already-a-repo', dir, message: `${dir} is already a Git repository` }
+  }
+  if (facts.exists && !facts.directory) {
+    return { ok: false, reason: 'not-a-directory', dir, message: `${dir} is not a directory` }
+  }
+  if (facts.exists && !facts.empty) {
+    return { ok: false, reason: 'dir-not-empty', dir, message: `${dir} is not empty` }
+  }
+  const parent = dirname(dir)
+  if (!existsSync(parent)) {
+    return { ok: false, reason: 'no-parent', dir, message: `${parent} does not exist` }
+  }
+  const cloned = await execGit(parent, ['clone', '--origin', remote, '--', url, dir], timeoutMs)
+  if (!cloned.ok) {
+    return {
+      ok: false,
+      reason: cloned.missing ? 'no-git' : cloned.timedOut ? 'timed-out' : 'clone-failed',
+      dir,
+      message: cloned.message,
+    }
+  }
+  return { ok: true, dir }
+}
+
+/**
  * Read the space repository's own facts: its branch, whether the working tree
  * holds changes, and how its branch stands against its upstream.
  * @param dir - the space directory.
@@ -752,10 +878,25 @@ async function runGitAction(dir, action, options) {
  * @param config - resolved plugin configuration.
  */
 export function apply(ctx, config) {
+  const home = resolveDshHome()
   const configured = typeof config?.dataDir === 'string' ? config.dataDir.trim() : ''
-  const dir = configured === '' ? join(resolveDshHome(), 'temp-space') : resolve(configured)
-  const filesDir = join(dir, 'files')
-  const statePath = join(dir, 'index.json')
+  const configuredDir = configured === '' ? join(home, 'temp-space') : resolve(configured)
+  const configuredUrl = typeof config?.repoUrl === 'string' ? config.repoUrl.trim() : ''
+  const locationPath = join(home, LOCATION_FILE)
+  const saved = readJsonFile(locationPath)
+  const savedDir = saved !== null && typeof saved === 'object' && typeof saved.dataDir === 'string'
+    ? absolutePath(saved.dataDir)
+    : undefined
+  const savedUrl = saved !== null && typeof saved === 'object' && typeof saved.repoUrl === 'string'
+    ? saved.repoUrl.trim()
+    : ''
+  /**
+   * The space directory in force. The page may switch it without a restart, so
+   * every route reads it instead of the configuration value captured at boot.
+   * A path chosen on this machine wins over the profile's `dataDir`.
+   */
+  let activeDir = savedDir ?? configuredDir
+  let projectUrl = savedUrl !== '' ? savedUrl : configuredUrl
   const remote = (typeof config?.gitRemote === 'string' && config.gitRemote.trim() !== '') ? config.gitRemote.trim() : 'origin'
   const maxFileBytes = config?.maxFileBytes ?? 10 * 1024 * 1024
   const maxTotalBytes = config?.maxTotalBytes ?? 100 * 1024 * 1024
@@ -763,20 +904,40 @@ export function apply(ctx, config) {
   const gitTimeoutMs = config?.gitTimeoutMs ?? GIT_TIMEOUT_MS
   const gitOptions = { remote, commitPrefix, timeoutMs: gitTimeoutMs }
 
+  /**
+   * Remember what the page chose, so the next start finds the space even when the
+   * profile's configuration still names a different directory. The file holds no
+   * path when the configured one is in force, which is what keeps a machine that
+   * never used the setting indistinguishable from one that reset it.
+   * @returns whether the file was written.
+   */
+  const persistLocation = () => {
+    const dataDir = activeDir === configuredDir ? '' : activeDir
+    const repoUrl = projectUrl === configuredUrl ? '' : projectUrl
+    try {
+      if (dataDir === '' && repoUrl === '') rmSync(locationPath, { force: true })
+      else writeJsonAtomic(locationPath, { dataDir, repoUrl })
+      return true
+    } catch (error) {
+      ctx.logger.warn('temp-space: saving the chosen path failed: %s', String(error))
+      return false
+    }
+  }
+
   /** The space as every route sees it: created on demand, never on a read that fails. */
-  const ensureSpace = () => {
+  const ensureSpace = (dir = activeDir) => {
     if (!existsSync(dir)) {
       return { ok: false, reason: 'no-dir', dir, message: `space directory ${dir} does not exist` }
     }
     if (!existsSync(join(dir, '.git'))) {
       return { ok: false, reason: 'not-a-repo', dir, message: `${dir} is not a Git repository` }
     }
-    mkdirSync(filesDir, { recursive: true })
+    mkdirSync(join(dir, 'files'), { recursive: true })
     return { ok: true }
   }
 
   /** Read the stored state, filling in a first one for a space that has none. */
-  const readState = () => {
+  const readState = (statePath) => {
     const stored = readJsonFile(statePath)
     if (stored === null || typeof stored !== 'object' || !Array.isArray(stored.items)) {
       return { version: STATE_VERSION, revision: 1, items: [] }
@@ -794,10 +955,12 @@ export function apply(ctx, config) {
       path: STATE_PATH,
       handler: (req, res) => {
         if (!admit(ctx, req, res)) return
+        const dir = activeDir
+        const { filesDir, statePath } = pathsOf(dir)
         if (req.method === 'GET') {
-          const space = ensureSpace()
+          const space = ensureSpace(dir)
           if (!space.ok) { sendJson(res, space, 409); return }
-          const state = readState()
+          const state = readState(statePath)
           const files = listStoredFiles(filesDir)
           const usedBytes = files.reduce((total, row) => total + row.bytes, 0)
           sendJson(res, {
@@ -812,7 +975,7 @@ export function apply(ctx, config) {
           return
         }
         if (req.method === 'PUT') {
-          const space = ensureSpace()
+          const space = ensureSpace(dir)
           if (!space.ok) { sendJson(res, space, 409); return }
           void (async () => {
             const body = await readJsonBody(req, STATE_BODY_LIMIT)
@@ -826,7 +989,7 @@ export function apply(ctx, config) {
               return
             }
             const revision = Number.isInteger(body.revision) ? body.revision : -1
-            const current = readState()
+            const current = readState(statePath)
             if (revision !== current.revision) {
               // Two writers, one canvas: the later one is told what it is looking
               // at rather than silently dropping the other's change.
@@ -852,14 +1015,161 @@ export function apply(ctx, config) {
 
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
+      path: SPACE_PATH,
+      handler: (req, res) => {
+        if (!admit(ctx, req, res)) return
+        if (req.method === 'GET') {
+          void (async () => {
+            // One snapshot per request: a path switch landing mid-read must not
+            // produce facts from one directory and an origin from another.
+            const dir = activeDir
+            const facts = spaceFacts(dir)
+            const origin = facts.repo ? await remoteUrlOf(dir, remote, gitTimeoutMs) : ''
+            // A machine whose configured space still exists can offer its origin
+            // as the URL to clone from, which is what lets a fresh path on the
+            // same machine pull without anyone pasting the address again.
+            let configuredOrigin = ''
+            if (projectUrl === '' && origin === '' && configuredDir !== dir) {
+              const configuredFacts = spaceFacts(configuredDir)
+              if (configuredFacts.repo) configuredOrigin = await remoteUrlOf(configuredDir, remote, gitTimeoutMs)
+            }
+            sendJson(res, {
+              ok: true,
+              dir,
+              configuredDir,
+              override: dir !== configuredDir,
+              exists: facts.exists,
+              isDirectory: facts.directory,
+              isRepo: facts.repo,
+              empty: facts.empty,
+              repoUrl: projectUrl !== '' ? projectUrl : (origin !== '' ? origin : configuredOrigin),
+              savedRepoUrl: projectUrl,
+              origin,
+              remote,
+            })
+          })()
+          return
+        }
+        if (req.method === 'POST') {
+          void (async () => {
+            const body = await readJsonBody(req, STATE_BODY_LIMIT)
+            const action = typeof body?.action === 'string' ? body.action : ''
+            if (action === 'reset') {
+              activeDir = configuredDir
+              projectUrl = configuredUrl
+              persistLocation()
+              const facts = spaceFacts(activeDir)
+              sendJson(res, {
+                ok: true,
+                mode: 'reset',
+                dir: activeDir,
+                configuredDir,
+                override: false,
+                ...facts,
+              })
+              return
+            }
+            const requested = absolutePath(typeof body?.dir === 'string' ? body.dir : '')
+            if (requested === undefined) {
+              sendJson(res, { ok: false, reason: 'invalid-path', message: 'the path must be absolute' }, 400)
+              return
+            }
+            const url = typeof body?.repoUrl === 'string' ? body.repoUrl.trim() : ''
+            if (action === 'use') {
+              const facts = spaceFacts(requested)
+              if (!facts.exists) {
+                sendJson(res, { ok: false, reason: 'no-dir', dir: requested, message: `${requested} does not exist` }, 409)
+                return
+              }
+              if (!facts.directory) {
+                sendJson(res, { ok: false, reason: 'not-a-directory', dir: requested, message: `${requested} is not a directory` }, 409)
+                return
+              }
+              if (!facts.repo) {
+                sendJson(res, { ok: false, reason: 'not-a-repo', dir: requested, message: `${requested} is not a Git repository` }, 409)
+                return
+              }
+              // Read it before adopting it: a `.git` entry that Git itself cannot
+              // use must not become the remembered path.
+              const status = await readGitStatus(requested, gitTimeoutMs)
+              if (!status.ok) { sendJson(res, status, 409); return }
+              activeDir = requested
+              if (url !== '') projectUrl = url
+              else if (projectUrl === '') projectUrl = await remoteUrlOf(requested, remote, gitTimeoutMs)
+              const persisted = persistLocation()
+              sendJson(res, { ...status, mode: 'adopted', dir: requested, persisted })
+              return
+            }
+            if (action === 'pull') {
+              const facts = spaceFacts(requested)
+              if (facts.repo) {
+                // An existing repository is adopted first, then pulled: a failed
+                // pull leaves the person with a usable space and one clear line
+                // saying the network half did not happen.
+                const before = await readGitStatus(requested, gitTimeoutMs)
+                if (!before.ok) { sendJson(res, before, 409); return }
+                activeDir = requested
+                if (url !== '') projectUrl = url
+                else if (projectUrl === '') projectUrl = await remoteUrlOf(requested, remote, gitTimeoutMs)
+                const persisted = persistLocation()
+                const pulled = await runGitAction(requested, 'pull', gitOptions)
+                if (pulled.ok) {
+                  sendJson(res, { ...pulled, mode: 'pulled', dir: requested, persisted })
+                  return
+                }
+                const status = await readGitStatus(requested, gitTimeoutMs)
+                sendJson(res, {
+                  ...(status.ok ? status : {}),
+                  ...pulled,
+                  ok: false,
+                  mode: 'pulled',
+                  dir: requested,
+                  connected: true,
+                  persisted,
+                }, 409)
+                return
+              }
+              const cloneUrl = url !== '' ? url : projectUrl
+              if (cloneUrl === '') {
+                sendJson(res, {
+                  ok: false,
+                  reason: 'no-repo-url',
+                  dir: requested,
+                  message: 'no remote URL is known for this space',
+                }, 400)
+                return
+              }
+              const cloned = await cloneSpace(requested, cloneUrl, remote, gitTimeoutMs)
+              if (!cloned.ok) { sendJson(res, cloned, 409); return }
+              activeDir = requested
+              projectUrl = cloneUrl
+              const persisted = persistLocation()
+              const status = await readGitStatus(requested, gitTimeoutMs)
+              if (!status.ok) { sendJson(res, status, 409); return }
+              sendJson(res, { ...status, mode: 'cloned', dir: requested, persisted })
+              return
+            }
+            sendJson(res, { ok: false, reason: 'unknown-action' }, 400)
+          })()
+          return
+        }
+        res.writeHead(405, { allow: 'GET, POST' })
+        res.end()
+      },
+    }), `temp-space: GET/POST ${SPACE_PATH}`)
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
       path: BLOB_PATH,
       handler: (req, res) => {
         if (!admit(ctx, req, res)) return
+        const dir = activeDir
+        const { filesDir } = pathsOf(dir)
         const query = new URL(req.url ?? '', 'http://localhost').searchParams
         const requested = sanitizeName(query.get('name') ?? '')
         const target = join(filesDir, requested)
         if (req.method === 'GET' || req.method === 'HEAD') {
-          const space = ensureSpace()
+          const space = ensureSpace(dir)
           if (!space.ok) { sendJson(res, space, 409); return }
           let size
           try {
@@ -884,7 +1194,7 @@ export function apply(ctx, config) {
           return
         }
         if (req.method === 'POST') {
-          const space = ensureSpace()
+          const space = ensureSpace(dir)
           if (!space.ok) { sendJson(res, space, 409); return }
           void (async () => {
             const bytes = await readBodyBytes(req, Math.min(BODY_READ_LIMIT, maxFileBytes))
@@ -921,7 +1231,7 @@ export function apply(ctx, config) {
           return
         }
         if (req.method === 'DELETE') {
-          const space = ensureSpace()
+          const space = ensureSpace(dir)
           if (!space.ok) { sendJson(res, space, 409); return }
           try {
             if (existsSync(target)) rmSync(target)
@@ -943,7 +1253,8 @@ export function apply(ctx, config) {
       path: GIT_PATH,
       handler: (req, res) => {
         if (!admit(ctx, req, res)) return
-        const space = ensureSpace()
+        const dir = activeDir
+        const space = ensureSpace(dir)
         if (!space.ok) { sendJson(res, space, 409); return }
         if (req.method === 'GET') {
           void readGitStatus(dir, gitTimeoutMs).then(
@@ -978,8 +1289,10 @@ export function apply(ctx, config) {
           res.end()
           return
         }
-        const space = ensureSpace()
+        const space = ensureSpace(activeDir)
         if (!space.ok) { sendJson(res, space, 409); return }
+        const dir = activeDir
+        const { filesDir } = pathsOf(dir)
         void (async () => {
           const body = await readJsonBody(req, STATE_BODY_LIMIT)
           const requested = sanitizeName(typeof body?.name === 'string' ? body.name : '')
@@ -1012,8 +1325,10 @@ export function apply(ctx, config) {
           res.end()
           return
         }
-        const space = ensureSpace()
+        const space = ensureSpace(activeDir)
         if (!space.ok) { sendJson(res, space, 409); return }
+        const dir = activeDir
+        const { filesDir } = pathsOf(dir)
         void (async () => {
           const body = await readJsonBody(req, STATE_BODY_LIMIT)
           const text = typeof body?.text === 'string' ? body.text : undefined
@@ -1054,8 +1369,10 @@ export const internals = {
   STATE_PATH,
   BLOB_PATH,
   GIT_PATH,
+  SPACE_PATH,
   REVEAL_PATH,
   CLIPBOARD_PATH,
+  LOCATION_FILE,
   STATE_VERSION,
   MAX_NAME_LENGTH,
   MAX_ITEMS,
@@ -1064,6 +1381,9 @@ export const internals = {
   WINDOWS_DEVICE_NAMES,
   CONTENT_TYPES,
   resolveDshHome,
+  absolutePath,
+  spaceFacts,
+  pathsOf,
   sanitizeName,
   uniqueName,
   listStoredFiles,
@@ -1077,6 +1397,8 @@ export const internals = {
   powerShellLiteral,
   clipboardCommand,
   execGit,
+  remoteUrlOf,
+  cloneSpace,
   readGitStatus,
   runGitAction,
 }

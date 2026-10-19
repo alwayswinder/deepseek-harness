@@ -301,6 +301,17 @@ namespace DshPet
                         }
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 10.6f, 13f), P(bounds, 13.4f, 11.2f), P(bounds, 13.4f, 14.8f), P(bounds, 10.6f, 13f) });
                         break;
+                    case "fish-tank":
+                        using (GraphicsPath body = RoundedPath(Rectangle.Round(R(bounds, 2.6f, 6.4f, 11.2f, 7.6f)), 3))
+                        {
+                            graphics.DrawPath(pen, body);
+                        }
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 13.8f, 8f), P(bounds, 17.4f, 6.2f), P(bounds, 17.4f, 14.2f), P(bounds, 13.8f, 12.4f) });
+                        using (SolidBrush eye = new SolidBrush(Ink))
+                        {
+                            graphics.FillEllipse(eye, R(bounds, 4.8f, 9f, 1.8f, 1.8f));
+                        }
+                        break;
                     case "gear":
                         graphics.DrawEllipse(pen, R(bounds, 4.6f, 4.6f, 10.8f, 10.8f));
                         PointF hub = P(bounds, 10f, 10f);
@@ -318,6 +329,28 @@ namespace DshPet
                         graphics.DrawEllipse(pen, R(bounds, 1.6f, 1.6f, 16.8f, 16.8f));
                         graphics.DrawEllipse(pen, R(bounds, 6.4f, 1.6f, 7.2f, 16.8f));
                         graphics.DrawLine(pen, P(bounds, 1.6f, 10f), P(bounds, 18.4f, 10f));
+                        break;
+                    case "sparkles":
+                        using (GraphicsPath star = new GraphicsPath())
+                        {
+                            star.AddLines(new PointF[] {
+                                P(bounds, 7.4f, 2.4f), P(bounds, 8.9f, 8.2f), P(bounds, 14.8f, 9.8f),
+                                P(bounds, 8.9f, 11.4f), P(bounds, 7.4f, 17.2f), P(bounds, 5.9f, 11.4f),
+                                P(bounds, 0.2f, 9.8f), P(bounds, 5.9f, 8.2f)
+                            });
+                            star.CloseFigure();
+                            graphics.DrawPath(pen, star);
+                        }
+                        using (GraphicsPath spark = new GraphicsPath())
+                        {
+                            spark.AddLines(new PointF[] {
+                                P(bounds, 15.8f, 11.8f), P(bounds, 16.5f, 14.2f), P(bounds, 18.9f, 14.9f),
+                                P(bounds, 16.5f, 15.6f), P(bounds, 15.8f, 18f), P(bounds, 15.1f, 15.6f),
+                                P(bounds, 12.7f, 14.9f), P(bounds, 15.1f, 14.2f)
+                            });
+                            spark.CloseFigure();
+                            graphics.DrawPath(pen, spark);
+                        }
                         break;
                     case "system":
                         graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.6f, 3.6f, 16.8f, 11.6f)));
@@ -425,22 +458,23 @@ function Read-Utf8Text([string]$Path) {
 function Get-Labels {
     $fallback = [ordered]@{
         PetName               = 'DSH pet'
-        Chat                  = 'Chat'
+        Chat                  = 'Web chat'
+        AlertNotice           = 'A task is waiting for your answer. Click the pet to return to DSH.'
         Git                   = 'Git changes'
         OpenCwd               = 'Open working directory'
         OpenCwdNoCwd          = 'That session has no working directory yet, so there is no folder to open.'
         OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
         OpenCwdFailed         = 'The folder could not be opened.'
-        Settings              = 'Settings'
+        Settings              = 'Pet settings'
         Sites                 = 'Sites'
-        SitesFavorites        = 'Favourite sites'
-        SitesEmpty            = 'No sites yet. Add one under Settings.'
+        SitesEmpty            = 'No sites yet. Add one under Site settings.'
         SitesManage           = 'Site settings'
         Nav                   = 'Site list'
         NavMissing            = 'Site list (not generated yet)'
         NavFailed             = 'No browser would open it. Check the default browser setting.'
         Games                 = 'Mini games'
         Aquarium              = 'Glass aquarium'
+        FishTank              = 'Pixel fish tank'
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
@@ -483,6 +517,7 @@ function Get-Labels {
         MusicSyncRunning      = 'A download is already running'
         MusicOpenDir          = 'Open the music folder'
         MusicOpenFailed       = 'The music folder could not be opened.'
+        MusicSettings         = 'Music settings'
         MusicFailed           = 'Playback failed: {0}'
         MusicVolume           = 'Volume ({0}%)'
         MusicVolumeSet        = 'Volume: {0}%'
@@ -545,6 +580,15 @@ function Get-ClickIntent([bool]$Shown, [bool]$InFront) {
     return 'show'
 }
 
+# Whether entering this state is news worth a reminder. Only the step into `alert`
+# is one: the first state a pet applies is not a transition, and a state file
+# rewritten while the agent still waits must not ring again on every tick.
+function Test-ShouldAnnounceAlert([string]$Previous, [string]$Next, [bool]$Enabled) {
+    if (-not $Enabled) { return $false }
+    if ($Next -ne 'alert') { return $false }
+    return ($Previous -ne '' -and $Previous -ne 'alert')
+}
+
 # Custom window message the Electron main process listens for (its hook lives in
 # apps/desktop main.ts, tracked in UPSTREAM.md). Posting it after an external
 # restore asks Electron to run its own show(), which flips the page's hidden
@@ -585,6 +629,9 @@ $SCRIPT:StateStamp = [DateTime]::MinValue
 # the clock here keeps a stale notice in the state file from opening a box at
 # every start.
 $SCRIPT:LastNoticeAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+# Whether the host's published reminder is on. Set before the first state is
+# applied, and only ever changed by a newer state file.
+$SCRIPT:AlertNotice = $true
 $SCRIPT:Ticks = 0
 $SCRIPT:PetMenu = $null
 $SCRIPT:UpdateMenuItem = $null
@@ -592,11 +639,11 @@ $SCRIPT:UpdateMenuItem = $null
 # and that submenu itself: it is rebuilt from this list every time it opens, so an
 # edit in the settings card reaches a pet that is already running.
 $SCRIPT:Sites = @()
-$SCRIPT:SiteMenu = $null
+$SCRIPT:SitesItem = $null
 # The generated navigation page's path, as the host publishes it, and empty when
 # this machine has no library to show. The page is a build product, so the menu
-# entry is offered only once there is one to open: that entry is built once and
-# refreshed from this path rather than rebuilt.
+# entry is offered only once there is one to open: that entry is built together
+# with the rest of the submenu each time it opens, from this path.
 $SCRIPT:FavoritesPage = ''
 $SCRIPT:NavItem = $null
 # Music: the library the host published, the MediaPlayer that owns the audio, what
@@ -1104,7 +1151,7 @@ function Get-SiteList($State) {
     return ,$sites
 }
 
-function Add-SiteMenuItem($Menu, $Site) {
+function Add-SiteMenuItem($Items, $Site) {
     # One entry per call, and GetNewClosure pins this entry's own site into its
     # handler: a script block reads its variables from the scope in force when it
     # runs, not the one that made it, so a handler that merely referred to $Site -
@@ -1126,7 +1173,7 @@ function Add-SiteMenuItem($Menu, $Site) {
             Send-MenuCommand 'site' $Site.Url
         } catch { Write-Log $_.Exception.Message }
     }.GetNewClosure())
-    [void]$Menu.DropDownItems.Add($item)
+    [void]$Items.Add($item)
 }
 
 function Add-PetMenuItem($Items, [string]$Text, [string]$Icon) {
@@ -1143,9 +1190,10 @@ function Add-PetMenuItem($Items, [string]$Text, [string]$Icon) {
 function New-NavigationItem($Items) {
     # The one entry under the sites entry that opens a page of its own instead of an
     # address: the page is a local file, so the browser association opens it and this
-    # process needs nothing from the host at the click. Whether there is a page to
-    # open is the only thing that changes about it, so it is built once and refreshed
-    # at every open (see Update-NavigationEntry) rather than rebuilt.
+    # process needs nothing from the host at the click. It is rebuilt with the rest of
+    # the submenu at every open and then refreshed from the published path (see
+    # Update-NavigationEntry), because whether there is a page to open is the only
+    # thing that changes about it.
     $nav = Add-PetMenuItem $Items $SCRIPT:Labels.Nav ''
     $nav.add_Click({
         try { Open-NavigationPage $SCRIPT:FavoritesPage } catch { Write-Log $_.Exception.Message }
@@ -1154,45 +1202,37 @@ function New-NavigationItem($Items) {
 }
 
 function Add-SitesMenu($Menu) {
-    # Two levels below the right click: the entry that carries this name opens
-    # nothing by itself, and what it lists is the configured sites in a submenu of
-    # their own, beside the library page rather than above it.
+    # One level below the right click: the entry that carries this name opens
+    # nothing by itself, and its children are the configured sites, the library
+    # page, and the way to the settings card that owns the list.
     $sitesItem = Add-PetMenuItem $Menu.Items $SCRIPT:Labels.Sites 'globe'
-    $favoritesItem = Add-PetMenuItem $sitesItem.DropDownItems $SCRIPT:Labels.SitesFavorites ''
-    foreach ($dropdown in @($sitesItem.DropDown, $favoritesItem.DropDown)) {
-        $dropdown.ShowImageMargin = $false
-        $dropdown.ShowItemToolTips = $true
-        $dropdown.BackColor = $Menu.BackColor
-        $dropdown.ForeColor = $Menu.ForeColor
-    }
-    # The list is the person's own and can be any length, so it is rebuilt from the
-    # published rows at every open (see Update-SiteMenu), which is also what makes an
-    # edit in the settings card reach a pet that is already running.
-    $favoritesItem.add_DropDownOpening({
-        try { Update-SiteMenu } catch { Write-Log $_.Exception.Message }
-    })
-    # The library page is a build product, so this entry is offered only once there
-    # is one to open: it sits beside the list and is refreshed, not rebuilt.
-    $navItem = New-NavigationItem $sitesItem.DropDownItems
-    $sitesItem.add_DropDownOpening({
-        try { Update-NavigationEntry } catch { Write-Log $_.Exception.Message }
-    })
-    # The script scope is what the refresh and the click read these from, so both
-    # are published before the first refresh runs.
-    $SCRIPT:SiteMenu = $favoritesItem
-    $SCRIPT:NavItem = $navItem
-    [void](Update-NavigationEntry)
+    $sitesItem.DropDown.ShowImageMargin = $false
+    $sitesItem.DropDown.ShowItemToolTips = $true
+    $sitesItem.DropDown.BackColor = $Menu.BackColor
+    $sitesItem.DropDown.ForeColor = $Menu.ForeColor
+    # The list is the person's own and can change while this pet runs, so the whole
+    # submenu is rebuilt from the published rows before the menu opens (see
+    # Update-SiteMenu). Rebuilding it while the submenu is opening would dispose
+    # the very items WinForms is about to show, so the main menu's own Opening is
+    # the moment used here instead.
+    # The script scope is what the refresh and the click read from, so it is
+    # published before the first build runs.
+    $SCRIPT:SitesItem = $sitesItem
+    [void](Update-SiteMenu)
     return $sitesItem
 }
 
 function Update-SiteMenu {
     # Rebuilt whole at every open rather than kept in step with the state file:
     # the list is configuration, it is short, and rebuilding is what makes an edit
-    # in the settings card reach this menu without restarting either half.
-    if ($null -eq $SCRIPT:SiteMenu) { return }
-    while ($SCRIPT:SiteMenu.DropDownItems.Count -gt 0) {
-        $stale = $SCRIPT:SiteMenu.DropDownItems[0]
-        $SCRIPT:SiteMenu.DropDownItems.RemoveAt(0)
+    # in the settings card reach this menu without restarting either half. The
+    # library page and the settings entry are rebuilt too, because they sit beside
+    # the rows in the same dropdown rather than one level down.
+    if ($null -eq $SCRIPT:SitesItem) { return }
+    $items = $SCRIPT:SitesItem.DropDownItems
+    while ($items.Count -gt 0) {
+        $stale = $items[0]
+        $items.RemoveAt(0)
         $stale.Dispose()
     }
     $sites = @($SCRIPT:Sites)
@@ -1202,25 +1242,24 @@ function Update-SiteMenu {
         $empty.Enabled = $false
         $empty.AutoSize = $true
         $empty.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
-        [void]$SCRIPT:SiteMenu.DropDownItems.Add($empty)
+        [void]$items.Add($empty)
     } else {
-        foreach ($site in $sites) { Add-SiteMenuItem $SCRIPT:SiteMenu $site }
+        foreach ($site in $sites) { Add-SiteMenuItem $items $site }
     }
+    [void]$items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+    # The library page is a build product, so this entry is offered only once there
+    # is one to open; it opens a page of its own instead of an address.
+    $SCRIPT:NavItem = New-NavigationItem $items
+    [void](Update-NavigationEntry)
     # The way to a list that is empty, and to a longer one: the settings card owns
     # the list, so this is the same page entry the main menu's own Settings opens.
-    [void]$SCRIPT:SiteMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    $manage = New-Object System.Windows.Forms.ToolStripMenuItem
-    $manage.Text = $SCRIPT:Labels.SitesManage
-    $manage.Tag = 'gear'
-    $manage.AutoSize = $true
-    $manage.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $manage = Add-PetMenuItem $items $SCRIPT:Labels.SitesManage 'gear'
     $manage.add_Click({
         try {
             Show-DshWindow
             Send-MenuCommand 'settings'
         } catch { Write-Log $_.Exception.Message }
     })
-    [void]$SCRIPT:SiteMenu.DropDownItems.Add($manage)
 }
 
 function Update-NavigationEntry {
@@ -2308,7 +2347,7 @@ function Update-MusicMenu {
     })
     # The volume, the links, and the music directory belong to the settings card, so
     # the way to them is the same page entry the main menu's own Settings opens.
-    [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.Settings 'gear' $true {
+    [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicSettings 'gear' $true {
         try {
             Show-DshWindow
             Send-MenuCommand 'settings'
@@ -2321,7 +2360,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesFavorites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.AlertNotice) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.FishTank) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicSettings) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -2333,6 +2372,13 @@ if ($SelfTest) {
     # cannot be read off the window after the fact, so it is printed here too: only
     # a window that is both on screen and in front is tucked away.
     Write-Output "click-intent: front=$(Get-ClickIntent $true $true) behind=$(Get-ClickIntent $true $false) hidden=$(Get-ClickIntent $false $false) minimized=$(Get-ClickIntent $false $true)"
+    # A reminder for somebody who is not looking at the pet is only news when an
+    # agent starts waiting: the first state a pet applies is not a transition, and
+    # a state file rewritten while the question still stands must not ring again.
+    Write-Output ("alert-notice: enter=$((Test-ShouldAnnounceAlert 'working' 'alert' $true))" `
+        + " seeded=$((Test-ShouldAnnounceAlert '' 'alert' $true))" `
+        + " same=$((Test-ShouldAnnounceAlert 'alert' 'alert' $true))" `
+        + " off=$((Test-ShouldAnnounceAlert 'working' 'alert' $false))")
     # Stepping the music aside for another player is the third decision of that kind:
     # whether the step comes back, and after how much silence, is what decides whether
     # somebody's video keeps being interrupted, and it cannot be read off a running
@@ -2364,23 +2410,22 @@ if ($SelfTest) {
     # The sites entry is the menu's only part built from configuration rather than
     # from this script, so it is built here - without ever being shown - and what
     # each list turns into is printed. The host has already dropped every row it
-    # cannot open, so what is left to get wrong is the entries themselves: the two
-    # the right click reaches, what each configured site reads and carries, and the
-    # one entry an empty list still needs. A ContextMenuStrip is what the real menu
-    # is, and the entry the sites hang from is the one the pet adds to it.
+    # cannot open, so what is left to get wrong is the entries themselves: the rows
+    # the right click reaches directly, what each configured site reads and carries,
+    # and the two fixed entries an empty list still needs. A ContextMenuStrip is
+    # what the real menu is, and the entry the sites hang from is the one the pet
+    # adds to it.
     $siteMenuProbe = New-Object System.Collections.Generic.List[string]
     $probeMenu = New-Object System.Windows.Forms.ContextMenuStrip
+    $SCRIPT:Sites = @()
     $sitesItem = Add-SitesMenu $probeMenu
     [void]$siteMenuProbe.Add((@($sitesItem.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)[$($_.Enabled)]" }) -join '|')
-    $SCRIPT:Sites = @()
-    Update-SiteMenu
-    [void]$siteMenuProbe.Add((@($SCRIPT:SiteMenu.DropDownItems) | ForEach-Object { "$($_.GetType().Name)=$($_.Text)" }) -join '|')
     $SCRIPT:Sites = @(
         [pscustomobject]@{ Name = 'Chat'; Url = 'https://chat.deepseek.com/' }
         [pscustomobject]@{ Name = 'Docs'; Url = 'https://docs.example.com/' }
     )
     Update-SiteMenu
-    [void]$siteMenuProbe.Add((@($SCRIPT:SiteMenu.DropDownItems) | ForEach-Object { "$($_.Text)@$($_.ToolTipText)" }) -join '|')
+    [void]$siteMenuProbe.Add((@($sitesItem.DropDownItems) | ForEach-Object { "$($_.Text)@$($_.ToolTipText)" }) -join '|')
     # Firing the first entry is the part that cannot be read off the item: a handler
     # that reads the wrong scope still shows the right text and tooltip and still
     # writes a command, just without the address. DshPid is 0 here, so raising DSH
@@ -2390,7 +2435,7 @@ if ($SelfTest) {
     function Show-DshWindow { }
     $probeCommand = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'command.json'
     if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
-    $SCRIPT:SiteMenu.DropDownItems[0].PerformClick()
+    $sitesItem.DropDownItems[0].PerformClick()
     $clicked = Read-Json $probeCommand
     if ($null -eq $clicked) { [void]$siteMenuProbe.Add('click=no-command') }
     else { [void]$siteMenuProbe.Add("click=$($clicked.command)|$($clicked.url)") }
@@ -2442,7 +2487,7 @@ if ($SelfTest) {
     )
     Write-Output "browser-exe: $((@($browserCommands) | ForEach-Object { Get-BrowserExe $_ }) -join '|')"
     $probeMenu.Dispose()
-    $SCRIPT:SiteMenu = $null
+    $SCRIPT:SitesItem = $null
     $SCRIPT:NavItem = $null
     # What the host publishes, read back the way Apply-State reads it: the note names
     # the entry, and a row that left it blank is named by its address instead of
@@ -2841,11 +2886,15 @@ function Show-CurrentFrame {
 
 function Set-Expression([string]$State) {
     if ($State -eq $SCRIPT:Expression) { return }
+    $previous = $SCRIPT:Expression
     $SCRIPT:Expression = $State
     $SCRIPT:FrameIndex = 1
     $SCRIPT:LastFrameAt = [Environment]::TickCount
     $SCRIPT:FrameCount = [Math]::Max(1, (Get-FrameCount $State))
     Show-CurrentFrame
+    # A look at the pet is not available to somebody working in another window, so
+    # the step into "waiting for you" also speaks: once per question, not per tick.
+    if (Test-ShouldAnnounceAlert $previous $State $SCRIPT:AlertNotice) { Show-AlertNotice }
 }
 
 function Set-PetSize([int]$Size) {
@@ -2860,6 +2909,7 @@ function Apply-State($State) {
     if ($null -ne $State.frameMs) { $SCRIPT:FrameMs = [Math]::Max(120, [int]$State.frameMs) }
     if ($null -ne $State.opacity) { $SCRIPT:IdleOpacity = [double]$State.opacity }
     if ($null -ne $State.clickAction) { $SCRIPT:ClickAction = [string]$State.clickAction }
+    if ($null -ne $State.alertNotice) { $SCRIPT:AlertNotice = [bool]$State.alertNotice }
     if ($null -ne $State.size) { Set-PetSize ([int]$State.size) }
     if ($null -ne $State.topmost) { $window.Topmost = [bool]$State.topmost }
     if ($null -ne $State.state) { Set-Expression ([string]$State.state) }
@@ -3223,6 +3273,18 @@ function Show-PetNotice([string]$Title, [string]$Detail) {
     }
 }
 
+function Show-AlertNotice {
+    # The face is the signal for somebody already looking at the pet; a short sound
+    # and the notice box are for somebody who is not. A sound the system has muted
+    # is not a failure, so one that cannot play is logged and the notice still shows.
+    try {
+        [System.Media.SystemSounds]::Asterisk.Play()
+    } catch {
+        Write-Log "playing the alert sound failed: $($_.Exception.Message)"
+    }
+    Show-PetNotice $SCRIPT:Labels.PetName $SCRIPT:Labels.AlertNotice
+}
+
 function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
     # This process's own sheet has to be off the screen before the shutter, or the
     # dimming would be in the file. The hole already showed the desktop, so what
@@ -3410,6 +3472,13 @@ function New-PetMenu {
         param($sender, $eventArgs)
         try { [DshPet.PetMenuRenderer]::ApplyRoundedRegion($sender) } catch { Write-Log $_.Exception.Message }
     })
+    # The sites submenu is rebuilt just before the menu is shown, not while the
+    # submenu itself is opening: disposing rows in the middle of that opening is
+    # what makes WinForms drop the dropdown it was about to display.
+    $menu.add_Opening({
+        param($sender, $eventArgs)
+        try { Update-SiteMenu } catch { Write-Log $_.Exception.Message }
+    })
     $chatItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Chat 'chat'
     $chatItem.add_Click({
         try {
@@ -3442,10 +3511,10 @@ function New-PetMenu {
         try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
     })
     # The mini games live one level down: the entry itself opens nothing, so
-    # more of them can join without touching this menu's shape again. Its first
-    # child is the glass aquarium, which the page owns like the entries above,
-    # and therefore raises DSH for the same reason: a fullscreen overlay in a
-    # hidden window is an overlay nobody sees.
+    # more of them can join without touching this menu's shape again. Each child
+    # is a game another plugin owns, opened through that plugin's service like
+    # the entries above, and therefore raises DSH for the same reason: a
+    # fullscreen overlay in a hidden window is an overlay nobody sees.
     $gamesItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Games 'games'
     $gamesItem.DropDown.ShowImageMargin = $false
     $gamesItem.DropDown.BackColor = $menu.BackColor
@@ -3462,6 +3531,18 @@ function New-PetMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     [void]$gamesItem.DropDownItems.Add($aquariumItem)
+    $fishTankItem = New-Object System.Windows.Forms.ToolStripMenuItem
+    $fishTankItem.Text = $SCRIPT:Labels.FishTank
+    $fishTankItem.Tag = 'fish-tank'
+    $fishTankItem.AutoSize = $true
+    $fishTankItem.Padding = New-Object System.Windows.Forms.Padding(40, 8, 12, 8)
+    $fishTankItem.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'fish-tank'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    [void]$gamesItem.DropDownItems.Add($fishTankItem)
     # Music is this process's own capability, the way the capture is: the audio plays
     # here rather than in the page, so the entries act on this process - except the
     # two that need the host (filling the library in, and opening its folder) and the
@@ -3491,7 +3572,7 @@ function New-PetMenu {
     # never offers to quit itself: the plugin's own switch owns its lifetime.
     # Capabilities that live one level down sit under Special: the entry itself
     # opens nothing, so another one can join without reshaping the menu.
-    $featuresItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Features 'globe'
+    $featuresItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Features 'sparkles'
     $featuresItem.DropDown.ShowImageMargin = $false
     $featuresItem.DropDown.BackColor = $menu.BackColor
     $featuresItem.DropDown.ForeColor = $menu.ForeColor

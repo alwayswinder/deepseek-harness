@@ -54,9 +54,23 @@ globalThis.document = {
 function hostFetch(answers = {}) {
   return (url) => {
     const address = String(url)
-    const body = address.includes('/state') ? (answers.state ?? { ok: true, revision: 1, items: [], files: [], usage: { usedBytes: 0, maxTotalBytes: 104857600, maxFileBytes: 10485760 } })
-      : address.includes('/git') ? (answers.git ?? { ok: true, branch: 'main', detached: false, changes: 0, commit: null, relation: 'up-to-date', ahead: 0, behind: 0, upstream: 'origin/main' })
-        : (answers.blob ?? { ok: true, name: 'shot.png', bytes: 12 })
+    const body = address.includes('/space') ? (answers.space ?? {
+      ok: true,
+      dir: '/w/space',
+      configuredDir: '/w/space',
+      override: false,
+      exists: true,
+      isDirectory: true,
+      isRepo: true,
+      empty: false,
+      repoUrl: 'git@example.invalid:space.git',
+      savedRepoUrl: '',
+      origin: '',
+      remote: 'origin',
+    })
+      : address.includes('/state') ? (answers.state ?? { ok: true, revision: 1, items: [], files: [], usage: { usedBytes: 0, maxTotalBytes: 104857600, maxFileBytes: 10485760 } })
+        : address.includes('/git') ? (answers.git ?? { ok: true, branch: 'main', detached: false, changes: 0, commit: null, relation: 'up-to-date', ahead: 0, behind: 0, upstream: 'origin/main' })
+          : (answers.blob ?? { ok: true, name: 'shot.png', bytes: 12 })
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
   }
 }
@@ -277,7 +291,7 @@ assert.deepEqual(selected, ['temp-space', null], 'closing returns the main colum
 
 const face = main.options.inject()
 assert.deepEqual(Object.keys(face).sort(),
-  ['clipboard', 'gitAction', 'gitStatus', 'load', 'removeBlob', 'reveal', 'save', 't', 'upload'].sort(),
+  ['clipboard', 'gitAction', 'gitStatus', 'load', 'pickDirectory', 'removeBlob', 'reveal', 'save', 'spaceAction', 'spaceInfo', 't', 'upload'].sort(),
   'the panel is given the routes and the copy it renders with')
 
 /** Every string in one rendered tree, so copy and structure are asserted together. */
@@ -426,8 +440,128 @@ const noRepo = await paint({ state: { ok: false, reason: 'no-dir', dir: 'C:\\Use
 assert.ok(texts(noRepo).some(text => text.includes('C:\\Users\\me\\.dsh\\temp-space')),
   'a space that is not there names the directory to clone into')
 
+// A machine with no space gets the path setting instead of an empty canvas: the
+// configured path, the remote URL remembered from another path, and the two ways
+// out — pull a repository into a directory, or adopt one that is already there.
+const missingAnswers = () => ({
+  state: { ok: false, reason: 'no-dir', dir: '/w/missing-space' },
+  space: {
+    ok: true,
+    dir: '/w/missing-space',
+    configuredDir: '/w/missing-space',
+    override: false,
+    exists: false,
+    isDirectory: false,
+    isRepo: false,
+    empty: false,
+    repoUrl: 'git@example.invalid:space.git',
+    savedRepoUrl: '',
+    origin: '',
+    remote: 'origin',
+  },
+})
+const missing = await paint(missingAnswers())
+const missingText = texts(missing)
+assert.ok(missingText.includes('这台机器上还没有临时空间的本地仓库'), 'a missing space explains the setup')
+assert.ok(missingText.some(text => text.includes('当前：/w/missing-space')), 'and shows the configured path')
+assert.ok(missingText.includes('拉取到此路径'), 'a missing repository can be pulled into a path')
+assert.ok(missingText.includes('直接使用'), 'or an existing one adopted')
+assert.ok(missingText.includes('浏览…'), 'the shell picker is offered when there is one')
+assert.equal(elements(missing).filter(node => node.type === 'textarea').length, 0,
+  'the setup replaces the canvas rather than sitting above an unusable one')
+assert.equal(elements(missing).find(node => node.type === 'input' && node.props['aria-label'] === '本地仓库').props.value,
+  '/w/missing-space', 'the path field starts at the configured path')
+assert.equal(elements(missing).find(node => node.type === 'input' && node.props['aria-label'] === '远端仓库地址').props.value,
+  'git@example.invalid:space.git', 'the remembered remote URL is prefilled')
+
+// The picker only fills the field; nothing is written until the person acts.
+const picks = []
+const browseHarness = mountWith(missingAnswers(), {
+  pickDirectory: async () => { picks.push('pick'); return '/w/picked-space' },
+})
+let browseTree = await browseHarness.settle()
+elements(browseTree).find(node => node.type === 'button' && texts(node).includes('浏览…')).props.onClick()
+browseTree = await browseHarness.settle()
+assert.equal(picks.length, 1, 'the browse control asks the shell once')
+assert.equal(elements(browseTree).find(node => node.type === 'input' && node.props['aria-label'] === '本地仓库').props.value,
+  '/w/picked-space', 'the picked directory lands in the field')
+
+// Pull is one action: a missing directory is cloned into, and the panel reloads
+// into the space the answer names.
+const pathCalls = []
+const cloneAnswers = missingAnswers()
+const cloneHarness = mountWith(cloneAnswers, {
+  spaceAction: async (action, dir, repoUrl) => {
+    pathCalls.push({ action, dir, repoUrl })
+    cloneAnswers.state = {
+      ok: true,
+      revision: 1,
+      items: [],
+      files: [],
+      usage: { usedBytes: 0, maxTotalBytes: 104857600, maxFileBytes: 10485760 },
+    }
+    cloneAnswers.space = {
+      ok: true,
+      dir,
+      configuredDir: '/w/missing-space',
+      override: true,
+      exists: true,
+      isDirectory: true,
+      isRepo: true,
+      empty: false,
+      repoUrl,
+      savedRepoUrl: repoUrl,
+      origin: repoUrl,
+      remote: 'origin',
+    }
+    return { ok: true, mode: 'cloned', dir, connected: true }
+  },
+})
+let cloneTree = await cloneHarness.settle()
+const cloneField = elements(cloneTree).find(node => node.type === 'input' && node.props['aria-label'] === '本地仓库')
+cloneField.props.onChange({ target: { value: '/w/cloned-space' } })
+cloneTree = await cloneHarness.settle()
+elements(cloneTree).find(node => node.type === 'button' && texts(node).includes('拉取到此路径')).props.onClick()
+cloneTree = await cloneHarness.settle(12)
+assert.deepEqual(pathCalls.at(-1),
+  { action: 'pull', dir: '/w/cloned-space', repoUrl: 'git@example.invalid:space.git' },
+  'pull carries the path and the remote URL the page holds')
+assert.ok(texts(cloneTree).includes('已拉取到：/w/cloned-space'), 'a successful clone says where it landed')
+assert.equal(texts(cloneTree).includes('这台机器上还没有临时空间的本地仓库'), false,
+  'the setup gives way to the canvas it just pulled')
+
+// A path that is not a repository is refused by name, not by a raw reason code.
+const useCalls = []
+const refuseHarness = mountWith(missingAnswers(), {
+  spaceAction: async (action, dir, repoUrl) => {
+    useCalls.push({ action, dir, repoUrl })
+    return { ok: false, reason: 'not-a-repo', dir, message: 'not a repository' }
+  },
+})
+let refuseTree = await refuseHarness.settle()
+elements(refuseTree).find(node => node.type === 'button' && texts(node).includes('直接使用')).props.onClick()
+refuseTree = await refuseHarness.settle(12)
+assert.equal(useCalls.at(-1).action, 'use', 'use never reaches the remote')
+assert.ok(texts(refuseTree).some(text => text.includes('不是 Git 仓库')),
+  'the refusal says what the directory is missing')
+
+// A usable space keeps the canvas and opens the same setting on demand.
+const settingsHarness = mountWith({})
+let settingsTree = await settingsHarness.settle()
+elements(settingsTree).find(node => node.type === 'button' && texts(node).includes('路径')).props.onClick()
+settingsTree = await settingsHarness.settle()
+assert.ok(texts(settingsTree).includes('本地仓库'), 'the header opens the path setting')
+assert.ok(texts(settingsTree).some(text => text.includes('当前：/w/space')), 'and shows the path in force')
+assert.ok(texts(settingsTree).includes('取消'), 'the fold-out can be closed')
+elements(settingsTree).find(node => node.type === 'button' && texts(node).includes('取消')).props.onClick()
+settingsTree = await settingsHarness.settle()
+assert.equal(texts(settingsTree).includes('本地仓库'), false, 'closing it puts the canvas back')
+
 // The ways in: a note, a dropped file, and a delete. A save is debounced, so the
-// panel is expected to hold an edit rather than write on the keystroke.
+// panel is expected to hold an edit rather than write on the keystroke. The route
+// answers start from a usable space: the previous paints left their own answers
+// installed, and this harness is about the canvas, not about the setup form.
+globalThis.fetch = hostFetch()
 const harness = mount(main.component, { ...face })
 let tree = await harness.settle()
 const before = globalThis.fetch
@@ -437,7 +571,8 @@ globalThis.fetch = (url, init) => {
   writes.push({ url: address, method: init?.method ?? 'GET', body: init?.body })
   const answer = address.includes('/blob') && (init?.method ?? 'GET') === 'POST'
     ? { ok: true, name: 'shot.png', bytes: 2048 }
-    : { ok: true, revision: 2, items: [] }
+    : address.includes('/space') ? { ok: true, dir: '/w/space', configuredDir: '/w/space', override: false, exists: true, isRepo: true, repoUrl: '' }
+      : { ok: true, revision: 2, items: [] }
   return Promise.resolve({ ok: true, json: () => Promise.resolve(answer) })
 }
 const noteButton = elements(tree).find(node => node.type === 'button' && texts(node).includes('+ 文字'))

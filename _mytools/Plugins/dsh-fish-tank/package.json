@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-fish-tank",
-  "description": "DSH 养鱼游戏插件 — 右侧悬浮鱼按钮进入全屏像素海底世界：鱼群 AI 游动、投喂、吹泡泡。A pixel-art aquarium overlay for the DSH web GUI: floating fish button opens a fullscreen canvas tank with wandering fish, feeding, and bubbles.",
+  "description": "DSH 养鱼游戏插件 — 桌宠右键菜单的「小游戏 ▸ 像素鱼缸」进入全屏像素海底世界：鱼群 AI 游动、投喂、吹泡泡。A pixel-art aquarium overlay opened from the desktop pet's mini-games menu: wandering fish, feeding, and bubbles.",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,12 +9,14 @@
     ".": "./index.js",
     "./client": "./client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "index.js",
     "client.js",
     "cordis.patch.yml",
+    "locale",
     "bg.jpg",
     "README.md",
     "README.zh.md"

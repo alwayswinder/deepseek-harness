@@ -1,0 +1,30 @@
+bip001 R Foot +25Z
+MAX pos=0.0142241 (lowerarm_l) rot=0.0914145 (middle_01_l)
+driver=7.86781e-06 / 1.56499e-05 perBoneGrowth=0.000609457 (calf_r) / 0.000978192 (thigh_r)
+RESET pos=0.000144018 (calf_r) rot=0.000287546 (Point023)
+
+bip001 L Foot +25Z
+MAX pos=0.0142241 (lowerarm_l) rot=0.0914145 (middle_01_l)
+driver=7.86781e-06 / 1.56499e-05 perBoneGrowth=3.69826e-05 (calf_l) / 7.56476e-05 (thigh_l)
+RESET pos=0.00772576 (calf_l) rot=0.0125397 (Point025)
+
+bip001 R Hand +25Z
+MAX pos=0.0142241 (lowerarm_l) rot=0.0914149 (middle_01_r)
+driver=8.54324e-06 / 1.0526e-05 perBoneGrowth=2.4954e-05 (index_03_r) / 1.23605e-05 (index_03_r)
+RESET pos=0.000128722 (lowerarm_r) rot=0.000536606 (Circle022)
+
+bip001 L Hand +25Z
+MAX pos=0.00170763 (calf_l) rot=0.0914104 (thumb_01_r)
+driver=7.8642e-06 / 1.56499e-05 perBoneGrowth=1.70241e-05 (middle_02_l) / 1.91674e-05 (hand_l)
+RESET pos=0.00092755 (Point033) rot=0.00183158 (Circle020)
+
+bip001 +10Z
+MAX pos=0.014294 (lowerarm_l) rot=0.0914177 (middle_03_r)
+driver=7.8642e-06 / 1.56499e-05 perBoneGrowth=6.99423e-05 (lowerarm_l) / 0.000197008 (upperarm_l)
+ROOT pelvis delta=[0,0,10]
+ROOT head delta=[0,-4.17233e-07,10]
+ROOT hand_l delta=[0,0,10]
+ROOT hand_r delta=[0,-7.15256e-07,10]
+ROOT foot_l delta=[0,-4.76837e-07,10]
+ROOT foot_r delta=[0,-4.76837e-07,10]
+RESET pos=0.0 () rot=6.83019e-06 (BIPDRV_middle_01_r)

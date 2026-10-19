@@ -1,1 +1,0 @@
-RESET pos=0.0 () rot=6.83019e-06 (BIPDRV_middle_01_r)

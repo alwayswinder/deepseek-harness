@@ -3,7 +3,7 @@
 > **一句话**：把源角色 A 的控制环（起/末端环、肘膝环、辅助 IK 链、极向点）搬到目标角色 B 身上，"静止对准"只是**必要不充分**条件；
 > 必须用**差分指标**（摆姿势后再测）验收，否则会得到"静止全对、一动就炸"的结果。
 > 本指南基于 Seven → Stan（新建 Biped）实战，2026-10-16 定稿；Biped 本身怎么拟合见 [biped-rebuild-guide.md](biped-rebuild-guide.md)，本案例流水账见 [stan-biped-controller-migration-task.md](stan-biped-controller-migration-task.md) §10。
-> 执行顺序见 [quick-runbook.md](quick-runbook.md)；本页步骤编号用于查找操作。验证证据见 [2026-10-19 首轮报告](../work/ProcessValidation_20261019/report.md)及[第二轮报告](../work/Validation_20261019_Second/report.md)，两轮严格整体验收均未通过。下文保留的首轮实验数值不代表第二轮结果，历史个案中的超标数值不能作为验收豁免。
+> 执行顺序见 [quick-runbook.md](quick-runbook.md)；本页步骤编号用于查找操作。验证证据见 2026-10-19 首轮报告（本地 `work/ProcessValidation_20261019/report.md`）及第二轮报告（本地 `work/Validation_20261019_Second/report.md`），两轮严格整体验收均未通过。下文保留的首轮实验数值不代表第二轮结果，历史个案中的超标数值不能作为验收豁免。
 
 ---
 
@@ -314,9 +314,9 @@ for o in objects where ((substring o.name 1 7) == "BIPDRV_") do (
 2. 阈值按落盘静止两段总长的一半计算：Stan 腿约 40.3446、臂约 20.2270。若 `p1+p2` 不沿局部 X，沿 X 增长不能保证实测段长增加相同数量；步骤 3 的正 X 轴适配在本案例使伸缩方向与长度轴一致，仍须核对实际输出。
 3. 在弯曲与超过链总长的姿势测实际输出、上下段实测长度。四肢逐一与源同测，另记录链末端到末端环的距离；不能以表达式文字更新或两段增长正确判定行为通过。
 
-首轮改表达式文本、重接原 wire 时出现“文本更新但驱动冻结”，原因未确认，不能归因于语言别名或缓存。首轮八个第二位置槽采用 Position_Script 的实验性适配：显式绑定起/末端环，按 `restOffset + stretchDirection * max(0, distance(startRing,endRing)/2 - targetHalfLength)` 计算，其中方向为拟合后的有效局部单位向量，偏移为静止基值。四肢两段伸长量已正确，但左臂末端跟环仍失败，因此**不能作为完整验证通过的标准配方**；详细证据见[首轮报告](../work/ProcessValidation_20261019/report.md)。
+首轮改表达式文本、重接原 wire 时出现“文本更新但驱动冻结”，原因未确认，不能归因于语言别名或缓存。首轮八个第二位置槽采用 Position_Script 的实验性适配：显式绑定起/末端环，按 `restOffset + stretchDirection * max(0, distance(startRing,endRing)/2 - targetHalfLength)` 计算，其中方向为拟合后的有效局部单位向量，偏移为静止基值。四肢两段伸长量已正确，但左臂末端跟环仍失败，因此**不能作为完整验证通过的标准配方**；详细证据见首轮报告（本地 `work/ProcessValidation_20261019/report.md`）。
 
-第二轮保留八条源伸缩 wire，更新阈值并采用步骤 3 的正 X 轴适配，未使用 Position_Script。四肢越界两段均等分伸长，但左腿末端距环 0.019654，源同测为 0.0149461，等价性仍未建立；直接复位和严格逐骨误差不增长也未全部通过，详见[第二轮报告](../work/Validation_20261019_Second/report.md)。不能以静止末端或伸长量通过替代整体验收。
+第二轮保留八条源伸缩 wire，更新阈值并采用步骤 3 的正 X 轴适配，未使用 Position_Script。四肢越界两段均等分伸长，但左腿末端距环 0.019654，源同测为 0.0149461，等价性仍未建立；直接复位和严格逐骨误差不增长也未全部通过，详见第二轮报告（本地 `work/Validation_20261019_Second/report.md`）。不能以静止末端或伸长量通过替代整体验收。
 
 **依赖检查按方向判断**：从保留节点用 `refs.dependsOn` 检查其引用的源节点，先用 `isValidNode` 筛选再读 `.name`，否则 ParamBlock2、列表和约束等非节点引用会报错。保留集包括 UE 骨、BIPDRV、目标 Biped、控制环、IK、辅助点、样条与 Expose 节点，不能只扫 55+55。
 
@@ -330,7 +330,7 @@ for o in objects where ((substring o.name 1 7) == "BIPDRV_") do (
 
 每组试动前，按名字保存全部受影响 Biped、BIPDRV 和 UE 骨的世界变换；直接复位后 `completeRedraw()`，连续读两次，再与试动前逐节点比较。**位置复位残差必须 ≤1e-4**，同时记录旋转差，不能只看移动末端的位置。历史存在 `biped.getTransform #pos` 与世界位置不同的场景，也存在两者一致的场景；该 API 单次读数不是全链复位的充分证据。
 
-直接复位失败要报告残差与节点，重载里程碑并重新解析节点后再测下一组。重载隔离不算直接复位成功，也没有保证成功的有限次补偿循环。首轮最差直接复位残差 0.00474761，第二轮为 0.00772576，均超过门槛；具体姿势表见[首轮报告](../work/ProcessValidation_20261019/report.md#最终-biped-姿势测试)与[第二轮报告](../work/Validation_20261019_Second/report.md)。逐骨误差不增长须逐骨比较，不能因姿势前后的全局最大误差相近而判定通过。
+直接复位失败要报告残差与节点，重载里程碑并重新解析节点后再测下一组。重载隔离不算直接复位成功，也没有保证成功的有限次补偿循环。首轮最差直接复位残差 0.00474761，第二轮为 0.00772576，均超过门槛；具体姿势表见首轮报告（本地 `work/ProcessValidation_20261019/report.md#最终-biped-姿势测试`）与第二轮报告（本地 `work/Validation_20261019_Second/report.md`）。逐骨误差不增长须逐骨比较，不能因姿势前后的全局最大误差相近而判定通过。
 
 ### 步骤 8 —— 交付
 
@@ -356,7 +356,7 @@ for o in objects where ((substring o.name 1 7) == "BIPDRV_") do (
 | 保存重开 | 同名节点位置/旋转与保存前一致 | 最大位置漂移 0.00511727，失败 |
 | 显示 | boxMode 与源一致 | 56/71 |
 
-历史数值见[个案流水账](stan-biped-controller-migration-task.md)。任意超出 0.1 / 1° 的状态均失败，不能以“固有残差”或“已接受”豁免。整体状态分别见[首轮报告](../work/ProcessValidation_20261019/report.md)与[第二轮报告](../work/Validation_20261019_Second/report.md)。
+历史数值见[个案流水账](stan-biped-controller-migration-task.md)。任意超出 0.1 / 1° 的状态均失败，不能以“固有残差”或“已接受”豁免。整体状态分别见首轮报告（本地 `work/ProcessValidation_20261019/report.md`）与第二轮报告（本地 `work/Validation_20261019_Second/report.md`）。
 
 ---
 
@@ -408,7 +408,7 @@ for o in objects where ((substring o.name 1 7) == "BIPDRV_") do (
 
 ## 6. 历史案例数据（Stan ← Seven，2026-10-16）
 
-以下为历史取样，不是新角色或当前场景的固定参数；流程验证不得读取这些完成副本。独立验证结果见 [2026-10-19 首轮报告](../work/ProcessValidation_20261019/report.md)与[第二轮报告](../work/Validation_20261019_Second/report.md)。
+以下为历史取样，不是新角色或当前场景的固定参数；流程验证不得读取这些完成副本。独立验证结果见 2026-10-19 首轮报告（本地 `work/ProcessValidation_20261019/report.md`）与第二轮报告（本地 `work/Validation_20261019_Second/report.md`）。
 
 | 项 | 值 |
 |---|---|

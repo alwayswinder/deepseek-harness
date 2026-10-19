@@ -1,9 +1,0 @@
-reopen max matrix element delta=0.0 node=
-file=E:\AI\DSH\_mytools\Mode\dsh-3dsmax\work\Validation_20261019_Second\Stan_final.max objects=1003 unique=1003 bip=71 sv_bip=71 SV=126 TGT=0 driver=55
-rleg toBIPDRV start=0.0 middle=0.000190895 end=5.99147e-05 L1=35.3003 L2=45.3889
-lleg toBIPDRV start=0.0 middle=0.00170763 end=0.00163508 L1=35.3003 L2=45.3889
-rarm toBIPDRV start=0.0 middle=0.000177476 end=3.6677e-05 L1=19.7845 L2=20.6696
-larm toBIPDRV start=0.0 middle=0.0142246 end=0.00122267 L1=19.7845 L2=20.6696
-retained=324 constraints=305 wires=43 scripts=0 dependencies=#() explicit=#()
-boxMode=56 RootPositionError=0.0 RootRotationError=0.0
-MAX pos=0.0142241 (lowerarm_l) rot=0.0914145 (middle_01_l)

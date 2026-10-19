@@ -100,11 +100,11 @@ Source A and target B use separate Max instances. **Display state is saved in th
 
 ## Workflow validation status
 
-The [2026-10-19 validation report](../work/ProcessValidation_20261019/report.md) starts from original Seven and Stan, without reading completed copies. Biped fitting and the position/orientation limits for rest and ordinary poses passed; these limits alone do not establish that errors remain constant across poses. Strict overall acceptance failed: worst direct restoration 0.00474761 (required ≤1e-4), save/reopen position drift 0.00511727, and left-arm overextension endpoint-to-ring distance 0.687708 (source about 0.001953). Reloading, passing rest thresholds, or correct segment growth cannot substitute for resolving these failures.
+The 2026-10-19 validation report (local `work/ProcessValidation_20261019/report.md`) starts from original Seven and Stan, without reading completed copies. Biped fitting and the position/orientation limits for rest and ordinary poses passed; these limits alone do not establish that errors remain constant across poses. Strict overall acceptance failed: worst direct restoration 0.00474761 (required ≤1e-4), save/reopen position drift 0.00511727, and left-arm overextension endpoint-to-ring distance 0.687708 (source about 0.001953). Reloading, passing rest thresholds, or correct segment growth cannot substitute for resolving these failures.
 
 Forward scanning of 324 retained nodes found no SV_* node dependencies. The former residual list for Point001/002, Line001, and Circle013 misread reverse dependencies as source references and is invalid. Source layers remain hidden; check references and behavior before deletion. Coat inversion needs separate Skin and intersection investigation; bake → FBX → UE remains unverified.
 
-Historical evidence is in [WFTest](../work/WFTest_guide-findings.md), [WFTest2](../work/WFTest2_delivery-report.md), and the [case log](stan-biped-controller-migration-task.md). Historical results beyond 0.1 / 1° are failures, not current acceptance criteria. Workflow validation starts from original inputs.
+Historical evidence is in WFTest (local `work/WFTest_guide-findings.md`), WFTest2 (local `work/WFTest2_delivery-report.md`), and the [case log](stan-biped-controller-migration-task.md). Historical results beyond 0.1 / 1° are failures, not current acceptance criteria. Workflow validation starts from original inputs.
 
 ## Working rules
 

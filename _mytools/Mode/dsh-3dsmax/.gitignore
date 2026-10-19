@@ -7,3 +7,6 @@ upstream/
 
 __pycache__/
 *.pyc
+
+# 本地流程验证的场景、脚本、测量记录和报告。
+/work/

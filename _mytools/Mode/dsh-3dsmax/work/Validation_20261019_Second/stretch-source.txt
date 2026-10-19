@@ -1,8 +1,0 @@
-rleg original=36.5735 / 43.9204 extended=46.5734 / 53.9203 delta=9.99987 / 9.99987 endToRing=0.00903024
-RESET 1.90735e-06 Point156
-lleg original=36.5735 / 43.9204 extended=46.5734 / 53.9203 delta=9.99987 / 9.99987 endToRing=0.0149461
-RESET 9.53674e-07 ball_l
-rarm original=18.3378 / 23.2822 extended=28.3368 / 33.2813 delta=9.99902 / 9.99901 endToRing=0.00196579
-RESET 9.53674e-07 Point133
-larm original=18.3378 / 23.2823 extended=28.3368 / 33.2813 delta=9.99903 / 9.99903 endToRing=0.00303117
-RESET 0.000433076 lowerarm_l

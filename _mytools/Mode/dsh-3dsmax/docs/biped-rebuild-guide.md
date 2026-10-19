@@ -2,8 +2,8 @@
 
 > **适用场景**：目标角色 B 只有一套外来骨架（如 UE 的 55 根 Dummy：`Root / pelvis / spine_01…03 / neck_01 / head` + 每侧 `clavicle / upperarm / lowerarm / hand / 15 根手指 / lowerarm_twist_01 / thigh / calf / foot / ball`），需要为它配一具 **结构正确、比例贴合** 的 Biped，供动画师用手柄（圆环 / IK / 极向点）摆姿势，最终仍以 **B 自己的骨架** 导出到引擎。
 >
-> 数字为 Seven → Stan 在 3ds Max 2026 + MCP 桥下的案例取样；源 = 原始 Seven，目标 = 只有 UE 骨架的原始 Stan。流程验证不能以已完成副本作为输入。证据与未通过项见 [2026-10-19 首轮报告](../work/ProcessValidation_20261019/report.md)及[第二轮报告](../work/Validation_20261019_Second/report.md)；第二轮的保存重开一致性通过，严格整体验收仍未通过。
-> **2026-10-16 修订**：按 [quick-runbook.md](quick-runbook.md) 从头复现全流程后，修正了本指南的 6 处错误/缺失（`.setCurrent()` 不存在、`createNew` 参数不决定结构、驱动层 `Root` 例外应改 `relative=true`、辅助链"静止几何"要重拟、位置侧必须一起复制、显示态的父层与自身勾选位陷阱）。逐条证据与原因见 [../work/WFTest_guide-findings.md](../work/WFTest_guide-findings.md)。
+> 数字为 Seven → Stan 在 3ds Max 2026 + MCP 桥下的案例取样；源 = 原始 Seven，目标 = 只有 UE 骨架的原始 Stan。流程验证不能以已完成副本作为输入。证据与未通过项见 2026-10-19 首轮报告（本地 `work/ProcessValidation_20261019/report.md`）及第二轮报告（本地 `work/Validation_20261019_Second/report.md`）；第二轮的保存重开一致性通过，严格整体验收仍未通过。
+> **2026-10-16 修订**：按 [quick-runbook.md](quick-runbook.md) 从头复现全流程后，修正了本指南的 6 处错误/缺失（`.setCurrent()` 不存在、`createNew` 参数不决定结构、驱动层 `Root` 例外应改 `relative=true`、辅助链"静止几何"要重拟、位置侧必须一起复制、显示态的父层与自身勾选位陷阱）。逐条证据与原因见本地 `work/WFTest_guide-findings.md`。
 
 ---
 
@@ -406,4 +406,4 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 
 具体算法集中在[控制器迁移指南](controller-migration-guide.md) §2，那里定义环的跳过范围、动态伸缩与正向源引用检查。最终必须完成静止/弯姿势、四肢越界、全体节点直接复位及保存重开的一致性验收，不能以本页 Biped 拟合通过替代。
 
-[2026-10-19 验证](../work/ProcessValidation_20261019/report.md)的 Biped 拟合通过；直接复位、保存重开一致性和左臂越界末端跟随尚未通过，严格流程未闭环。
+2026-10-19 验证（本地 `work/ProcessValidation_20261019/report.md`）的 Biped 拟合通过；直接复位、保存重开一致性和左臂越界末端跟随尚未通过，严格流程未闭环。

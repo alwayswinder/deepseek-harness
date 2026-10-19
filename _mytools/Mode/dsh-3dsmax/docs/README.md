@@ -1,135 +1,122 @@
-# 3ds Max 角色流程文档（Biped 搭建 → 控制器迁移）
+# 3ds Max character workflow (Biped rebuild → controller migration)
 
-本目录面向这条流水线：**目标角色只有一套骨架（Dummy / Bone + 已蒙皮网格），要给它配一具结构正确的 Biped，并把参考 rig 的身体控制器层搬过来**——动画师用手柄摆姿势，最终仍以目标角色自己的骨架导出到引擎。
+English | [中文](README.zh.md)
 
-## 文档地图
+This directory covers a character that starts with **a skeleton (Dummy / Bone) and skinned meshes, needs a Biped with the correct structure, and receives body controllers from a reference rig**. Animators pose the character through handles; the target character's own skeleton is exported to the engine.
 
-| 文档 | 定位 | 什么时候看 |
+## Document map
+
+| Document | Purpose | When to read |
 |---|---|---|
-| [quick-runbook.md](quick-runbook.md) | **一次跑通手册**：每阶段做法/门槛/本次实测基准 + 坑索引 | **开工第一份**，照着走 |
-| **README.md**（本文） | 索引 + 全流程总览 + 端到端自检清单 + 窗口显示态/常见误判 | 开工前、每个阶段收尾 |
-| [biped-rebuild-guide.md](biped-rebuild-guide.md) | **规范**：建 Biped、装 figure、逐骨拟合、建测量基准驱动点、显示与图层 | 阶段 0–3 |
-| [controller-migration-guide.md](controller-migration-guide.md) | **规范**：控制环落地（链段长 / 极向点 / 逐骨旋转结构 / 引用重指）+ 差分验收 | 阶段 4–9 |
-| [stan-biped-controller-migration-task.md](stan-biped-controller-migration-task.md) | 个案流水账（Seven → Stan）：取证数字、失败尝试、决策记录 | 查"当时为什么这么定"；**规范以两份指南为准** |
-| [references/](references/) | 历史留档：`seven-stan.md`（路线 2 故障复盘）、`seven-quinn.md`（Seven→Quinn 原型） | 追溯用；**不是执行依据**
+| [quick-runbook.md](quick-runbook.md) | **Execution checklist**: actions, thresholds, and recovery for each stage | **Read first** and follow its sequence |
+| **README.md** (this page) | Index, workflow overview, end-to-end checklist, window visibility, and common misinterpretations | Before starting and after each stage |
+| [biped-rebuild-guide.md](biped-rebuild-guide.md) | **Procedure**: create Biped, load a figure, fit bones, create measurement drivers, and set display/layers | Stages 0–3 |
+| [controller-migration-guide.md](controller-migration-guide.md) | **Reference**: controller placement, chain lengths, poles, per-bone rotation structure, reference retargeting, and pose acceptance | Stages 4–9 |
+| [stan-biped-controller-migration-task.md](stan-biped-controller-migration-task.md) | Seven → Stan case log: measurements, failed attempts, and decisions | Historical context; **the two guides own current instructions** |
+| [references/](references/) | Historical records: `seven-stan.md` (route 2 failure analysis), `seven-quinn.md` (Seven → Quinn prototype) | Investigation only; **not execution instructions** |
 
-盘点与验收的做法已内联进下面的清单和 [quick-runbook.md](quick-runbook.md)。
-> 原技能 `3dsmax-rig-controller-transfer` 已于 2026-10-16 **移除**（它描述的 `S7_*` 驱动点架构与验证过的路线 1 冲突，会让"动控制器不驱动角色"重现）；其中两份**个案留档**已迁入 [references/](references/)，其余（`recipe.md`、`scripts/01/04/05/06`）留在 3ds Max 仓库不迁入。此后本目录（尤其 quick-runbook）是唯一权威。
+Inventory and acceptance procedures are included in the checklist below and [quick-runbook.md](quick-runbook.md).
+> The former `3dsmax-rig-controller-transfer` skill was **removed** on 2026-10-16: its `S7_*` driver architecture conflicts with the tested route 1 and can reproduce controllers failing to drive the character. Its two **case records** moved to [references/](references/); other resources (`recipe.md`, `scripts/01/04/05/06`) remain in the 3ds Max repository. This directory, especially quick-runbook, owns the current procedure.
 
-## 全流程总览
+## Workflow overview
 
-| 阶段 | 做什么 | 对应指南步骤 | 门槛 | 里程碑（本案例命名） |
+| Stage | Action | Guide steps | Threshold | Milestone (case naming) |
 |---|---|---|---|---|
-| 0 前置 | 确认输入合格：55 骨 / 蒙皮名单 / 绑定姿势 / 无历史约束 / 干净快照 / **落盘 `gRest`** | 重建 步骤 1 | 见该节表格 | `..._preBiped_*.max` |
-| 1 建 Biped | 结构照源 rig（`3×5×3`、71 对象）+ 装源 figure | 重建 步骤 2–3 | 结构逐项一致、`#scale` 逐位一致 | `..._biped_*.max` |
-| 2 拟合 | 长度 → 朝向 → 位置（3 轮不动点） | 重建 步骤 4 | 位置 ≤0.05（0 根 >1.0）、朝向 ≤0.1° | `..._fitted_*.max` |
-| 3 测量基准 | `BIPDRV_*` ×55（`Root` 例外用 `relative=true`） | 重建 步骤 5 | 刚性：误差不随姿势增长；**建完 UE 骨位移 = 0** | `..._driver_*.max` |
-| 4 合并源控制环 | B 侧前缀 **126** + `merge_from_file` + 源加 `SV_` | 控制器 步骤 1–2 | 名字隔离：我们 71 / 源 71、`SV_` 合计 126 | `..._merged_*.max` |
-| 5 链静止几何（含极向点弯位复核） | 辅助 IK 链的静止几何落到 B 的骨关节（只写 `p1`、"方向×骨长"；环落在链关节上）；极向点在**弯姿势**复核 | 控制器 步骤 3 + 4 | 中关节 <0.02、段长逐位一致；弯位与静止同量级 | `..._chains_*.max` |
-| 6 复制结构 + 引用重指 | 逐骨复制**位置 + 旋转**两棵树；改指约束目标 / `pickUpNode`；twist 按源结构 | 控制器 步骤 5 | 指向 `SV_` 的约束目标 = 0 | `..._ctrl_copied_*.max` |
-| 7 静止偏移对齐 | 手柄迭代 + **最后**做脊柱 `percent` 扫描 | 控制器 步骤 5.5 | 位置 ≤0.1、朝向 ≤1° | `..._aligned_*.max` |
-| 8 差分验收 | 静止 / 抬脚+25Z / 抬手+25Z / 根+10Z，**世界位置**校验复位 | 控制器 步骤 7 | 误差不随姿势增长、复位 ≤1e-4 | `..._accepted_*.max` |
-| 9 行为验收 | 动环 1:1、动 Biped 手足跟随、复位 | 控制器 §3 | 5.000 / 10.000 / 复位 0 | 同上 |
-| 10 显示与交付 | `boxMode`、图层、另存 → 重开复测 | 重建 步骤 6 + 控制器 步骤 8 | 重开后仍达标 | 交付文件 |
-| 11 导出闭合 | 姿势 → bake → FBX → UE | **尚未验证，暂无规范** | — | — |
+| 0 Prerequisites | Check 55 bones, Skin lists, bind pose, absence of old constraints, clean snapshot, and **external gRest storage** | Rebuild step 1 | See that step's table | `..._preBiped_*.max` |
+| 1 Create Biped | Match source structure (`3×5×3`, 71 objects) and load source figure | Rebuild steps 2–3 | Matching structure and identical #scale samples | `..._biped_*.max` |
+| 2 Fit | Length → orientation → position (3 fixed-point rounds) | Rebuild step 4 | Position ≤0.05 (none >1.0), orientation ≤0.1° | `..._fitted_*.max` |
+| 3 Measurement reference | 55 BIPDRV_* nodes (Root uses relative=true) | Rebuild step 5 | Follow errors do not grow with poses; **UE bone displacement after creation = 0** | `..._driver_*.max` |
+| 4 Merge source controls | Prefix **126** target nodes, merge_from_file, then apply SV_ to source duplicates | Controller steps 1–2 | Target 71 / source 71 Biped nodes, 126 SV_ nodes | `..._merged_*.max` |
+| 5 Copy and retarget | Copy both trees for 54 bones (Root independent); retarget targets, pickUpNode, ExposeTm, control root, and bindings | Controller steps 5 + 6 | Retained nodes do not reference source skeleton | `..._ctrl_copied_*.max` |
+| 6 Place rings and fit rest chains | Place all rings using rest/BIPDRV coordinates before fitting chain lengths and middle joints | Controller step 3 | Middle joint <0.02, segment lengths match B | `..._chains_*.max` |
+| 7 Align rest offsets | Align handles including knee/elbow rings → normalize lengths again → scan spine percent last | Controller step 5.5 | Position ≤0.1, orientation ≤1° | `..._aligned_*.max` |
+| 8 Pose acceptance | Rest, each foot +25Z, each hand +25Z, root +10Z; check bent-pose poles and restoration of every affected node | Controller steps 4 + 7 | Errors do not grow with poses; restore ≤1e-4 | `..._accepted_*.max` |
+| 9 Behavior acceptance | Ring response 1:1, Biped drives extremities, four-limb overextension, and restoration | Controller step 6 + §3 | Compare source segment growth and endpoint following | Same as above |
+| 10 Display and delivery | boxMode, layers, save and reopen | Rebuild step 6 + Controller step 8 | Same per-node position/rotation before and after reopening; thresholds still met | Delivery file |
+| 11 Export verification | Pose → bake → FBX → UE | **Not verified; no procedure yet** | — | — |
 
-## 端到端自检清单
+## End-to-end checklist
 
-### 阶段 0 · 前置（只有骨架的新角色）
-- [ ] 骨架是 **55 个 `Dummy`**，UE 规范命名、名字唯一
-      ⚠ 这条**只能在建 Biped 之前**用：Biped 的 13 个 `*Nub` 的 `classof` **也是 `Dummy`**，建成后数会变成 68（实测）。已建 Biped 的场景要按名字表筛。
-- [ ] 角色网格的 `Skin` 骨骼名单 = 这 55 根的**并集**（2026-10-16 复现实测 `Body` 54 / `Face` 3 / `Eye` 1 / `Hair` 1；`Root` 不参与蒙皮 ⇒ 并集 **54**，不是 55）
-- [ ] 骨架处于**绑定姿势**：静止时网格无变形
-- [ ] 「骨架自由」的可执行判据：55 根骨的 pos/rotation 控制器**都是** `Position_XYZ`/`Euler_XYZ`（实测 0/0）。`refs.dependents <骨>` 的依赖类只允许 `{Skin, DummyClass, Editable_mesh}`（`DummyClass`=子骨、`Editable_mesh`=蒙皮网格）——旧文「只看到 `Skin`」**不可直接判读**
-- [ ] 已另存"**建 Biped 之前**"的干净快照（后面所有真值以它为准）
-- [ ] **55 根骨的原始世界变换已落盘**：会话全局 `gRest` 会在重开场景/换实例后丢失，而 Max 安全模式禁止 MAXScript 写文件（`createFile` 被拦）⇒ 必须由外部落盘（本次：`work/gRest_Stan.txt`）
+### Stage 0 · Prerequisites (new character with skeleton only)
 
-### 阶段 1–3 · Biped
-- [ ] `bip001*` = **71** 个对象；结构读回与源一致（脊柱 3 / 颈 1 / 腿 3 / 手指 5×3 / 趾 1×1 / `forearmTwist` 2）
-- [ ] 装载源 figure 后 `#scale` 与源 rig 同名骨**逐位一致**（否则"长度对、粗细如发丝"）
-- [ ] 位置残差 ≤0.05（0 根 >1.0）、朝向残差 ≤0.1°
-      ⚠ **读数协议**：判定前必须 `figureMode = false` + `completeRedraw()`，在**同一次调用内**读值并连读两次（调用内读 = 假阳性 `0.0398`；新调用不刷新 = 假阴性 `6.96`；强制求值后真值 `0.0399 / 0.056°`）。并用"Biped 骨指向 vs UE 骨指向"的**纯几何**指标交叉验证（实测 ≤`0.028°`）。
-- [ ] 四条肢长 = B 的骨长（本案例 `19.7845 / 20.6696 / 35.3003 / 45.3889`；旧文写 `45.3890`，末位差属取整）
-- [ ] `BIPDRV_*` ×55 已建；`Root` 与 `lowerarm_twist_01_l/r` 两个例外已处理
-- [ ] 动脚 / 手 / 根之后**再量一次**：误差不增长（只看静止会漏掉刚性缺陷）
+- [ ] Skeleton contains **55 Dummy nodes**, with unique UE bone names
+      ⚠ Count these **before creating Biped**: its 13 *Nub objects are also Dummy, bringing the case count to 68. After creation, identify UE bones by the saved name list.
+- [ ] Each mesh's Skin names belong to these 55 bones, and their **union** matches the binding list (2026-10-16 case: Body 54 / Face 3 / Eye 1 / Hair 1; Root is not skinned, so the union is **54**, not 55)
+- [ ] Skeleton is in **bind pose** with no rest deformation of the meshes
+- [ ] All 55 bones have free Position_XYZ / Euler_XYZ position/rotation controllers (0 constraints). Reverse dependencies can include child bones and skinned meshes; inspect ownership and controllers rather than treating a fixed dependency-class whitelist as sufficient evidence
+- [ ] Save a clean snapshot **before creating Biped**; it supplies the original rest values
+- [ ] **Persist original world transforms of all 55 bones externally**: session-global gRest is not durable and must be restored from disk after reopening. Max Safe Scene Script Execution blocked createFile in this run, so write externally (case path: work/gRest_Stan.txt)
 
-### 阶段 4–9 · 控制器迁移
-- [ ] 合并后名字隔离：我们的 `bip001*`=71、源的 `SV_bip001*`=71、`SV_` 合计 126（**B 侧前缀必须含 Biped**，实测 126）
-- [ ] 链的**静止几何**落在 B 的骨关节：中关节 <0.02、段长与 B 骨长逐位一致（腿 `35.3003/45.3889`、臂 `19.7845/20.6696`）
-- [ ] 环落在**链关节**上（源语义）；只有腕/踝环额外落到 B 的骨关节（膝/肘环落到骨上会让 `calf` 朝向翻 179°）
-- [ ] 55 根 UE 骨的**位置 + 旋转两棵控制器树**都从 `SV_*` 复制（只复制旋转 ⇒ 动控制器不驱动角色）
-- [ ] `lowerarm_twist_01_l/r` 按**源结构**复制（位置→臂中点环、旋转→`Euler`+`LookAt → 腕环`）；照 §7.3 改成裸 `Orientation → BIPDRV_*` 会手/前臂扭转
-- [ ] **静止偏移对齐**已做，且脊柱 `Path_Constraint.percent` 是**最后**一遍（`Point001`≈49.97、`Point002`≈99.9968）
-- [ ] `LookAt.pickUpNode` 与 `LookAt` 目标里**没有** `SV_*` 引用
-- [ ] `BIPRoot`（控制层根）→ 本角色的 UE 根 `Root`（位置 + 方向）
-- [ ] 参数线 / 表达式里没有**写死的源骨长或距离阈值**（伸缩、midpoint follow）；有就先在源 rig 抄下来、按目标骨长重写
-- [ ] 越界伸展行为与源一致（末端环拉到超过 `L1+L2`）：是"停在最大长度"还是"两段平分超出量"，二者观感完全不同　⚠ **2026-10-16 复现未做，下次必测**
-- [ ] **保留层里没有任何指向 `SV_*` 的引用**：约束目标 / `pickUpNode` / ExposeTm 这三类**之外**，还要查**参数线（wire / expression）**——对每个保留层对象做 `refs.dependents <对象>` 反向筛 `SV_`。
-      ⚠ 2026-10-16 复现只清到"约束级"，**参数线级仍有残留**：`Point001→SV_spine_02`、`Point002→SV_spine_01`、`Line001→SV_spine_01/02`、`Circle013→SV_calf_r / SV_thigh_r`（膝环上读源骨长的伸缩线）
-- [ ] **差分验收**：静止 / 抬脚 +25Z / 抬手 +25Z / 根骨 +10Z，最大位置差 ≤0.1、最大朝向差 ≤1°
-- [ ] 三条驱动测试：动环 +5 → 目标骨 5.000；动根 +5 → 手足 5.000；动 Biped 骨 → 环/骨跟随；三者复位 ≤1e-4
-- [ ] 每完成一大步都**另存里程碑文件**（Hold 会连合并一起回退）
+### Stages 1–3 · Biped
 
-### 阶段 10 · 显示与交付
-- [ ] `boxMode` 与源一致（本案例 56/71）
-- [ ] 只显示：B 的网格 + 源的控制环；源骨架 / 源网格 / 面部表情层隐藏（注意隐藏父层会级联）
-- [ ] 另存 → **重新打开** → 复测差分（重开后句柄全变，一切按名字重新解析）
+- [ ] bip001* contains **71 objects**; read back matching source structure (spine 3 / neck 1 / leg 3 / fingers 5×3 / toes 1×1 / forearmTwist 2)
+- [ ] After loading the source figure, #scale samples exactly match source bones of the same names (otherwise lengths can match while thickness collapses)
+- [ ] Position residual ≤0.05 (none >1.0), orientation residual ≤0.1°
+      ⚠ **Read protocol**: before acceptance, set figureMode=false, call completeRedraw(), and read twice **within the same call**. Historical readings: in-call premature success 0.0398, a new call without evaluation 6.96, evaluated result 0.0399 / 0.056°. Cross-check bone directions geometrically from Biped and UE joint positions (case ≤0.028°).
+- [ ] Four limb lengths match B's lengths (case 19.7845 / 20.6696 / 35.3003 / 45.3889; the old 45.3890 value differs only by rounding)
+- [ ] Create 55 BIPDRV_* nodes and handle the Root and lowerarm_twist_01_l/r exceptions
+- [ ] Move feet, hands, and root, then **measure again**: errors must not grow; rest alone misses follow defects
 
-## 窗口与显示态（每轮开工前先切好）
+### Stages 4–9 · Controller migration
 
-源窗口 A 与目标窗口 B 各占一个 Max 实例；**显示态存在文件里**（重开文件会回到保存时的状态）。
+- [ ] Names remain isolated after merging: target bip001*=71, source SV_bip001*=71, SV_ total 126 (**the target prefix must include Biped**, 126 nodes in this case)
+- [ ] Chain **rest geometry** matches B's joints: middle joint <0.02 and segment lengths match B (legs 35.3003/45.3889, arms 19.7845/20.6696)
+- [ ] Retarget references, place all rings, then solve chains. Start and wrist/ankle rings use rest/BIPDRV coordinates; knee/elbow rings retain their near-chain-joint semantics and allow small alignment after solving. Do not snap them to bones to hide a chain-plane error
+- [ ] Copy **both position and rotation trees** from SV_* for 54 UE bones, including both twists. Root remains independently constrained to BIPDRV_Root and must not copy SV_Root (copying rotation alone leaves rings unable to drive the character)
+- [ ] Preserve the **source structure** of lowerarm_twist_01_l/r (position → arm midpoint ring; rotation → Euler + LookAt → wrist ring). Replacing it with bare Orientation → BIPDRV_* causes hand/forearm twisting
+- [ ] Complete **rest offset alignment**, normalize chain lengths again using BIPDRV rest lengths, then scan spine Path_Constraint.percent last in the current scene; do not reuse case values
+- [ ] LookAt.pickUpNode and LookAt targets contain **no SV_* references**
+- [ ] BIPRoot (control-layer root) follows the target UE Root in position and orientation
+- [ ] Wire/expression parameters contain no **fixed source lengths or distance thresholds** for stretch or midpoint follow. Record them from the source and adapt them to target lengths
+- [ ] Overextension behavior matches the source when the end ring moves beyond L1+L2: stopping at full length and splitting excess between segments behave differently. Compare actual segment growth and endpoint-to-ring error
+- [ ] **Retained nodes do not reference the source skeleton**: check constraints, pickUpNode, ExposeTm, and wire/script bindings as in controller step 6. Scan forward refs.dependsOn from UE bones, BIPDRV, target Biped, rings, IK, and auxiliary nodes; filter isValidNode before reading names. Source bones in reverse refs.dependents are not evidence of a leak
+- [ ] **Pose acceptance**: rest, each foot +25Z, each hand +25Z, and root +10Z; maximum position difference ≤0.1, orientation difference ≤1°
+- [ ] Three drive tests: ring +5 → UE bone 5.000; root +5 → extremities 5.000; Biped motion → rings/bones follow. Direct restoration of every affected node ≤1e-4; reloading a milestone is recovery, not a successful direct restore
+- [ ] **Save a separate milestone file after every major stage**; Hold/Fetch can undo the merge too
 
-| 用途 | 图层操作 |
+### Stage 10 · Display and delivery
+
+- [ ] boxMode matches the source (56/71 in this case)
+- [ ] Show target meshes and source control rings; hide source skeleton, source meshes, and facial layers, accounting for parent-layer visibility
+- [ ] Save, **reopen**, and measure again using freshly resolved names. Compare the same nodes' positions and rotations before and after saving; passing the rest thresholds after reopening is insufficient
+
+## Windows and visibility (set before each run)
+
+Source A and target B use separate Max instances. **Display state is saved in the file** and returns to the saved state when reopened.
+
+| Purpose | Layer settings |
 |---|---|
-| 源 A（只读 + 取源真值） | 网格层可见即可；要动/看控制器时：`不导出` **可见** + `控制器` **可见**，并先把 `表情控制器`、`bip` 的**自身勾选位**设成 hidden（同父层，不锁会一次放出约 125 个面部控制器 / 57 根 Biped 骨） |
-| 目标 B（施工） | `PrinceofStan`（网格）+ `控制器` + `BIP不导出`（Biped）可见；`FBX`/`Seven`/面部层/驱动点层隐藏 |
-| 两窗口统一视口 | `[Front] [Standard] [Edged Faces]`（`set_viewport view="front" shading="smooth" edges=true`） |
+| Source A (read-only evidence) | Show meshes as needed. To inspect controls, show 不导出 and 控制器; first set the own hidden flags of sibling 表情控制器 and bip, otherwise unhiding their parent can reveal about 125 facial controls / 57 Biped bones |
+| Target B (construction) | Show PrinceofStan meshes, 控制器, and BIP不导出 Biped; hide FBX, Seven, facial, and driver layers |
+| Both viewports | [Front] [Standard] [Edged Faces] (set_viewport view="front" shading="smooth" edges=true) |
 
-> 坑：`控制器` 是 `不导出` 的**子层**，父层隐藏会连带隐藏——"切到显示控制器"没生效，九成是父层没放通。
+> 控制器 is a **child layer** of 不导出. Its hidden parent also hides the controls; check the parent when showing the controls appears ineffective.
 
-## 常见误判（先看这里，别急着报 bug）
+## Common misinterpretations
 
-1. **动控制器时 Biped 不动**——源 rig 的设计（源窗口实测同为 0.0）。环是"偏移/微调 + 可视化"层，摆姿势靠 Biped；要"环反驱 Biped"是源没有的**新增能力**。
-2. **复位"看起来"成功但姿势没回去**——`biped.getTransform <骨> #pos` 是**假阳性**（读回 1e-5、世界位置偏 25.0），必须按世界位置校验。
-3. **控制器看不见/选不中**——先查父层，再查图层自身勾选位（`manage_layers list` 报自身位，`Layer.isHidden` 报合并后状态）。
+1. **Moving a ring does not move Biped**: this is source behavior (source displacement measured 0.0). Rings provide offsets, adjustments, and visualization; pose through Biped. Making rings drive Biped would add a capability absent from the source.
+2. **Restoration looks successful but the pose remains bent**: one endpoint or biped.getTransform reading does not establish full-chain restoration. Force evaluation and compare all affected world transforms. Historical scenes showed both agreement and disagreement between API and world positions; the API is not universally unreliable.
+3. **Controls are invisible or unselectable**: check parent visibility, then each layer's own flag. manage_layers list reports own flags; Layer.isHidden reports effective visibility.
 
-## 本次复现实测基准（2026-10-16，`Stan01_WFTest_*`）
+## Workflow validation status
 
-| 阶段 | 实测 |
-|---|---|
-| 拟合 | 位置 **0.0398**（0 根 >1.0）、朝向 **0.0396°** |
-| 驱动层 | 静止 8.5e-06；刚性不随姿势增长；建完 UE 骨位移 **0.0** |
-| 合并 | 1003 对象；`bip001`=71 / `SV_bip001`=71 / `SV_`=126 |
-| 静止对齐 | **0.052 / 1.013°**（`calf_r` 1.013° 为固有残差） |
-| 差分验收 | 静止 0.052；右脚+25Z 0.127；右手+25Z 0.052；左手+25Z 0.070；根+10Z 0.052（**误差恒定**） |
-| 行为 | 动 `Circle016`+5Z ⇒ `hand_r`=**5.000**（Biped 0.000）；动根+10Z ⇒ pelvis/head/foot=**10.000**；twist 跟随 3.96 单位 / 28.7°（源 5.45 / 20.07） |
-| 显示 | `boxMode` **56/71**；重开后复测数值一致 |
-| **未闭环** | 参数线级 `SV_` 引用仍 5 条（见下"已知残留"）；越界伸展未测；`calf_r` 两项边缘超标 |
+The [2026-10-19 validation report](../work/ProcessValidation_20261019/report.md) starts from original Seven and Stan, without reading completed copies. Biped fitting and the position/orientation limits for rest and ordinary poses passed; these limits alone do not establish that errors remain constant across poses. Strict overall acceptance failed: worst direct restoration 0.00474761 (required ≤1e-4), save/reopen position drift 0.00511727, and left-arm overextension endpoint-to-ring distance 0.687708 (source about 0.001953). Reloading, passing rest thresholds, or correct segment growth cannot substitute for resolving these failures.
 
-> 逐条证据与"为什么"见 [work/WFTest_guide-findings.md](../work/WFTest_guide-findings.md)；**一次跑通的顺序、每步命令与门槛**见 [quick-runbook.md](quick-runbook.md)。
+Forward scanning of 324 retained nodes found no SV_* node dependencies. The former residual list for Point001/002, Line001, and Circle013 misread reverse dependencies as source references and is invalid. Source layers remain hidden; check references and behavior before deletion. Coat inversion needs separate Skin and intersection investigation; bake → FBX → UE remains unverified.
 
-## 已知残留（本案例，尚未闭环）
+Historical evidence is in [WFTest](../work/WFTest_guide-findings.md), [WFTest2](../work/WFTest2_delivery-report.md), and the [case log](stan-biped-controller-migration-task.md). Historical results beyond 0.1 / 1° are failures, not current acceptance criteria. Workflow validation starts from original inputs.
 
-| 项 | 状态 |
-|---|---|
-| 抬脚 10–35 时大衣在右髋外侧出现深色翻面 | 骨已数值对齐 ⇒ 网格权重 / 腿穿出衣料；需决策（见任务说明 §10.16） |
-| `Root`（UE 根）静止朝向残差 0.76° | **已定位并修掉**：来自 `BIPDRV_Root` 挂 `bip001` 父子；改用 `relative=true` 约束后残差 = 0（2026-10-16 复现） |
-| 导出闭合（bake → FBX → UE） | **未验证**，规范待补 |
-| 参数线级 `SV_` 引用（`Point001/002`、`Line001`、`Circle013`） | **未闭环**：约束级已清零，参数线级实测仍有 5 条；**删源层前必须改指**（做法见控制器指南 §2 步骤 6 末条） |
-| 越界伸展行为（超过 `L1+L2`） | **未验证**（下次必测） |
-| 源 rig 遗留层处置（删除 / 保留为隐藏参考） | 需决策；**参数线级引用清零前不要删** |
+## Working rules
 
-## 工作方式约定（避免"改了但不知道改了什么"）
+1. **Separate the windows**: read source evidence and structure in A; construct in B. **Do not modify A's file**.
+2. **Save a separate milestone after each major stage**. Hold/Fetch can undo merging and cannot replace intermediate files.
+3. **Measurement**: call completeRedraw() after each write; before acceptance, leave Figure Mode, force evaluation, and read twice in the same call. Biped and constraints evaluate lazily, so the first reading can be stale.
+4. **Change one thing and measure it**: batch scripts must report the failed node/operation and stop dependent work. Do not suppress errors with empty catches; recover a milestone and revalidate.
+5. **Movement experiments must restore state**: try moving/measuring and handle errors; failure paths must also attempt restoration and check residuals. If state cannot be confirmed, reload a milestone and resolve nodes again.
+6. **Measure pose differences as well as rest errors**: check whether each rest error grows after posing; many failures appear only during movement.
+7. **Interpret dependency direction and ownership**: use refs.dependsOn from retained nodes to find source dependencies. refs.dependents on a source node can assist reverse lookup, but the source rig's own dependencies need not be empty. See controller step 6.
 
-1. **两个窗口分工**：源 rig（A）只读——只在里面取"源真值 / 源结构"；目标（B）施工。**不修改 A 的文件**。
-2. **每完成一大步另存一个里程碑文件**，不要依赖 `Hold`：`fetch` 会把合并一起回退，中间态只能靠文件。
-3. **测量纪律**：改动后必须 `redrawViews()` **并二次读值**（Max 对 Biped 与约束是惰性求值，第一次常拿到旧值）。
-4. **一次只改一件事，改完立刻量**：批量脚本要逐项 `try/catch` + 结尾汇总，否则一次运行时报错会把场景停在半成品状态。
-5. **移动类试验必须能复位**：`try ( 移动… 测量… ) catch ( … )`，并且**在 catch 里也要复位**；否则残留偏移会被误判成"API 语义是反的"（本案例踩过）。
-6. **绝对量 vs 差分量的纪律**：任何"静止时的误差"都要再问一句"摆个姿势它会长吗？"——本目录里绝大多数坑都藏在后者。
-7. **引用源 rig 的对象是隐患**：`LookAt.pickUpNode`、`ExposeTm.localReferenceNode`、约束目标里一旦出现 `SV_*`，静止看着正常、运动就错；用 `refs.dependents <SV_对象>` 反查清理，并把这一项写进交付前自检。**参数线（wire/expression）同样会引用源对象，而且是约束级扫描查不出来的**——2026-10-16 复现就漏了这一层（详见控制器指南 §2 步骤 6 末条）。
+## Two recurring lessons
 
-## 两条反复出现的经验
-
-1. **静止对准是必要不充分条件。** 下面这些错误**全部**在静止时为 0：静态补偿偏移、多目标等权混合、指向源骨架的 `LookAt` 上方向节点。只有**差分门槛**（摆姿势后再量）看得见它们。
-2. **不要把残差吸收进静态偏移。** 为了让静止"好看"而加的固定偏移，会随关节一起旋转，运动时以同量级回来（本案例：静止 0.0045 → 抬脚 +10 变 2.76）。
+1. **Rest alignment is necessary but insufficient.** Static compensation, equal-weight target blending, and source LookAt upnodes can all be hidden at rest. Only pose measurements expose them.
+2. **Do not absorb residuals into static offsets.** A fixed offset added to improve rest alignment rotates with its joint and can reintroduce errors during movement (case: rest 0.0045 → foot +10 error 2.76).

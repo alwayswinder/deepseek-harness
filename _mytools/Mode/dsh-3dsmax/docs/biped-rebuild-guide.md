@@ -2,8 +2,8 @@
 
 > **适用场景**：目标角色 B 只有一套外来骨架（如 UE 的 55 根 Dummy：`Root / pelvis / spine_01…03 / neck_01 / head` + 每侧 `clavicle / upperarm / lowerarm / hand / 15 根手指 / lowerarm_twist_01 / thigh / calf / foot / ball`），需要为它配一具 **结构正确、比例贴合** 的 Biped，供动画师用手柄（圆环 / IK / 极向点）摆姿势，最终仍以 **B 自己的骨架** 导出到引擎。
 >
-> 数字为 Seven → Stan 在 3ds Max 2026 + MCP 桥下的案例取样；源 = 原始 Seven，目标 = 只有 UE 骨架的原始 Stan。流程验证不能以已完成副本作为输入。证据与未通过项见 2026-10-19 首轮报告（本地 `work/ProcessValidation_20261019/report.md`）及第二轮报告（本地 `work/Validation_20261019_Second/report.md`）；第二轮的保存重开一致性通过，严格整体验收仍未通过。
-> **2026-10-16 修订**：按 [quick-runbook.md](quick-runbook.md) 从头复现全流程后，修正了本指南的 6 处错误/缺失（`.setCurrent()` 不存在、`createNew` 参数不决定结构、驱动层 `Root` 例外应改 `relative=true`、辅助链"静止几何"要重拟、位置侧必须一起复制、显示态的父层与自身勾选位陷阱）。逐条证据与原因见本地 `work/WFTest_guide-findings.md`。
+> 开工先填写[新角色适配记录](character-adaptation-guide.md)，确认当前 55 身体骨配置、系统单位、骨轴分支与 Skin 状态。无骨架先用[静态身体骨架指南](static-body-skeleton-guide.zh.md)准备输入；无 Skin 只验骨架，不能推断变形质量。本文位置阈值以 cm 表达，其他系统单位先换算。
+> 文中 Seven → Stan 数值是标注过的实测示例；Chiya 验证说明同拓扑仍可能需要髋宽和整链骨轴适配。[证据与未覆盖范围](character-adaptation-guide.md#6-已有证据与边界)分别记录，不代表任一分支已完成严格全流程验收。
 
 ---
 
@@ -19,21 +19,22 @@
             | 跟随（位置+方向约束，不挂父子）          | UE 骨位置 <- 环的位置
             v                                        | UE 骨旋转 <- 逐骨复制源结构
    BIPDRV_* x55（放在 B 骨原始静止处，跟随对应骨）    v
-            +----> 只作“Biped 侧”的测量基准 ---->  B 的外来骨架（55 骨；Skin 并集 54，Root 不蒙皮）
+            +----> 只作“Biped 侧”的测量基准 ---->  B 的外来骨架（当前配置 55 骨；Skin 按角色盘点）
 ```
 
 - **驱动点（`BIPDRV_*`）= 测量基准**：本文步骤 5 建。作用两层——① `BIPDRV_Root` 真正驱动 UE 根 `Root`；② 其余 54 个跟随对应 Biped 骨，用来随时量“UE 骨 vs Biped 骨”，也就是**差分验收的基准**。
 - **真正的驱动路径是控制环**：由[控制器迁移指南](controller-migration-guide.md) §2 步骤 5 建立（UE 骨位置 = 环的位置；UE 骨旋转 = 逐骨复制参考 rig 的 `rotation_list`）。
 - **不要**用“每根骨一个驱动点直接驱动”的旧做法：那样动控制器不再驱动角色，而且旋转会退化成“两个目标等权混合”，一摆姿势就差 15–30°（见 §4 陷阱表末两行与控制器指南 §1.3）。
 
-### 0.1 三份文档的分工
+### 0.1 文档分工
 
 | 文档 | 负责什么 | 起点 → 终点 |
 |---|---|---|
 | **本文** | 建 Biped、拟合比例、建测量基准驱动点、显示与图层 | 只有骨架的干净快照 → 骨架自由、Biped 拟合达标 |
 | [controller-migration-guide.md](controller-migration-guide.md) | 控制环落地：链段长、极向点、逐骨旋转结构、引用重指、差分验收 | 上一步成果 + 参考 rig → 动 Biped / 动控制器都能精确驱动角色 |
 | [stan-biped-controller-migration-task.md](stan-biped-controller-migration-task.md) | 本案例流水账（取证数字、失败尝试、决策） | 个案记录，**规范以两份指南为准** |
-| [README.md](README.md) | 全流程索引 + 端到端自检清单 | 开工前先看这份 |
+| [新角色适配记录](character-adaptation-guide.md) | 输入分类、参数归属、测试尺度与通过范围 | 换角色时先填写，未确定轴系不进入迁移 |
+| [README.md](README.md) | 全流程索引 + 输入分支与阶段总览 | 开工前先看这份 |
 
 ---
 
@@ -66,10 +67,15 @@ manage_scene action="hold"          # 或存里程碑文件
 - 记下 55 根骨的世界变换（这是后面驱动点与验收的唯一真值）：
 
 ```maxscript
--- 在干净快照里跑，把 55 根骨的真实静止存进全局，供后续步骤使用
-global gRest = #()
-for o in objects where ((classof o) == Dummy) do append gRest #(o.name, o.transform)
-gRest.count      -- 期望 55
+-- bodyNames 从已核对的外部身体骨清单载入，不从全部 Dummy 推导
+if bodyNames == undefined do throw "Load the body-name manifest first"
+if bodyNames.count != 55 do throw "This workflow requires the body55 profile"
+global gRest = for nm in bodyNames collect (
+  local n = getNodeByName nm
+  if n == undefined do throw ("Missing body node: " + nm)
+  #(nm, n.transform)
+)
+gRest.count      -- 当前配置期望 55；立即由外部工具落盘
 ```
 
 - 同时记录关键坐标（用于随时自检），例如：
@@ -79,18 +85,20 @@ gRest.count      -- 期望 55
 
 **开工前先确认输入合格（只有骨架的新角色）**——不合格就先修，不要带着问题往下做：
 
-| 检查项 | 合格判据（本案例） | 怎么查 |
+| 检查项 | 合格判据（当前配置） | 怎么查 |
 |---|---|---|
-| 骨架节点 | 55 个 `Dummy`，命名是 UE 规范（`Root / pelvis / spine_01…03 / neck_01 / head`、每侧 `clavicle/upperarm/lowerarm/hand/lowerarm_twist_01 + 15 根手指 + thigh/calf/foot/ball`） | `for o in objects where (classOf o == Dummy) do …`（期望 55） |
-| 蒙皮绑定名单 | 各网格 Skin 名单都属于这 55 骨；全体名单并集为 54，Root 不蒙皮，不能要求每个网格含全部骨 | `skinOps.GetNumberBones` / `skinOps.GetBoneName` |
+| 骨架节点 | 55 个 `Dummy`，命名是 UE 规范（`Root / pelvis / spine_01…03 / neck_01 / head`、每侧 `clavicle/upperarm/lowerarm/hand/lowerarm_twist_01 + 15 根手指 + thigh/calf/foot/ball`） | 按精确骨名/父节点表逐项核对；总数只是辅助检查 |
+| 蒙皮绑定名单 | 各网格 Skin 名单都属于这 55 骨；全体名单并集符合本角色绑定设计，不能要求每个网格含全部骨；无 Skin 单列不适用 | `skinOps.GetNumberBones` / `skinOps.GetBoneName` |
 | 绑定姿势 | 骨架处于**绑定姿势**：静止时网格**无变形**（对比"没有任何控制器时"的外观）。若骨架被摆过，先复位再往下做 | 目视 + 关键坐标核对 |
 | 骨架"干净" | 55 骨位置/旋转控制器为自由 `Position_XYZ` / `Euler_XYZ`；反向依赖还可能含子骨与蒙皮网格，不能只允许 Skin | 检查控制器与引用归属 |
-| 无重复名 | 55 个名字唯一，且不与参考 rig 的角色重名（重名会让合并后的约束指错对象） | 名字全表去重 |
+| 无重复名 | 目标场景内名字唯一；与源同名是允许的，合并前按控制器指南隔离所有碰撞节点 | 名字全表去重 |
 | 干净快照 | 该状态已**另存**为一个"建 Biped 之前"的文件（本文全部数据以它为准） | 见 §6 里程碑命名 |
 
-> 蒙皮绑定名单不对（名字/数量不符）时，后面每一步都会"骨头对、网格不对"，必须先解决。
+> 有 Skin 时，绑定名单不符须先解决。无 Skin 时可继续骨架测试，并明确省略变形验收；不能把缺少蒙皮写成绑定检查通过。
 
 ### 步骤 2 —— 建 Biped + 结构照参考 rig
+
+下例是当前 Seven 兼容配置，不是任意参考 rig 的默认结构。先记录源根名、全部结构属性及节点清单；其他结构需要对应表与控制器适配，不能只修改创建参数后继续套用。示例中的 `bip001` 按本轮根名替换，并在创建前排除同名旧 Biped。
 
 ```maxscript
 -- ⚠ Max 2026 的 LayerProperties **没有 .setCurrent()**（旧文写法会报 Unknown property）：
@@ -121,7 +129,7 @@ completeRedraw()
 > 图层必须先查找再创建：同名层已存在时 `newLayerFromName` 可能返回 undefined；不得用空 catch 掩盖图层或移层失败。
 > ⚠ 建完必须**逐骨 `layer.addNode` 移层**：`manage_layers add_objects` 的 `pattern` 只匹配根对象，而 Biped 的骨是独立对象（实测 71 个一次移完）。
 
-### 步骤 3 —— 载入参考 figure（一次解决粗细与髋宽）
+### 步骤 3 —— 载入参考 figure（提供初始形体）
 
 ```maxscript
 -- 在参考 rig 的实例里（有正确 figure 的那个角色）
@@ -145,14 +153,22 @@ completeRedraw()
 
 > Max 2026 的 `catch` 内重新抛出异常须用无参数 `throw()`；`throw exportError` 会编译失败，报 `only throws without arguments are permitted in catch expressions`。异常路径也须恢复原 Figure Mode。
 
-**验证**：`biped.getTransform <骨> #scale` 与参考 rig 同名骨**逐位一致**，例如
+**验证**：体型拟合前，用 `biped.getTransform <骨> #scale` 比较源与目标同名骨并记录最大差。主要样本可相同，但 Chiya 的 58 样本有约 4.8e-7 的浮点差，不能承诺逐位相同。以下为 Seven 的样本，不能当作目标最终 scale：
 `bip001 L UpperArm=[18.3378,37.7742,48.775]`、`bip001 Head=[22.1781,22.152,30.1836]`。
 
 > 为什么先装 figure：Biped 的骨**粗细/髋宽**取自 figure 数据，不是取自节点缩放。
 > 用 `createNew` 的最小 figure 直接拟合，会得到"长度对、粗细如发丝、髋附着点≈0"的骨架（实测：腿骨整体内移 7.7 单位，蒙皮跟着变形）。
-> 换成参考 figure 后，**髋宽残差 7.77 → 0.04**，粗细也一次到位。
+> Seven → Stan 的髋宽残差曾由 7.77 降至 0.04；这不证明其他角色的髋宽已匹配。Chiya 必须另调骨盆宽度，按下一步逐侧验证。
 
-### 步骤 4 —— 逐骨拟合（3 轮：长度 → 朝向 → 位置）
+### 步骤 4 —— 先拟合髋宽，再选择骨轴分支
+
+**先检查髋宽及轴系是否兼容。** 参考 figure 提供初始体型，不决定新角色的最终髋宽。比较落盘静止表中的双侧大腿起点间距与 Biped 间距，确认骨盆哪一局部轴沿髋宽方向，再在 Figure Mode 单独缩放该轴，随后重做骨盆中心定位。本轮 Chiya 的骨盆局部 Z 沿髋宽，比例为 `21.4 / 16.4298`；不能把该轴或比例硬套其他源 rig。装载 figure 的 scale 抽样在这次体型调整前完成。
+
+以下逐骨同朝向算法要求输入旋转目标能被 Biped 的关节自由度同时实现。若对齐前臂后上臂又偏转，或对齐小腿后大腿又偏转，停止重复同一迭代并检查整链弯曲平面。骨长沿 +X 只保证一个轴的方向，不能保证相邻关节的完整旋转相容。
+
+**轴系不同的适配分支：** 用肩肘腕、髋膝踝建立共同弯曲平面的 Biped 目标，原导出骨和原始静止表保持不变；另存每骨冻结的世界旋转偏移。构造、乘法约定、近共线处理和验收对象见[适配指南](character-adaptation-guide.md#4-两项最容易遗漏的适配)。52 个 `BIPMAP_*` 仅是参考点，不驱动原骨，不覆盖 Root/twist，也不等于迁移完成。当前最终控制器输出尚未完成偏移接入验证，此分支到映射验证即停止，不能继续步骤 5 的普通方向吸附或交接普通双树复制。
+
+以下逐骨同轴算法仅用于相容分支。示例的 3 轮和每轮 8 步是迭代预算，不保证收敛；停滞、父子反复拉偏或预算耗尽时报告失败节点，回查髋宽、关节自由度及骨轴，不能无限加轮数。
 
 **映射表**：Biped 的 52 根骨与 UE 的 52 根 **1:1** 对上（另有 `lowerarm_twist_01_l/r` 与 `Root` 走步骤 5 的例外，52+2+1=**55**）：`Pelvis↔pelvis`、`Spine/Spine1/Spine2↔spine_01/02/03`、`Neck↔neck_01`、`Head↔head`；每侧 `Clavicle/UpperArm/Forearm/Hand↔clavicle/upperarm/lowerarm/hand`、`Finger0/01/02↔thumb_01/02/03`、`Finger1*↔index_*`、`Finger2*↔middle_*`、`Finger3*↔ring_*`、`Finger4*↔pinky_*`、`Thigh/Calf/Foot/Toe0↔thigh/calf/foot/ball`。
 
@@ -182,14 +198,15 @@ for round = 1 to 3 do (
     completeRedraw()
   )
 
-  -- ③ 朝向：不动点求解（5 步内收敛到 <0.05°）
+  -- ③ 朝向：不动点示意；预算内不达标则记录失败，不能假定必收敛
   for pr in pairs do (
     local q = target.rotation
     for i = 1 to 8 do (
       biped.setTransform pr.bone #rotation q false
       completeRedraw()
       local e = target.rotation * (inverse pr.bone.transform.rotation)
-      if ((2 * (acos (abs e.w))) < 0.05) do exit
+      local ev = length [e.x,e.y,e.z]
+      if ((2 * atan2 ev (abs e.w)) < 0.05) do exit
       q = e * q
     )
   )
@@ -227,6 +244,8 @@ completeRedraw()
 > - ⚠ `quat as string` 的打印顺序是 `(x y z w)`，而 `.w/.x/.y/.z` 取值器是常规 `wxyz`。**不要用打印文本算分量，也不要自己拼 `matrix3` 再 `rotationpart`**（MAXScript 会转置：实测把真值 `116.8°` 算成 `3.79°`）。
 
 ### 步骤 5 —— 建“测量基准”驱动点（不挂父子）
+
+本步用于同轴相容分支。下例 `relative=false` 的方向吸附会丢弃不同轴系的静止偏移，不能用于转换分支。
 
 给每根 UE 骨建一个跟随对应 Biped 骨的 Point。**它的用途是量差**（差分验收的基准）＋给 `Root` 提供真正的驱动；
 **不要**把它当成 UE 骨的主驱动 —— 主驱动是控制环（控制器指南 §2 步骤 5）。
@@ -272,7 +291,7 @@ ppc.relative = false ; poc.relative = false
 
 ### 步骤 6 —— 显示与验收
 
-1. **`boxMode`（Display as Box）对齐参考 rig**：参考 rig 实测 71 个对象里 **56 个** 勾了 Box（= 除 `bip001` 根、`bip001 Footsteps`、13 个 `*Nub` 之外的所有骨）。不勾就会"一边画盒子、一边画骨骼几何"，看着完全不同。
+1. **`boxMode`（Display as Box）按同职责节点对齐源清单**。Seven 配置的样本是 56/71；下例仅重现该显示规则，其他源 rig 先读实际显示状态。
 
 ```maxscript
 for o in objects where (matchpattern o.name pattern:"bip001*") do (
@@ -319,8 +338,8 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 | 拟合怎么调都不动/越调越乱 | UE 骨已被迁移控制器接管，使用当前值会自反馈 | 从建 Biped 前的快照重来，以外部静止表拟合 |
 | 肢体长度改不回来（停在参考角色长度） | 载入 figure 后没在 Figure Mode 内做长度缩放；或自反馈 | 确认 `figureMode = true`；确认目标自由 |
 | 骨长对、粗细如发丝 / 头是个点 | 用最小 figure 直接拟合，Y/Z 缩放留着早期塌陷值 | 先 `loadFigFile` 装参考 figure，再拟合 |
-| 腿骨整体内移 ~8 单位（蒙皮跟着偏） | 最小 figure 的髋附着点≈0 | 同上：装参考 figure |
-| 上半身整体漂移几百单位 | 对**骨盆**用了 `#scale [x,1,1]`（骨盆缩放会缩放整个上半身，实测 416 单位） | 不要动骨盆 `#scale`；用逐骨局部 X 缩放 |
+| 双腿起点仍内移 | 最小 figure 髋宽过小，或源 figure 与目标体型不同 | 装参考 figure 后仍须单独拟合髋宽并逐侧检查 |
+| 上半身整体漂移几百单位 | 对骨盆做整体缩放，影响了其他部位 | 不用骨盆整体缩放拟合肢长；髋宽只按已验证的局部宽度轴调整，然后重定位和复测 |
 | 逐骨 `move` 无效 / 链被拉坏 | Biped figure 是连通链，`move` 对 32/52 根骨被忽略 | 按"长度+朝向"设父子关系，不要绝对摆位 |
 | `#scale` 报 ok 但值不变 | 多数骨上 `#scale` 被忽略；且必须在 Figure Mode 内 | 用 `coordsys local ( scale o [k,1,1] )`（Figure Mode 内） |
 | `saveFigFile` 报 `Cannot run the operation in this mode` | Figure Mode 没开 | `figureMode = true` 后再存 |
@@ -328,7 +347,7 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 | UE 骨整体塌到原点附近 | 普通 UE 骨约束使用了无静止基准的 relative=true | 普通骨按迁移指南复制源结构；Root 驱动点按步骤 5 先建静止基准再 relative=true |
 | `Root` 偏 ~90.8 | 吸附到骨盆高度的 Biped 根 | 驱动点先摆原始静止，不设父级，以 relative=true 位置/方向约束跟随 bip001；UE Root 独立约束到驱动点 |
 | `lowerarm_twist_01` 偏 ~10.3 | 参考 rig 的 `ForeTwist` 与 UE twist 位置不同 | 驱动点挂到 `BIPDRV_lowerarm_*` 下 |
-| 一边画盒子、一边画骨骼 | `boxMode` 不一致 | 按参考 rig 的 56/71 对齐 |
+| 一边画盒子、一边画骨骼 | `boxMode` 不一致 | 按本轮源 rig 的节点显示清单对齐 |
 | 隐藏某层后目标层也不见了 | 隐藏了父层 | 保留目标层的整条祖先链可见 |
 | 改动后立刻读值拿到旧数据 | Biped 惰性求值 | 写入后 completeRedraw()；判定前退出 Figure Mode，强制求值后同调用连读两次 |
 | 三角函数算角度不对 | MAXScript 的 `sin/cos/acos` 默认**角度制（度）** | 按度使用，别当弧度 |
@@ -384,7 +403,9 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 
 ---
 
-## 6. 里程碑与文件命名（本案例）
+## 6. 里程碑与文件命名
+
+新角色使用 `<角色>_<阶段>_<日期>.max`，每轮另建目录并记录原始输入路径。阶段顺序见操作清单。下表仅为 Stan 的历史文件索引，不得作为新角色输入或覆盖目标。
 
 | 文件 | 内容 |
 |---|---|
@@ -402,7 +423,7 @@ for o in objects where (matchpattern o.name pattern:"bip001*") do (
 
 ## 7. 交接到控制器迁移
 
-按 [quick-runbook.md](quick-runbook.md)继续：先复制 54 骨的位置/旋转控制器并重指引用，Root 保留到 BIPDRV_Root 的独立约束；再摆全部环、拟合静止链、对齐偏移、归一化段长，最后扫描脊柱 percent。两根 twist 保留源驱动结构。
+确认本轮为同轴相容分支，且拟合/驱动层实测通过后，按 [quick-runbook.md](quick-runbook.md)继续：先复制 54 骨的位置/旋转控制器并重指引用，Root 保留到 BIPDRV_Root 的独立约束；再摆全部环、拟合静止链、对齐偏移、归一化段长，最后扫描脊柱 percent。两根 twist 保留源驱动结构。
 
 具体算法集中在[控制器迁移指南](controller-migration-guide.md) §2，那里定义环的跳过范围、动态伸缩与正向源引用检查。最终必须完成静止/弯姿势、四肢越界、全体节点直接复位及保存重开的一致性验收，不能以本页 Biped 拟合通过替代。
 

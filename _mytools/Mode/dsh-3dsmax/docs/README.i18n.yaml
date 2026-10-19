@@ -2,42 +2,21 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write _mytools/Mode/dsh-3dsmax/docs/README.md
-/3ds-max-character-workflow-biped-rebuild-controller-migration:
-  en: ed0f8602291d4824
-  zh: a4009c2b232ff51d
-/3ds-max-character-workflow-biped-rebuild-controller-migration/document-map:
-  en: 21d4b293897336eb
-  zh: d7a33b647d3f9db0
-/3ds-max-character-workflow-biped-rebuild-controller-migration/workflow-overview:
-  en: a13469d9e31e770c
-  zh: 96133e317bdea6dd
-/3ds-max-character-workflow-biped-rebuild-controller-migration/end-to-end-checklist:
-  en: c71f624a0f1a4fa8
-  zh: ec3bc2998b804327
-/3ds-max-character-workflow-biped-rebuild-controller-migration/end-to-end-checklist/stage-0-prerequisites-new-character-with-skeleton-only:
-  en: 748e417d93333d56
-  zh: 4516f2f03ad21b2c
-/3ds-max-character-workflow-biped-rebuild-controller-migration/end-to-end-checklist/stages-1-3-biped:
-  en: c1d7726b33747844
-  zh: 0780fea89df7a3d5
-/3ds-max-character-workflow-biped-rebuild-controller-migration/end-to-end-checklist/stages-4-9-controller-migration:
-  en: 598f06918d15722e
-  zh: 74402bfce5feeb85
-/3ds-max-character-workflow-biped-rebuild-controller-migration/end-to-end-checklist/stage-10-display-and-delivery:
-  en: a21ccd272b814552
-  zh: 11f00fab1bd55aaf
-/3ds-max-character-workflow-biped-rebuild-controller-migration/windows-and-visibility-set-before-each-run:
-  en: 8c29e8cc9cd275c2
-  zh: a9bc6b3fdd97ef55
-/3ds-max-character-workflow-biped-rebuild-controller-migration/common-misinterpretations:
-  en: 36bd9afa578afb33
-  zh: 670ab49c8867b3e9
-/3ds-max-character-workflow-biped-rebuild-controller-migration/workflow-validation-status:
-  en: 7a36e0f78621c478
-  zh: 676c40824295595d
-/3ds-max-character-workflow-biped-rebuild-controller-migration/working-rules:
-  en: d18dfa9ec1b0f172
-  zh: 1b2e761386a5a55b
-/3ds-max-character-workflow-biped-rebuild-controller-migration/two-recurring-lessons:
-  en: 6c4714f883b9d6d8
-  zh: eb07923d22727a7a
+/3ds-max-character-adaptation-biped-rebuild-controller-migration:
+  en: b183b3320c5c5b8e
+  zh: 08755789b50ce922
+/3ds-max-character-adaptation-biped-rebuild-controller-migration/where-to-start:
+  en: 927e0205c538c210
+  zh: 0143b8f3a879022f
+/3ds-max-character-adaptation-biped-rebuild-controller-migration/document-map:
+  en: 33d2394e6910dc89
+  zh: 2c9e394490822436
+/3ds-max-character-adaptation-biped-rebuild-controller-migration/execution-order-and-verified-scope:
+  en: eb31da3855e3308f
+  zh: 3c4a8878bddcb19d
+/3ds-max-character-adaptation-biped-rebuild-controller-migration/windows-and-display-state-set-before-each-run:
+  en: 2312f112b428414a
+  zh: 0615f8507f11eae5
+/3ds-max-character-adaptation-biped-rebuild-controller-migration/measurement-and-recovery-discipline:
+  en: f22dd9e700bcb633
+  zh: ec56a420bfa17016

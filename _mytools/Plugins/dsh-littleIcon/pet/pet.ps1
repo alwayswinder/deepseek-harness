@@ -4381,8 +4381,9 @@ function Exit-Pet {
 }
 
 function New-PetMenu {
-    # The plugin's only menu surface: a right-click on the pet. Commands the page
-    # carries out come first, window actions after them.
+    # The plugin's only menu surface: a right-click on the pet. The panel this
+    # process draws itself leads, then the commands the page carries out, then
+    # window actions.
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $menu.AutoSize = $true
     $menu.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
@@ -4409,6 +4410,18 @@ function New-PetMenu {
         param($sender, $eventArgs)
         try { Update-SiteMenu } catch { Write-Log $_.Exception.Message }
     })
+    # Quick access opens a panel of this process's own: the current Session's
+    # directory in the middle, the eight folders the person assigned around it,
+    # and a click that raises whichever of them is already open. Nothing is
+    # raised first - the panel is what the person asked to see - so it leads the
+    # menu, ahead of the entries that hand work to the page.
+    $quickItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.QuickAccess 'folder'
+    $quickItem.add_Click({
+        try { Start-QuickAccess } catch {
+            Write-Log "opening the quick access panel failed: $($_.Exception.Message)"
+            try { Show-PetNotice $SCRIPT:Labels.QuickAccessFailed $_.Exception.Message } catch { }
+        }
+    })
     $chatItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Chat 'chat'
     $chatItem.add_Click({
         try {
@@ -4431,17 +4444,6 @@ function New-PetMenu {
             Show-DshWindow
             Send-MenuCommand 'git'
         } catch { Write-Log $_.Exception.Message }
-    })
-    # Quick access opens a panel of this process's own: the current Session's
-    # directory in the middle, Explorer's own recent folders around it, and a
-    # click that raises whichever of them is already open. Nothing is raised
-    # first - the panel is what the person asked to see.
-    $quickItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.QuickAccess 'folder'
-    $quickItem.add_Click({
-        try { Start-QuickAccess } catch {
-            Write-Log "opening the quick access panel failed: $($_.Exception.Message)"
-            try { Show-PetNotice $SCRIPT:Labels.QuickAccessFailed $_.Exception.Message } catch { }
-        }
     })
     # The mini games live one level down: the entry itself opens nothing, so
     # more of them can join without touching this menu's shape again. Each child

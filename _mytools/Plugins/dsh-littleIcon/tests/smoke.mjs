@@ -730,6 +730,12 @@ assert.equal(labels.SitesFavorites, undefined, 'the sites list no longer hides u
 // would have to perform and the pet itself must know how to fill nine tiles.
 assert.match(petSource, /Add-PetMenuItem \$menu\.Items \$SCRIPT:Labels\.QuickAccess 'folder'/,
   'the quick access entry is one row of the pet menu')
+// It is the row the person reaches first: the panel it opens raises no DSH window,
+// so nothing has to happen before it, and a menu that buries it under the entries
+// the page carries out would hide the pet's own capability.
+assert.ok(petSource.indexOf("Add-PetMenuItem $menu.Items $SCRIPT:Labels.QuickAccess 'folder'")
+  < petSource.indexOf("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Chat 'chat'"),
+  'quick access must be the first row of the pet menu')
 assert.match(petSource, /Start-QuickAccess/, 'the entry opens the panel this process draws')
 assert.equal(petSource.includes("Send-MenuCommand 'open-cwd'"), false,
   'opening a folder no longer travels through the page')

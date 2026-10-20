@@ -739,6 +739,15 @@ $SCRIPT:QuickAccess = $null
 $SCRIPT:QuickAccessSlots = @()
 $SCRIPT:QuickAccessTiles = @()
 $SCRIPT:QuickAccessOpen = @{}
+# The tile's own menu while it is open, so a panel that goes away takes it too,
+# and which ring entry it is acting on.
+$SCRIPT:QuickAccessMenu = $null
+$SCRIPT:QuickAccessMenuRing = -1
+$SCRIPT:QuickAccessMenuClearItem = $null
+# What a menu choice asked for, carried from the click to the next message: the
+# menu is still dismissing while the click handler runs.
+$SCRIPT:QuickAccessPendingAction = ''
+$SCRIPT:QuickAccessPendingRing = -1
 # The eight folders the person assigned to the ring, in the order the tiles take
 # them, plus the tile each one belongs to. The list is this machine's own and is
 # read on first use; the order skips the fixed middle tile.
@@ -748,10 +757,8 @@ $SCRIPT:QuickAccessHover = -1
 $SCRIPT:QuickAccessFocus = 4
 $SCRIPT:QuickAccessError = ''
 # Whether a dialog or the tile's own menu owns the foreground: the panel must not
-# read that as the person leaving, and the flag that tells a chosen menu item from
-# a dismissed one is what decides who gets the focus back.
+# read that as the person leaving.
 $SCRIPT:QuickAccessBusy = $false
-$SCRIPT:QuickAccessMenuAction = 0
 $SCRIPT:QuickAccessScale = 1.0
 $SCRIPT:QuickAccessShownAt = 0
 # The single Shell.Application this process asks about quick access and open
@@ -2921,6 +2928,95 @@ function Clear-QuickAccessTile([int]$Ring) {
     Restore-QuickAccessFocus
 }
 
+function Complete-QuickAccessMenu {
+    # Runs when the tile menu has closed - which WinForms does *before* it delivers
+    # the chosen item's click, so this cannot tell a choice from a dismissal. It
+    # only puts the panel back in front; a choice's work is queued separately and
+    # takes the flag over from there.
+    #
+    # The strip itself is not disposed here and is not recreated per open: Closed
+    # runs while WinForms is still unwinding the click that closed it, and taking
+    # its handle away at that moment is what crashed this process. One strip is
+    # kept for the panel's life and disposed with it.
+    $SCRIPT:QuickAccessBusy = $false
+    Restore-QuickAccessFocus
+}
+
+function Invoke-QuickAccessMenuPick {
+    # The handlers reach the tile through the script scope rather than a closure: a
+    # handler made with GetNewClosure runs in a scope of its own, where reading
+    # $SCRIPT: finds that scope and not this one.
+    Start-QuickAccessMenuAction 'pick'
+}
+
+function Invoke-QuickAccessMenuClear {
+    Start-QuickAccessMenuAction 'clear'
+}
+
+function Start-QuickAccessMenuAction([string]$Action) {
+    # Queued rather than run inside the click: the menu is still dismissing then, and
+    # a modal folder picker opened from the middle of that dismissal keeps the strip
+    # half-closed. The ring entry is read when the action runs, so it is stored here
+    # rather than passed through the queue.
+    $SCRIPT:QuickAccessPendingAction = $Action
+    $SCRIPT:QuickAccessPendingRing = [int]$SCRIPT:QuickAccessMenuRing
+    $SCRIPT:QuickAccessBusy = $true
+    $form = $SCRIPT:QuickAccess
+    if ($null -ne $form -and $form.IsHandleCreated -and -not $form.IsDisposed) {
+        try {
+            [void]$form.BeginInvoke([System.Action]{ Invoke-QuickAccessPending })
+            return
+        } catch {
+            Write-Log "queueing a quick access menu action failed: $($_.Exception.Message)"
+        }
+    }
+    Invoke-QuickAccessPending
+}
+
+function Invoke-QuickAccessPending {
+    $action = [string]$SCRIPT:QuickAccessPendingAction
+    $ring = [int]$SCRIPT:QuickAccessPendingRing
+    $SCRIPT:QuickAccessPendingAction = ''
+    $SCRIPT:QuickAccessPendingRing = -1
+    # A pick queued by a panel that has meanwhile gone away is nothing to do.
+    if ($null -eq $SCRIPT:QuickAccess) {
+        $SCRIPT:QuickAccessBusy = $false
+        return
+    }
+    if ($action -eq 'pick') {
+        try { Select-QuickAccessFolder $ring } catch {
+            Write-Log "choosing a quick access folder failed: $($_.Exception.Message)"
+        }
+    } elseif ($action -eq 'clear') {
+        try { Clear-QuickAccessTile $ring } catch {
+            Write-Log "clearing a quick access tile failed: $($_.Exception.Message)"
+        }
+    }
+}
+
+function Get-QuickAccessMenu {
+    # One menu for the panel's life: built on first use, its items fixed, and the
+    # clear row hidden for a tile that has nothing to clear.
+    if ($null -ne $SCRIPT:QuickAccessMenu) { return $SCRIPT:QuickAccessMenu }
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.ShowImageMargin = $false
+    $menu.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $menu.ForeColor = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    $menu.MinimumSize = New-Object System.Drawing.Size(180, 0)
+    try {
+        $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Regular,
+            [System.Drawing.GraphicsUnit]::Point)
+    } catch { }
+    $pick = $menu.Items.Add($SCRIPT:Labels.QuickAccessPick)
+    $pick.add_Click({ Invoke-QuickAccessMenuPick })
+    $clear = $menu.Items.Add($SCRIPT:Labels.QuickAccessClear)
+    $clear.add_Click({ Invoke-QuickAccessMenuClear })
+    $SCRIPT:QuickAccessMenuClearItem = $clear
+    $menu.add_Closed({ Complete-QuickAccessMenu })
+    $SCRIPT:QuickAccessMenu = $menu
+    return $menu
+}
+
 function Show-QuickAccessTileMenu([int]$Index, [System.Drawing.Point]$Point) {
     # One tile's own menu: what goes there, or nothing at all. A right click is the
     # only way the list changes, so it carries both choices; the empty middle tile
@@ -2930,35 +3026,13 @@ function Show-QuickAccessTileMenu([int]$Index, [System.Drawing.Point]$Point) {
     $ring = Get-QuickAccessRing $Index
     if ($ring -lt 0) { return }
     if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
-    $menu = New-Object System.Windows.Forms.ContextMenuStrip
-    $menu.ShowImageMargin = $false
-    $menu.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
-    $menu.ForeColor = [System.Drawing.Color]::FromArgb(53, 59, 70)
-    try {
-        $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Regular,
-            [System.Drawing.GraphicsUnit]::Point)
-    } catch { }
-    $pick = $menu.Items.Add($SCRIPT:Labels.QuickAccessPick)
-    $pick.add_Click(({
-        $SCRIPT:QuickAccessMenuAction = 1
-        try { Select-QuickAccessFolder $ring } catch { Write-Log $_.Exception.Message }
-    }).GetNewClosure())
-    if (-not [string]::IsNullOrWhiteSpace([string]$SCRIPT:QuickAccessUser[$ring])) {
-        $clear = $menu.Items.Add($SCRIPT:Labels.QuickAccessClear)
-        $clear.add_Click(({
-            $SCRIPT:QuickAccessMenuAction = 1
-            try { Clear-QuickAccessTile $ring } catch { Write-Log $_.Exception.Message }
-        }).GetNewClosure())
+    $menu = Get-QuickAccessMenu
+    $SCRIPT:QuickAccessMenuRing = $ring
+    if ($null -ne $SCRIPT:QuickAccessMenuClearItem) {
+        $SCRIPT:QuickAccessMenuClearItem.Visible =
+            -not [string]::IsNullOrWhiteSpace([string]$SCRIPT:QuickAccessUser[$ring])
     }
-    $menu.add_Closed(({
-        try { $menu.Dispose() } catch { }
-        # A menu closed without a choice is the person changing their mind: the
-        # panel underneath takes the foreground back rather than being left behind
-        # the next window.
-        if ($SCRIPT:QuickAccessMenuAction -eq 0) { Restore-QuickAccessFocus }
-    }).GetNewClosure())
     $SCRIPT:QuickAccessBusy = $true
-    $SCRIPT:QuickAccessMenuAction = 0
     $menu.Show($form, $Point)
 }
 
@@ -2967,6 +3041,16 @@ function Close-QuickAccess {
     if ($null -eq $form) { return }
     $SCRIPT:QuickAccess = $null
     $SCRIPT:QuickAccessHover = -1
+    # A tile menu still open belongs to this panel: closing the panel discards it
+    # too. The strip is disposed only here, once its own dismissal has finished,
+    # and the next panel builds a fresh one.
+    if ($null -ne $SCRIPT:QuickAccessMenu) {
+        try { $SCRIPT:QuickAccessMenu.Close() } catch { }
+        try { $SCRIPT:QuickAccessMenu.Dispose() } catch { }
+        $SCRIPT:QuickAccessMenu = $null
+        $SCRIPT:QuickAccessMenuClearItem = $null
+        $SCRIPT:QuickAccessMenuRing = -1
+    }
     # Close rather than Dispose: the click that got here is still running inside
     # this form's own event handler, and WinForms finishes the teardown after that
     # returns.
@@ -3017,7 +3101,6 @@ function Start-QuickAccess {
     $SCRIPT:QuickAccessHover = -1
     $SCRIPT:QuickAccessFocus = 4
     $SCRIPT:QuickAccessError = ''
-    $SCRIPT:QuickAccessMenuAction = 0
     if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
 
     $form.add_Paint({

@@ -743,6 +743,23 @@ assert.match(petSource, /function Save-QuickAccessFolders/, 'and written back wh
 assert.match(petSource, /quick-access\.json/, 'the list lives beside the state file')
 assert.match(petSource, /FolderBrowserDialog/, 'a tile is assigned with the folder picker')
 assert.match(petSource, /function Show-QuickAccessTileMenu/, 'a right click is how one tile is changed')
+// The tile menu is one strip for the panel's life, and it is never disposed from
+// its own Closed handler: that runs while WinForms is still unwinding the click
+// that closed it, and taking the handle away there ends the process. The handlers
+// act through functions rather than closures, because a closure's $SCRIPT: is its
+// own scope, not this one.
+assert.match(petSource, /function Get-QuickAccessMenu/, 'one menu is built for the panel and reused')
+assert.match(petSource, /function Invoke-QuickAccessMenuPick/, 'a menu choice acts through a function')
+assert.match(petSource, /function Start-QuickAccessMenuAction/, 'and is queued behind the menu dismissal')
+assert.match(petSource, /BeginInvoke\(\[System\.Action\]/, 'the action runs from the next message, not the click')
+assert.match(petSource, /function Complete-QuickAccessMenu/, 'closing the menu has its own step')
+const completeMenu = /function Complete-QuickAccessMenu \{([\s\S]*?)\n\}/.exec(petSource)
+assert.ok(completeMenu !== null, 'the tile menu needs a completion step')
+assert.equal(completeMenu[1].includes('Dispose'), false,
+  'the menu must not be disposed while its own Closed is unwinding')
+const quickAccessSource = petSource.slice(petSource.indexOf('# ---- quick access'), petSource.indexOf('# ---- self test'))
+assert.equal(quickAccessSource.includes('.GetNewClosure()'), false,
+  'a closure would read and write its own $SCRIPT: instead of the panel\'s')
 assert.match(petSource, /function Get-ExplorerWindows/, 'a click has to know which folder windows are open')
 assert.match(petSource, /\$SCRIPT:MainCwd = \$reportedCwd/,
   'the directory the page publishes must reach the tile the panel pins')

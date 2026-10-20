@@ -21,7 +21,7 @@ const { internals, apply } = await import('../index.js')
 const {
   sampleState, createTimeline, sampleWork, shouldTuck, withMusic, clampVolume, MUSIC_STATE, STATES, ACTIVITY_PATH, COMMANDS_PATH,
   GIT_PATH, GIT_DIFF_PATH, GIT_COMMIT_PATH, GIT_COMMITS_PATH, GIT_REMOTE_PATH, GIT_PULL_PATH,
-  GIT_DISCARD_PATH, OPEN_PATH,
+  GIT_DISCARD_PATH,
   MUSIC_PATH, MUSIC_SYNC_PATH, MUSIC_DOWNLOAD_PATH, MUSIC_EXPAND_PATH, MUSIC_ADDED_PATH,
   MUSIC_REMOVE_PATH, MUSIC_COMMAND_PATH, MUSIC_PREFERENCES_PATH,
   GIT_DIFF_MAX_CHARS, GIT_DISCARD_MAX_BYTES, GIT_LOG_PAGE,
@@ -667,7 +667,7 @@ const labels = JSON.parse(readFileSync(join(root, 'pet', 'labels.json'), 'utf8')
 assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
 assert.equal(labels.UpdateDsh, '更新 DSH', 'the menu entry that builds the current checkout')
-assert.equal(labels.OpenCwd, '打开工作目录', 'the menu entry that opens the working directory')
+assert.equal(labels.QuickAccess, '快速访问', 'the menu entry that opens the folder panel')
 assert.equal(labels.Chat, '网页对话', 'the menu entry that opens the web chat')
 assert.equal(labels.AlertNotice, '有任务在等你回答，点桌宠回到 DSH', 'the reminder for a question nobody has seen')
 assert.equal(labels.Settings, '桌宠设置', 'the menu entry that opens the plugin settings page')
@@ -683,7 +683,10 @@ assert.equal(labels.MusicPlay, '开始', 'the music entry that starts playing')
 assert.equal(labels.MusicPause, '暂停', 'the music entry that pauses')
 assert.equal(labels.MusicNext, '换歌', 'the music entry that steps to the next song')
 assert.equal(labels.System, '系统', 'the menu entry the DSH lifecycle entries hang under')
-for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git', 'OpenCwd', 'OpenCwdNoCwd', 'OpenCwdNoDir', 'OpenCwdFailed',
+for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
+  'QuickAccess', 'QuickAccessHint', 'QuickAccessCurrent', 'QuickAccessOpen',
+  'QuickAccessPick', 'QuickAccessPickShort', 'QuickAccessPickTitle', 'QuickAccessClear',
+  'QuickAccessNoCwd', 'QuickAccessFailed',
   'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
   'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
@@ -722,6 +725,32 @@ assert.match(petSource, /\$SCRIPT:Sites = Get-SiteList \$State/, 'the published 
 assert.match(petSource, /case "globe":/, 'the sites entry needs its icon, like every other entry')
 assert.match(petSource, /case "sparkles":/, 'the special-features entry needs an icon of its own')
 assert.equal(labels.SitesFavorites, undefined, 'the sites list no longer hides under a Favourite sites submenu')
+// Quick access is a panel of the pet's own rather than a page command: the entry
+// opens a window this process draws, so it must not write a command the page
+// would have to perform and the pet itself must know how to fill nine tiles.
+assert.match(petSource, /Add-PetMenuItem \$menu\.Items \$SCRIPT:Labels\.QuickAccess 'folder'/,
+  'the quick access entry is one row of the pet menu')
+assert.match(petSource, /Start-QuickAccess/, 'the entry opens the panel this process draws')
+assert.equal(petSource.includes("Send-MenuCommand 'open-cwd'"), false,
+  'opening a folder no longer travels through the page')
+assert.match(petSource, /function Format-QuickAccessSlots/, 'the nine tiles are filled from one mapping')
+// The ring is the person's own list, not Explorer's: they choose each folder, and
+// the list lives beside the state file because the paths are this machine's.
+assert.equal(petSource.includes('Get-QuickAccessFolders'), false,
+  'the ring must not read the shell\'s recent-folder list')
+assert.match(petSource, /function Read-QuickAccessFolders/, 'the eight folders are read from this machine')
+assert.match(petSource, /function Save-QuickAccessFolders/, 'and written back when one is chosen')
+assert.match(petSource, /quick-access\.json/, 'the list lives beside the state file')
+assert.match(petSource, /FolderBrowserDialog/, 'a tile is assigned with the folder picker')
+assert.match(petSource, /function Show-QuickAccessTileMenu/, 'a right click is how one tile is changed')
+assert.match(petSource, /function Get-ExplorerWindows/, 'a click has to know which folder windows are open')
+assert.match(petSource, /\$SCRIPT:MainCwd = \$reportedCwd/,
+  'the directory the page publishes must reach the tile the panel pins')
+assert.match(petSource, /SetForegroundWindow\(\$handle\)/, 'an open folder is raised rather than opened again')
+// A hand-drawn surface that erases before every paint flickers under a moving
+// pointer, so the panel is buffered and repaints only the tile that changed.
+assert.match(petSource, /DoubleBuffered/, 'the panel must be double buffered')
+assert.match(petSource, /function Set-QuickAccessTileDirty/, 'a hover repaints one tile, not the panel')
 // The three entries that act on the running application share one parent rather
 // than sitting at the top level, so the divider opens a submenu.
 assert.match(petSource, /Add-PetMenuItem \$systemItem\.DropDownItems \$SCRIPT:Labels\.UpdateDsh/,
@@ -857,7 +886,8 @@ if (process.platform === 'win32') {
     '-PositionFile', join(probeDir, 'position.json'),
     '-SelfTest',
   ], { encoding: 'utf8' })
-  rmSync(probeDir, { recursive: true, force: true })
+  // The directory stays until the pictures the self test drew have been looked
+  // at; it is removed at the end of this block.
   assert.equal(selfTest.status, 0, `pet.ps1 -SelfTest failed: ${selfTest.stderr}`)
   // The self test counts frames by probing the directories, so its output is the
   // pet's own view; it must agree with what the generator recorded.
@@ -866,7 +896,7 @@ if (process.platform === 'win32') {
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
   assert.match(selfTest.stdout, /网页对话/, 'the self test must report the web-chat entry too')
-  assert.match(selfTest.stdout, /打开工作目录/, 'the self test must report the open-directory entry too')
+  assert.match(selfTest.stdout, /快速访问/, 'the self test must report the quick access entry too')
   assert.match(selfTest.stdout, /桌宠设置/, 'the self test must report the settings entry too')
   assert.match(selfTest.stdout, /系统/, 'the self test must report the system entry too')
   assert.match(selfTest.stdout, /小游戏/, 'the self test must report the mini-games entry too')
@@ -1055,11 +1085,31 @@ if (process.platform === 'win32') {
   assert.equal(blankDir, join(probeDir, 'shots'), 'and both are the plugin\'s own shots directory')
   assert.ok(selfTest.stdout.includes(`build-result: ${join(probeDir, '..', 'build', 'last-build.json')}`),
     'the detached build result is read from the harness home beside little-icon data')
-  // A failed open is reported in the pet's own words, which only happens if the
-  // reason the host sends is one this mapping knows.
-  assert.ok(selfTest.stdout.includes(
-    `open-failure: ${labels.OpenCwdNoCwd} / ${labels.OpenCwdNoDir} / ${labels.OpenCwdFailed}`),
-  'every reason the host can report must have its own line in the pet')
+  // The nine tiles are filled from the eight folders the person assigned and a
+  // directory the page names, so the mapping is what a quiet bug would get wrong:
+  // the middle slot is the Session's folder whatever the list says, a blank entry
+  // keeps its own tile empty, and the same folder twice is shown once.
+  const quickAccess = /quick-access: (.*)/.exec(selfTest.stdout)
+  assert.ok(quickAccess !== null, 'the self test must report the quick access mapping')
+  assert.equal(quickAccess[1].trim(), 'a,empty,c,empty,main=b,empty,empty,empty,d',
+    'each ring entry keeps its own tile, and the middle one is the Session folder')
+  const quickAccessUser = /quick-access-user: (.*)/.exec(selfTest.stdout)
+  assert.ok(quickAccessUser !== null, 'the self test must report the list as it was stored')
+  assert.equal(quickAccessUser[1].trim(), 'C:\\one,blank,C:\\three,blank,blank,blank,blank,C:\\eight',
+    'the eight slots survive a round trip, and a cleared one stays cleared')
+  // The panel can be drawn offscreen, which is the only way to see what the tiles
+  // will look like without opening one on somebody's desktop.
+  const panelPng = /quick-access-panel: (.*)/.exec(selfTest.stdout)
+  assert.ok(panelPng !== null, 'the self test must draw the panel')
+  assert.ok(statSync(panelPng[1].trim()).size > 10_000, 'and the picture must not be an empty canvas')
+  const sparsePng = /quick-access-panel-sparse: (.*)/.exec(selfTest.stdout)
+  assert.ok(sparsePng !== null, 'the state before DSH has shown a Session is drawn too')
+  assert.ok(statSync(sparsePng[1].trim()).size > 4_000, 'and the empty middle tile still says why')
+  // The shell question the panel asks is asked for real in that run, so a machine
+  // whose shell refuses it fails here rather than at the first menu click; how
+  // many windows it answers is that machine's business.
+  assert.match(selfTest.stdout, /quick-access-windows: \d+/,
+    'the open-folder question must answer, whatever this machine has open')
   // Restarting ends DSH, so the self test reports what it would run instead: the
   // directory the replacement starts in is the application directory quoted in the
   // launcher's command line, and the waiter waits for DSH, waits out its shutdown,
@@ -1172,6 +1222,7 @@ if (process.platform === 'win32') {
   assert.match(audioProbe.stdout, /audio-probe-own-pid: \d+/, 'the probe must name the process it excludes')
   assert.match(audioProbe.stdout, /audio-probe-max-other: -?\d+\.\d{3}/,
     'and must report one peak level, whether or not anybody is playing')
+  rmSync(probeDir, { recursive: true, force: true })
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')
 }
@@ -1301,32 +1352,29 @@ rmSync(openDir, { recursive: true, force: true })
   }
   try {
     apply(hostCtx, config)
-    const route = routes.find((entry) => entry.path === OPEN_PATH)
-    assert.ok(route !== undefined, 'apply() must register the open route')
+    // The folder the page's main view shows travels with its activity ping: the
+    // pet draws it in the middle of the quick access panel, and neither the Host
+    // nor the pet can read it any other way. A ping without one leaves the last
+    // known folder in place, because a page that is only reporting a mouse move
+    // says nothing about which Session is open.
+    const activityRoute = routes.find((entry) => entry.path === ACTIVITY_PATH)
     const ask = (method, url) => {
       const response = { status: 0, body: '', writeHead(code) { this.status = code }, end(chunk) { this.body = chunk ?? '' } }
-      route.handler({ method, url, on: () => {} }, response)
+      activityRoute.handler({ method, url, on: () => {} }, response)
       return response
     }
-    // Opening a folder is the one thing here with an effect outside the page, so
-    // it is the one surface a re-read must not reach.
-    assert.equal(ask('GET', OPEN_PATH).status, 405, 'opening a folder is a POST')
-    assert.deepEqual(JSON.parse(ask('POST', OPEN_PATH).body), { ok: false, reason: 'no-cwd' },
-      'a Session with no directory is answered, not attempted')
-    const goneDir = join(home, 'gone')
-    assert.deepEqual(JSON.parse(ask('POST', `${OPEN_PATH}?cwd=${encodeURIComponent(goneDir)}`).body),
-      { ok: false, reason: 'no-dir' }, 'a directory that is gone is answered too')
-    // The person clicked on the pet, so the pet is what says the folder did not
-    // open; the last failure rides in the state file with the timestamp that
-    // keeps a pet which already showed it from showing it again.
+    assert.equal(ask('GET', ACTIVITY_PATH).status, 405, 'activity is a POST')
     const statePath = join(home, 'little-icon', 'state.json')
-    const notice = () => JSON.parse(readFileSync(statePath, 'utf8')).notice
-    const untilNoticed = Date.now() + 4000
-    while (notice() === undefined && Date.now() < untilNoticed) {
+    const publishedCwd = () => JSON.parse(readFileSync(statePath, 'utf8')).cwd
+    assert.equal(ask('POST', `${ACTIVITY_PATH}?cwd=${encodeURIComponent('D:\\work\\proj')}`).status, 204,
+      'the page reports activity and its Session folder in one request')
+    const untilCwd = Date.now() + 4000
+    while (publishedCwd() !== 'D:\\work\\proj' && Date.now() < untilCwd) {
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
-    assert.equal(notice()?.reason, 'no-dir', 'the failed open must reach the pet')
-    assert.ok(typeof notice()?.at === 'number', 'the pet tells a new failure from one it has shown')
+    assert.equal(publishedCwd(), 'D:\\work\\proj', 'the folder the page named must reach the pet')
+    ask('POST', ACTIVITY_PATH)
+    assert.equal(publishedCwd(), 'D:\\work\\proj', 'a ping that names no folder keeps the last one')
 
     // The menu's site entries travel to the pet in the same file, resolved: the pet
     // draws what it is handed, so a row the Browser tab could not open is not a row
@@ -1886,6 +1934,21 @@ const clientServices = {
       ?? (kind === 'browser' ? { id: 'browser' } : undefined),
   },
 }
+/**
+ * The Session list the page reads to name the folder the main view shows - the
+ * middle tile of the pet's quick access panel. The test drives it directly.
+ */
+let sessionRows = {}
+const sessionListeners = new Set()
+clientServices.sessions = {
+  list: {
+    getSnapshot: () => ({ byId: sessionRows }),
+    subscribe: (listener) => {
+      sessionListeners.add(listener)
+      return () => sessionListeners.delete(listener)
+    },
+  },
+}
 /** The plugin's context; `inject` hands the same services to an optional dependency's scope. */
 const clientCtx = {
   effect: (factory) => { clientDisposers.push(factory()) },
@@ -2092,27 +2155,30 @@ try {
   chatForm.accept({})
 }
 
-// "Open working directory" is the one command this half only names: the folder
-// belongs to the Session the main view holds — the same row the shipped
-// workspace control opens — and starting a file manager is the Host's, so the
-// page sends the directory and leaves the outcome to the pet, which is where the
-// click happened. Without a main-view Session there is no directory to send.
-const openedFor = (rows) => {
-  clientServices.sessions = { list: { getSnapshot: () => ({ byId: rows }) } }
+// The folder the main view holds is the one the pet pins in the middle of its
+// quick access panel, and only the page can name it: switching Session must
+// reach the Host, which stores it for the pet. A list change with no main-view
+// Session reports nothing, because there is nothing to pin and the folder the
+// Host already has is still the last one the person worked in.
+const announceSession = (rows) => {
+  sessionRows = rows
   const before = pings.length
-  commands.onmessage({ data: '{"command":"open-cwd"}' })
-  return pings[before]
+  for (const listener of sessionListeners) listener()
+  return pings.length > before ? pings.at(-1) : undefined
 }
-assert.deepEqual(openedFor({ s1: { cwd: 'D:\\work\\proj', retainedBy: {} }, s2: { cwd: 'D:\\other', retainedBy: { mainView: 1 } } }),
-  { url: `${OPEN_PATH}?cwd=D%3A%5Cother`, method: 'POST' },
-  'the directory is the one the main view holds, escaped into the query')
-assert.deepEqual(openedFor({ s1: { cwd: 'D:\\work\\proj', retainedBy: {} } }),
-  { url: `${OPEN_PATH}?cwd=`, method: 'POST' },
-  'no main-view Session means no directory to open, which the Host answers')
-delete clientServices.sessions
-assert.deepEqual(openedFor({}), { url: `${OPEN_PATH}?cwd=`, method: 'POST' },
-  'a build without the sessions service still reaches the Host, which explains itself')
-delete clientServices.sessions
+assert.deepEqual(announceSession({
+  s1: { cwd: 'D:\\work\\proj', retainedBy: {} },
+  s2: { cwd: 'D:\\other', retainedBy: { mainView: 1 } },
+}), { url: `${ACTIVITY_PATH}?cwd=D%3A%5Cother`, method: 'POST' },
+'the directory is the one the main view holds, escaped into the query')
+assert.deepEqual(announceSession({ s1: { cwd: 'D:\\work\\proj', retainedBy: {} } }),
+  { url: `${ACTIVITY_PATH}?cwd=`, method: 'POST' },
+  'a main view that holds no Session reports an empty folder, so the pet stops pinning one')
+assert.equal(announceSession({ s1: { cwd: 'D:\\work\\proj', retainedBy: {} } }), undefined,
+  'a directory that did not change costs no request')
+assert.deepEqual(announceSession({ s2: { cwd: 'D:\\again', retainedBy: { mainView: 1 } } }),
+  { url: `${ACTIVITY_PATH}?cwd=D%3A%5Cagain`, method: 'POST' },
+  'a new Session folder is reported once, when it changes')
 
 // The Git page is a tab type of this plugin's own: the right Sidebar's registry
 // carries the type, and its keyed seat carries the body that reads the Host.
@@ -3515,16 +3581,14 @@ $found
     // jobs, and it would sleep while the person is using DSH. The second route is
     // the stream the pet's menu commands come back on, the next seven are what
     // the Git page reads, checks, fast-forwards, and restores a Session's
-    // repository through, the next is the menu's open-directory entry, and the
-    // rest are the music library, its downloads, and the playback commands the
-    // card sends.
+    // repository through, and the rest are the music library, its downloads, and
+    // the playback commands the card sends.
     assert.deepEqual(routes.map((route) => `${route.kind} ${route.path}`),
       [`exact ${ACTIVITY_PATH}`, `exact ${COMMANDS_PATH}`, `exact ${GIT_PATH}`,
         `exact ${GIT_DIFF_PATH}`, `exact ${GIT_COMMIT_PATH}`, `exact ${GIT_COMMITS_PATH}`,
         `exact ${GIT_REMOTE_PATH}`,
         `exact ${GIT_PULL_PATH}`,
         `exact ${GIT_DISCARD_PATH}`,
-        `exact ${OPEN_PATH}`,
         `exact ${MUSIC_PATH}`, `exact ${MUSIC_PREFERENCES_PATH}`,
         `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
         `exact ${MUSIC_EXPAND_PATH}`, `exact ${MUSIC_ADDED_PATH}`,
@@ -3827,11 +3891,10 @@ $found
       return stream.frames.length > before ? stream.frames.at(-1) : undefined
     }
 
-    // "Open working directory" is the page's work too: the directory is the one
-    // the main view holds, which only the page knows, so the frame must cross.
-    const openCwdFrame = await menuCommand({ command: 'open-cwd', at: Date.now() + 10 }, true)
-    assert.equal(openCwdFrame, 'data: {"command":"open-cwd"}\n\n',
-      'the working-directory entry must reach the page that names the directory')
+    // "Open working directory" is gone: the pet opens folders itself now, through
+    // the quick access panel, so a leftover command must reach no page at all.
+    assert.equal(await menuCommand({ command: 'open-cwd', at: Date.now() + 10 }, false), undefined,
+      'a retired menu command must not be relayed to the page')
 
     const volumeFrame = await menuCommand({ command: 'music-volume', at: Date.now() + 20, value: 21 }, false)
     assert.equal(volumeFrame, undefined, 'a volume the menu set must not be forwarded to the page')

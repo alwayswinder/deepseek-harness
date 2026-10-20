@@ -95,14 +95,6 @@ window.__ModuleLoader__.load({
     const GIT_DISCARD_PATH = '/api/little-icon/git/discard'
 
     /**
-     * The Host route that opens a directory in the system file manager. Which
-     * directory is a Session detail this half alone knows, and opening one is
-     * something only the Host can do, so the menu's open command is this half
-     * naming the directory on that route.
-     */
-    const OPEN_PATH = '/api/little-icon/open'
-
-    /**
      * The Host routes behind the music section of this card. The page cannot list a
      * folder, cannot reach Bilibili, and cannot play a file while the DSH window is
      * hidden — the pet does that — so everything here reads what this machine has and
@@ -2622,7 +2614,37 @@ window.__ModuleLoader__.load({
         // agents and jobs rather than input, so the page reports its own use.
         // Throttled: the Host only needs to know activity happened recently.
         let lastPing = 0
+        /**
+         * The working directory of the Session the main view holds: the folder
+         * the pet pins in the middle of its quick access panel, and one only this
+         * half can name.
+         * @returns the absolute directory, or '' when no Session is held there.
+         */
+        const mainViewCwd = () => {
+          const listed = ctx.get('sessions')?.list?.getSnapshot()?.byId
+          const current = Object.values(listed ?? {})
+            .find(row => (row.retainedBy?.mainView ?? 0) > 0)
+          return current?.cwd ?? ''
+        }
+        /** Last directory this page reported, so an unchanged one costs no request. */
+        let reportedCwd = ''
+        /**
+         * Tell the Host which folder the main view shows, once it changed. The
+         * Host stores it and the pet draws it; neither of them can see the page.
+         */
+        const reportCwd = () => {
+          const cwd = mainViewCwd()
+          if (cwd === reportedCwd) return
+          reportedCwd = cwd
+          void fetch(`${ACTIVITY_PATH}?cwd=${encodeURIComponent(cwd)}`, { method: 'POST' })
+            .catch((error) => {
+              console.warn('little-icon: the Host could not be told the working directory', error)
+            })
+        }
         const ping = () => {
+          // Before the throttle: switching Session is a click, and the pet's
+          // middle tile must follow it even when the last ping was a moment ago.
+          reportCwd()
           const now = Date.now()
           if (now - lastPing < ACTIVITY_PING_MS) return
           lastPing = now
@@ -2631,6 +2653,13 @@ window.__ModuleLoader__.load({
         const onVisibility = () => { if (document.visibilityState === 'visible') ping() }
         for (const name of ACTIVITY_EVENTS) window.addEventListener(name, ping, { passive: true, capture: true })
         document.addEventListener('visibilitychange', onVisibility)
+        // A Session can also change without any input: a command opens one, a
+        // chat link lands in another. The list tells this half, and the Host hears
+        // it through the same report.
+        const sessionList = ctx.get('sessions')?.list
+        if (sessionList?.subscribe !== undefined) {
+          ctx.effect(() => sessionList.subscribe(() => { reportCwd() }), 'little-icon: working directory')
+        }
         ping()
         ctx.effect(() => () => {
           for (const name of ACTIVITY_EVENTS) window.removeEventListener(name, ping, { capture: true })
@@ -2705,20 +2734,6 @@ window.__ModuleLoader__.load({
               return
             }
             sidebar.openTab(GIT_KIND)
-          },
-          'open-cwd': () => {
-            // The directory is the one the main view holds, the same Session the
-            // shipped "open workspace" control reads, because a pet click says
-            // nothing about which Session is meant. The Host opens it and tells
-            // the pet when it could not; this half has nowhere to report that,
-            // and only names the directory the click is about.
-            const listed = ctx.get('sessions')?.list?.getSnapshot()?.byId
-            const current = Object.values(listed ?? {})
-              .find(row => (row.retainedBy?.mainView ?? 0) > 0)
-            void fetch(`${OPEN_PATH}?cwd=${encodeURIComponent(current?.cwd ?? '')}`, { method: 'POST' })
-              .catch((error) => {
-                console.warn('little-icon: the Host could not be asked to open the working directory', error)
-              })
           },
           settings: () => {
             // This card lives on the Plugins page, which belongs to the plugin

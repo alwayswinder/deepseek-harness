@@ -17,7 +17,11 @@
     screen first and is written to command.json beside the state file for the host
     to relay, and the rest act on this process at once - a screenshot among them:
     the pet owns the desktop the region is dragged over, so the selection is made
-    here and the PNG lands in shots/ beside the state file. Updating DSH starts
+    here and the PNG lands in shots/ beside the state file. Quick access is one of
+    those: a panel of nine folder tiles, the Session's directory from the state
+    file in the middle and Explorer's own recent folders around it, where a click
+    raises the window that already shows the folder instead of opening a second
+    one (see Start-QuickAccess). Updating DSH starts
     this checkout's detached Desktop build, which stops the current app and
     starts the new build only after success. Ending DSH is one of those as well:
     the window's own close only hides it now, so that entry ends the process every
@@ -461,10 +465,16 @@ function Get-Labels {
         Chat                  = 'Web chat'
         AlertNotice           = 'A task is waiting for your answer. Click the pet to return to DSH.'
         Git                   = 'Git changes'
-        OpenCwd               = 'Open working directory'
-        OpenCwdNoCwd          = 'That session has no working directory yet, so there is no folder to open.'
-        OpenCwdNoDir          = 'That working directory is gone, so there is no folder to open.'
-        OpenCwdFailed         = 'The folder could not be opened.'
+        QuickAccess           = 'Quick access'
+        QuickAccessHint       = 'Right-click to change a tile, Esc closes'
+        QuickAccessCurrent    = 'Current'
+        QuickAccessOpen       = 'Open'
+        QuickAccessPick       = 'Choose folder...'
+        QuickAccessPickShort  = 'Choose folder'
+        QuickAccessPickTitle  = 'Choose the folder this tile opens'
+        QuickAccessClear      = 'Clear this tile'
+        QuickAccessNoCwd      = 'No working directory'
+        QuickAccessFailed     = 'That folder could not be opened.'
         Settings              = 'Pet settings'
         Sites                 = 'Sites'
         SitesEmpty            = 'No sites yet. Add one under Site settings.'
@@ -625,10 +635,10 @@ $SCRIPT:PressY = 0
 $SCRIPT:ClickAction = 'toggle'
 $SCRIPT:LastFrameAt = 0
 $SCRIPT:StateStamp = [DateTime]::MinValue
-# Failures the host already reported before this pet started are history: seeding
-# the clock here keeps a stale notice in the state file from opening a box at
-# every start.
-$SCRIPT:LastNoticeAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+# The directory of the Session DSH is showing, as the page reported it. The pet
+# has no other way to learn which folder that is, and the quick access panel
+# pins it in the middle of its nine tiles.
+$SCRIPT:MainCwd = ''
 # Whether the host's published reminder is on. Set before the first state is
 # applied, and only ever changed by a newer state file.
 $SCRIPT:AlertNotice = $true
@@ -721,6 +731,33 @@ $SCRIPT:DuckTimer = $null
 $SCRIPT:MusicStamp = [DateTime]::MinValue
 $SCRIPT:BuildStartedAt = 0
 $SCRIPT:Exiting = $false
+# The quick access panel and what it is showing: the nine tiles, the Explorer
+# windows that are open right now (folder -> handle), the tile under the pointer
+# and the one the keyboard is on, and the last failure a click ran into. One
+# panel exists at a time, and its tiles are rebuilt whenever it opens.
+$SCRIPT:QuickAccess = $null
+$SCRIPT:QuickAccessSlots = @()
+$SCRIPT:QuickAccessTiles = @()
+$SCRIPT:QuickAccessOpen = @{}
+# The eight folders the person assigned to the ring, in the order the tiles take
+# them, plus the tile each one belongs to. The list is this machine's own and is
+# read on first use; the order skips the fixed middle tile.
+$SCRIPT:QuickAccessUser = $null
+$SCRIPT:QuickAccessOrder = @(0, 1, 2, 3, 5, 6, 7, 8)
+$SCRIPT:QuickAccessHover = -1
+$SCRIPT:QuickAccessFocus = 4
+$SCRIPT:QuickAccessError = ''
+# Whether a dialog or the tile's own menu owns the foreground: the panel must not
+# read that as the person leaving, and the flag that tells a chosen menu item from
+# a dismissed one is what decides who gets the focus back.
+$SCRIPT:QuickAccessBusy = $false
+$SCRIPT:QuickAccessMenuAction = 0
+$SCRIPT:QuickAccessScale = 1.0
+$SCRIPT:QuickAccessShownAt = 0
+# The single Shell.Application this process asks about quick access and open
+# folder windows. Built on first use and kept, because building it costs more
+# than either question does.
+$SCRIPT:Shell = $null
 
 function Write-Log([string]$Message) {
     [Console]::Error.WriteLine($Message)
@@ -1010,24 +1047,6 @@ function Show-RestartFailure([string]$Detail) {
     $text = $SCRIPT:Labels.RestartDshFailed
     if (-not [string]::IsNullOrWhiteSpace($Detail)) { $text = "$text`n`n$Detail" }
     [void][System.Windows.MessageBox]::Show($SCRIPT:Window, $text,
-        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
-        [System.Windows.MessageBoxImage]::Warning)
-}
-
-# The host reports an "open working directory" that ended without a window the
-# same way it reports anything else: in the state file. The person clicked here,
-# so the reason is said here - a menu entry that silently opened nothing reads as
-# a dead one. The reason is the host's word for it, and the label is this side's.
-function Get-OpenFailureText([string]$Reason) {
-    switch ($Reason) {
-        'no-cwd' { return $SCRIPT:Labels.OpenCwdNoCwd }
-        'no-dir' { return $SCRIPT:Labels.OpenCwdNoDir }
-        default { return $SCRIPT:Labels.OpenCwdFailed }
-    }
-}
-
-function Show-OpenFailure([string]$Reason) {
-    [void][System.Windows.MessageBox]::Show($SCRIPT:Window, (Get-OpenFailureText $Reason),
         $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
         [System.Windows.MessageBoxImage]::Warning)
 }
@@ -2355,12 +2374,785 @@ function Update-MusicMenu {
     })
 }
 
+# ---- quick access -----------------------------------------------------------
+# The panel the menu's quick access entry opens: nine square tiles, the DSH
+# Session's directory pinned in the middle and eight folders the person assigned
+# around it. A click raises the window that already shows a folder instead of
+# opening a second one - the same few folders stay open all day, and finding the
+# right window among them is the slow part. The ring is the person's list, kept
+# beside the state file and edited one tile at a time from the panel itself.
+
+function Get-ShellApplication {
+    # One Shell.Application for the life of this process: building it per call
+    # costs more than the question it is used for.
+    if ($null -eq $SCRIPT:Shell) { $SCRIPT:Shell = New-Object -ComObject Shell.Application }
+    return $SCRIPT:Shell
+}
+
+function Get-FolderPath([string]$Path) {
+    # One spelling per folder: no trailing separator, except on a drive root,
+    # where that separator is the whole path.
+    $text = ([string]$Path).Trim()
+    if ($text.Length -gt 1) { $text = $text.TrimEnd('\') }
+    if ($text.Length -eq 2 -and $text[1] -eq ':') { $text = $text + '\' }
+    return $text
+}
+
+function New-QuickAccessSlot([string]$Path, [bool]$Main) {
+    $text = Get-FolderPath $Path
+    $name = [System.IO.Path]::GetFileName($text)
+    if ([string]::IsNullOrWhiteSpace($name)) { $name = $text }
+    return [pscustomobject]@{
+        Path = $text
+        Name = $name
+        Parent = [System.IO.Path]::GetDirectoryName($text)
+        Main = $Main
+    }
+}
+
+function Get-QuickAccessFile {
+    # The eight folders the person assigned, kept beside the state file: they are
+    # this machine's paths, chosen on this machine, so they do not travel with the
+    # plugin's settings file.
+    return (Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quick-access.json')
+}
+
+function Read-QuickAccessFolders {
+    # Eight entries, one per ring slot, in the order the tiles are filled. A blank
+    # entry leaves its tile empty, which is a choice rather than a missing value.
+    # A string array rather than an object one, and built through ::new rather than
+    # New-Object: Windows PowerShell's ConvertTo-Json writes either alternative as
+    # `{value, Count}`, which reads back as nothing usable.
+    $folders = [string[]]::new(8)
+    for ($index = 0; $index -lt 8; $index++) { $folders[$index] = '' }
+    $stored = Read-Json (Get-QuickAccessFile)
+    if ($null -eq $stored -or $null -eq $stored.folders) { return ,$folders }
+    $index = 0
+    foreach ($entry in @($stored.folders)) {
+        if ($index -ge 8) { break }
+        $path = Get-FolderPath ([string]$entry)
+        if ($path -ne '') { $folders[$index] = $path }
+        $index++
+    }
+    return ,$folders
+}
+
+function Save-QuickAccessFolders {
+    $entries = [string[]]::new(8)
+    for ($index = 0; $index -lt 8; $index++) { $entries[$index] = [string]$SCRIPT:QuickAccessUser[$index] }
+    Write-Json (Get-QuickAccessFile) ([ordered]@{ version = 1; folders = $entries })
+}
+
+function Get-QuickAccessUser {
+    # Loaded on first use rather than at startup: the state file is what fixes the
+    # directory this list lives in, and the panel is the only caller.
+    if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
+    return ,$SCRIPT:QuickAccessUser
+}
+
+function Get-ExplorerWindows {
+    # Every folder window that is open right now, as folder -> window handle. This
+    # is what tells an already open folder from one that is not, and that is what
+    # lets a click raise a window instead of opening a second one.
+    $windows = @{}
+    try {
+        foreach ($window in @((Get-ShellApplication).Windows())) {
+            try {
+                $url = [string]$window.LocationURL
+                if (-not $url.StartsWith('file:', [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+                $path = Get-FolderPath ([System.Uri]::new($url).LocalPath)
+                if ($path -eq '') { continue }
+                $key = $path.ToLowerInvariant()
+                if ($windows.ContainsKey($key)) { continue }
+                $handle = [IntPtr]$window.HWND
+                if ($handle -eq [IntPtr]::Zero) { continue }
+                $windows[$key] = $handle
+            } catch {
+                Write-Log "one open folder window could not be read: $($_.Exception.Message)"
+            }
+        }
+    } catch {
+        Write-Log "reading the open folder windows failed: $($_.Exception.Message)"
+    }
+    return $windows
+}
+
+function Format-QuickAccessSlots($Folders, [string]$MainCwd) {
+    # Nine slots with the middle one fixed: the Session's directory is index 4, and
+    # ring slot i fills the tile at the i-th ring position in the order the person
+    # arranged them. A blank entry leaves its tile empty, and a ring folder that is
+    # the Session's own is left out rather than shown twice.
+    $main = Get-FolderPath $MainCwd
+    $slots = New-Object object[] 9
+    if ($main -ne '') { $slots[4] = New-QuickAccessSlot $main $true }
+    $order = $SCRIPT:QuickAccessOrder
+    $ring = @($Folders)
+    $seen = @{}
+    if ($main -ne '') { $seen[$main.ToLowerInvariant()] = $true }
+    for ($index = 0; $index -lt 8; $index++) {
+        if ($index -ge $ring.Count) { break }
+        $path = Get-FolderPath ([string]$ring[$index])
+        if ($path -eq '') { continue }
+        $key = $path.ToLowerInvariant()
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $slots[$order[$index]] = New-QuickAccessSlot $path $false
+    }
+    return ,$slots
+}
+
+function Get-QuickAccessRing([int]$Index) {
+    # Which entry of the person's list a tile shows: the inverse of the ring order.
+    return [Array]::IndexOf($SCRIPT:QuickAccessOrder, $Index)
+}
+
+function Get-QuickAccessTiles([double]$Scale) {
+    # The tile rectangles, in device pixels: the panel is drawn by hand, so the
+    # display scale is applied here rather than by a layout engine. The panel is
+    # square, so the padding is the band the header sits in on all four sides:
+    # three square tiles, two gaps, and twice that padding.
+    $pad = [int](56 * $Scale)
+    $gap = [int](12 * $Scale)
+    $side = [int](200 * $Scale)
+    $tiles = New-Object object[] 9
+    for ($index = 0; $index -lt 9; $index++) {
+        $column = $index % 3
+        $row = [int][Math]::Floor($index / 3)
+        $tiles[$index] = [System.Drawing.Rectangle]::new(
+            ($pad + $column * ($side + $gap)),
+            ($pad + $row * ($side + $gap)),
+            $side,
+            $side)
+    }
+    return ,$tiles
+}
+
+function Get-QuickAccessFont([float]$Size, [bool]$Bold) {
+    $style = [System.Drawing.FontStyle]::Regular
+    if ($Bold) { $style = [System.Drawing.FontStyle]::Bold }
+    return New-Object System.Drawing.Font('Microsoft YaHei UI', $Size, $style, [System.Drawing.GraphicsUnit]::Point)
+}
+
+function Get-RoundedPath([System.Drawing.Rectangle]$Rectangle, [int]$Radius) {
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $diameter = [Math]::Min($Radius * 2, [Math]::Min($Rectangle.Width, $Rectangle.Height))
+    if ($diameter -le 0) {
+        $path.AddRectangle($Rectangle)
+        return $path
+    }
+    $arc = [System.Drawing.Rectangle]::new($Rectangle.Location, [System.Drawing.Size]::new($diameter, $diameter))
+    $path.AddArc($arc, 180, 90)
+    $arc.X = $Rectangle.Right - $diameter
+    $path.AddArc($arc, 270, 90)
+    $arc.Y = $Rectangle.Bottom - $diameter
+    $path.AddArc($arc, 0, 90)
+    $arc.X = $Rectangle.Left
+    $path.AddArc($arc, 90, 90)
+    $path.CloseFigure()
+    return $path
+}
+
+function Set-QuickAccessRegion($Form, [int]$Radius) {
+    $path = Get-RoundedPath ([System.Drawing.Rectangle]::new(0, 0, $Form.Width, $Form.Height)) $Radius
+    try {
+        $previous = $Form.Region
+        $Form.Region = New-Object System.Drawing.Region($path)
+        if ($null -ne $previous) { $previous.Dispose() }
+    } finally {
+        $path.Dispose()
+    }
+}
+
+function Get-QuickAccessHit([System.Drawing.Point]$Point) {
+    for ($index = 0; $index -lt 9; $index++) {
+        if ($SCRIPT:QuickAccessTiles[$index].Contains($Point)) { return $index }
+    }
+    return -1
+}
+
+function Set-QuickAccessTileDirty([int]$Index) {
+    # One tile repainted rather than the whole panel: the pointer crossing a gap
+    # then costs two small regions instead of a full redraw, and a repaint this
+    # size is invisible next to the erase the window would otherwise do.
+    if ($null -eq $SCRIPT:QuickAccess) { return }
+    if ($Index -lt 0 -or $Index -gt 8) { return }
+    $tile = $SCRIPT:QuickAccessTiles[$Index]
+    try {
+        $SCRIPT:QuickAccess.Invalidate([System.Drawing.Rectangle]::new(
+            ($tile.Left - 2), ($tile.Top - 2), ($tile.Width + 4), ($tile.Height + 4)))
+    } catch { }
+}
+
+function Draw-QuickAccessFolder($Graphics, [System.Drawing.Rectangle]$Bounds, [System.Drawing.Color]$Ink, [float]$Scale) {
+    # The menu's folder glyph at tile size: the same shape the entry that opened
+    # this panel carries, so the tiles read as the same thing.
+    $pen = New-Object System.Drawing.Pen($Ink, [Math]::Max(1.3, 1.4 * $Scale))
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    try {
+        $left = [float]$Bounds.Left
+        $top = [float]$Bounds.Top
+        $width = [float]$Bounds.Width
+        $height = [float]$Bounds.Height
+        $points = [System.Drawing.PointF[]]@(
+            [System.Drawing.PointF]::new(($left + $width * 0.06), ($top + $height * 0.26)),
+            [System.Drawing.PointF]::new(($left + $width * 0.34), ($top + $height * 0.26)),
+            [System.Drawing.PointF]::new(($left + $width * 0.44), ($top + $height * 0.36)),
+            [System.Drawing.PointF]::new(($left + $width * 0.92), ($top + $height * 0.36)),
+            [System.Drawing.PointF]::new(($left + $width * 0.92), ($top + $height * 0.84)),
+            [System.Drawing.PointF]::new(($left + $width * 0.06), ($top + $height * 0.84)))
+        $path.AddLines($points)
+        $path.CloseFigure()
+        $Graphics.DrawPath($pen, $path)
+        $Graphics.DrawLine($pen, ($left + $width * 0.06), ($top + $height * 0.44),
+            ($left + $width * 0.92), ($top + $height * 0.44))
+    } finally {
+        $path.Dispose()
+        $pen.Dispose()
+    }
+}
+
+function Draw-QuickAccessPanel([System.Drawing.Graphics]$Graphics, [int]$Width, [int]$Height) {
+    $scale = $SCRIPT:QuickAccessScale
+    $width = $Width
+    $height = $Height
+    $ink = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    $muted = [System.Drawing.Color]::FromArgb(150, 158, 172)
+    $accent = [System.Drawing.Color]::FromArgb(44, 107, 201)
+    $Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $leftFlags = [System.Windows.Forms.TextFormatFlags]::Left -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    $rightFlags = [System.Windows.Forms.TextFormatFlags]::Right -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    $centerFlags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    # A single digit is narrower than its box, so it is not allowed to ellipsize:
+    # an ellipsis on a one-character line reads as a broken number.
+    $numberFlags = [System.Windows.Forms.TextFormatFlags]::Right -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    $resources = New-Object System.Collections.Generic.List[object]
+    try {
+        $canvas = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(252, 252, 253))
+        $resources.Add($canvas)
+        $Graphics.FillRectangle($canvas, 0, 0, $width, $height)
+        $edge = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(221, 224, 230), 1)
+        $resources.Add($edge)
+        $outline = Get-RoundedPath ([System.Drawing.Rectangle]::new(0, 0, ($width - 1), ($height - 1))) ([int](14 * $scale))
+        try { $Graphics.DrawPath($edge, $outline) } finally { $outline.Dispose() }
+
+        # Header: what this panel is, and the gestures that use it. It sits in the
+        # same band as the panel's padding, which is what keeps the window square.
+        $margin = [int](56 * $scale)
+        $titleFont = Get-QuickAccessFont 13 $true
+        $resources.Add($titleFont)
+        $hintFont = Get-QuickAccessFont 9 $false
+        $resources.Add($hintFont)
+        $titleTop = [int](16 * $scale)
+        $titleHeight = [int](26 * $scale)
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.QuickAccess, $titleFont,
+            [System.Drawing.Rectangle]::new($margin, $titleTop, ($width - $margin * 2), $titleHeight),
+            $ink, $leftFlags)
+        # The hint and the last failure share the one line the header has room for:
+        # a failure is what the person needs to read, and the gestures are known
+        # once the panel has been used at all.
+        $hintText = $SCRIPT:Labels.QuickAccessHint
+        $hintColor = $muted
+        if (-not [string]::IsNullOrWhiteSpace($SCRIPT:QuickAccessError)) {
+            $hintText = $SCRIPT:QuickAccessError
+            $hintColor = [System.Drawing.Color]::FromArgb(196, 78, 78)
+        }
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $hintText, $hintFont,
+            [System.Drawing.Rectangle]::new($margin, $titleTop, ($width - $margin * 2), $titleHeight),
+            $hintColor, $rightFlags)
+        $rulePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(232, 235, 240), 1)
+        $resources.Add($rulePen)
+        $ruleY = [int](44 * $scale)
+        $Graphics.DrawLine($rulePen, $margin, $ruleY, ($width - $margin), $ruleY)
+
+        $nameFont = Get-QuickAccessFont 11.5 $true
+        $resources.Add($nameFont)
+        $pathFont = Get-QuickAccessFont 8.75 $false
+        $resources.Add($pathFont)
+        $chipFont = Get-QuickAccessFont 8.5 $false
+        $resources.Add($chipFont)
+        $numberFont = Get-QuickAccessFont 8.5 $false
+        $resources.Add($numberFont)
+        $pad = [int](16 * $scale)
+        $iconSize = [int](22 * $scale)
+        $mainPath = Get-FolderPath $SCRIPT:MainCwd
+        for ($index = 0; $index -lt 9; $index++) {
+            $tile = $SCRIPT:QuickAccessTiles[$index]
+            $slot = $SCRIPT:QuickAccessSlots[$index]
+            if ($null -eq $slot) {
+                $emptyBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(249, 250, 251))
+                $resources.Add($emptyBrush)
+                $emptyPath = Get-RoundedPath $tile ([int](10 * $scale))
+                try { $Graphics.FillPath($emptyBrush, $emptyPath) } finally { $emptyPath.Dispose() }
+                $isMain = ($index -eq 4)
+                if ($isMain -and $mainPath -eq '') {
+                    [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.QuickAccessNoCwd, $hintFont,
+                        [System.Drawing.Rectangle]::new(($tile.Left + $pad), $tile.Top, ($tile.Width - $pad * 2), $tile.Height),
+                        $muted, $centerFlags)
+                } elseif (-not $isMain) {
+                    # An empty slot is where the person says what goes there, so it
+                    # carries the gesture rather than a message about being empty.
+                    $plusPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(190, 198, 210), [Math]::Max(1.2, 1.4 * $scale))
+                    $resources.Add($plusPen)
+                    $plusSize = [int](10 * $scale)
+                    $centerX = $tile.Left + [int]($tile.Width / 2)
+                    $centerY = $tile.Top + [int]($tile.Height / 2) - [int](10 * $scale)
+                    $Graphics.DrawLine($plusPen, ($centerX - $plusSize), $centerY, ($centerX + $plusSize), $centerY)
+                    $Graphics.DrawLine($plusPen, $centerX, ($centerY - $plusSize), $centerX, ($centerY + $plusSize))
+                    [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.QuickAccessPickShort, $hintFont,
+                        [System.Drawing.Rectangle]::new(($tile.Left + $pad), ($centerY + [int](16 * $scale)),
+                            ($tile.Width - $pad * 2), [int](22 * $scale)),
+                        $muted, $centerFlags)
+                }
+                continue
+            }
+            $fillColor = [System.Drawing.Color]::FromArgb(247, 248, 250)
+            if ($slot.Main) { $fillColor = [System.Drawing.Color]::FromArgb(234, 241, 252) }
+            if ($index -eq $SCRIPT:QuickAccessHover) { $fillColor = [System.Drawing.Color]::FromArgb(238, 243, 250) }
+            $borderColor = [System.Drawing.Color]::FromArgb(228, 231, 236)
+            if ($index -eq $SCRIPT:QuickAccessFocus) { $borderColor = [System.Drawing.Color]::FromArgb(159, 191, 240) }
+            $fill = New-Object System.Drawing.SolidBrush($fillColor)
+            $resources.Add($fill)
+            $border = New-Object System.Drawing.Pen($borderColor, 1)
+            $resources.Add($border)
+            $tilePath = Get-RoundedPath $tile ([int](10 * $scale))
+            try {
+                $Graphics.FillPath($fill, $tilePath)
+                $Graphics.DrawPath($border, $tilePath)
+            } finally {
+                $tilePath.Dispose()
+            }
+            # Stacked rather than in a row: the name gets the tile's whole width,
+            # which is what a project folder with a long name needs to stay
+            # readable next to its siblings.
+            Draw-QuickAccessFolder $Graphics ([System.Drawing.Rectangle]::new(
+                ($tile.Left + $pad), ($tile.Top + $pad), $iconSize, $iconSize)) $ink $scale
+            [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $slot.Name, $nameFont,
+                [System.Drawing.Rectangle]::new(($tile.Left + $pad), ($tile.Top + $pad + [int](32 * $scale)),
+                    ($tile.Width - $pad * 2), [int](26 * $scale)),
+                $ink, $leftFlags)
+            $parentText = if ([string]::IsNullOrWhiteSpace([string]$slot.Parent)) { '' } else { [string]$slot.Parent }
+            if ($parentText -ne '') {
+                [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $parentText, $pathFont,
+                    [System.Drawing.Rectangle]::new(($tile.Left + $pad), ($tile.Top + $pad + [int](60 * $scale)),
+                        ($tile.Width - $pad * 2), [int](18 * $scale)),
+                    $muted, $leftFlags)
+            }
+            $chipTop = $tile.Bottom - [int](20 * $scale) - [int](16 * $scale)
+            # The tile's own digit, because the keyboard reaches the same tiles: the
+            # number is how a person learns that. It shares the bottom row with the
+            # status, which leaves the name a full line above it.
+            [System.Windows.Forms.TextRenderer]::DrawText($Graphics, [string]($index + 1), $numberFont,
+                [System.Drawing.Rectangle]::new(($tile.Right - $pad - [int](20 * $scale)), $chipTop,
+                    [int](20 * $scale), [int](20 * $scale)),
+                [System.Drawing.Color]::FromArgb(186, 193, 205), $numberFlags)
+            if ($slot.Main) {
+                $chipText = $SCRIPT:Labels.QuickAccessCurrent
+                $chipSize = [System.Windows.Forms.TextRenderer]::MeasureText($chipText, $chipFont)
+                $chipWidth = [int]($chipSize.Width + 16 * $scale)
+                $chipHeight = [int](20 * $scale)
+                $chipRect = [System.Drawing.Rectangle]::new(($tile.Left + $pad), $chipTop, $chipWidth, $chipHeight)
+                $chipBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(215, 231, 252))
+                $resources.Add($chipBrush)
+                $chipPath = Get-RoundedPath $chipRect ([int](10 * $scale))
+                try { $Graphics.FillPath($chipBrush, $chipPath) } finally { $chipPath.Dispose() }
+                [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $chipText, $chipFont, $chipRect, $accent, $centerFlags)
+            } elseif ($SCRIPT:QuickAccessOpen.ContainsKey($slot.Path.ToLowerInvariant())) {
+                $dotBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(63, 163, 107))
+                $resources.Add($dotBrush)
+                $dotSize = [int](6 * $scale)
+                $Graphics.FillEllipse($dotBrush, ($tile.Left + $pad), ($chipTop + [int](7 * $scale)), $dotSize, $dotSize)
+                [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.QuickAccessOpen, $chipFont,
+                    [System.Drawing.Rectangle]::new(($tile.Left + $pad + $dotSize + [int](6 * $scale)), $chipTop,
+                        ($tile.Width - $pad * 2), [int](20 * $scale)),
+                    $muted, $leftFlags)
+            }
+        }
+    } finally {
+        foreach ($resource in $resources) {
+            try { $resource.Dispose() } catch { }
+        }
+    }
+}
+
+function Write-QuickAccessProbe([string]$Path) {
+    # The panel drawn offscreen: no window opens, and what a person would see is
+    # written where it can be looked at, so a tile layout that came out wrong is
+    # visible without a menu click.
+    $pad = [int](56 * $SCRIPT:QuickAccessScale)
+    $bitmap = New-Object System.Drawing.Bitmap(
+        ($SCRIPT:QuickAccessTiles[8].Right + $pad), ($SCRIPT:QuickAccessTiles[8].Bottom + $pad))
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    try {
+        Draw-QuickAccessPanel $graphics $bitmap.Width $bitmap.Height
+        $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+}
+
+function Move-QuickAccessFocus([int]$Delta) {
+    $candidate = $SCRIPT:QuickAccessFocus
+    for ($step = 0; $step -lt 9; $step++) {
+        $candidate = ((($candidate + $Delta) % 9) + 9) % 9
+        if ($null -ne $SCRIPT:QuickAccessSlots[$candidate]) {
+            $SCRIPT:QuickAccessFocus = $candidate
+            return
+        }
+    }
+}
+
+function Update-QuickAccessPanel {
+    # Rebuilt from the person's list and the published directory: the tiles say
+    # which windows are open, and tiles that no longer match them are worse than
+    # none.
+    if ($null -eq $SCRIPT:QuickAccess) { return }
+    try {
+        $SCRIPT:QuickAccessSlots = Format-QuickAccessSlots (Get-QuickAccessUser) $SCRIPT:MainCwd
+        $SCRIPT:QuickAccessOpen = Get-ExplorerWindows
+        $SCRIPT:QuickAccessError = ''
+        $SCRIPT:QuickAccess.Invalidate()
+    } catch {
+        Write-Log "refreshing the quick access panel failed: $($_.Exception.Message)"
+    }
+}
+
+function Invoke-QuickAccessSlot([int]$Index) {
+    if ($null -eq $SCRIPT:QuickAccess) { return }
+    $slot = $SCRIPT:QuickAccessSlots[$Index]
+    if ($null -eq $slot) { return }
+    $SCRIPT:QuickAccessBusy = $true
+    try {
+        if (-not [System.IO.Directory]::Exists($slot.Path)) {
+            $SCRIPT:QuickAccessError = "$($SCRIPT:Labels.QuickAccessFailed) $($slot.Path)"
+            $SCRIPT:QuickAccess.Invalidate()
+            return
+        }
+        # Raised before this panel goes away: handing the foreground to another
+        # window is only allowed while this process is the one in front.
+        $windows = Get-ExplorerWindows
+        $key = $slot.Path.ToLowerInvariant()
+        if ($windows.ContainsKey($key)) {
+            $handle = [IntPtr]$windows[$key]
+            if ([DshPet.Win32]::IsIconic($handle)) {
+                [void][DshPet.Win32]::ShowWindow($handle, $SCRIPT:SwRestore)
+            }
+            [void][DshPet.Win32]::SetForegroundWindow($handle)
+        } else {
+            # The folder handed to the shell, which is how a double click on one
+            # opens it, and the one way to name a path without quoting rules.
+            $start = New-Object System.Diagnostics.ProcessStartInfo
+            $start.FileName = $slot.Path
+            $start.UseShellExecute = $true
+            [void][System.Diagnostics.Process]::Start($start)
+        }
+    } catch {
+        $SCRIPT:QuickAccessError = "$($SCRIPT:Labels.QuickAccessFailed) $($_.Exception.Message)"
+        try { $SCRIPT:QuickAccess.Invalidate() } catch { }
+        return
+    } finally {
+        $SCRIPT:QuickAccessBusy = $false
+    }
+    Close-QuickAccess
+}
+
+function Restore-QuickAccessFocus {
+    # A dialog or the tile menu takes the foreground, which is what would otherwise
+    # close the panel; this is the way back, so Escape and the arrow keys keep
+    # working on a panel that is still open.
+    $SCRIPT:QuickAccessBusy = $false
+    $form = $SCRIPT:QuickAccess
+    if ($null -eq $form) { return }
+    try { $form.Activate() } catch { }
+    try { [void][DshPet.Win32]::SetForegroundWindow($form.Handle) } catch { }
+}
+
+function Select-QuickAccessFolder([int]$Ring) {
+    # One tile's folder, chosen by the person: the only way the list changes.
+    if ($Ring -lt 0 -or $Ring -ge 8) { return }
+    if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
+    $owner = $SCRIPT:QuickAccess
+    $SCRIPT:QuickAccessBusy = $true
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    try {
+        $dialog.Description = $SCRIPT:Labels.QuickAccessPickTitle
+        $dialog.ShowNewFolderButton = $true
+        $current = [string]$SCRIPT:QuickAccessUser[$Ring]
+        if ($current -ne '' -and [System.IO.Directory]::Exists($current)) { $dialog.SelectedPath = $current }
+        $answer = if ($null -ne $owner) { $dialog.ShowDialog($owner) } else { $dialog.ShowDialog() }
+        if ($answer -eq [System.Windows.Forms.DialogResult]::OK) {
+            $path = Get-FolderPath ([string]$dialog.SelectedPath)
+            if ($path -ne '') {
+                $SCRIPT:QuickAccessUser[$Ring] = $path
+                Save-QuickAccessFolders
+                Update-QuickAccessPanel
+            }
+        }
+    } catch {
+        Write-Log "choosing a folder failed: $($_.Exception.Message)"
+        $SCRIPT:QuickAccessError = "$($SCRIPT:Labels.QuickAccessFailed) $($_.Exception.Message)"
+    } finally {
+        try { $dialog.Dispose() } catch { }
+        Restore-QuickAccessFocus
+    }
+}
+
+function Clear-QuickAccessTile([int]$Ring) {
+    if ($Ring -lt 0 -or $Ring -ge 8) { return }
+    if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
+    $SCRIPT:QuickAccessUser[$Ring] = ''
+    Save-QuickAccessFolders
+    Update-QuickAccessPanel
+    Restore-QuickAccessFocus
+}
+
+function Show-QuickAccessTileMenu([int]$Index, [System.Drawing.Point]$Point) {
+    # One tile's own menu: what goes there, or nothing at all. A right click is the
+    # only way the list changes, so it carries both choices; the empty middle tile
+    # has neither, because which Session is in front is not the person's to set.
+    $form = $SCRIPT:QuickAccess
+    if ($null -eq $form -or $Index -lt 0 -or $Index -eq 4) { return }
+    $ring = Get-QuickAccessRing $Index
+    if ($ring -lt 0) { return }
+    if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
+    $menu = New-Object System.Windows.Forms.ContextMenuStrip
+    $menu.ShowImageMargin = $false
+    $menu.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $menu.ForeColor = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    try {
+        $menu.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10, [System.Drawing.FontStyle]::Regular,
+            [System.Drawing.GraphicsUnit]::Point)
+    } catch { }
+    $pick = $menu.Items.Add($SCRIPT:Labels.QuickAccessPick)
+    $pick.add_Click(({
+        $SCRIPT:QuickAccessMenuAction = 1
+        try { Select-QuickAccessFolder $ring } catch { Write-Log $_.Exception.Message }
+    }).GetNewClosure())
+    if (-not [string]::IsNullOrWhiteSpace([string]$SCRIPT:QuickAccessUser[$ring])) {
+        $clear = $menu.Items.Add($SCRIPT:Labels.QuickAccessClear)
+        $clear.add_Click(({
+            $SCRIPT:QuickAccessMenuAction = 1
+            try { Clear-QuickAccessTile $ring } catch { Write-Log $_.Exception.Message }
+        }).GetNewClosure())
+    }
+    $menu.add_Closed(({
+        try { $menu.Dispose() } catch { }
+        # A menu closed without a choice is the person changing their mind: the
+        # panel underneath takes the foreground back rather than being left behind
+        # the next window.
+        if ($SCRIPT:QuickAccessMenuAction -eq 0) { Restore-QuickAccessFocus }
+    }).GetNewClosure())
+    $SCRIPT:QuickAccessBusy = $true
+    $SCRIPT:QuickAccessMenuAction = 0
+    $menu.Show($form, $Point)
+}
+
+function Close-QuickAccess {
+    $form = $SCRIPT:QuickAccess
+    if ($null -eq $form) { return }
+    $SCRIPT:QuickAccess = $null
+    $SCRIPT:QuickAccessHover = -1
+    # Close rather than Dispose: the click that got here is still running inside
+    # this form's own event handler, and WinForms finishes the teardown after that
+    # returns.
+    try { $form.Close() } catch {
+        Write-Log "closing the quick access panel failed: $($_.Exception.Message)"
+    }
+}
+
+function Start-QuickAccess {
+    if ($null -ne $SCRIPT:QuickAccess) {
+        Update-QuickAccessPanel
+        try { $SCRIPT:QuickAccess.Activate() } catch { }
+        return
+    }
+    $form = New-Object System.Windows.Forms.Form
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $form.ShowInTaskbar = $false
+    $form.TopMost = $true
+    $form.KeyPreview = $true
+    $form.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $form.Text = $SCRIPT:Labels.QuickAccess
+    # Double buffering is the difference between a panel that repaints cleanly and
+    # one that flickers at every pointer move: without it the window erases its
+    # background before the paint, and a hand-drawn surface shows that gap. The
+    # property is protected on Control, so it is set through reflection rather
+    # than through a subclass this script would otherwise have to compile.
+    try {
+        $buffered = [System.Windows.Forms.Control].GetProperty('DoubleBuffered',
+            ([System.Reflection.BindingFlags]::Instance -bor [System.Reflection.BindingFlags]::NonPublic))
+        if ($null -ne $buffered) { $buffered.SetValue($form, $true) }
+    } catch {
+        Write-Log "enabling double buffering failed: $($_.Exception.Message)"
+    }
+    # The panel is drawn by hand, so the display's scale is applied to the
+    # geometry here rather than inherited from a layout engine.
+    [void]$form.Handle
+    $measure = [System.Drawing.Graphics]::FromHwnd($form.Handle)
+    try { $SCRIPT:QuickAccessScale = $measure.DpiX / 96.0 } finally { $measure.Dispose() }
+    $scale = $SCRIPT:QuickAccessScale
+    $SCRIPT:QuickAccessTiles = Get-QuickAccessTiles $scale
+    # Square: the padding equals the band the header sits in, so the same number
+    # closes the window on the right and at the bottom.
+    $pad = [int](56 * $scale)
+    $form.Width = $SCRIPT:QuickAccessTiles[8].Right + $pad
+    $form.Height = $SCRIPT:QuickAccessTiles[8].Bottom + $pad
+    Set-QuickAccessRegion $form ([int](14 * $scale))
+    $SCRIPT:QuickAccessHover = -1
+    $SCRIPT:QuickAccessFocus = 4
+    $SCRIPT:QuickAccessError = ''
+    $SCRIPT:QuickAccessMenuAction = 0
+    if ($null -eq $SCRIPT:QuickAccessUser) { $SCRIPT:QuickAccessUser = Read-QuickAccessFolders }
+
+    $form.add_Paint({
+        param($sender, $eventArgs)
+        try {
+            # The size comes from the window rather than from the clip: a hover
+            # repaints one tile, and a layout measured off the clip would move the
+            # header and the outline onto that tile.
+            Draw-QuickAccessPanel $eventArgs.Graphics $sender.ClientSize.Width $sender.ClientSize.Height
+        } catch {
+            Write-Log "drawing the quick access panel failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseMove({
+        param($sender, $eventArgs)
+        try {
+            $hit = Get-QuickAccessHit $eventArgs.Location
+            if ($hit -eq $SCRIPT:QuickAccessHover) { return }
+            $previous = $SCRIPT:QuickAccessHover
+            $SCRIPT:QuickAccessHover = $hit
+            if ($hit -ge 0 -and $null -ne $SCRIPT:QuickAccessSlots[$hit]) {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::Hand
+            } else {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::Default
+            }
+            Set-QuickAccessTileDirty $previous
+            Set-QuickAccessTileDirty $hit
+        } catch {
+            Write-Log "tracking the pointer failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseUp({
+        param($sender, $eventArgs)
+        try {
+            $hit = Get-QuickAccessHit $eventArgs.Location
+            if ($hit -lt 0) { return }
+            if ($eventArgs.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
+                Show-QuickAccessTileMenu $hit $eventArgs.Location
+                return
+            }
+            if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+            if ($null -eq $SCRIPT:QuickAccessSlots[$hit]) {
+                # An empty ring tile is an offer, not a dead square: clicking it is
+                # how the person fills it. The middle tile is not editable - which
+                # Session is in front is not theirs to set.
+                if ($hit -ne 4) { Select-QuickAccessFolder (Get-QuickAccessRing $hit) }
+                return
+            }
+            $SCRIPT:QuickAccessFocus = $hit
+            Invoke-QuickAccessSlot $hit
+        } catch {
+            Write-Log "a quick access tile failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_KeyDown({
+        param($sender, $eventArgs)
+        try {
+            $key = $eventArgs.KeyCode
+            if ($key -eq [System.Windows.Forms.Keys]::Escape) {
+                $eventArgs.Handled = $true
+                Close-QuickAccess
+                return
+            }
+            if ($key -eq [System.Windows.Forms.Keys]::Left -or $key -eq [System.Windows.Forms.Keys]::Up) {
+                $eventArgs.Handled = $true
+                $before = $SCRIPT:QuickAccessFocus
+                Move-QuickAccessFocus -1
+                Set-QuickAccessTileDirty $before
+                Set-QuickAccessTileDirty $SCRIPT:QuickAccessFocus
+                return
+            }
+            if ($key -eq [System.Windows.Forms.Keys]::Right -or $key -eq [System.Windows.Forms.Keys]::Down) {
+                $eventArgs.Handled = $true
+                $before = $SCRIPT:QuickAccessFocus
+                Move-QuickAccessFocus 1
+                Set-QuickAccessTileDirty $before
+                Set-QuickAccessTileDirty $SCRIPT:QuickAccessFocus
+                return
+            }
+            if ($key -eq [System.Windows.Forms.Keys]::Enter -or $key -eq [System.Windows.Forms.Keys]::Space) {
+                $eventArgs.Handled = $true
+                Invoke-QuickAccessSlot $SCRIPT:QuickAccessFocus
+                return
+            }
+            if ($key -ge [System.Windows.Forms.Keys]::D1 -and $key -le [System.Windows.Forms.Keys]::D9) {
+                $eventArgs.Handled = $true
+                Invoke-QuickAccessSlot ($key - [System.Windows.Forms.Keys]::D1)
+            }
+        } catch {
+            Write-Log "a quick access key failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_Deactivate({
+        param($sender, $eventArgs)
+        try {
+            # Opening a tile makes this panel lose the foreground on purpose, and
+            # the menu that opened it finishes closing just after the panel
+            # appears: neither is the person leaving.
+            if ($null -eq $SCRIPT:QuickAccess) { return }
+            if ($SCRIPT:QuickAccessBusy) { return }
+            if (([Environment]::TickCount - $SCRIPT:QuickAccessShownAt) -lt 600) { return }
+            Close-QuickAccess
+        } catch {
+            Write-Log "closing the quick access panel failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_FormClosed({
+        $SCRIPT:QuickAccess = $null
+    })
+
+    $SCRIPT:QuickAccess = $form
+    $SCRIPT:QuickAccessShownAt = [Environment]::TickCount
+    Update-QuickAccessPanel
+    # The panel opens where the person is working: the screen the pointer is on,
+    # which is the one the pet was right-clicked on.
+    $area = [System.Windows.Forms.Screen]::FromPoint([System.Windows.Forms.Cursor]::Position).WorkingArea
+    $left = $area.Left + [int](($area.Width - $form.Width) / 2)
+    $top = $area.Top + [int](($area.Height - $form.Height) / 2)
+    $form.Left = [Math]::Max($area.Left, [Math]::Min($left, ($area.Right - $form.Width)))
+    $form.Top = [Math]::Max($area.Top, [Math]::Min($top, ($area.Bottom - $form.Height)))
+    $form.Show()
+    $form.Activate()
+    # Escape is only heard by the window that has the focus, so the panel asks
+    # for it twice: Activate() moves within this process, and SetForegroundWindow
+    # asks the system. The click that chose the menu entry is what makes the
+    # second one allowed.
+    [void][DshPet.Win32]::SetForegroundWindow($form.Handle)
+}
+
 # ---- self test --------------------------------------------------------------
 if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.AlertNotice) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.OpenCwd) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.FishTank) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicSettings) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.AlertNotice) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.QuickAccess) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.SitesManage) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.FishTank) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicSettings) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -2680,11 +3472,64 @@ if ($SelfTest) {
     Write-Output "shot-dirs: $($shotDirs -join ' / ')"
     $drag = Get-ShotRectangle ([System.Drawing.Point]::new(30, 40)) ([System.Drawing.Point]::new(10, 20))
     Write-Output "shot-rect: $($drag.X),$($drag.Y) $($drag.Width)x$($drag.Height)"
-    # The host's reasons for an open that produced no window, in this side's
-    # words: a reason nobody mapped would otherwise reach the person as a box
-    # about the wrong thing.
-    $reasons = @('no-cwd', 'no-dir', 'unexpected') | ForEach-Object { Get-OpenFailureText $_ }
-    Write-Output "open-failure: $($reasons -join ' / ')"
+    # The nine tiles are filled from the eight folders the person assigned and a
+    # directory the page names, so the mapping is what a quiet bug would get wrong:
+    # the middle slot is the Session's folder whatever the list says, a ring entry
+    # that is blank stays an empty tile in its own place, and the same folder twice
+    # is shown once.
+    $probeFolders = @('C:\a', '', 'C:\c', 'C:\a', '', '', '', 'C:\d')
+    $probeSlots = Format-QuickAccessSlots $probeFolders 'C:\b'
+    $probeText = @(0..8 | ForEach-Object {
+        $slot = $probeSlots[$_]
+        if ($null -eq $slot) { 'empty' }
+        elseif ($slot.Main) { "main=$($slot.Name)" }
+        else { $slot.Name }
+    })
+    Write-Output "quick-access: $($probeText -join ',')"
+    # The list itself, kept beside the state file: eight entries in the order the
+    # tiles take them, and a slot the person cleared stays cleared.
+    $SCRIPT:QuickAccessUser = Read-QuickAccessFolders
+    $SCRIPT:QuickAccessUser[0] = 'C:\one'
+    $SCRIPT:QuickAccessUser[2] = 'C:\three'
+    $SCRIPT:QuickAccessUser[7] = 'C:\eight'
+    Save-QuickAccessFolders
+    $SCRIPT:QuickAccessUser = $null
+    $reloaded = Get-QuickAccessUser
+    Write-Output ("quick-access-user: " + (@(0..7 | ForEach-Object {
+        if ([string]::IsNullOrEmpty([string]$reloaded[$_])) { 'blank' } else { [string]$reloaded[$_] }
+    }) -join ','))
+    # The panel itself, drawn offscreen: no window opens, and the tiles are filled
+    # with paths long enough to be trimmed, which is the layout a quiet bug would
+    # ruin without anything here failing.
+    $SCRIPT:QuickAccessScale = 1.0
+    $SCRIPT:QuickAccessTiles = Get-QuickAccessTiles 1.0
+    $SCRIPT:QuickAccessSlots = Format-QuickAccessSlots @(
+        'C:\Users\someone\Documents\A folder name long enough to be trimmed',
+        'D:\Work\tmp', 'E:\Unreal\Projects\MyProject_5_8', 'D:\Unreal\resources',
+        'E:\AI\3dMax\Save\Quinn', 'E:\AI\Blender', 'D:\Work\StaticMesh', 'E:\Work\SSMainline'
+    ) 'E:\AI\DSH'
+    $SCRIPT:QuickAccessOpen = @{ 'd:\work\tmp' = [IntPtr]::Zero }
+    $SCRIPT:QuickAccessHover = 1
+    $SCRIPT:QuickAccessFocus = 4
+    $panelPath = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quick-access-probe.png'
+    Write-QuickAccessProbe $panelPath
+    Write-Output "quick-access-panel: $panelPath"
+    # And the state a machine is in before DSH has shown a Session: two folders
+    # to offer and nothing to pin, so the middle tile has to say so rather than
+    # sit blank, and the ring's spare tiles stay empty rather than repeat the
+    # message.
+    $SCRIPT:QuickAccessSlots = Format-QuickAccessSlots @('D:\Work\tmp', 'E:\AI\3dMax\Save\Quinn') ''
+    $SCRIPT:QuickAccessOpen = @{}
+    $SCRIPT:QuickAccessHover = -1
+    $SCRIPT:QuickAccessFocus = 0
+    $sparsePath = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quick-access-probe-sparse.png'
+    Write-QuickAccessProbe $sparsePath
+    Write-Output "quick-access-panel-sparse: $sparsePath"
+    # The one shell question the panel asks, answered for real: how many folder
+    # windows are open right now, which is what tells an open tile from one that is
+    # not. Whatever this machine has is the answer.
+    $quickWindows = Get-ExplorerWindows
+    Write-Output "quick-access-windows: $($quickWindows.Count)"
     # Restarting ends DSH, so no test may exercise it end to end; what is worth
     # checking is the part a wrong edit would ruin silently - which directory the
     # replacement starts in, and the script the waiter would run, down to the
@@ -2927,15 +3772,14 @@ function Apply-State($State) {
     # the request says nothing about the current window state, so it only ever
     # hides, and hiding an already hidden window is a no-op.
     if ($null -ne $State.tuck -and [bool]$State.tuck) { Set-DshWindowShown $false }
-    # The host's answer to the last "open working directory" that opened nothing.
-    # The latest one stays in the file, so only a failure newer than the one this
-    # pet has already shown is news.
-    if ($null -ne $State.notice -and $null -ne $State.notice.at) {
-        $reported = [long]$State.notice.at
-        if ($reported -gt $SCRIPT:LastNoticeAt) {
-            $SCRIPT:LastNoticeAt = $reported
-            Show-OpenFailure ([string]$State.notice.reason)
-        }
+    # The folder the DSH window is showing: the page names it, and the quick
+    # access panel pins it in the middle of its tiles. A panel already open
+    # follows the change, so switching Session in DSH updates it under the
+    # pointer instead of leaving yesterday's folder in the middle.
+    $reportedCwd = if ($null -eq $State.cwd) { '' } else { [string]$State.cwd }
+    if ($reportedCwd -ne $SCRIPT:MainCwd) {
+        $SCRIPT:MainCwd = $reportedCwd
+        if ($null -ne $SCRIPT:QuickAccess) { Update-QuickAccessPanel }
     }
     Update-PetOpacity
 }
@@ -3447,6 +4291,9 @@ function Exit-Pet {
         if ($null -ne $SCRIPT:PetMenu) { $SCRIPT:PetMenu.Dispose() }
         $SCRIPT:PetMenu = $null
     } catch { }
+    # The panel is a window of this process: closing it here means a shutdown
+    # never leaves one on the desktop of an application that is gone.
+    Close-QuickAccess
     try { $app.Shutdown() } catch { }
 }
 
@@ -3502,13 +4349,16 @@ function New-PetMenu {
             Send-MenuCommand 'git'
         } catch { Write-Log $_.Exception.Message }
     })
-    # Opening the working directory is the page's move as well, for the opposite
-    # reason: the pet knows no Session's directory, and the page can name one but
-    # cannot open it. Nothing is raised first here - the folder window is what the
-    # person asked to see, and Explorer brings itself to the front.
-    $openItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.OpenCwd 'folder'
-    $openItem.add_Click({
-        try { Send-MenuCommand 'open-cwd' } catch { Write-Log $_.Exception.Message }
+    # Quick access opens a panel of this process's own: the current Session's
+    # directory in the middle, Explorer's own recent folders around it, and a
+    # click that raises whichever of them is already open. Nothing is raised
+    # first - the panel is what the person asked to see.
+    $quickItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.QuickAccess 'folder'
+    $quickItem.add_Click({
+        try { Start-QuickAccess } catch {
+            Write-Log "opening the quick access panel failed: $($_.Exception.Message)"
+            try { Show-PetNotice $SCRIPT:Labels.QuickAccessFailed $_.Exception.Message } catch { }
+        }
     })
     # The mini games live one level down: the entry itself opens nothing, so
     # more of them can join without touching this menu's shape again. Each child

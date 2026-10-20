@@ -131,14 +131,6 @@ const GIT_PULL_PATH = '/api/little-icon/git/pull'
 const GIT_DISCARD_PATH = '/api/little-icon/git/discard'
 
 /**
- * Same-origin route that opens the Session's working directory in the system
- * file manager. Neither half can do it alone: which directory the person is
- * working in is the page's knowledge — it is the Session the main view holds —
- * and starting a process is the Host's, so the page names the directory here.
- */
-const OPEN_PATH = '/api/little-icon/open'
-
-/**
  * Same-origin routes behind the settings card's music section. The card can
  * neither read a directory nor reach Bilibili, so the Host answers with the
  * library as this machine has it and does the downloading itself: one route reads
@@ -175,10 +167,10 @@ const MUSIC_COMMANDS = new Set(['play', 'pause', 'toggle', 'next', 'prev'])
 
 /**
  * Menu entries the page performs. Everything else the pet writes is either handled
- * here (music sync, the folder, the volume) or belongs to a menu entry that no
- * longer exists, so it must not reach a listener that would only warn about it.
+ * here (music sync, the volume) or belongs to a menu entry that no longer exists,
+ * so it must not reach a listener that would only warn about it.
  */
-const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'open-cwd', 'aquarium', 'fish-tank', 'temp-space'])
+const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space'])
 
 /** Volume a machine that has not chosen one plays at. */
 const MUSIC_VOLUME_DEFAULT = 70
@@ -874,13 +866,15 @@ function withLiteralPath(path) {
 }
 
 /**
- * Open one Session's working directory in the system file manager.
+ * Open one directory in the system file manager.
  *
- * The directory is checked here rather than left to the file manager: a Session
- * whose directory has since been deleted is something the pet says out loud,
- * where a shell asked for a path that is gone opens a different folder or a
- * dialog of its own — neither of which reads as a refusal.
- * @param cwd - the directory the page reported; empty when its Session has none.
+ * The import of the music library uses it, and the pet's quick access panel does
+ * not: that panel opens and raises folders itself, from the shell, where it also
+ * knows which windows are already open. The directory is checked here rather than
+ * left to the file manager: a folder that has since been deleted is answered as
+ * a refusal, where a shell asked for a path that is gone opens a different folder
+ * or a dialog of its own.
+ * @param cwd - the directory to open; empty when there is none to open.
  * @param launch - starts the file manager on one existing directory, and is the
  *   caller's because only it has a logger for the spawn failure that arrives
  *   after this returns.
@@ -2012,14 +2006,14 @@ export function apply(ctx, config) {
   /** Timestamp of the last menu command already sent to the page; older ones are history. */
   let lastCommandAt = readCommand(commandFile)?.at ?? 0
   /**
-   * The last request to open the working directory that ended without a window,
-   * as `{ at, reason }`, or undefined while every one of them opened one. It
-   * travels in the state file because the pet is the half with a place to say
-   * it: the click happens on the pet, and a menu entry that opened nothing must
-   * not read as one that did nothing. `at` is what tells a pet that has already
-   * shown this one from a fresh failure.
+   * The directory of the Session the DSH window is showing, as the page reports
+   * it with its own activity. The page is the only half that knows which Session
+   * the main view holds, and the pet is the half that draws it in the middle of
+   * the quick access panel, so it travels in the state file. Empty until a page
+   * has named one, and kept across a page that closes: the folder the person was
+   * in does not stop being theirs because the window went away.
    */
-  let openNotice
+  let mainCwd = ''
   /** Open command streams, one per DSH window that is listening. */
   const commandStreams = new Set()
   let child
@@ -2221,9 +2215,10 @@ export function apply(ctx, config) {
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),
-      // Absent until an open fails, and unchanged after that, so it costs one
-      // write rather than one per sample.
-      notice: openNotice,
+      // The folder the DSH window is showing, as the page reported it. The quick
+      // access panel pins it in the middle; an older pet ignores the field, and a
+      // page that has not reported one leaves the pet with empty tiles.
+      cwd: mainCwd,
       updatedAt: now,
     })
   }
@@ -2432,7 +2427,10 @@ export function apply(ctx, config) {
 
   // The page pings this on pointer and keyboard activity; without it the pet
   // could only tell "no task is running", which is not the same as "nobody is
-  // there", and it would fall asleep while the person is working in DSH.
+  // there", and it would fall asleep while the person is working in DSH. The same
+  // request carries the folder the main view is showing, when the page named one,
+  // because the pet draws that folder in the quick access panel and has no other
+  // way to learn it. A page with nothing to name leaves the last one in place.
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
@@ -2450,6 +2448,8 @@ export function apply(ctx, config) {
           res.end()
           return
         }
+        const reported = new URL(req.url ?? '', 'http://localhost').searchParams.get('cwd')
+        if (reported !== null) mainCwd = reported
         reportedActivityAt = Date.now()
         res.writeHead(204)
         res.end()
@@ -2586,42 +2586,6 @@ export function apply(ctx, config) {
         })
       },
     }), `little-icon: POST ${GIT_DISCARD_PATH}`)
-    // The one route here with a side effect outside the page: it opens the
-    // directory in the shell's own file manager. POST, so a page that re-reads
-    // its listing never opens a folder by itself.
-    webCtx.effect(() => webCtx.webServer.register({
-      kind: 'exact',
-      path: OPEN_PATH,
-      handler: (req, res) => {
-        const connection = ctx.get('connection')
-        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-        if (rejection !== undefined) {
-          res.writeHead(rejection)
-          res.end()
-          return
-        }
-        if (req.method !== 'POST') {
-          res.writeHead(405)
-          res.end()
-          return
-        }
-        const query = new URL(req.url ?? '', 'http://localhost').searchParams
-        const outcome = openWorkingDirectory(query.get('cwd') ?? '', (directory) => {
-          // explorer.exe is the shell itself, so the folder opens in the window
-          // the person already uses and an open Explorer is handed the path
-          // rather than a second one being started.
-          const child = spawn('explorer.exe', [directory], { detached: true, stdio: 'ignore' })
-          // A spawn failure arrives after this returns. Without a listener it is
-          // an unhandled `error` event, which takes the whole host down.
-          child.once('error', (error) => {
-            ctx.logger.warn('little-icon: could not open %s: %s', directory, String(error))
-          })
-          child.unref()
-        })
-        if (!outcome.ok) openNotice = { at: Date.now(), reason: outcome.reason }
-        sendJson(res, outcome)
-      },
-    }), `little-icon: POST ${OPEN_PATH}`)
   })
 
   // The music routes: the settings card reads the library here and asks for work
@@ -2993,7 +2957,6 @@ export const internals = {
   GIT_REMOTE_PATH,
   GIT_PULL_PATH,
   GIT_DISCARD_PATH,
-  OPEN_PATH,
   MUSIC_PATH,
   MUSIC_SYNC_PATH,
   MUSIC_DOWNLOAD_PATH,

@@ -5,7 +5,7 @@
 
 ## 我该跑哪个
 
-脚本都在 `build\` 下（`_mytools` 根目录只剩 `Plugins\`、素材和这份说明）；下面的路径相对 `_mytools\`。
+脚本都在 `build\` 下（`_mytools` 根目录只剩 `Plugins\`、`Mode\`、`favorites\`、`settings\`、`backup\`、`Note\` 和这份说明）；下面的路径相对 `_mytools\`。工作产物不进仓库，统一放 `D:\AI`（见仓库根 [AGENTS.local.md](../AGENTS.local.md) 的「工作产物」）。
 
 | 场景 | 跑这个 |
 | --- | --- |
@@ -167,8 +167,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build\build.bat`（desktop/repair）调用。 |
 | `.gitattributes` | 固定 `*.bat` 以 CRLF 检出（cmd 按 CRLF 解析）；另给逐字收录的第三方文件关掉空白检查（aquarium 的 `three.module.js`、`dsh-remotion-master\skills\`），免得为了过 `git diff --check` 去改上游原文。 |
 | `build\dsh-web.log` | `build\start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
-| `ai-game\` | 个人东西（ATB 回合制战斗 demo，纯 HTML/CSS/JS），与 DSH 运行无关。 |
-| `bg\` | 背景图素材。 |
+| （已移出仓库） | 个人作品与验证产物统一放 `D:\AI`，见仓库根 [AGENTS.local.md](../AGENTS.local.md) 的「工作产物」：`D:\AI\Projects\ai-game`（ATB 战斗 demo，纯 HTML/CSS/JS）、`D:\AI\Projects\remotion`（视频工程）、`D:\AI\work`（3ds Max / Unreal 验证取证）。 |
 
 ## 约定
 

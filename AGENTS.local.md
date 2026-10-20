@@ -32,6 +32,14 @@
 - 上游文件保持与官方一致：不重构、不顺手修 bug、不调格式；上游的测试、快照、脚本、文档也不为了让检查通过而改。
 - 确实要改上游文件时：先说明改哪个、为什么必须改、有没有只改 `_mytools/` 或 `$DSH_HOME` 的替代方案；首选替代是用户配置写 `$DSH_HOME`（`settings.yaml`、`profiles/`）、插件与脚本放 `_mytools/`；得到明确同意后再改，并在回复中说明下次合并上游会带来冲突，改完记进 UPSTREAM.md。
 
+## 工作产物
+
+- **产物不进仓库，统一放 `D:\AI`**：`D:\AI\work`（3ds Max / Unreal 验证取证：场景副本、日志、截图、报告）、`D:\AI\Projects`（个人项目：`remotion\` 视频工程、`ai-game\` 战斗 demo）、`D:\AI\Note`（临时笔记）。桌宠的截图与音乐本来就指向 `D:\AI\Tmp`、`D:\AI\Music`。
+- 2026-10-20 起 `_mytools\Mode\dsh-3dsmax\work`、`_mytools\Mode\dsh-unreal\work`、`_mytools\Projects`、`_mytools\ai-game` 已搬到上面这些位置，仓库里不再有旧目录；3ds Max / Unreal 文档里写的落点就是 `D:\AI\work`（`Mode\*\work` 这个相对路径不再成立）。
+- 两个 Mode 的 `.gitignore` 仍忽略 `/work/`：那只是防止有人在仓库里误建后被提交，看到它出现就说明流程写错了位置。
+- 搬动 `D:\AI\Projects\remotion` 下的工程时注意 `node_modules` 是指向 `$DSH_HOME\data\dsh-remotion\runtime\node_modules` 的 junction，`robocopy` 要带 `/XJ` 并在目标处重建链接，否则会整份复制运行时。
+- 盘符只出现在文档和上面这些落点说明里；脚本仍按「不写死盘符」从自身位置推导。换一台没有 D 盘的机器时，按该机实际盘符替换这几条路径。
+
 ## 提交与推送
 
 - **未经同意不提交、不推送**：只有明确说「提交」「推送」才做；改完先汇报改动与验证结果，等确认。

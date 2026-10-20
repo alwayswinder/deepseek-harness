@@ -45,7 +45,7 @@ The generator rejects non-finite coordinates, scaled/sheared/reflected frames, a
 From this preset's directory, the Chiya example is:
 
 ```powershell
-python tools/body55/generate.py --profile tools/body55/profiles/chiya.json --source-scene E:/AI/3dMax/Save/chistatic.max --scene-copy E:/AI/DSH/_mytools/Mode/dsh-3dsmax/work/body55-tool-validation/chiya-body55.max --script work/body55-tool-validation/build-chiya.ms
+python tools/body55/generate.py --profile tools/body55/profiles/chiya.json --source-scene E:/AI/3dMax/Save/chistatic.max --scene-copy D:/AI/work/body55-tool-validation/chiya-body55.max --script D:/AI/work/body55-tool-validation/build-chiya.ms
 ```
 
 Create the output directory first and choose fresh paths for subsequent runs. The command only writes a script; it does not control Max. Open the measured static input in the intended Max instance and run the generated script through MAXScript. Loading performs read-only preflight and returns `PREFLIGHT_OK=55; no scene or file changes`. Loading the same script in its completed output scene instead performs read-only verification.

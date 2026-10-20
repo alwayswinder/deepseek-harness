@@ -184,7 +184,7 @@ skinOps.SetEndPoint sk boneIndex tipLocal
 | 512：相对蒙皮前网格偏差 | 最大约 0.0000465 cm |
 | 512：保存重开比较 | 权重对、骨名/矩阵、基础/求值几何、面索引、UV、材质 ID 均无差异；材质名称一致 |
 
-选用文件为 `chistatic_GeodesicVoxel_512_raw.max`，同时保留 256 候选和 `chistatic_before_skin.max`。本机证据位于 `work/Chistatic_VoxelSkin_20261020_114542/`，包括试验说明和动作截图。阅读本指南不依赖本机工作目录。
+选用文件为 `chistatic_GeodesicVoxel_512_raw.max`，同时保留 256 候选和 `chistatic_before_skin.max`。本机证据位于 `D:\AI\work\Chistatic_VoxelSkin_20261020_114542/`，包括试验说明和动作截图。阅读本指南不依赖本机工作目录。
 
 下列截图使用临时灰色材质，保存的试验文件保留原材质。抬臂图展示袖子弯曲，抬腿图展示衣摆随腿运动。
 

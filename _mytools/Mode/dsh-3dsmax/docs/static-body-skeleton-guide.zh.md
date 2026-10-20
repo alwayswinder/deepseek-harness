@@ -45,7 +45,7 @@
 在本预设目录中，Chiya 示例为：
 
 ```powershell
-python tools/body55/generate.py --profile tools/body55/profiles/chiya.json --source-scene E:/AI/3dMax/Save/chistatic.max --scene-copy E:/AI/DSH/_mytools/Mode/dsh-3dsmax/work/body55-tool-validation/chiya-body55.max --script work/body55-tool-validation/build-chiya.ms
+python tools/body55/generate.py --profile tools/body55/profiles/chiya.json --source-scene E:/AI/3dMax/Save/chistatic.max --scene-copy D:/AI/work/body55-tool-validation/chiya-body55.max --script D:/AI/work/body55-tool-validation/build-chiya.ms
 ```
 
 先建立输出目录，后续运行使用新路径。该命令只写脚本，不控制 Max。在目标 Max 实例打开实测静态输入，通过 MAXScript 运行生成的脚本。加载只执行预检并返回 `PREFLIGHT_OK=55; no scene or file changes`。在对应的已完成输出场景加载同一脚本时，则执行只读验证。

@@ -184,7 +184,7 @@ These values belong to the 2026-10-20 Chistatic trial in centimeter units. Timin
 | 512: mesh drift from pre-Skin snapshot | 0.0000465 cm maximum |
 | 512: save/reopen comparison | Weight pairs, bone names/matrices, base/evaluated geometry, face indices, UVs and material IDs unchanged; material name matched |
 
-The selected file is `chistatic_GeodesicVoxel_512_raw.max`; the 256 candidate and `chistatic_before_skin.max` are retained. Local evidence is under `work/Chistatic_VoxelSkin_20261020_114542/`, including the trial report and pose screenshots. The local work directory is not required to read this guide.
+The selected file is `chistatic_GeodesicVoxel_512_raw.max`; the 256 candidate and `chistatic_before_skin.max` are retained. Local evidence is under `D:\AI\work\Chistatic_VoxelSkin_20261020_114542/`, including the trial report and pose screenshots. The local work directory is not required to read this guide.
 
 The following captures use a temporary gray material. The saved trial uses the original material. The arm capture shows the sleeve bend; the leg capture shows the hem following the raised leg.
 

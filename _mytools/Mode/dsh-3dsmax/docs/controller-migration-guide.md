@@ -404,7 +404,7 @@ h = |perp( BIPDRV_mid − S , k )|,  k = normalize(H − S)
 
 ## 15. 历史个案数据（仅追溯）
 
-Seven → Stan（2026-10-16 与 2026-10-19 两轮）的完整取证在[个案流水账](stan-biped-controller-migration-task.md)与本地 `work/` 报告中。以下数字是**个案**，不能当默认参数：
+Seven → Stan（2026-10-16 与 2026-10-19 两轮）的完整取证在[个案流水账](stan-biped-controller-migration-task.md)与本地 `D:\AI\work\` 报告中。以下数字是**个案**，不能当默认参数：
 
 | 项 | 值 |
 |---|---|

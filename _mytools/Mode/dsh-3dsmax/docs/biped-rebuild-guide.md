@@ -67,7 +67,7 @@ global gRest = for nm in bodyNames collect (
 )
 ```
 
-同时把**名字、父级、3×3 旋转、世界位置**写到外部文件 `work/<角色>_<日期>/gRest_<角色>.txt`。每条至少包含：`name|parent|row1|row2|row3|worldpos`。
+同时把**名字、父级、3×3 旋转、世界位置**写到外部文件 `D:\AI\work\<角色>_<日期>/gRest_<角色>.txt`。每条至少包含：`name|parent|row1|row2|row3|worldpos`。
 
 **开工前的输入检查**（不合格先修，不要带着问题往下走）：
 

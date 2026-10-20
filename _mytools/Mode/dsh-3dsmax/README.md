@@ -207,7 +207,7 @@ node _mytools\Mode\dsh-3dsmax\tools\probe-presets.mjs 9231   # 指定的 inspect
 ```
 
 > `tools/probe-host.mjs "<表达式>"` 是同一套连接方式，用来在 host 进程里求值任意表达式
-> （排查其它宿主侧状态时用）。两个脚本都在 `tools/`（`work/` 是本机验证产物，不进 git）。
+> （排查其它宿主侧状态时用）。两个脚本都在 `tools/`（验证产物落在 `D:\AI\work\`，不进 git；仓库里不再建 `work/`）。
 >
 > 判断"改完的 preset 到底能不能挂载"，不必动正在跑的 DSH：用一个临时 `DSH_HOME`
 > 另起一个 web profile（把 `profiles\web` 的几个小文件复制过去、重建 `node_modules\@local`

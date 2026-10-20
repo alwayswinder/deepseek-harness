@@ -4,7 +4,7 @@
 >
 > 阅读方式：§0–§9 是 2026-10-16 开工时的计划，**其中若干做法已被后续实测推翻**（尤其 §4 的 P6 驱动层、§2 的目标架构、以及所有"改指关节环"的笼统建议）；§10 是当天的流水账；§10.15–§10.16 是当天修复记录。**计划与实际实现的差异**在 §10.14–§10.16。
 >
-> 2026-10-19 第三轮独立验证（原始输入、不用历史副本）的结论与新发现记录在本地 `work/ProcessValidation_20261019_R3/report.md`；其要点已并入上面四份规范：静止链路通过，动态项（姿势差分、根转向、越界、直接复位、重开）未通过，机制见迁移指南 §1 与 §8.3。历史文件只作追溯，不得当作新角色的固定参数。
+> 2026-10-19 第三轮独立验证（原始输入、不用历史副本）的结论与新发现记录在本地 `D:\AI\work\ProcessValidation_20261019_R3/report.md`；其要点已并入上面四份规范：静止链路通过，动态项（姿势差分、根转向、越界、直接复位、重开）未通过，机制见迁移指南 §1 与 §8.3。历史文件只作追溯，不得当作新角色的固定参数。
 
 > Task spec (working doc): build a **new Biped fitted to Stan's UE skeleton**, then migrate **Seven's body-controller layer** onto it. Seven stays a read-only reference template. Deliverable to the engine is Stan's UE skeleton (bake → FBX → UE).
 > 本文与 `ADVANCED.md` / `CHANGELOG.md` / `PYPI.md` 并列存放，内容为项目工作文档（中文），标识符与 API 名称保留英文。

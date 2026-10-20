@@ -248,4 +248,4 @@ foreach ($p in 'desktop','web') {
 | `tools/probe-presets.mjs` | 连 inspector 读活着的 preset roster |
 | `skills/unreal-editor-mcp/` | UE 专用技能（调用形状、工具地图、安全边界、恢复路径） |
 | `locale/{en,zh}.json` | 插件卡片显示名（不影响模式选择器里的 preset 名） |
-| `work/` | 本机验证产物（临时脚本/输出），不进 git |
+| `D:\AI\work\`（本机） | 本机验证产物（临时脚本/输出），不进 git；仓库里不建 `work/` |

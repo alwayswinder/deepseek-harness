@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Unreal Engine Mode",
+    "description": "Unreal Engine 5.8 MCP editing mode for DSH: bundles the editor's built-in MCP server tools and UE-specific skills as a preset."
+  }
+}

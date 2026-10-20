@@ -1,0 +1,11 @@
+interface:
+  display_name: "Unreal Engine Editor MCP"
+  short_description: "Operate the running Unreal Engine editor through MCP"
+  default_prompt: "Use $unreal-editor-mcp to inspect or edit the running Unreal Engine editor."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "unreal"
+      description: "Unreal Engine 5.8 built-in MCP server that drives the running editor."
+      transport: "streamable-http"

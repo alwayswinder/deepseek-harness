@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Unreal Engine 编辑模式",
+    "description": "以 preset 形式内置 UE 5.8 编辑器内置 MCP 服务的工具与 UE 专用技能（关卡、蓝图、材质、日志、PIE）。"
+  }
+}

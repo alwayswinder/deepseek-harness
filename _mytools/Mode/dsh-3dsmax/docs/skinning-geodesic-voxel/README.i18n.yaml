@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write _mytools/Mode/dsh-3dsmax/docs/skinning-geodesic-voxel/README.md
+/:
+  en: ac510ca2798c4fd7
+  zh: 2ea9c6aba7b71e4b
+/skinning-with-geodesic-voxel-in-3ds-max:
+  en: 0ea08de1b803fb6b
+  zh: 49a93e436aeeca80
+/skinning-with-geodesic-voxel-in-3ds-max/summary:
+  en: 759623c37c7bb768
+  zh: 16ea811d44c18f1c
+/skinning-with-geodesic-voxel-in-3ds-max/table-of-contents:
+  en: 3dc97b8eef219472
+  zh: b2e7d74e7ba4ec1c
+/skinning-with-geodesic-voxel-in-3ds-max/1-prepare-the-input:
+  en: 1570bdede2c7c36f
+  zh: 60cb3d253c2319e3
+/skinning-with-geodesic-voxel-in-3ds-max/2-define-skin-segments-for-dummy-bones:
+  en: 6efe75727bfb2e5d
+  zh: 1d49ae75efaaa9c5
+/skinning-with-geodesic-voxel-in-3ds-max/3-calculate-and-compare-weights:
+  en: 3ff7d20528d0ecb0
+  zh: 4e6a69e6e22f3041
+/skinning-with-geodesic-voxel-in-3ds-max/4-validate-weights-poses-and-saved-files:
+  en: 643b74d46b25f169
+  zh: 852c0094ae91d070
+/skinning-with-geodesic-voxel-in-3ds-max/4-validate-weights-poses-and-saved-files/weight-audit:
+  en: 212123d4d845c3fb
+  zh: 943e5eb9db4641be
+/skinning-with-geodesic-voxel-in-3ds-max/4-validate-weights-poses-and-saved-files/pose-and-restore-checks:
+  en: 0c6a456e10207f7d
+  zh: 92cffe255a5a93d4
+/skinning-with-geodesic-voxel-in-3ds-max/4-validate-weights-poses-and-saved-files/save-and-reopen-checks:
+  en: 1a367ced0f3ac83b
+  zh: 86acb8a809e0debe
+/skinning-with-geodesic-voxel-in-3ds-max/5-refine-the-problem-areas:
+  en: 916dc2fb3f534df2
+  zh: 1deca0eadaf293bf
+/skinning-with-geodesic-voxel-in-3ds-max/6-chistatic-measurements:
+  en: 2518671b82e47866
+  zh: b5bff7960c452837
+/skinning-with-geodesic-voxel-in-3ds-max/7-continue-with-biped-and-controls:
+  en: ed35bfc3529809b6
+  zh: ea182ab1add9d125
+/skinning-with-geodesic-voxel-in-3ds-max/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

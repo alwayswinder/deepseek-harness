@@ -11,6 +11,7 @@ Complete the [character adaptation record](character-adaptation-guide.md), then 
 | Input | Entry point and limits |
 |---|---|
 | Static humanoid without bones | Build the profile-defined body nodes with the skeleton guide; the Chiya profile is one measured case |
+| Checked skeleton without Skin; initial weights needed | Follow the Geodesic Voxel skinning guide, then review and refine deformation |
 | Matching topology and compatible bone frames | Fit and validate controller migration stage by stage |
 | Matching topology with incompatible full bone frames | Validate whole-limb fitting and a fixed rotation-offset reference layer; final controller output adaptation is incomplete, so do not proceed with ordinary tree copying |
 | Different bone count, hierarchy, spine, finger, or twist configuration | Adapt the mapping and profile first (§4 of the adaptation guide); existing scripts cannot be applied directly |
@@ -23,6 +24,7 @@ Complete the [character adaptation record](character-adaptation-guide.md), then 
 | [Character adaptation guide](character-adaptation-guide.md) | Input classes, profiles, per-run record, configuration differences, gates and judgment rules | Before each new character |
 | [Execution checklist](quick-runbook.md) | Stage order, gates, stopping, and recovery | During work and at stage boundaries |
 | [Static body skeleton guide](static-body-skeleton-guide.md) | Build the profile node set from a measured model | When the input has no skeleton |
+| [Geodesic Voxel skinning guide](skinning-geodesic-voxel/README.md) | Dummy Skin segments, initial weights, deformation review and Chistatic measurements | When creating or reviewing automatic skinning |
 | [Biped rebuild guide](biped-rebuild-guide.md) | Structure, figure, hip width, frame branches, fitting, measurement layer, display | Stages 0–3 |
 | [Controller migration guide](controller-migration-guide.md) | Control semantics, references, chain geometry, poles, pose and behavior acceptance | Stages 4–10 |
 | [Stan case record](stan-biped-controller-migration-task.md) | Historical Seven → Stan measurements and decisions | For history, never as fixed new-character parameters |

@@ -11,6 +11,7 @@
 | 输入情况 | 起点与限制 |
 |---|---|
 | 静态人形、无骨架 | 按身体骨架指南建立 profile 定义的节点；Chiya 参数只是一个实测案例 |
+| 骨架已核对、无 Skin，需要初始权重 | 按 Geodesic Voxel 蒙皮指南求解，再检查和修整动作变形 |
 | 同拓扑、骨轴相容 | 按操作清单拟合并逐阶段验证控制器迁移 |
 | 同拓扑、完整骨轴不相容 | 做整链拟合与固定旋转偏移参考层验证；最终控制器输出适配未完成，不能继续普通双树复制 |
 | 骨数、层级、脊柱、手指或 twist 配置不同 | 先按适配指南 §4 做映射与 profile 适配；现有脚本不能直接套用 |
@@ -23,6 +24,7 @@
 | [新角色适配指南](character-adaptation-guide.md) | 输入分类、三级 profile、每轮记录、配置差异、门槛与判定规则 | 每次换角色先看 |
 | [操作清单](quick-runbook.md) | 阶段顺序、通过条件、停止与恢复 | 开工及各阶段收尾 |
 | [静态身体骨架指南](static-body-skeleton-guide.md) | 按实测模型搭建 profile 节点集 | 输入没有骨架时 |
+| [Geodesic Voxel 蒙皮指南](skinning-geodesic-voxel/README.zh.md) | Dummy 的 Skin 段、初始权重、动作检查与 Chistatic 实测结果 | 新建或检查自动蒙皮时 |
 | [Biped 重建指南](biped-rebuild-guide.md) | 结构、figure、髋宽、骨轴分支、拟合、测量层、显示 | 阶段 0–3 |
 | [控制器迁移指南](controller-migration-guide.md) | 控制层语义、引用、链几何、极向点、姿势与行为验收 | 阶段 4–10 |
 | [Stan 个案记录](stan-biped-controller-migration-task.md) | Seven → Stan 的历史取证与决策 | 查历史；不能作为新角色固定参数 |

@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write _mytools/Mode/dsh-3dsmax/docs/README.md
 /3ds-max-character-adaptation-biped-rebuild-controller-migration:
-  en: b183b3320c5c5b8e
-  zh: 08755789b50ce922
+  en: 942a5d5108b06944
+  zh: fcbbe8ce099af019
 /3ds-max-character-adaptation-biped-rebuild-controller-migration/where-to-start:
-  en: 927e0205c538c210
-  zh: 0143b8f3a879022f
+  en: fcb2ef15e95e49bb
+  zh: dab46e0f1f58361f
 /3ds-max-character-adaptation-biped-rebuild-controller-migration/document-map:
-  en: 33d2394e6910dc89
-  zh: 2c9e394490822436
+  en: 0ec51ed90b95f3a1
+  zh: 7d47828c8d9af043
 /3ds-max-character-adaptation-biped-rebuild-controller-migration/execution-order-and-verified-scope:
-  en: eb31da3855e3308f
-  zh: 3c4a8878bddcb19d
+  en: 9ebf991253cebd8b
+  zh: 95fa4878f01fbc3f
 /3ds-max-character-adaptation-biped-rebuild-controller-migration/windows-and-display-state-set-before-each-run:
-  en: 2312f112b428414a
-  zh: 0615f8507f11eae5
+  en: cb3bb9d06107eef2
+  zh: 58c46b57f13f339a
 /3ds-max-character-adaptation-biped-rebuild-controller-migration/measurement-and-recovery-discipline:
-  en: f22dd9e700bcb633
-  zh: ec56a420bfa17016
+  en: 394f8c40f75c2b1a
+  zh: aec81c51936851ef

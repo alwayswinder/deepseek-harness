@@ -1,8 +1,10 @@
-# Stan 新建 Biped + Seven 身体控制器迁移 · 任务说明
+# Stan 新建 Biped + Seven 身体控制器迁移 · 个案记录（冻结）
 
-> **本文是"计划书 + 流水账"**：§0–§9 是开工时（2026-10-16 12:3x）写的计划与验收标准，**其中部分做法已被后续实测推翻**（尤其 §4 的 **P6 驱动层**与 §2 的目标架构）。
-> **可执行规范以这三份为准**：[README.md](README.md)（全流程索引 + 端到端自检清单）、[biped-rebuild-guide.md](biped-rebuild-guide.md)（Biped 搭建与拟合）、[controller-migration-guide.md](controller-migration-guide.md)（控制器迁移与差分验收）。
-> 计划与最终实现的差异、以及每条结论的取证数字，记录在 §10.14 / §10.15 / §10.16。
+> **本文是历史个案，不再是执行依据。** 2026-10-19 文档重整后，规范以这五份为准：[README.md](README.md)（索引与通过范围）、[quick-runbook.md](quick-runbook.md)（阶段顺序与门槛）、[biped-rebuild-guide.md](biped-rebuild-guide.md)（阶段 0–3）、[controller-migration-guide.md](controller-migration-guide.md)（阶段 4–10）、[character-adaptation-guide.md](character-adaptation-guide.md)（profile 与记录）。
+>
+> 阅读方式：§0–§9 是 2026-10-16 开工时的计划，**其中若干做法已被后续实测推翻**（尤其 §4 的 P6 驱动层、§2 的目标架构、以及所有"改指关节环"的笼统建议）；§10 是当天的流水账；§10.15–§10.16 是当天修复记录。**计划与实际实现的差异**在 §10.14–§10.16。
+>
+> 2026-10-19 第三轮独立验证（原始输入、不用历史副本）的结论与新发现记录在本地 `work/ProcessValidation_20261019_R3/report.md`；其要点已并入上面四份规范：静止链路通过，动态项（姿势差分、根转向、越界、直接复位、重开）未通过，机制见迁移指南 §1 与 §8.3。历史文件只作追溯，不得当作新角色的固定参数。
 
 > Task spec (working doc): build a **new Biped fitted to Stan's UE skeleton**, then migrate **Seven's body-controller layer** onto it. Seven stays a read-only reference template. Deliverable to the engine is Stan's UE skeleton (bake → FBX → UE).
 > 本文与 `ADVANCED.md` / `CHANGELOG.md` / `PYPI.md` 并列存放，内容为项目工作文档（中文），标识符与 API 名称保留英文。

@@ -224,9 +224,9 @@ node _mytools\Mode\dsh-3dsmax\tools\probe-presets.mjs 9231   # 指定的 inspect
 
 **`3dsmax-rig-controller-transfer/` 已于 2026-10-16 移除**：它描述的 `S7_*` 驱动点直接驱动 B 骨架构，与已验收的路线 1（由迁移过来的环驱动骨、`BIPDRV_*` 只作测量基准）冲突，留着会让人照旧做法复现"动控制器不驱动角色"。它的内容由 `docs/` 接管：
 
-- 权威入口：`docs/quick-runbook.md`（一次跑通的顺序/门槛/实测基准）
-- 规范：`docs/biped-rebuild-guide.md`、`docs/controller-migration-guide.md`
-- 历史留档（2026-10-16 迁入）：`docs/references/seven-stan.md`（路线 2 故障复盘）、`docs/references/seven-quinn.md`
+- 入口：`docs/README.md`（索引、输入分类与通过范围）、`docs/quick-runbook.md`（阶段顺序与门槛）
+- 规范：`docs/character-adaptation-guide.md`（profile 与记录）、`docs/biped-rebuild-guide.md`（阶段 0–3）、`docs/controller-migration-guide.md`（阶段 4–10）
+- 历史留档：`docs/stan-biped-controller-migration-task.md`（冻结的个案记录）、`docs/references/seven-stan.md`（路线 2 故障复盘）、`docs/references/seven-quinn.md`
 - 未迁入、留在 3ds Max 仓库（只作追溯，勿按它执行）：`E:\AI\3dMax\3dsmax-mcp-master\.agents\skills\3dsmax-rig-controller-transfer\`（`SKILL.md`、`recipe.md`、`scripts/01/04/05/06`）
 
 > `3dsmax-live-mcp` 仍是两份副本、仍会漂移：改完以 `_mytools` 这份为准，再同步回 3ds Max 仓库。

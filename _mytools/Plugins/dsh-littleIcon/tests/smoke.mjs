@@ -668,7 +668,7 @@ assert.equal(labels.QuitDsh, '退出 DSH', 'the menu entry that ends DSH')
 assert.equal(labels.RestartDsh, '重启 DSH', 'the menu entry that ends DSH and starts it again')
 assert.equal(labels.UpdateDsh, '更新 DSH', 'the menu entry that builds the current checkout')
 assert.equal(labels.QuickAccess, '快速访问', 'the menu entry that opens the folder panel')
-assert.equal(labels.Chat, '网页对话', 'the menu entry that opens the web chat')
+assert.equal(labels.Chat, '对话', 'the menu entry that opens the chat')
 assert.equal(labels.AlertNotice, '有任务在等你回答，点桌宠回到 DSH', 'the reminder for a question nobody has seen')
 assert.equal(labels.Settings, '桌宠设置', 'the menu entry that opens the plugin settings page')
 assert.equal(labels.Games, '小游戏', 'the menu entry the mini games hang under')
@@ -736,6 +736,19 @@ assert.match(petSource, /Add-PetMenuItem \$menu\.Items \$SCRIPT:Labels\.QuickAcc
 assert.ok(petSource.indexOf("Add-PetMenuItem $menu.Items $SCRIPT:Labels.QuickAccess 'folder'")
   < petSource.indexOf("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Chat 'chat'"),
   'quick access must be the first row of the pet menu')
+// The chat, the repository of the Session in front, and the capture sit together
+// under it: those are what a person reaches for while reading a conversation, and
+// the list of configured sites belongs below them rather than between them.
+const rowAt = (row) => petSource.indexOf(row)
+assert.ok(rowAt("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Chat 'chat'")
+  < rowAt("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Git 'git'"),
+  'the Git page must come right under the chat entry')
+assert.ok(rowAt("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Git 'git'")
+  < rowAt("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Shot 'camera'"),
+  'and the capture right under the Git page')
+assert.ok(rowAt("Add-PetMenuItem $menu.Items $SCRIPT:Labels.Shot 'camera'")
+  < rowAt('[void](Add-SitesMenu $menu)'),
+  'with the sites list below the capture, not between the three')
 assert.match(petSource, /Start-QuickAccess/, 'the entry opens the panel this process draws')
 assert.equal(petSource.includes("Send-MenuCommand 'open-cwd'"), false,
   'opening a folder no longer travels through the page')
@@ -918,7 +931,7 @@ if (process.platform === 'win32') {
   // The self test prints the labels it loaded from labels.json, so this proves
   // Windows PowerShell read that UTF-8 file as UTF-8.
   assert.match(selfTest.stdout, /Git 改动/, 'the self test must report the Git menu entry too')
-  assert.match(selfTest.stdout, /网页对话/, 'the self test must report the web-chat entry too')
+  assert.match(selfTest.stdout, /^labels: 对话 \//m, 'the self test must report the chat entry too')
   assert.match(selfTest.stdout, /快速访问/, 'the self test must report the quick access entry too')
   assert.match(selfTest.stdout, /桌宠设置/, 'the self test must report the settings entry too')
   assert.match(selfTest.stdout, /系统/, 'the self test must report the system entry too')
@@ -1245,6 +1258,56 @@ if (process.platform === 'win32') {
   assert.match(audioProbe.stdout, /audio-probe-own-pid: \d+/, 'the probe must name the process it excludes')
   assert.match(audioProbe.stdout, /audio-probe-max-other: -?\d+\.\d{3}/,
     'and must report one peak level, whether or not anybody is playing')
+
+  // The menu itself, laid out off screen: the rows of one card all have to be the
+  // same width, that width has to be the card's (a narrower row leaves a blank strip
+  // and drags the chevron along with the label), and every row that opens a submenu
+  // must carry its chevron on that row's right edge. The last one is what a wider
+  // card had been hiding: a four-character label ran over the glyph.
+  const menuProbeDir = mkdtempSync(join(tmpdir(), 'little-icon-menu-probe-'))
+  const menuPng = join(menuProbeDir, 'menu.png')
+  const menuProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(menuProbeDir, 'state.json'),
+    '-PositionFile', join(menuProbeDir, 'position.json'),
+    '-MenuProbe', menuPng,
+  ], { encoding: 'utf8' })
+  assert.equal(menuProbe.status, 0, `pet.ps1 -MenuProbe failed: ${menuProbe.stderr}`)
+  const menuCard = /menu-card: (\d+)x(\d+)/.exec(menuProbe.stdout)
+  assert.ok(menuCard !== null, 'the menu probe must report the card it laid out')
+  const menuRows = [...menuProbe.stdout.matchAll(/menu-row: (.+)\|(\d+)\|(\d+)\|(True|False)/g)]
+  assert.ok(menuRows.length >= 8, 'the probe must report every row of the menu')
+  assert.deepEqual(menuRows.slice(0, 4).map((row) => row[1]), ['快速访问', '对话', 'Git 改动', '截图'],
+    'the menu opens with the panel, the chat, the Git page, and the capture, in that order')
+  assert.equal(new Set(menuRows.map((row) => row[2])).size, 1, 'every row is as wide as the others')
+  const rowGap = Number(menuCard[1]) - Number(menuRows[0][2])
+  assert.ok(rowGap >= 0 && rowGap <= 16,
+    'the card is its rows plus its own padding, not a strip wider than them')
+  const chevrons = [...menuProbe.stdout.matchAll(/menu-arrow: (.+)\|(\d+)\|(\d+)/g)]
+  const arrowRows = menuRows.filter((row) => row[4] === 'True')
+  assert.equal(chevrons.length, arrowRows.length, 'one chevron report per row that opens a submenu')
+  for (const chevron of chevrons) {
+    const row = menuRows.find((candidate) => candidate[1] === chevron[1])
+    assert.ok(row !== undefined, `the chevron row ${chevron[1]} must be one of the menu's rows`)
+    assert.ok(Number(chevron[2]) > 0, `the chevron of ${chevron[1]} must actually be drawn`)
+    assert.ok(Number(chevron[2]) >= Number(row[2]) - 32 && Number(chevron[3]) <= Number(row[2]) - 4,
+      `the chevron of ${chevron[1]} belongs on its row's right edge, not beside its label`)
+  }
+  const subCard = /menu-sub-card: (\d+)x(\d+)/.exec(menuProbe.stdout)
+  assert.ok(subCard !== null, 'the probe must lay out a submenu too')
+  const subRows = [...menuProbe.stdout.matchAll(/menu-sub-row: (.+)\|(\d+)\|(\d+)\|(True|False)\|(\d+)/g)]
+  assert.ok(subRows.length > 0, 'the submenu must have rows')
+  for (const row of subRows) {
+    assert.ok(Number(row[2]) >= Number(row[5]),
+      `the submenu row for ${row[1]} must leave room for its own preferred width, or the label is clipped`)
+  }
+  assert.ok(existsSync(menuPng), 'the probe must leave the picture it drew')
+  const menuBytes = readFileSync(menuPng)
+  assert.deepEqual([...menuBytes.subarray(1, 4)].map((byte) => String.fromCharCode(byte)), ['P', 'N', 'G'],
+    'the menu picture must be a real PNG')
+  rmSync(menuProbeDir, { recursive: true, force: true })
   rmSync(probeDir, { recursive: true, force: true })
 } else {
   console.log('skipping pet.ps1 -SelfTest: the pet window is Windows-only')

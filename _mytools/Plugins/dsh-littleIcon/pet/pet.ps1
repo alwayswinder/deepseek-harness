@@ -84,6 +84,12 @@
     the probe that steps aside for another player reads, printed rather than acted
     on, so a machine can be checked for what it sees before anything is decided
     from it.
+
+.PARAMETER MenuProbe
+    Lay the real right-click menu out off screen, print each row's width and the
+    card's, draw it to this path, and exit. Row geometry is what decides whether a
+    submenu chevron lands on the card's edge or on top of a label, and that cannot
+    be read off the script.
 #>
 [CmdletBinding()]
 param(
@@ -94,7 +100,8 @@ param(
     [switch]$SelfTest,
     [switch]$ShotProbe,
     [switch]$AudioProbe,
-    [string]$MusicProbe = ''
+    [string]$MusicProbe = '',
+    [string]$MenuProbe = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -196,7 +203,11 @@ namespace DshPet
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            Rectangle textBounds = new Rectangle(46, 0, Math.Max(0, e.Item.Width - 58), e.Item.Height);
+            // A row with a submenu keeps room on its right for the chevron drawn by
+            // OnRenderArrow; a row without one only needs the usual margin.
+            bool hasDropDown = e.Item is ToolStripMenuItem && ((ToolStripMenuItem)e.Item).HasDropDownItems;
+            int rightReserve = hasDropDown ? 34 : 12;
+            Rectangle textBounds = new Rectangle(46, 0, Math.Max(0, e.Item.Width - 46 - rightReserve), e.Item.Height);
             TextRenderer.DrawText(e.Graphics, e.Text, e.TextFont, textBounds, Ink,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine |
                 TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.PreserveGraphicsClipping);
@@ -208,6 +219,34 @@ namespace DshPet
             int left = 14;
             Rectangle bounds = new Rectangle(left, (e.Item.Height - size) / 2, size, size);
             DrawIcon(e.Graphics, icon, bounds, scale);
+        }
+
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            // Rows are as wide as the card, not as wide as their labels, so the stock
+            // glyph - which is placed against the label - would either float in the
+            // middle of a short row or sit under a long one. The chevron is drawn on
+            // the row's own right edge instead, the same edge for every row.
+            if (!(e.Item is ToolStripMenuItem))
+            {
+                base.OnRenderArrow(e);
+                return;
+            }
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float x = e.Item.Width - 22f;
+            float y = e.Item.Height / 2f;
+            using (Pen pen = new Pen(Ink, 1.7f))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                e.Graphics.DrawLines(pen, new PointF[]
+                {
+                    new PointF(x - 3f, y - 4.5f),
+                    new PointF(x + 1.5f, y),
+                    new PointF(x - 3f, y + 4.5f)
+                });
+            }
         }
 
         private static GraphicsPath RoundedPath(Rectangle rectangle, int radius)
@@ -462,7 +501,7 @@ function Read-Utf8Text([string]$Path) {
 function Get-Labels {
     $fallback = [ordered]@{
         PetName               = 'DSH pet'
-        Chat                  = 'Web chat'
+        Chat                  = 'Chat'
         AlertNotice           = 'A task is waiting for your answer. Click the pet to return to DSH.'
         Git                   = 'Git changes'
         QuickAccess           = 'Quick access'
@@ -1213,6 +1252,51 @@ function Add-PetMenuItem($Items, [string]$Text, [string]$Icon) {
     return $item
 }
 
+# Rows are laid out by the menu card rather than by their labels: WinForms sizes each
+# row to its text and then draws the submenu chevron right after that text, so the
+# card ends up wider than its rows (a blank strip on the right) and a label as long
+# as the row covers the chevron. Every row of one dropdown is given the same width
+# here - the widest label plus the chevron's corner - and the card is pinned to that
+# width so it wraps its rows instead of leaving a strip beside them.
+function Set-PetMenuRowWidths($Menu, [int]$MinRowWidth = 0, $Font = $null) {
+    $rows = @($Menu.Items | Where-Object { $_ -is [System.Windows.Forms.ToolStripMenuItem] })
+    if ($rows.Count -eq 0) { return }
+    # A submenu inherits the font of the menu it hangs from only once it is shown, so
+    # the font is carried down from the strip that has one; measuring with the wrong
+    # one sizes a submenu for text that is not the text it draws.
+    if ($null -eq $Font) {
+        $Font = $Menu.Font
+        if ($null -eq $Font -and $null -ne $Menu.OwnerItem) { $Font = $Menu.OwnerItem.Owner.Font }
+        if ($null -eq $Font) { $Font = [System.Windows.Forms.Control]::DefaultFont }
+    }
+    $widest = 0
+    $heights = @{}
+    foreach ($item in $rows) {
+        $preferred = $item.GetPreferredSize([System.Drawing.Size]::Empty)
+        $heights[$item] = $preferred.Height
+        # Two numbers decide the width: what WinForms needs for the row, and what the
+        # renderer's fixed text offset needs. Under display scaling those fixed pixels
+        # do not grow with the font, so the measured text has to be consulted too.
+        $text = [System.Windows.Forms.TextRenderer]::MeasureText([string]$item.Text, $Font).Width
+        if ($preferred.Width -gt $widest) { $widest = $preferred.Width }
+        if (46 + $text + 40 -gt $widest) { $widest = 46 + $text + 40 }
+    }
+    $width = [Math]::Max($MinRowWidth, $widest)
+    foreach ($item in $rows) {
+        $item.AutoSize = $false
+        $item.Size = New-Object System.Drawing.Size($width, $heights[$item])
+    }
+    # An earlier minimum - the 220 the menu was built with, or the width a longer list
+    # needed before this rebuild - only ever grows the card, so it is released first.
+    $Menu.MinimumSize = [System.Drawing.Size]::Empty
+    $Menu.PerformLayout()
+    $Menu.MinimumSize = New-Object System.Drawing.Size(($width + $Menu.Padding.Horizontal), 0)
+    $Menu.PerformLayout()
+    foreach ($item in $rows) {
+        if ($item.HasDropDownItems) { Set-PetMenuRowWidths $item.DropDown 0 $Font }
+    }
+}
+
 function New-NavigationItem($Items) {
     # The one entry under the sites entry that opens a page of its own instead of an
     # address: the page is a local file, so the browser association opens it and this
@@ -1286,6 +1370,7 @@ function Update-SiteMenu {
             Send-MenuCommand 'settings'
         } catch { Write-Log $_.Exception.Message }
     })
+    Set-PetMenuRowWidths $SCRIPT:SitesItem.DropDown
 }
 
 function Update-NavigationEntry {
@@ -2379,6 +2464,7 @@ function Update-MusicMenu {
             Send-MenuCommand 'settings'
         } catch { Write-Log $_.Exception.Message }
     })
+    Set-PetMenuRowWidths $SCRIPT:MusicMenu.DropDown
 }
 
 # ---- quick access -----------------------------------------------------------
@@ -4382,8 +4468,8 @@ function Exit-Pet {
 
 function New-PetMenu {
     # The plugin's only menu surface: a right-click on the pet. The panel this
-    # process draws itself leads, then the commands the page carries out, then
-    # window actions.
+    # process draws itself leads, then what the person reaches for next - the chat
+    # and the repository of the Session in front, the capture - and the rest below.
     $menu = New-Object System.Windows.Forms.ContextMenuStrip
     $menu.AutoSize = $true
     $menu.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
@@ -4431,13 +4517,10 @@ function New-PetMenu {
             Send-MenuCommand 'chat'
         } catch { Write-Log $_.Exception.Message }
     })
-    # The sites the settings card owns, and the library page beside them: the entry
-    # the person clicks opens nothing itself, and both of the things under it are
-    # built together because they share that entry (see Add-SitesMenu).
-    [void](Add-SitesMenu $menu)
     # The Git page is the plugin's own tab type, so unlike Chat it needs nothing
     # shipped besides the right Sidebar; the page reads the repository of whatever
-    # Session is in front. Showing DSH first is the same requirement.
+    # Session is in front. Showing DSH first is the same requirement. It sits right
+    # under Chat because both open something about the conversation in front.
     $gitItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Git 'git'
     $gitItem.add_Click({
         try {
@@ -4445,6 +4528,20 @@ function New-PetMenu {
             Send-MenuCommand 'git'
         } catch { Write-Log $_.Exception.Message }
     })
+    # A capture belongs to this process rather than to the page: the pet is the half
+    # that can draw over the whole desktop, and the file needs nothing of DSH. It
+    # therefore raises no window either - the sheet covers whatever is there.
+    $shotItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Shot 'camera'
+    $shotItem.add_Click({
+        try { Start-RegionShot } catch {
+            Write-Log "starting a capture failed: $($_.Exception.Message)"
+            try { Show-ShotFailure $_.Exception.Message } catch { }
+        }
+    })
+    # The sites the settings card owns, and the library page beside them: the entry
+    # the person clicks opens nothing itself, and both of the things under it are
+    # built together because they share that entry (see Add-SitesMenu).
+    [void](Add-SitesMenu $menu)
     # The mini games live one level down: the entry itself opens nothing, so
     # more of them can join without touching this menu's shape again. Each child
     # is a game another plugin owns, opened through that plugin's service like
@@ -4492,16 +4589,6 @@ function New-PetMenu {
         try { Update-MusicMenu } catch { Write-Log $_.Exception.Message }
     })
     $SCRIPT:MusicMenu = $musicItem
-    # A capture belongs to this process rather than to the page: the pet is the half
-    # that can draw over the whole desktop, and the file needs nothing of DSH. It
-    # therefore raises no window either - the sheet covers whatever is there.
-    $shotItem = Add-PetMenuItem $menu.Items $SCRIPT:Labels.Shot 'camera'
-    $shotItem.add_Click({
-        try { Start-RegionShot } catch {
-            Write-Log "starting a capture failed: $($_.Exception.Message)"
-            try { Show-ShotFailure $_.Exception.Message } catch { }
-        }
-    })
     # Settings ends the list on both profiles: it opens a page of DSH's own rather
     # than a window this process controls, so the web profile keeps it too. The pet
     # never offers to quit itself: the plugin's own switch owns its lifetime.
@@ -4588,6 +4675,9 @@ function New-PetMenu {
             } catch { Write-Log $_.Exception.Message }
         })
     }
+    # The card is 220 wide, so every row is 208: the menu's own padding stays empty
+    # and the chevrons land on the same edge instead of trailing each label.
+    Set-PetMenuRowWidths $menu 208
     return $menu
 }
 
@@ -4739,6 +4829,70 @@ $timer.Add_Tick({
 })
 
 try { $SCRIPT:PetMenu = New-PetMenu } catch { Write-Log "pet menu unavailable: $($_.Exception.Message)" }
+
+if ($MenuProbe -ne '') {
+    # The menu the person actually right-clicks, laid out and drawn while the window
+    # itself stays hidden: a row narrower than its card puts the chevron against the
+    # label instead of on the card's edge, and nothing but the laid-out menu can say
+    # how wide its rows came out.
+    $probeMenu = $SCRIPT:PetMenu
+    # Only what the menu reads from the state file, not the whole state: the probe
+    # must not resize, tuck, or otherwise act on the desktop it is inspecting.
+    $probeState = Read-Json $SCRIPT:StateFile
+    $SCRIPT:Sites = Get-SiteList $probeState
+    if ($null -ne $probeState -and $null -ne $probeState.favoritesPage) {
+        $SCRIPT:FavoritesPage = [string]$probeState.favoritesPage
+    }
+    $probeMenu.Show([System.Drawing.Point]::new(-4000, -4000))
+    [System.Windows.Forms.Application]::DoEvents()
+    Write-Output "menu-card: $($probeMenu.Width)x$($probeMenu.Height)"
+    foreach ($item in $probeMenu.Items) {
+        if ($item -isnot [System.Windows.Forms.ToolStripMenuItem]) { continue }
+        Write-Output "menu-row: $($item.Text)|$($item.Width)|$($item.Height)|$($item.HasDropDownItems)"
+    }
+    # One submenu is enough to prove the rows inside one are sized the same way; the
+    # sites list is the one that is populated from configuration.
+    $probeChild = @($probeMenu.Items | Where-Object {
+        $_ -is [System.Windows.Forms.ToolStripMenuItem] -and $_.HasDropDownItems
+    }) | Select-Object -First 1
+    if ($null -ne $probeChild) {
+        $probeChild.DropDown.Show($probeMenu, [System.Drawing.Point]::new(0, $probeChild.Bounds.Top))
+        [System.Windows.Forms.Application]::DoEvents()
+        Write-Output "menu-sub-card: $($probeChild.DropDown.Width)x$($probeChild.DropDown.Height)"
+        foreach ($item in $probeChild.DropDown.Items) {
+            if ($item -isnot [System.Windows.Forms.ToolStripMenuItem]) { continue }
+            $wanted = $item.GetPreferredSize([System.Drawing.Size]::Empty).Width
+            Write-Output "menu-sub-row: $($item.Text)|$($item.Width)|$($item.Height)|$($item.HasDropDownItems)|$wanted"
+        }
+        $probeChild.DropDown.Close()
+    }
+    $probeBitmap = New-Object System.Drawing.Bitmap($probeMenu.Width, $probeMenu.Height)
+    $probeMenu.DrawToBitmap($probeBitmap,
+        (New-Object System.Drawing.Rectangle(0, 0, $probeMenu.Width, $probeMenu.Height)))
+    # Where the chevron actually came out: it has to be drawn, and inside the last few
+    # pixels of the row, or a label has taken its place.
+    foreach ($item in $probeMenu.Items) {
+        if ($item -isnot [System.Windows.Forms.ToolStripMenuItem] -or -not $item.HasDropDownItems) { continue }
+        $low = 0
+        $high = 0
+        for ($x = [Math]::Max(0, $item.Width - 40); $x -lt $item.Width - 4; $x++) {
+            for ($y = $item.Bounds.Top; $y -lt $item.Bounds.Bottom; $y++) {
+                $pixel = $probeBitmap.GetPixel($x, $y)
+                if ($pixel.R -lt 170 -and $pixel.G -lt 170) {
+                    if ($low -eq 0) { $low = $x }
+                    $high = $x
+                    break
+                }
+            }
+        }
+        Write-Output "menu-arrow: $($item.Text)|$low|$high"
+    }
+    $probeBitmap.Save($MenuProbe, [System.Drawing.Imaging.ImageFormat]::Png)
+    $probeBitmap.Dispose()
+    $probeMenu.Close()
+    $probeMenu.Dispose()
+    exit 0
+}
 
 
 

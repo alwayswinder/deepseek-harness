@@ -24,6 +24,7 @@
 - Windows 批处理保持 CRLF 换行（`_mytools/.gitattributes` 固定 `*.bat text eol=crlf`）；`echo` 里带括号的文字不要直接写进 `( ... )` 块，cmd 会把括号当成块边界并报错。
 - DSH 的启动与构建脚本都在 `_mytools/build/` 下；插件自带的测试与工具脚本跟各自插件走。
 - 树外插件放 `_mytools/Plugins/`，由 `build\start-dsh.bat`（web）与 `build\start-desktop.bat`（desktop）注册。profile 里装的是链接还是副本**按实测，不能按插件名想当然**：`link:`（junction）时 profile 加载的就是源码本身，没有副本要同步；只有 `file:` 装成的副本才由 `build\sync-plugins.bat` 刷新（它每次启动都会实测链接类型再决定要不要复制）。生效时机同样分开看：宿主半边（`index.js`、`client.js`）要重启 DSH；插件自己另起的独立进程（桌宠 `pet/pet.ps1`、`assets/`、`labels.json`）只需重启那个进程。
+- 个人 skill 放 `_mytools/skills/`，同一对启动脚本用 `build\ensure-skills.ps1` 把每个目录以 junction 挂进 `$DSH_HOME\skills\`；加载器读的就是仓库这一份，改完重启 DSH 即生效。悬空链接（换机器、挪仓库后）由它删掉重建。
 - `$DSH_HOME` 下的凭据、会话、账本与 profile 安装记录（含本机绝对路径）按机器独立，不随仓库同步。
 
 ## 改动边界

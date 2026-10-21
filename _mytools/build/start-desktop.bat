@@ -56,6 +56,11 @@ rem so a plugin installed as a link into the profile can activate.
 call "%~dp0ensure-plugin-modules.bat"
 if errorlevel 1 goto :pluginFailure
 
+rem Link the personal skills under _mytools\skills into %DSH_HOME%\skills.
+rem The link keeps one copy of each skill: the repository source stays the only one.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-skills.ps1"
+if errorlevel 1 echo [dsh] WARNING: personal skills could not be linked.
+
 rem The profile installs its JavaScript plugins as file: directory copies, which
 rem pnpm writes once and never reconciles against the source; refresh them so a
 rem pulled plugin change is what this launch loads.

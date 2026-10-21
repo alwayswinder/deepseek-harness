@@ -98,6 +98,11 @@ rem directory; link the vendored copy so a profile can load them on this machine
 call "%~dp0ensure-plugin-modules.bat"
 if errorlevel 1 goto :pluginFailure
 
+rem Link the personal skills under _mytools\skills into %DSH_HOME%\skills.
+rem The link keeps one copy of each skill: the repository source stays the only one.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-skills.ps1"
+if errorlevel 1 echo [dsh] WARNING: personal skills could not be linked.
+
 rem The launching cmd.exe holds the log file open for the whole life of the service
 rem it started (start-dsh-service.vbs redirects the service output there), so while
 rem a service is running the redirection below cannot open this path and cmd.exe

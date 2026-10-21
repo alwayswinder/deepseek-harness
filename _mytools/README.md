@@ -85,6 +85,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | 脚本 | 干什么 |
 | --- | --- |
 | `build\ensure-plugin-modules.bat` | 给 `Plugins\` 下的树外插件链接它们要从**自己目录** import 的 peer 包：运行时的 `@deepseek-ai/schemastery` → `vendor\schemastery`、`@deepseek-ai/dsh-credentials` → `packages\credentials\credentials`，加上只有测试用的 `@deepseek-ai/cordis` → `vendor\cordis`、`cordis-plugin-loader` → `vendor\loader`、`cordis-plugin-include` → `vendor\include`、`dsh-host-webserver` → `packages\host\webserver`。全部是 0 字节 junction，插件因此可以完全不装依赖。链接已正确就跳过，缺了就补。 |
+| `build\ensure-skills.ps1` | 把 `_mytools\skills\` 下的个人 skill 以目录联接挂进 `$DSH_HOME\skills\`，加载器直接读仓库这一份，不做副本。已有真实目录、或指向别处且目标仍在的链接不动；悬空链接（换机器、挪仓库之后）删掉重建。由两个 `start-*.bat` 每次启动调用。 |
 | `build\ensure-plugin-builds.bat` | 以前给"发源码、要构建"的树外插件按 lockfile 装依赖再构建（当时只有 `dsh-ths-holdings`）。**现在什么都不构建**：那个插件已改成手写 ESM（`main` 直接是 `index.js`，没有 `node_modules`、没有 lockfile），脚本打印一行说明后 exit 0。将来若有插件重新走"发源码"路线，在脚本的 `PLUGIN_BUILD_LIST` 里加回 `call :buildPlugin <目录名>` 即可；那时**别用 `pnpm install --force`**——它会跳过可选依赖的 os/cpu 过滤，把构建器所有平台的原生二进制都装上（2026-10-11 实测：`node_modules` 从 74.9 MB 涨到 401.9 MB）。 |
 | `build\sync-plugins.bat <profile>` | 把**以 `file:` 副本装进 profile** 的插件（`appearance-plus`、`deepseek-usage`、`dsh-fish-tank`、`dsh-aquarium3d`、`dsh-littleIcon`）刷新成 `Plugins\` 里的最新源码，含插件自带的 `assets\`、`pet\`、`locale\`、`src\`、`vendor\`、`tools\` 目录；内容相同就不写。装成 `link:`（junction）的插件实测跳过——profile 加载的就是源码本身，没有副本要刷新。由 `start-dsh.bat`、`start-desktop.bat` 在每次启动前调用。 |
 
@@ -117,15 +118,23 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 
 | 文件 | 说明 |
 | --- | --- |
-| `positions.json` | **唯一需要维护的数据文件**，每条 `code / name / qty / cost`。两种改法等价：插件页面里改，或拖 xlsx 整份覆盖。按实测它**在 git 里是被跟踪的**（`git ls-files` 有它，最近一次改动是提交 `chore(_mytools/dsh-ths-holdings): 更新持仓快照`），所以每次保存都会体现为一次工作树改动——真实持仓，而这个仓库是公开的，要不要继续跟踪由你决定。 |
-| `ths-export-positions.bat` | 把账本导出的 `.xlsx` 拖上来 → 重写同目录的 `positions.json`。不用重启，20 秒内生效。 |
+| `positions.json` | **唯一需要维护的数据文件**，每条 `code / name / qty / cost`。两种改法等价：插件页面里改，或拖 xlsx 整份覆盖。现在它**不在仓库里**：默认 `$DSH_HOME\ths-holdings\positions.json`，本机实测指向 `$DSH_HOME\temp-space\holdings\positions.json`（插件页「持仓文件位置」可改，记在 `$DSH_HOME\ths-holdings.location.json`），插件目录的 `.gitignore` 也忽略了这个文件名。保存只改本机文件，不产生工作树改动。 |
+| `ths-export-positions.bat` | 把账本导出的 `.xlsx` 拖上来 → 重写成插件当前生效的持仓文件（上一行那条路径：优先 `$DSH_HOME\ths-holdings.location.json` 里选的，否则 `$DSH_HOME\ths-holdings\positions.json`）。不用重启，20 秒内生效。 |
 | `ths-export-positions.py` | 上面那个的实体（xlsx → json）。需要一个装了 openpyxl 的 Python：脚本优先用 DSH 桌面运行时自带的那个，找不到会给出提示。 |
-| `index.js` 及同级 `fetch.js` / `acquire.js` / `local.js` / `positions.js` | 宿主半边，**手写 ESM**（照桌宠的写法）：注册 `/api/stock-pnl` 系列路由。没有 `src/`、没有构建、没有 `node_modules`——`main` 直接指向 `index.js`，运行时只从 `Plugins\node_modules` 的两个 peer 链接取 `schemastery` 与 `dsh-credentials`。 |
+| `index.js` 及同级 `fetch.js` / `acquire.js` / `local.js` / `location.js` / `assets.js` / `positions.js` | 宿主半边，**手写 ESM**（照桌宠的写法）：注册 `/api/stock-pnl` 系列路由。没有 `src/`、没有构建、没有 `node_modules`——`main` 直接指向 `index.js`，运行时只从 `Plugins\node_modules` 的两个 peer 链接取 `schemastery` 与 `dsh-credentials`。 |
 | `client.js` | 浏览器半边（手写 lazy-CJS）：挂在**插件自己的页面**上的「持仓管理」（`plugins.bundle.config`，按包名 `dsh-ths-holdings`，与桌宠设置同一处）。宿主与浏览器两半都在启动时算进清单，改完要重启 DSH。 |
-| `vitest.config.ts` / `tests/` | 插件自带用例（仓库的 vitest 配置不覆盖 `_mytools/`）。在插件目录里跑：`..\..\..\node_modules\.bin\vitest.CMD run`（37 例）；`node tests\positions-ui.smoke.mjs`（浏览器半边：注册 + 渲染 + 改/增/删/保存）；`node tests\host.smoke.mjs`（按行名 `dsh-ths-holdings` 走真实 Loader 启动并驱动路由）。都不需要先构建。 |
+| `vitest.config.ts` / `tests/` | 插件自带用例（仓库的 vitest 配置不覆盖 `_mytools/`）。在插件目录里跑：`..\..\..\node_modules\.bin\vitest.CMD run`（43 例）；`node tests\positions-ui.smoke.mjs`（浏览器半边：注册 + 渲染 + 改/增/删/保存）；`node tests\host.smoke.mjs`（按行名 `dsh-ths-holdings` 走真实 Loader 启动并驱动路由）。都不需要先构建。 |
 
 - 没配 Cookie 时走"导出持仓 + 公开行情"这条本地通路；以后若在设置里存了 `STOCK_PNL_COOKIE`，插件会自动切回账本接口——**此时插件页面里的编辑不再影响卡片数字**（页面顶部会说明）。
-- 换机器：代码跟仓库走；因为 `positions.json` 目前确实被 git 跟踪，它也跟着 `git pull` 走。若想让它真的"不跟"，需要 `git rm --cached` 后再加进忽略——这一步没做，由你决定。
+- 换机器：代码跟仓库走，持仓快照不跟（在 `$DSH_HOME` 下，按机器独立）；新机器重新导出一次账本，或把原来的文件放到同一个位置。
+
+## 个人 skills（`skills\`）
+
+| skill | 作用 |
+| --- | --- |
+| `dividend-income-desk` | 收息持仓的「下一交易日开盘」方案：读 `dsh-ths-holdings` 的持仓与总资产，拉行情、分红、财报、公告，按 `reference/framework.md` 给出加仓/持有/减仓的价格区间与触发条件。交易日只按周末推算，不维护休市日历。 |
+
+`build\ensure-skills.ps1` 把这里的目录逐个以 junction 挂到 `$DSH_HOME\skills\`，加载器读的就是仓库这一份，改完重启 DSH 即生效，没有第二份副本要同步。skill 自带不联网的用例：在 skill 目录里跑 `node --test "tests/*.spec.mjs"`，改脚本前后各跑一次。
 
 ## 设置跟着 git 走（`settings\`）
 

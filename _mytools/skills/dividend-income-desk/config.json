@@ -1,0 +1,10 @@
+{
+  "targetYieldPct": 4.5,
+  "minYieldToBuyPct": 4.0,
+  "trimYieldPct": 2.5,
+  "maxSingleWeightPct": 15,
+  "maxIndustryWeightPct": 35,
+  "cashReservePct": 10,
+  "overrides": {},
+  "repairCodes": ["601888", "513330"]
+}

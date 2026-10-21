@@ -86,6 +86,7 @@ dsh plugin --profile web add dsh-ths-holdings
 - **先校验再落盘** — 保存前整份列表都会被检查（6 位代码、数量 > 0、成本 ≥ 0、代码不重复）；不合格的行标红并逐条给出原因，只要有一行不合格就什么都不写。
 - **写回** — 保存原子替换当前持仓文件，保留导出流程写入的 `exported_at` / `export_date` / `source_file`，另记一个 `updated_at`；盈亏卡片在下一次轮询（约 20 秒）后使用新数据，不需要重启。
 - **选文件** — 表格上方的「持仓文件位置」一行会显示当前文件以及这个路径的来源。可以直接填绝对路径，或点「选择目录…」用外壳的目录选择器；**保存位置** 只在本机记住它（写在 `$DSH_HOME/ths-holdings.location.json`），**恢复默认** 忘掉这个选择。默认位置是 `$DSH_HOME/ths-holdings/positions.json`；本机没有选过路径时使用 profile 里的 `positionsFile` 配置，选过的路径优先于它。
+- **总资产与可用资金** — 「总资产」一行填账户总资产（现金 + 持仓市值），页面随即显示 **可用资金 = 总资产 − 已保存持仓的市值** 及其占比；这个数只记在本机（`$DSH_HOME/ths-holdings.assets.json`），不写进持仓快照，也不上传。留空或点「清除」表示不设置——那时可用资金显示为未知，而不是 0。总资产小于持仓市值时可用资金为负并给出提示，通常意味着填少了或持仓含融资。
 
 > 已配置账本 Cookie 时，卡片的数字来自账本接口，这一页的编辑只在「导出持仓 + 公开行情」这条本地通路上生效——页面顶部会如实说明这一点。
 
@@ -102,6 +103,7 @@ dsh plugin --profile web add dsh-ths-holdings
 - **✓ 保存即校验** — 粘贴或自动获取后当场验证 Cookie 是否被账本接受
 - **⚙ 持仓管理页** — 设置 → 插件 → 点开 `dsh-ths-holdings`：改成本 / 数量、增删持仓，带实时市值与盈亏
 - **📁 文件位置设置** — 自己选持仓快照放在哪（默认 `$DSH_HOME/ths-holdings/positions.json`），真实持仓因此不进入这个公开包，也可以放进私有仓库
+- **💰 总资产与可用资金** — 填一次账户总资产，页面显示可用资金（总资产 − 持仓市值）与占比；设置只留在本机
 - **↕ 可拖动** — 沿右侧边缘上下拖动标题栏（位置存 localStorage）
 - **⚙ 就地设置** — 粘贴 Cookie、选择组合，全在卡片上完成
 - **🔒 凭据安全** — Cookie 始终留在宿主进程
@@ -171,7 +173,7 @@ dsh-ths-holdings/
 测试（在插件目录里跑；不需要先构建任何东西）：
 
 ```sh
-..\..\..\node_modules\.bin\vitest.CMD run    # host half: 40 specs
+..\..\..\node_modules\.bin\vitest.CMD run    # host half: 43 specs
 node tests\positions-ui.smoke.mjs            # browser half: register, render, edit, save
 node tests\host.smoke.mjs                    # boot the package by row name and drive the routes
 ```

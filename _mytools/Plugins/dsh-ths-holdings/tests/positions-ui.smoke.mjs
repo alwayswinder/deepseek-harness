@@ -148,7 +148,9 @@ function type(label, value) {
 
 /** Every input value in render order: the editable columns are inputs, not text. */
 function values() {
-  return findAll(tree, node => node.type === 'input' && node.props['aria-label'] !== '持仓文件路径')
+  return findAll(tree, node => node.type === 'input'
+    && node.props['aria-label'] !== '持仓文件路径'
+    && node.props['aria-label'] !== '总资产')
     .map(node => node.props.value)
 }
 
@@ -183,6 +185,10 @@ const FIXTURE = {
   cookie_configured: false,
   skipped: 0,
   quotes_error: '',
+  total_assets: 500000,
+  holdings_value: 102700,
+  cash: 397300,
+  cash_pct: 79.46,
   positions: [
     {
       code: '600941', name: '中国移动', qty: 400, cost: 87.291,
@@ -202,6 +208,8 @@ const requests = []
 /** The file the stubbed host serves, so a chosen location changes what a reload reads. */
 let activeFile = FIXTURE.file
 let activeSource = FIXTURE.file_source
+/** The total assets the stubbed host remembers; null means the setting is unset. */
+let activeAssets = FIXTURE.total_assets
 
 /** Price one saved row the way the host's quote feed would. */
 function priced(row) {
@@ -213,6 +221,14 @@ function priced(row) {
 
 globalThis.fetch = (url, init) => {
   requests.push({ url, init })
+  if (String(url).endsWith('/assets')) {
+    const body = JSON.parse(String(init.body))
+    activeAssets = body.totalAssets
+    return Promise.resolve(new Response(JSON.stringify({ ok: true, total_assets: activeAssets }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+  }
   if (String(url).endsWith('/location')) {
     const body = JSON.parse(String(init.body))
     if (body.positionsFile === 'relative.json') {
@@ -232,7 +248,7 @@ globalThis.fetch = (url, init) => {
       ok: true, file: activeFile, file_source: activeSource, file_default: FIXTURE.file_default,
     }), { status: 200, headers: { 'content-type': 'application/json' } }))
   }
-  const view = { ...FIXTURE, file: activeFile, file_source: activeSource }
+  const view = { ...FIXTURE, file: activeFile, file_source: activeSource, total_assets: activeAssets }
   const body = init === undefined || init.body === undefined ? undefined : JSON.parse(String(init.body))
   const payload = init === undefined
     ? view
@@ -356,7 +372,9 @@ assert.ok(findAll(tree, node => node.type === 'button').some(node => textOf(node
 press('添加一行')
 await draw()
 assert.equal(
-  findAll(tree, node => node.type === 'input' && node.props['aria-label'] !== '持仓文件路径').length,
+  findAll(tree, node => node.type === 'input'
+    && node.props['aria-label'] !== '持仓文件路径'
+    && node.props['aria-label'] !== '总资产').length,
   12,
   'a third row adds four inputs',
 )
@@ -431,6 +449,25 @@ assert.ok(resetText.includes('当前来源：插件配置'), 'resetting falls ba
 assert.equal(input('持仓文件路径').props.value, 'D:/plugin/positions.json', 'the configured file is shown again')
 assert.ok(!findAll(tree, node => node.type === 'button').some(node => textOf(node).trim() === '恢复默认'),
   'the reset control is gone when the configuration is in force')
+
+// ---- total assets and available cash ----------------------------------------
+
+assert.equal(input('总资产').props.value, '500000', 'the stored total assets fill their field')
+assert.ok(textOf(tree).includes('可用资金 ¥397,300.00 (+79.46%)'),
+  'available cash is the total minus the priced holdings')
+assert.equal(button('保存总资产').props.disabled, true, 'an unchanged total has nothing to save')
+
+type('总资产', '1000000')
+await draw()
+press('保存总资产')
+await draw()
+const assetsRequest = requests.find(request => String(request.url) === '/api/stock-pnl/positions/assets')
+assert.ok(assetsRequest !== undefined, 'saving the total posts to the assets route')
+assert.equal(assetsRequest.init.method, 'POST')
+assert.deepEqual(JSON.parse(String(assetsRequest.init.body)), { totalAssets: 1000000 })
+const assetsText = textOf(tree)
+assert.ok(assetsText.includes('已保存总资产'), 'the page confirms the total was stored')
+assert.ok(assetsText.includes('可用资金 ¥897,300.00 (+89.73%)'), 'the page recounts cash from the new total')
 
 // ---- a rejected save marks the offending row ---------------------------------
 

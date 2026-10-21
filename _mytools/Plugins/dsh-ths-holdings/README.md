@@ -87,6 +87,7 @@ This working copy ships the host half of `dsh-ths-holdings` only, so the day-to-
 - **Validate before writing** — the whole list is checked before anything is written (six-digit code, quantity > 0, cost ≥ 0, no repeated code); a rejected row is marked and explained, and one bad row means nothing is written at all.
 - **Write-back** — saving replaces the holdings file atomically, keeps the `exported_at` / `export_date` / `source_file` the export flow wrote, and records an `updated_at`; the P&L card picks the new data up on its next poll (about 20 seconds), with no restart.
 - **Choose the file** — the 持仓文件位置 row above the table shows the file in force and where that path came from. Type an absolute path or use 选择目录… (the shell's directory picker); **保存位置** remembers it for this machine only, in `$DSH_HOME/ths-holdings.location.json`, and **恢复默认** forgets it. The default is `$DSH_HOME/ths-holdings/positions.json`; the profile's `positionsFile` configuration applies when this machine has not chosen a path, and a chosen path overrides it.
+- **Total assets and available cash** — the 总资产 row takes the account total (cash plus holdings) and the page shows available cash as that total minus the saved holdings' market value, with its share of the account. The number stays on this machine in `$DSH_HOME/ths-holdings.assets.json`, never in the snapshot; clearing it means "unset", so cash reads as unknown rather than zero. A total below the market value reports negative cash and says so.
 
 > With a ledger Cookie configured, the card's figures come from the ledger API and the edits on this page only take effect on the "exported holdings + public quotes" local path — the page says so at the top.
 
@@ -103,6 +104,7 @@ The snapshot is personal data and never lives inside this package: point the set
 - **✓ Validate on save** — the stored cookie is checked against the ledger right after paste or auto-acquire
 - **⚙ Holdings manager page** — Settings → Plugins → open `dsh-ths-holdings`: edit cost and quantity, add and delete holdings, with live market value and P&L
 - **📁 File location setting** — choose where the holdings snapshot lives (default `$DSH_HOME/ths-holdings/positions.json`), so the real positions stay out of this public package and can sit in a private repository
+- **💰 Total assets and cash** — state the account total once and the page reports available cash (total minus holdings) and its share, kept on this machine
 - **↕ Draggable** — drag the title bar vertically along the right edge (position persists in localStorage)
 - **⚙ In-place settings** — paste Cookie and select portfolio from the card itself
 - **🔒 Credential-safe** — the Cookie never leaves the host process
@@ -172,7 +174,7 @@ dsh-ths-holdings/
 Tests (run them from the plugin directory; nothing needs building first):
 
 ```sh
-..\..\..\node_modules\.bin\vitest.CMD run    # host half: 40 specs
+..\..\..\node_modules\.bin\vitest.CMD run    # host half: 43 specs
 node tests\positions-ui.smoke.mjs            # browser half: register, render, edit, save
 node tests\host.smoke.mjs                    # boot the package by row name and drive the routes
 ```

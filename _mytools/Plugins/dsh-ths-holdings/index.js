@@ -22,6 +22,9 @@ import {
   clearPositionsLocation, defaultPositionsFile, inspectPositionsChoice, LOCATION_FILE,
   resolveDshHome, resolvePositionsLocation, writePositionsLocation,
 } from './location.js'
+import {
+  ASSETS_FILE, clearTotalAssets, computePortfolioAssets, parseTotalAssetsInput, readTotalAssets, writeTotalAssets,
+} from './assets.js'
 import { savePositions, readPositionsView } from './positions.js'
 
 export const name = 'ui-stock-pnl'
@@ -35,6 +38,9 @@ export const POSITIONS_PATH = '/api/stock-pnl/positions'
 
 /** The route that switches which file the holdings routes read and write. */
 export const POSITIONS_LOCATION_PATH = '/api/stock-pnl/positions/location'
+
+/** The route that stores the account's total assets, so available cash can be reported. */
+export const POSITIONS_ASSETS_PATH = '/api/stock-pnl/positions/assets'
 
 /** Largest accepted holdings-save body: a few hundred rows of four short fields. */
 const MAX_POSITIONS_BODY_BYTES = 256 * 1024
@@ -126,6 +132,15 @@ export function apply(ctx, config = {}) {
     file_source: location.source,
     file_default: defaultPositionsFile(home),
   })
+  const assetsPath = join(home, ASSETS_FILE)
+  /**
+   * The account figures every holdings answer carries. The total is read per
+   * request, so a hand-edited file shows up without a restart; cash is the
+   * total minus the priced holdings.
+   * @param {object} view - the priced holdings view.
+   * @returns {object} the total, holdings value, cash, and cash share.
+   */
+  const assetsView = (view) => computePortfolioAssets(view.positions ?? [], readTotalAssets(assetsPath))
   const route = {
     kind: 'exact',
     path: ROUTE_PATH,
@@ -305,7 +320,9 @@ export function apply(ctx, config = {}) {
         }
         const result = await savePositions({ ...input, body })
         writeJson(res, result.ok ? 200 : 400,
-          result.ok ? { ...result, view: { ...result.view, ...locationView() } } : result)
+          result.ok
+            ? { ...result, view: { ...result.view, ...locationView(), ...assetsView(result.view) } }
+            : result)
         return
       }
 
@@ -314,7 +331,8 @@ export function apply(ctx, config = {}) {
         res.end()
         return
       }
-      writeJson(res, 200, { ...(await readPositionsView(input)), ...locationView() })
+      const view = await readPositionsView(input)
+      writeJson(res, 200, { ...view, ...locationView(), ...assetsView(view) })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
       if (res.headersSent) { res.destroy(); return }
@@ -370,6 +388,53 @@ export function apply(ctx, config = {}) {
       }
       location = { file: choice.file, source: 'machine' }
       writeJson(res, 200, { ok: true, ...locationView() })
+    } catch (error) {
+      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+      if (res.headersSent) { res.destroy(); return }
+      res.writeHead(500)
+      res.end()
+    }
+  })
+
+  // The account's total assets: one number per machine, stored beside the
+  // holdings path, so the page can show what is left as available cash. A
+  // `null` (or empty) value forgets the setting, which is different from zero.
+  addRoute(POSITIONS_ASSETS_PATH, async (req, res) => {
+    try {
+      if (req.method !== 'POST') {
+        res.writeHead(405, { Allow: 'POST' })
+        res.end()
+        return
+      }
+      const contentType = req.headers['content-type'] ?? ''
+      if (!contentType.toLowerCase().startsWith('application/json')) {
+        writeJson(res, 415, { ok: false, message: '请求的 Content-Type 必须是 application/json' })
+        return
+      }
+      const body = await readJsonBody(req, MAX_LOCATION_BODY_BYTES)
+      if (typeof body !== 'object' || body === null || !('totalAssets' in body)) {
+        writeJson(res, 400, {
+          ok: false,
+          message: `请求体需要 totalAssets 字段（数字，或 null 清除），且不超过 ${String(MAX_LOCATION_BODY_BYTES)} 字节`,
+        })
+        return
+      }
+      const parsed = parseTotalAssetsInput(body.totalAssets)
+      if (!parsed.ok) {
+        writeJson(res, 400, { ok: false, message: parsed.message })
+        return
+      }
+      try {
+        if (parsed.value === null) clearTotalAssets(assetsPath)
+        else writeTotalAssets(assetsPath, parsed.value)
+      } catch (error) {
+        writeJson(res, 500, {
+          ok: false,
+          message: `写入总资产失败：${error instanceof Error ? error.message : String(error)}`,
+        })
+        return
+      }
+      writeJson(res, 200, { ok: true, total_assets: parsed.value })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
       if (res.headersSent) { res.destroy(); return }

@@ -27,6 +27,9 @@ import { collectStats, cookieField, listPortfolios, verifyCookie } from '../fetc
 import {
   clearPositionsLocation, inspectPositionsChoice, LOCATION_FILE, resolvePositionsLocation, writePositionsLocation,
 } from '../location.js'
+import {
+  ASSETS_FILE, clearTotalAssets, computePortfolioAssets, parseTotalAssetsInput, readTotalAssets, writeTotalAssets,
+} from '../assets.js'
 import { parsePositionEntries, readPositionsView, savePositions } from '../positions.js'
 
 /** A playwright cookie, as these tests hand it to the acquirer. */
@@ -58,6 +61,10 @@ interface PositionsView {
   positions: Array<Record<string, any>>
   quotes_error: string
   unreadable?: string
+  total_assets?: number | null
+  holdings_value?: number
+  cash?: number | null
+  cash_pct?: number | null
 }
 
 /** The `/api/stock-pnl/positions` save answer, as these tests read it. */
@@ -765,6 +772,53 @@ describe('inspectPositionsChoice', () => {
   })
 })
 
+describe('total assets', () => {
+  it('stores a positive total and derives cash from the priced holdings', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-stock-pnl-assets-'))
+    try {
+      const assetsPath = join(dir, ASSETS_FILE)
+      expect(readTotalAssets(assetsPath)).toBeNull()
+
+      writeTotalAssets(assetsPath, 1_000_000)
+      expect(readTotalAssets(assetsPath)).toBe(1_000_000)
+      expect(JSON.parse(await readFile(assetsPath, 'utf8')).totalAssets).toBe(1_000_000)
+
+      expect(computePortfolioAssets([{ market_value: 250_000 }, { market_value: 50_000 }], 1_000_000)).toEqual({
+        total_assets: 1_000_000, holdings_value: 300_000, cash: 700_000, cash_pct: 70,
+      })
+      // A row without a quote has no market value, so it stays counted as cash
+      // rather than silently inflating what is invested.
+      expect(computePortfolioAssets([{ market_value: 300_000 }, { code: 'X' }], 400_000)).toEqual({
+        total_assets: 400_000, holdings_value: 300_000, cash: 100_000, cash_pct: 25,
+      })
+      // Holdings above the stated total report negative cash, not a clamp.
+      expect(computePortfolioAssets([{ market_value: 500 }], 400)).toEqual({
+        total_assets: 400, holdings_value: 500, cash: -100, cash_pct: -25,
+      })
+      // An unset total is null, never zero.
+      expect(computePortfolioAssets([{ market_value: 1 }], null)).toEqual({
+        total_assets: null, holdings_value: 1, cash: null, cash_pct: null,
+      })
+
+      clearTotalAssets(assetsPath)
+      expect(existsSync(assetsPath)).toBe(false)
+      expect(readTotalAssets(assetsPath)).toBeNull()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses values the page cannot mean and rounds to cents', () => {
+    expect(parseTotalAssetsInput(0)).toEqual({ ok: false, message: '总资产需要大于 0' })
+    expect(parseTotalAssetsInput(-5).ok).toBe(false)
+    expect(parseTotalAssetsInput('100').ok).toBe(false)
+    expect(parseTotalAssetsInput(1e13).ok).toBe(false)
+    expect(parseTotalAssetsInput(null)).toEqual({ ok: true, value: null })
+    expect(parseTotalAssetsInput('')).toEqual({ ok: true, value: null })
+    expect(parseTotalAssetsInput(1234.567)).toEqual({ ok: true, value: 1234.57 })
+  })
+})
+
 describe('positions management route', () => {
   it('prices the exported holdings and reports the ledger state', { timeout: 60_000 }, async () => {
     const port = await loadComposition()
@@ -923,6 +977,66 @@ describe('positions management route', () => {
     })
     expect(notJson.status).toBe(415)
     expect((await fetch(`${base}/location`)).status).toBe(405)
+  })
+
+  it('stores this machine total assets and reports the available cash', { timeout: 60_000 }, async () => {
+    const port = await loadComposition()
+    const base = `http://127.0.0.1:${String(port)}/api/stock-pnl/positions`
+    const assetsPath = join(root!, ASSETS_FILE)
+
+    // Nothing is set until the page states a total: cash is unknown, not zero.
+    const before = (await (await fetch(base)).json()) as PositionsView
+    expect(before.total_assets).toBeNull()
+    expect(before.cash).toBeNull()
+    expect(before.holdings_value).toBe(102_700)
+
+    const stored = await fetch(`${base}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ totalAssets: 200_000 }),
+    })
+    expect(stored.status).toBe(200)
+    expect(await stored.json()).toEqual({ ok: true, total_assets: 200_000 })
+    expect(JSON.parse(await readFile(assetsPath, 'utf8')).totalAssets).toBe(200_000)
+
+    const after = (await (await fetch(base)).json()) as PositionsView
+    expect(after.total_assets).toBe(200_000)
+    expect(after.holdings_value).toBe(102_700)
+    expect(after.cash).toBe(97_300)
+    expect(after.cash_pct).toBe(48.65)
+
+    // `null` forgets the setting and removes the machine file.
+    const cleared = await fetch(`${base}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ totalAssets: null }),
+    })
+    expect(cleared.status).toBe(200)
+    expect(await cleared.json()).toEqual({ ok: true, total_assets: null })
+    expect(existsSync(assetsPath)).toBe(false)
+
+    const refused = await fetch(`${base}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ totalAssets: 0 }),
+    })
+    expect(refused.status).toBe(400)
+    expect(((await refused.json()) as { message: string }).message).toContain('大于 0')
+
+    const missing = await fetch(`${base}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ total: 1 }),
+    })
+    expect(missing.status).toBe(400)
+
+    const notJson = await fetch(`${base}/assets`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: 'totalAssets=1',
+    })
+    expect(notJson.status).toBe(415)
+    expect((await fetch(`${base}/assets`)).status).toBe(405)
   })
 })
 

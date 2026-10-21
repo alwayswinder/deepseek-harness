@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
     const API = '/api/stock-pnl/positions'
     /** The host route that chooses which file `API` reads and writes. */
     const LOCATION_API = API + '/location'
+    /** The host route that stores this machine's total assets, so cash can be shown. */
+    const ASSETS_API = API + '/assets'
     /**
      * The bundle this configuration belongs to: the Plugins page keys this slot
      * by the bundle's package name, spelled the way the profile's bundle list does.
@@ -198,6 +200,10 @@ window.__ModuleLoader__.load({
       const [fileFailure, setFileFailure] = useState('')
       const [fileNotice, setFileNotice] = useState('')
       const [fileSaving, setFileSaving] = useState(false)
+      const [assetsDraft, setAssetsDraft] = useState('')
+      const [assetsFailure, setAssetsFailure] = useState('')
+      const [assetsNotice, setAssetsNotice] = useState('')
+      const [assetsSaving, setAssetsSaving] = useState(false)
       const pickDirectory = props !== undefined ? props.pickDirectory : undefined
 
       /** Adopt one host view as both the shown facts and the saved baseline. */
@@ -207,6 +213,7 @@ window.__ModuleLoader__.load({
         setDraft(rows)
         setBaseline(JSON.stringify(rows))
         setFileDraft(typeof next.file === 'string' ? next.file : '')
+        setAssetsDraft(typeof next.total_assets === 'number' ? String(next.total_assets) : '')
       }, [])
 
       const load = useCallback(() => {
@@ -302,6 +309,51 @@ window.__ModuleLoader__.load({
         setDraft(rows => rows.map((row, at) => (at === index ? { ...row, [field]: value } : row)))
       }, [])
 
+      /**
+       * Store this machine's total assets and keep the loaded view in step.
+       *
+       * The page does not reload here: a person may have unsaved holdings edits
+       * on screen, and saving one setting must not throw them away. An empty
+       * value clears the setting, which is different from a total of zero.
+       * @param {string} text - the input as typed.
+       * @returns {void}
+       */
+      const saveAssets = useCallback((text) => {
+        const trimmed = String(text).trim()
+        const value = trimmed === '' ? null : Number(trimmed)
+        if (value !== null && !Number.isFinite(value)) {
+          setAssetsFailure('总资产需要数字，留空表示清除')
+          return
+        }
+        setAssetsSaving(true)
+        setAssetsFailure('')
+        setAssetsNotice('')
+        fetch(ASSETS_API, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ totalAssets: value }),
+        })
+          .then(async (response) => {
+            const body = await response.json().catch(() => null)
+            if (!response.ok || body === null || body.ok !== true) {
+              setAssetsFailure(body !== null && typeof body.message === 'string' && body.message !== ''
+                ? body.message
+                : response.status === 404
+                  ? '宿主半边还没有这个路由：重启 DSH 再试'
+                  : 'HTTP ' + String(response.status))
+              return
+            }
+            const stored = typeof body.total_assets === 'number' ? body.total_assets : null
+            setView(current => current === null ? current : { ...current, total_assets: stored })
+            setAssetsDraft(stored === null ? '' : String(stored))
+            setAssetsNotice(stored === null ? '已清除总资产设置' : '已保存总资产')
+          })
+          .catch((error) => {
+            setAssetsFailure(String(error && error.message ? error.message : error))
+          })
+          .finally(() => { setAssetsSaving(false) })
+      }, [])
+
       const prices = useMemo(() => priceIndex(view), [view])
 
       const totals = useMemo(() => {
@@ -333,6 +385,16 @@ window.__ModuleLoader__.load({
           day, dayPct: dayBase > 0 ? (day / dayBase) * 100 : 0,
         }
       }, [draft, prices])
+
+      // The account figures the host derived from the saved holdings; while the
+      // table carries unsaved edits, these stay on the saved numbers.
+      const account = useMemo(() => {
+        const total = view !== null && typeof view.total_assets === 'number' ? view.total_assets : null
+        const holdings = view !== null && typeof view.holdings_value === 'number' ? view.holdings_value : null
+        if (total === null || holdings === null) return null
+        const cash = total - holdings
+        return { total, holdings, cash, pct: total > 0 ? (cash / total) * 100 : 0 }
+      }, [view])
 
       const dirty = useMemo(() => JSON.stringify(draft) !== baseline, [draft, baseline])
       const badFields = useMemo(() => {
@@ -449,6 +511,46 @@ window.__ModuleLoader__.load({
           h('span', null, `成本 ${fmtMoney(totals.cost)}`),
           h('span', { style: tone(totals.pnl) }, `累计 ${fmtSigned(totals.pnl)} (${fmtPct(totals.pnlPct)})`),
           h('span', { style: tone(totals.day) }, `今日 ${fmtSigned(totals.day)} (${fmtPct(totals.dayPct)})`)),
+        h('div', { style: S.fileBlock },
+          h('div', { style: S.fileLabel }, '总资产与可用资金'),
+          h('div', { style: S.bar },
+            h('input', {
+              style: { ...S.inputPath, flex: '0 0 220px', textAlign: 'right' },
+              value: assetsDraft,
+              inputMode: 'decimal',
+              spellCheck: false,
+              placeholder: '例如 1000000（留空=不设置）',
+              'aria-label': '总资产',
+              onChange: (event) => {
+                setAssetsDraft(event.currentTarget.value)
+                setAssetsFailure('')
+                setAssetsNotice('')
+              },
+            }),
+            h(Button, {
+              primary: true,
+              disabled: assetsSaving || assetsDraft.trim() === (typeof view.total_assets === 'number' ? String(view.total_assets) : ''),
+              onClick: () => { saveAssets(assetsDraft) },
+            }, assetsSaving ? '保存中…' : '保存总资产'),
+            typeof view.total_assets === 'number'
+              ? h(Button, { disabled: assetsSaving, onClick: () => { saveAssets('') } }, '清除')
+              : null),
+          account === null
+            ? h('div', { style: S.sub }, '填写账户总资产（现金 + 持仓市值），可用资金 = 总资产 − 持仓市值。这个数只在这台机器上生效。')
+            : h('div', { style: S.summary },
+              h('span', null, `总资产 ${fmtMoney(account.total)}`),
+              h('span', null, `持仓 ${fmtMoney(account.holdings)}`),
+              h('span', { style: account.cash < 0 ? { color: 'var(--dsw-alias-state-warn-label)' } : undefined },
+                `可用资金 ${fmtMoney(account.cash)} (${fmtPct(account.pct)})`),
+              h('span', { style: S.sub }, '按已保存的持仓计算')),
+          account !== null && account.cash < 0
+            ? h('div', { style: S.note }, '可用资金为负：总资产小于持仓市值，检查总资产是否填小，或持仓里是否含融资买入。')
+            : null,
+          account !== null && typeof view.quotes_error === 'string' && view.quotes_error !== ''
+            ? h('div', { style: S.note }, '有持仓没有行情价，未计入持仓市值，可用资金会偏高：' + view.quotes_error)
+            : null,
+          assetsFailure === '' ? null : h('div', { style: S.error }, assetsFailure),
+          assetsNotice === '' ? null : h('div', { style: S.sub }, assetsNotice)),
         h('div', { style: S.tableWrap },
           h('table', { style: S.table },
             h('thead', null, h('tr', null, ...columns.map((label, index) => h('th', {

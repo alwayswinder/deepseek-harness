@@ -1,7 +1,7 @@
 {
   "name": "dsh-ths-holdings",
   "description": "DSH 持仓盈亏数据源与持仓管理页（同花顺投资账本 / 导出持仓 + 腾讯公开行情）。Portfolio P&L routes for the DSH web GUI plus a holdings manager page on this plugin's own page — hand-written ESM, no build step.",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "private": true,
   "repository": {
     "type": "git",
@@ -58,6 +58,7 @@
     "acquire.js",
     "local.js",
     "location.js",
+    "assets.js",
     "positions.js",
     "client.js",
     "cordis.patch.yml",

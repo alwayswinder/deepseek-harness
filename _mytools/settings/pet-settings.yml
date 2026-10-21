@@ -8,7 +8,7 @@
 
 version: 1
 exportedFrom: desktop
-exportedAt: 2026-10-17T10:23:24.925Z
+exportedAt: 2026-10-21T02:14:34.479Z
 name: "@local/dsh-little-icon"
 config:
   enabled: true
@@ -28,14 +28,12 @@ config:
       url: https://github.com/
     - name: 用量统计
       url: https://platform.deepseek.com/usage
-    - name: 翻译
-      url: https://translate.google.com/?hl=zh-CN&sl=en&tl=zh-CN&op=translate
-    - name: 谷歌
-      url: https://www.google.com/
     - name: Epic
       url: https://dev.epicgames.com/community/assistant/unreal-engine/conversations/01m4pywv24npzdv8hzxyw7gff4
     - name: gemini
       url: https://gemini.google.com/app/bfc7db8629e94204?utm_source=deepmind.google&utm_medium=referral&utm_campaign=gdm&utm_content=
+    - name: OpenCode
+      url: https://opencode.ai/console/org_01M4YNWXJZJK70Y681KEB7FY5N?range=30d
   musicLinks:
     - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.337.search-card.all.click&vd_source=f7cf7de90459b8c6a73cd9bdf2093596
     - https://www.bilibili.com/video/BV1BDk2YCEHF/?spm_id_from=333.788.videopod.episodes&vd_source=f7cf7de90459b8c6a73cd9bdf2093596&p=2

@@ -4,7 +4,7 @@ import type { Branded } from '@deepseek-ai/dsh-brand'
 /** Main-issued identity of one guest reservation. */
 export type DesktopBrowserLeaseId = Branded<'DesktopBrowserLeaseId'>
 
-/** A guest's approved partition, which holds one workspace's storage across restarts. */
+/** A guest's approved partition, which holds every Sidebar browser's storage across restarts. */
 export interface DesktopBrowserReservation {
   readonly lease: DesktopBrowserLeaseId
   readonly partition: string
@@ -18,7 +18,10 @@ export interface DesktopBrowserOpenRequest {
 
 /** Origin-scoped operations; no Electron objects or arbitrary IPC cross this interface. */
 export interface DesktopBrowserBridge {
-  /** @param workspace - resolved storage account. @returns one approved guest reservation. */
+  /**
+   * @param workspace - Workspace identity accompanying the request; storage is shared, so it selects nothing.
+   * @returns one approved guest reservation.
+   */
   acquire(workspace: string): Promise<DesktopBrowserReservation>
   /** @param lease - the caller's reservation. @returns after its guest has been destroyed. */
   release(lease: DesktopBrowserLeaseId): Promise<void>

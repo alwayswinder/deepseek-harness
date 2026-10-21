@@ -31,11 +31,11 @@ beforeEach(() => {
   })
 })
 
-it('puts a workspace in a persistent partition named after the workspace identity', () => {
+it('puts every workspace in the one persistent partition shared by the Sidebar', () => {
   const partition = new DesktopBrowserGuests(() => undefined).acquire(owner, 'cwd:D:\\AI\\DSH\\deepseek-harness').partition
-  // Persistent so a signed-in site outlives the application, and a digest so a
-  // path that could not be a directory name never reaches the partition name.
-  expect(partition).toMatch(/^persist:dsh-sidebar-browser-[0-9a-f]{32}$/)
+  // Persistent so a signed-in site outlives the application; the fixed name keeps
+  // the storage account independent of which Workspace asks for a guest.
+  expect(partition).toBe('persist:dsh-sidebar-browser-shared')
   expect(native.partition).toHaveBeenCalledExactlyOnceWith(partition)
   // The fixed isolation policy applies to a persistent partition just the same.
   expect(created).toHaveLength(1)
@@ -43,27 +43,27 @@ it('puts a workspace in a persistent partition named after the workspace identit
   expect(created[0]!.webRequest.onBeforeRequest).toHaveBeenCalledOnce()
 })
 
-it('reuses one partition per workspace, and isolates another workspace', () => {
+it('shares one partition across workspaces and configures it once', () => {
   const guests = new DesktopBrowserGuests(() => undefined)
   const first = guests.acquire(owner, 'cwd:D:\\project')
   const again = guests.acquire(owner, 'cwd:D:\\project')
   const other = guests.acquire(owner, 'session:8d1f')
   expect(again.partition).toBe(first.partition)
-  expect(other.partition).not.toBe(first.partition)
-  expect(native.partition).toHaveBeenCalledTimes(2)
+  expect(other.partition).toBe(first.partition)
+  expect(native.partition).toHaveBeenCalledOnce()
 })
 
-it('gives a restarted application the same partition for the same workspace', () => {
+it('gives a restarted application the same partition', () => {
   const before = new DesktopBrowserGuests(() => undefined).acquire(owner, 'cwd:D:\\project').partition
   vi.clearAllMocks()
-  const after = new DesktopBrowserGuests(() => undefined).acquire(owner, 'cwd:D:\\project').partition
+  const after = new DesktopBrowserGuests(() => undefined).acquire(owner, 'cwd:D:\\other-project').partition
   expect(after).toBe(before)
 })
 
 it('still refuses a workspace identity that is missing or unusable', () => {
   const guests = new DesktopBrowserGuests(() => undefined)
   for (const workspace of [undefined, '', null, 42, 'x'.repeat(4097)]) {
-    expect(() => guests.acquire(owner, workspace)).toThrow('workspace storage identity is required')
+    expect(() => guests.acquire(owner, workspace)).toThrow('workspace identity is required')
   }
   expect(native.partition).not.toHaveBeenCalled()
 })

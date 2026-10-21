@@ -1,5 +1,5 @@
 /** Main-process ownership and fixed isolation policy for Sidebar webview guests. */
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from './ipc.ts'
@@ -13,44 +13,37 @@ interface GuestLease {
 }
 
 /**
- * The persistent partition holding one workspace's Sidebar storage. The workspace
- * identity is a key rather than a path — `cwd:D:\project` and `session:<id>` — and
- * can carry characters a directory name cannot, so the partition is named after a
- * digest of it. The name is stable, which is what lets a site signed into in the
- * Sidebar stay signed in across application restarts; Electron keeps the directory
- * under the application's user data and the uninstaller removes it.
- * @param workspace - workspace identity received over IPC.
- * @returns the `persist:` partition name for that workspace.
+ * The single persistent partition holding every Sidebar browser guest's storage.
+ * Site sign-in therefore follows the application rather than the Workspace: a site
+ * signed into from one Workspace stays signed in from every other one and across
+ * application restarts. Electron keeps the directory under the application's user
+ * data and the uninstaller removes it.
  */
-function browserPartition(workspace: string): string {
-  const digest = createHash('sha256').update(workspace).digest('hex')
-  return `persist:dsh-sidebar-browser-${digest.slice(0, 32)}`
-}
+const SHARED_PARTITION = 'persist:dsh-sidebar-browser-shared'
 
-/** Owns each workspace's storage partition independently from individual tab guests. */
+/** Owns one shared storage partition independently from individual tab guests. */
 export class DesktopBrowserGuests {
-  private readonly partitions = new Map<string, string>()
+  private configured = false
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
 
   /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
   constructor(private readonly hostUrl: () => string | undefined) {}
 
   /**
-   * Reserve one guest in its workspace's partition, created on first use. The
-   * storage outlives the tab, the window, and the application.
+   * Reserve one guest in the shared partition, created on first use. The storage
+   * outlives the tab, the window, the Workspace, and the application.
    * @param owner - authenticated primary application WebContents.
-   * @param workspace - workspace identity received over IPC.
+   * @param workspace - Workspace identity received over IPC; validated, but no longer selects storage.
    * @returns opaque lease and the partition approved for it.
    */
   acquire(owner: WebContents, workspace: unknown): DesktopBrowserReservation {
     if (typeof workspace !== 'string' || workspace.length === 0 || workspace.length > 4096) {
-      throw new Error('desktop browser: a workspace storage identity is required')
+      throw new Error('desktop browser: a workspace identity is required')
     }
-    let partition = this.partitions.get(workspace)
-    if (partition === undefined) {
-      partition = browserPartition(workspace)
+    const partition = SHARED_PARTITION
+    if (!this.configured) {
       this.configureSession(session.fromPartition(partition))
-      this.partitions.set(workspace, partition)
+      this.configured = true
     }
     const lease = randomUUID() as DesktopBrowserLeaseId
     this.leases.set(lease, { owner, partition, attached: false })
@@ -58,7 +51,7 @@ export class DesktopBrowserGuests {
   }
 
   /**
-   * Release only a lease issued to this application window; workspace storage
+   * Release only a lease issued to this application window; shared storage
    * survives for the next tab, window, and application run.
    * @param owner - authenticated IPC sender.
    * @param id - lease received over IPC.

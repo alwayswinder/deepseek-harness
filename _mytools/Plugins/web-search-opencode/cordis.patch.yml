@@ -1,0 +1,26 @@
+# web-search-opencode bundle patch.
+#
+# Two rows: the provider itself, and the `web` seam's search selection pointing
+# at it. The base bundle ships `searchProvider: deepseek-official`, which bills
+# every auxiliary search to the DeepSeek official API account; this patch moves
+# that selection onto the OpenCode gateway the conversation already uses.
+- insert:
+    - id: web-search-opencode
+      name: '@local/dsh-web-search-opencode'
+      config:
+        # Anthropic-compatible base; `/messages` is appended.
+        baseURL: https://opencode.ai/zen/go/v1
+        # The Go plan's gateway runs the native web_search tool on this route
+        # too, and it is also the conversation model. claude-haiku-5-5 is the
+        # alternative: cheaper on paper, weaker on Chinese pages.
+        model: deepseek-v4.1-flash
+        apiKeyEnv: OPENCODE_GO_API_KEY
+        apiVersion: '2023-06-01'
+        maxTokens: 4096
+        maxUses: 5
+        sessionHeader: x-opencode-session
+        disableThinking: true
+
+- id: web
+  config:
+    searchProvider: opencode

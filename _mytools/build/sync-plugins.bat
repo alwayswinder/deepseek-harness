@@ -61,6 +61,7 @@ call :syncPlugin dsh-fish-tank dsh-fish-tank
 call :syncPlugin dsh-aquarium3d dsh-aquarium3d
 call :syncPlugin dsh-littleIcon dsh-little-icon
 call :syncPlugin dsh-temp-space dsh-temp-space
+call :syncPlugin web-search-opencode dsh-web-search-opencode
 
 if defined PLUGIN_FAILED exit /b 1
 exit /b 0

@@ -1,0 +1,24 @@
+{
+  "name": "@local/dsh-web-search-opencode",
+  "description": "Web search for DSH through OpenCode's Anthropic-compatible gateway: the session's web_search bills the OpenCode plan instead of the DeepSeek official API account.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

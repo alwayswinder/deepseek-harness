@@ -62,6 +62,7 @@ scripts/set-assets.mjs        写入 / 清除账户总资产
 scripts/next-trading-day.mjs  下一交易日与当前时段
 scripts/shared/analysis.mjs   分红汇总、股息率、权重与提醒（纯计算）
 scripts/shared/calendar.mjs   交易日与时段（纯计算）
+scripts/shared/text.mjs       公告正文 HTML 实体解码（纯计算）
 tests/*.spec.mjs              node:test 用例，不联网
 ```
 
@@ -75,4 +76,5 @@ tests/*.spec.mjs              node:test 用例，不联网
 - 持仓快照需要用户自己保持更新（插件页编辑或重新导出账本）；脚本只提示「N 天前」，不会自动同步账本。
 - 数据来自东方财富、腾讯、新浪的公开接口，限流或改版会导致个别标的「数据问题」，脚本降级不中断。
 - 基金分红按「最近一个完整年度」算股息率与目标价，没有完整年度时退回近 12 个月；分红趋势只比两个完整年度，避免拿未过完的当年比上一年整年。
+- 东方财富的分红送配表（`RPT_SHAREBONUS_DET`）不收录特别分红这类临时分派，会让 TTM 股息率偏低。脚本用公告标题交叉核对：公告说已实施分派、分红表里却没有对应记录时，取公告正文补录每股金额与除息日，补录只进 TTM，年度股息率与目标价仍按分红表口径，避免把一次性分红当成经常性收益。加 `--no-news` 会跳过分红缺口核对。
 - 本机 `web_fetch` 会报 `multiple usable web providers are registered`、`web_search` 走 OpenCode 网关时也可能拿不到结果，skill 里所有取数都走直连接口。

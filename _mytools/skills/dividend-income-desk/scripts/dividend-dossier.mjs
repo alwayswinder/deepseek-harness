@@ -15,13 +15,15 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { finalizeRows, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends } from './shared/analysis.mjs'
+import { finalizeRows, findDividendGaps, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends } from './shared/analysis.mjs'
+import { decodeEntities } from './shared/text.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const SKILL_DIR = dirname(SCRIPT_DIR)
 const EM_DATA = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
 const EM_QUOTE = 'https://push2.eastmoney.com/api/qt/stock/get'
 const EM_ANN = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
+const EM_BODY = 'https://np-cnotice-stock.eastmoney.com/api/content/ann'
 const QUOTE_URL = 'http://qt.gtimg.cn/q='
 const FUND_DIV_PAGE = 'https://fundf10.eastmoney.com/fhsp_'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
@@ -336,9 +338,53 @@ async function enrich(position, quote, quoteFailure) {
     row.dividend = summarizeStockDividends(dividends, performance, price, position.cost, targetYieldPct, todayIso)
     row.performance = summarizePerformance(performance)
     row.appointment = appointment.error === undefined ? summarizeAppointment(appointment) : null
+    if (Array.isArray(dividends)) {
+      const reconciled = await reconcileDividendGaps(row, dividends, performance, price, position.cost, targetYieldPct)
+      if (reconciled !== null) row.dividend = reconciled
+    }
   }
 
   return row
+}
+
+// 分红表缺条时按公告补录：公告说已实施分派、东财 RPT_SHAREBONUS_DET 里却没有
+// 这条记录（典型是特别分红），TTM 会偏低。补录只进 TTM，年度口径保持分红表原样。
+async function reconcileDividendGaps(row, dividends, performance, price, cost, targetYieldPct) {
+  const gaps = findDividendGaps(dividends, row.announcements)
+  if (gaps.length === 0) return null
+  const supplements = []
+  for (const gap of gaps.slice(0, 2)) {
+    if (gap.artCode === null || gap.artCode === '') {
+      row.errors.push(`分红缺口: 《${gap.title}》（${gap.date}）在分红表中无对应记录，公告没有正文编号，未补录`)
+      continue
+    }
+    let parsed
+    try {
+      parsed = parseDividendNotice(await emAnnouncementBody(gap.artCode))
+    } catch (error) {
+      row.errors.push(`分红缺口: 《${gap.title}》（${gap.date}）在分红表中无对应记录，取公告正文失败（${describe(error)}），未补录`)
+      continue
+    }
+    if (parsed === null) {
+      row.errors.push(`分红缺口: 《${gap.title}》（${gap.date}）在分红表中无对应记录，正文未取到「每 10 股派 X 元」，未补录`)
+      continue
+    }
+    const exDate = parsed.exDate ?? gap.date
+    supplements.push({
+      reportDate: null,
+      perShare: parsed.perShare,
+      // 除息日还没到的不算已付：写成「股东大会通过」才会进 nextPlan 而不是 TTM。
+      exDate,
+      progress: exDate <= todayIso ? '实施分配' : '股东大会通过',
+      plan: `10派${round4(parsed.perShare * 10)}元`,
+      noticeDate: gap.date,
+      supplemental: true,
+      title: gap.title,
+    })
+    row.errors.push(`分红缺口: 公告《${gap.title}》（${gap.date}）为每 10 股派 ${round4(parsed.perShare * 10)} 元、除息 ${exDate}，分红表里没有这条记录；已按公告补录${exDate <= todayIso ? '，仅计入 TTM' : '，列在待实施'}`)
+  }
+  if (supplements.length === 0) return null
+  return summarizeStockDividends([...dividends, ...supplements], performance, price, cost, targetYieldPct, todayIso)
 }
 
 function isEtfCode(code) {
@@ -494,8 +540,8 @@ function renderMarkdown(report) {
   lines.push('')
   lines.push('## 收息与基本面')
   lines.push('')
-  lines.push('| 代码 | 名称 | 每股分红 | 现价股息率 | 成本股息率 | 派息率 | 目标价 | 最新报告 | 营收同比 | 净利同比 | ROE | 下次披露 | 提醒 |')
-  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |')
+  lines.push('| 代码 | 名称 | 每股分红 | 现价股息率 | 成本股息率 | TTM 股息率 | 派息率 | 目标价 | 最新报告 | 营收同比 | 净利同比 | ROE | 下次披露 | 提醒 |')
+  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |')
   for (const row of [...report.rows].sort((a, b) => b.weightPct - a.weightPct)) {
     const div = row.dividend
     const perf = row.performance
@@ -506,6 +552,7 @@ function renderMarkdown(report) {
       div === null ? '—' : `${numText(div.annualDps)}（${div.annualLabel}）`,
       div === null ? '—' : pctText(div.yieldPct),
       div === null ? '—' : pctText(div.costYieldPct),
+      div === null ? '—' : pctText(div.ttmYieldPct),
       div?.payoutPct === null || div === null ? '—' : `${fmt(div.payoutPct)}%`,
       div?.targetPrice === null || div === null ? '—' : numText(div.targetPrice),
       perf === null ? '—' : perf.reportDate,
@@ -550,6 +597,13 @@ function renderMarkdown(report) {
     } else if (row.kind === 'ETF') {
       lines.push('- 近年分红：无记录（基金未分配收益计入净值）')
     }
+    if (row.dividend?.supplemental?.length > 0) {
+      const today = report.generatedAt.slice(0, 10)
+      lines.push(`- 分红补录：${row.dividend.supplemental.map(item => `《${item.title ?? '公告'}》每股 ${item.perShare} 元（除息 ${item.exDate}${item.exDate > today ? '，待除息' : ''}）`).join('；')}（分红表无此记录，已按公告补录）`)
+      if (row.dividend.ttmDps !== row.dividend.annualDps) {
+        lines.push(`- 收息口径：年度 ${numText(row.dividend.annualDps)} 元（${pctText(row.dividend.yieldPct)}），近 12 个月 ${numText(row.dividend.ttmDps)} 元（${pctText(row.dividend.ttmYieldPct)}）`)
+      }
+    }
     if (row.dividend?.nextPlan != null) lines.push(`- 待实施：${row.dividend.nextPlan.plan}（除息 ${row.dividend.nextPlan.exDate}）`)
     if (row.performance !== null) {
       const history = row.performance.history
@@ -584,8 +638,18 @@ async function emAnnouncements(code) {
   return (body?.data?.list ?? []).map(item => ({
     title: String(item.title ?? item.title_ch ?? '').trim(),
     date: String(item.notice_date ?? item.display_time ?? '').slice(0, 10),
+    artCode: String(item.art_code ?? ''),
     url: `https://data.eastmoney.com/notices/detail/${code}/${item.art_code}.html`,
   })).filter(item => item.title.length > 0)
+}
+
+async function emAnnouncementBody(artCode) {
+  const body = await getJson(`${EM_BODY}?art_code=${encodeURIComponent(artCode)}&client_source=web&page_index=1`)
+  const content = body?.data?.notice_content
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error(`公告 ${artCode} 没有正文`)
+  }
+  return decodeEntities(content.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
 }
 
 async function mapPool(items, limit, worker) {

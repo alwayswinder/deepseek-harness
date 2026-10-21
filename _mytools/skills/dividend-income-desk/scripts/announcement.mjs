@@ -11,6 +11,8 @@
  * 正文来自东方财富公告接口，HTML 会被剥成纯文本；超过 --max 字符时截断并提示。
  */
 
+import { decodeEntities } from './shared/text.mjs'
+
 const EM_ANN = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
 const EM_BODY = 'https://np-cnotice-stock.eastmoney.com/api/content/ann'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
@@ -99,16 +101,6 @@ async function fetchBody(artCode) {
     throw new Error(`公告 ${artCode} 没有返回正文，可能需要在浏览器打开：https://data.eastmoney.com/notices/detail/x/${artCode}.html`)
   }
   return decodeEntities(content.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()
-}
-
-function decodeEntities(text) {
-  return text
-    .replaceAll('&nbsp;', ' ')
-    .replaceAll('&amp;', '&')
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&#39;', "'")
 }
 
 function printBody(text, artCode) {

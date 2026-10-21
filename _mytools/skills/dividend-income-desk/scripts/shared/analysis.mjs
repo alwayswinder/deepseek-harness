@@ -26,7 +26,9 @@ export function daysBetween(fromIso, toIso) {
  *
  * 「最近一个完整年度」按 REPORT_DATE 的年份汇总该年度所有已实施分配（中期 +
  * 季度 + 年度），而不是只看年度那一笔；年度利润取同年 12-31 的 EPS。
- * @param {ReadonlyArray<object>} rows - 东财分红记录：reportDate / perShare / exDate / progress / plan。
+ * 标了 `supplemental` 的记录来自公告补录（分红表缺条），没有可靠报告期，只进
+ * TTM，不进年度汇总与分红趋势。
+ * @param {ReadonlyArray<object>} rows - 东财分红记录：reportDate / perShare / exDate / progress / plan / supplemental。
  * @param {ReadonlyArray<object>} performance - 业绩记录：reportDate / eps。
  * @param {number} price - 现价，用于现价股息率与目标价。
  * @param {number} cost - 持仓成本，用于成本股息率。
@@ -37,19 +39,22 @@ export function daysBetween(fromIso, toIso) {
 export function summarizeStockDividends(rows, performance, price, cost, targetYieldPct, todayIso) {
   if (!Array.isArray(rows) || rows.length === 0) return null
   const implemented = rows.filter(row => row.perShare !== null && row.exDate !== null && /实施/.test(row.progress ?? ''))
+  // 补录记录来自公告而非分红表，没有可靠报告期：只进 TTM，不进年度汇总，
+  // 否则一次特别分红会把经常性股息率算高。
+  const scheduled = implemented.filter(row => row.supplemental !== true)
 
   const ttm = implemented
     .filter(row => withinDays(row.exDate, todayIso, -365, 0))
     .reduce((sum, row) => sum + row.perShare, 0)
 
   const years = new Map()
-  for (const row of implemented) {
+  for (const row of scheduled) {
     const year = Number(row.reportDate.slice(0, 4))
     if (!Number.isFinite(year)) continue
     years.set(year, (years.get(year) ?? 0) + row.perShare)
   }
   const annualYears = rows
-    .filter(row => row.reportDate.endsWith('12-31'))
+    .filter(row => typeof row.reportDate === 'string' && row.reportDate.endsWith('12-31'))
     .map(row => Number(row.reportDate.slice(0, 4)))
     .filter(year => years.has(year))
   const latestYear = annualYears.length > 0 ? Math.max(...annualYears) : null
@@ -86,13 +91,92 @@ export function summarizeStockDividends(rows, performance, price, cost, targetYi
     nextPlan: pending.length > 0
       ? { exDate: pending[0].exDate, plan: pending[0].plan, perShare: pending[0].perShare }
       : null,
-    recent: implemented.slice(0, 4).map(row => ({
+    recent: scheduled.slice(0, 4).map(row => ({
       period: row.reportDate.slice(0, 7),
       perShare: round4(row.perShare),
       exDate: row.exDate,
       plan: row.plan,
     })),
+    supplemental: rows
+      .filter(row => row.supplemental === true)
+      .map(row => ({
+        perShare: round4(row.perShare),
+        exDate: row.exDate,
+        plan: row.plan,
+        title: row.title ?? null,
+      })),
   }
+}
+
+/**
+ * 判断公告标题是不是「分派实施」类公告。
+ *
+ * 只认已经实施的分配：预案、董事会/股东会决议、法律意见、回购与增减持都不算，
+ * 「调整每股分红金额」这类修订公告也不是实施本身。
+ * @param {string} title - 公告标题。
+ * @returns {boolean} 是分派实施公告时为 true。
+ */
+export function isDistributionNotice(title) {
+  if (typeof title !== 'string' || title.length === 0) return false
+  if (!/(权益分派|利润分配|分红|分派|派息)/.test(title)) return false
+  if (!title.includes('实施')) return false
+  return !/(回购|增持|减持|预案|法律意见|说明会|调研|投资者|更正|调整|修订|决议)/.test(title)
+}
+
+/**
+ * 找出「公告说已实施分派、分红表里却没有对应记录」的缺口。
+ *
+ * 东方财富的 RPT_SHAREBONUS_DET 只收录定期报告的分红，特别分红这类临时分派
+ * 可能整条缺失，导致 TTM 与年度分红都偏低。这里按公告日期匹配已实施记录的
+ * 除息日（0～60 天后）或公告日（±10 天），两条都不沾才算缺口。
+ * @param {ReadonlyArray<object>} dividends - 分红记录：perShare / exDate / noticeDate。
+ * @param {ReadonlyArray<object>} announcements - 公告：title / date / artCode / url。
+ * @returns {ReadonlyArray<object>} 缺口公告，按公告日期升序。
+ */
+export function findDividendGaps(dividends, announcements) {
+  if (!Array.isArray(announcements) || announcements.length === 0) return []
+  const records = Array.isArray(dividends) ? dividends : []
+  const gaps = []
+  for (const item of announcements) {
+    if (item === null || item === undefined) continue
+    const title = String(item.title ?? '')
+    if (!isDistributionNotice(title)) continue
+    const date = String(item.date ?? '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    const matched = records.some(record => {
+      if (record === null || record === undefined) return false
+      const byExDate = typeof record.exDate === 'string'
+        && withinDays(date, record.exDate, 0, 60)
+      const byNoticeDate = typeof record.noticeDate === 'string'
+        && Math.abs(daysBetween(date, record.noticeDate) ?? Number.POSITIVE_INFINITY) <= 10
+      return byExDate || byNoticeDate
+    })
+    if (!matched) gaps.push({ title, date, artCode: item.artCode ?? null, url: item.url ?? null })
+  }
+  return gaps.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/**
+ * 从分派实施公告正文里取每 10 股派现金额与除权除息日。
+ *
+ * 正文里通常先出现方案金额，后出现扣税后的金额；这里取第一处「每 10 股派」，
+ * 遇到只有「10 派 X 元」写法时退回该写法。
+ * @param {string} text - 公告正文（已剥 HTML）。
+ * @returns {{ perShare: number, exDate: string | null } | null} 解析结果；取不到每股金额时为 null。
+ */
+export function parseDividendNotice(text) {
+  if (typeof text !== 'string' || text.length === 0) return null
+  const flat = text.replace(/\s+/g, ' ')
+  const perTen = flat.match(/每\s*10\s*股\s*(?:派发?|派息|派送)?(?:现金红利|现金)?\s*([\d.]+)\s*元/)
+    ?? flat.match(/10\s*股\s*派\s*([\d.]+)\s*元/)
+    ?? flat.match(/10\s*派\s*([\d.]+)\s*元/)
+  const perShare = perTen === null ? null : round4(Number(perTen[1]) / 10)
+  if (perShare === null || !Number.isFinite(perShare) || perShare <= 0) return null
+  const ex = flat.match(/除(?:权除息|息)日为?\s*[:：]?\s*(\d{4})\s*[年\-/]\s*(\d{1,2})\s*[月\-/]\s*(\d{1,2})\s*日?/)
+  const exDate = ex === null
+    ? null
+    : `${ex[1]}-${String(ex[2]).padStart(2, '0')}-${String(ex[3]).padStart(2, '0')}`
+  return { perShare, exDate }
 }
 
 /**

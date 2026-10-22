@@ -76,6 +76,14 @@ if exist "%~dp0..\Mode\dsh-3dsmax\install.ps1" (
     if errorlevel 1 echo [desktop] 3ds Max mode registration reported a problem - see _mytools\Mode\dsh-3dsmax\README.md
 )
 
+rem Unreal Engine mode needs the same per-machine registration: the package ships
+rem in the repository, but the profile install record is machine-local, so without
+rem this the mode never reaches the picker. Idempotent; failures are reported only.
+if exist "%~dp0..\Mode\dsh-unreal\install.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Mode\dsh-unreal\install.ps1" -SkipCheck >nul 2>&1
+    if errorlevel 1 echo [desktop] Unreal mode registration reported a problem - see _mytools\Mode\dsh-unreal\README.md
+)
+
 rem Merge the checked-in portable settings into this machine before the app reads
 rem them, so a pulled change is in effect on this launch: the pet's profile
 rem section and the Desktop's shortcut document. A value edited on this machine

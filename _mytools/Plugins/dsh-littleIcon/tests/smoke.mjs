@@ -174,6 +174,25 @@ assert.deepEqual(view.extras.map(row => row.id), ['BV9'])
 assert.equal(view.missing, 1)
 assert.equal(view.volume, 55)
 assert.equal(view.player.playing, false, 'a pet that never reported one is shown as not playing')
+// How the music steps aside for another player is this machine's own choice as well,
+// so the card reads it from the view rather than from the profile configuration.
+assert.equal(view.duck, true, 'the card is told whether the pet steps aside')
+assert.equal(view.duckMode, 'fade', 'and how')
+assert.equal(view.duckLevel, 20, 'the level a fade leaves')
+assert.equal(view.duckHoldSeconds, 3, 'and the silence it waits for')
+const chosenDuckView = musicView({
+  links: [],
+  entries: {},
+  dir: join(tmpdir(), 'little-icon-music-view'),
+  volume: 55,
+  duck: false,
+  duckMode: 'pause',
+  duckLevel: 40,
+  duckHoldSeconds: 7,
+  sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
+})
+assert.deepEqual([chosenDuckView.duck, chosenDuckView.duckMode, chosenDuckView.duckLevel, chosenDuckView.duckHoldSeconds],
+  [false, 'pause', 40, 7], 'and a machine that chose differently is shown its own choices')
 // A link the last fill-in could not download is reported as failed rather than as one
 // nobody has tried yet, and it still counts as missing.
 const failedView = musicView({
@@ -2572,10 +2591,10 @@ const askedUrls = () => musicFetches.filter(call => call.url !== MUSIC_PATH).map
 /** One render of the section with the Host's answer and the form seeded, as above. */
 const renderMusic = (library, draft, extra = {}) => {
   // In the order the component reads them: the library, the busy flag, its message,
-  // the read error, the box being typed in, the volume being dragged, and which sets
-  // are unfolded.
+  // the read error, the box being typed in, the volume being dragged, the step-aside
+  // sliders being dragged, and which sets are unfolded.
   seeded.push(library, extra.busy ?? '', extra.message ?? '', extra.libraryError ?? '', extra.link ?? '',
-    extra.volumeDraft, extra.openSets ?? {})
+    extra.volumeDraft, extra.duckDraft ?? {}, extra.openSets ?? {})
   return flatten(musicSectionType({
     t,
     editable: extra.editable ?? true,
@@ -2593,6 +2612,10 @@ const sampleLibrary = {
   volume: 40,
   playlist: '',
   shuffle: false,
+  duck: true,
+  duckMode: 'fade',
+  duckLevel: 20,
+  duckHoldSeconds: 3,
   sync: { running: false, done: 0, total: 0, current: '', added: 0, failed: [] },
   player: { playing: false, id: '', title: '', positionMs: 0, error: '' },
   entries: [
@@ -2765,8 +2788,8 @@ assert.ok(strings(manyFolded).includes(t('musicSetCount', { count: 150, ready: 0
 // playlist with its size, and both write this machine's own preference rather than a
 // settings field.
 const setupElements = renderMusic(
-  { ...sampleLibrary, playlist: '', shuffle: false },
-  { musicLinks: ['BV1', 'BV2'], musicDuck: true, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 })
+  { ...sampleLibrary, playlist: '', shuffle: false, duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3 },
+  { musicLinks: ['BV1', 'BV2'] })
 const picker = setupElements.find(node => node.type === 'select')
 assert.ok(picker !== undefined, 'the playlist picker is missing')
 assert.equal(picker.props.value, '', 'it starts on All')
@@ -2796,10 +2819,10 @@ await new Promise((resolve) => setTimeout(resolve, 20))
 assert.deepEqual(musicWrites, [], 'ticking shuffle is not a settings write either')
 assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?shuffle=true`],
   'and it is written to the same local preferences route')
-// Stepping aside for another player is a switch of its own, on by default, with the
-// way it steps aside, the level it fades to, and the silence it waits for beside it:
-// each of those is disabled while the switch is off, because a control nothing reads
-// is a control that does nothing.
+// Stepping aside for another player is this machine's own choice too: the switch is
+// on until it is turned off, with the way it steps aside, the level it fades to, and
+// the silence it waits for beside it. Each of those is disabled while the switch is
+// off, because a control nothing reads is a control that does nothing.
 const duckBox = setupElements.filter(node => node.type === 'input' && node.props.type === 'checkbox')[1]
 assert.ok(duckBox !== undefined, 'the other-audio switch is missing')
 assert.equal(duckBox.props.checked, true, 'and is on until it is turned off')
@@ -2812,34 +2835,54 @@ const setupDuck = duckRows(setupElements)
 assert.equal(setupDuck.mode.props.control.props.value, 'fade', 'the fade is what steps aside by default')
 assert.deepEqual(setupDuck.mode.props.control.children.map(option => option.props.value), ['fade', 'pause'],
   'and the other way is offered beside it')
-assert.equal(setupDuck.level.props.control.props.value, 20, 'the fade starts from the schema default level')
+assert.equal(setupDuck.level.props.control.props.value, 20, 'the fade starts from the level this machine stored')
 assert.ok(strings(setupElements).includes(t('percent', { value: 20 })),
   'which the row says in percent')
 assert.ok(strings(setupElements).includes(t('seconds', { value: 3 })),
-  'and the hold shows the seconds the schema defaults to when nothing is stored')
+  'and the hold shows the seconds it stored when nothing else was chosen')
 musicWrites.length = 0
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 40, playlist: '', shuffle: false, duck: true, duckMode: 'pause', duckLevel: 20, duckHoldSeconds: 3 })
 setupDuck.mode.props.control.props.onChange({ target: { value: 'pause' } })
-assert.deepEqual(musicWrites.at(-1), { patch: { musicDuckMode: 'pause' }, immediate: true },
-  'choosing the pause writes it at once')
+await new Promise((resolve) => setTimeout(resolve, 20))
+assert.deepEqual(musicWrites, [], 'choosing how to step aside is not a settings write')
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?duckMode=pause`],
+  'it is written to this machine’s own preferences route')
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 40, playlist: '', shuffle: false, duck: true, duckMode: 'fade', duckLevel: 35, duckHoldSeconds: 3 })
+setupDuck.level.props.control.props.onChange({ target: { value: 35 } })
+await new Promise((resolve) => setTimeout(resolve, 400))
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?duckLevel=35`],
+  'the fade level is written once the drag settles')
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 40, playlist: '', shuffle: false, duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 5 })
+setupDuck.hold.props.control.props.onChange({ target: { value: 5 } })
+await new Promise((resolve) => setTimeout(resolve, 400))
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?duckHoldSeconds=5`],
+  'and so is the silence it waits for')
+musicFetches.length = 0
+musicAnswers.push({ ok: true, volume: 40, playlist: '', shuffle: false, duck: false, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3 })
+duckBox.props.onChange({ target: { checked: false } })
+await new Promise((resolve) => setTimeout(resolve, 20))
+assert.deepEqual(musicWrites, [], 'the switch is not a settings write either')
+assert.deepEqual(askedUrls(), [`${MUSIC_PREFERENCES_PATH}?duck=false`],
+  'turning it off is stored on this machine alone')
 // A level only means something while a fade is the way: pausing never reads it, so
 // the row is not on screen at all in that mode.
-const pausedMode = duckRows(renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDuck: true, musicDuckMode: 'pause', musicDuckHoldSeconds: 3 }))
+const pausedMode = duckRows(renderMusic(
+  { ...sampleLibrary, duck: true, duckMode: 'pause', duckHoldSeconds: 3 }, { musicLinks: ['BV1', 'BV2'] }))
 assert.equal(pausedMode.mode.props.control.props.value, 'pause', 'the pause is what the picker shows then')
 assert.equal(pausedMode.level, undefined, 'and the fade level is not offered')
-const duckOffElements = renderMusic(sampleLibrary, { musicLinks: ['BV1', 'BV2'], musicDuck: false, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 })
+const duckOffElements = renderMusic({ ...sampleLibrary, duck: false }, { musicLinks: ['BV1', 'BV2'] })
 const offDuck = duckRows(duckOffElements)
 assert.equal(offDuck.mode.props.control.props.disabled, true, 'the switch off disables the way it would step aside')
 assert.equal(offDuck.level.props.control.props.disabled, true, 'and the level')
 assert.equal(offDuck.hold.props.control.props.disabled, true, 'and the hold')
-musicWrites.length = 0
-duckBox.props.onChange({ target: { checked: false } })
-assert.deepEqual(musicWrites.at(-1), { patch: { musicDuck: false }, immediate: true },
-  'turning the switch off writes it at once')
 // What the pet reports about a step aside it made itself is said in the card's own
 // line, in the words of whichever kind it was.
 const duckedCard = (mode) => strings(renderMusic(
   { ...sampleLibrary, player: { playing: false, ducked: true, duckedMode: mode, id: 'BV1', title: 'Song One', positionMs: 1000, error: '' } },
-  { musicLinks: ['BV1', 'BV2'], musicDuck: true, musicDuckMode: 'fade', musicDuckLevel: 20, musicDuckHoldSeconds: 3 }))
+  { musicLinks: ['BV1', 'BV2'] }))
 assert.ok(duckedCard('fade').includes(t('musicDuckedFade', { title: 'Song One' })),
   'a fade is reported as the volume being turned down')
 assert.ok(duckedCard('pause').includes(t('musicDucked', { title: 'Song One' })),
@@ -3478,6 +3521,8 @@ console.log('little-icon smoke: browser half ok')
       'and every playlist the links name is published, with what is here')
     assert.equal(everything.playlist, '', 'nothing is selected to begin with')
     assert.equal(everything.shuffle, false, 'and shuffle is off unless it is ticked')
+    assert.deepEqual([everything.duck, everything.duckMode, everything.duckLevel, everything.duckHoldSeconds],
+      [true, 'fade', 20, 3], 'the step-aside choices the pet obeys come from this machine’s preferences')
     const chosen = await publishedWith({ playlist: 'BVp' })
     assert.deepEqual(chosen.tracks.map(track => track.id), ['BVp', 'BVp-p2'],
       'a picked playlist is the list the pet gets, so "next" steps inside it')
@@ -3572,14 +3617,11 @@ if (process.argv.includes('--pet')) {
     sites: ref([]),
     // Where the capture menu writes, and the music section's own fields: the host
     // reads every one of them on each publish, so this double has to carry them even
-    // where the lifecycle test does not exercise them.
+    // where the lifecycle test does not exercise them. The listening choices —
+    // volume, playlist, shuffle, and how the music steps aside — are not fields.
     shotDir: ref(''),
     musicLinks: ref([]),
     musicDir: ref(''),
-    musicDuck: ref(true),
-    musicDuckHoldSeconds: ref(3),
-    musicDuckMode: ref('fade'),
-    musicDuckLevel: ref(20),
   }
 
   const countPetProcesses = () => {
@@ -3819,28 +3861,53 @@ $found
     config.musicDir.set(musicFolder)
     config.musicLinks.set([firstLink])
     handlers.get('loader/volatile-update')()
-    // The volume, the playlist, and shuffle are this machine's own, so they are
-    // written on a route of their own and stored beside the library — never in the
-    // profile row.
+    // The volume, the playlist, shuffle, and how the music steps aside are this
+    // machine's own, so they are written on a route of their own and stored beside the
+    // library — never in the profile row.
+    const preferences = (patch) => ({
+      version: 1, volume: 70, playlist: '', shuffle: false,
+      duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3, ...patch,
+    })
     const volumeAnswer = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?volume=33`)
-    assert.deepEqual(volumeAnswer.body, { ok: true, volume: 33, playlist: '', shuffle: false })
-    assert.deepEqual(readPreferencesFile(), { version: 1, volume: 33, playlist: '', shuffle: false })
+    assert.deepEqual(volumeAnswer.body,
+      { ok: true, volume: 33, playlist: '', shuffle: false, duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3 })
+    assert.deepEqual(readPreferencesFile(), preferences({ volume: 33 }))
     const gonePlaylist = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?playlist=BVgone00000`)
-    assert.deepEqual(gonePlaylist.body, { ok: true, volume: 33, playlist: '', shuffle: false },
+    assert.deepEqual(gonePlaylist.body,
+      { ok: true, volume: 33, playlist: '', shuffle: false, duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3 },
       'a playlist no link names falls back to every song, and the route says so')
-    assert.deepEqual(readPreferencesFile(), { version: 1, volume: 33, playlist: '', shuffle: false },
+    assert.deepEqual(readPreferencesFile(), preferences({ volume: 33 }),
       'and this machine keeps the fallback rather than the stale id')
     const shuffled = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?shuffle=true`)
-    assert.deepEqual(shuffled.body, { ok: true, volume: 33, playlist: '', shuffle: true })
+    assert.deepEqual(shuffled.body,
+      { ok: true, volume: 33, playlist: '', shuffle: true, duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3 })
     assert.equal(readPreferencesFile().shuffle, true, 'the shuffle choice stays on this machine')
     assert.equal(readMusicFile().shuffle, true, 'and reaches the pet that draws the next song')
     const badShuffle = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?shuffle=loud`)
     assert.deepEqual(badShuffle.body, { ok: false, reason: 'shuffle' }, 'a shuffle that is not a boolean is refused')
+    // How the music steps aside is this machine's own as well, and the pet that
+    // performs it reads the same published file as the rest of the library.
+    const stepped = await askGit(musicPreferencesRoute, 'POST',
+      `${MUSIC_PREFERENCES_PATH}?duck=false&duckMode=pause&duckLevel=35&duckHoldSeconds=9`)
+    assert.deepEqual(stepped.body,
+      { ok: true, volume: 33, playlist: '', shuffle: true, duck: false, duckMode: 'pause', duckLevel: 35, duckHoldSeconds: 9 })
+    assert.deepEqual(readPreferencesFile(), preferences({ volume: 33, shuffle: true, duck: false, duckMode: 'pause', duckLevel: 35, duckHoldSeconds: 9 }),
+      'the step-aside choices stay on this machine')
+    assert.deepEqual([readMusicFile().duck, readMusicFile().duckMode, readMusicFile().duckLevel, readMusicFile().duckHoldSeconds],
+      [false, 'pause', 35, 9], 'and reach the pet that obeys them')
+    const badDuckMode = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?duckMode=loud`)
+    assert.deepEqual(badDuckMode.body, { ok: false, reason: 'duck-mode' },
+      'a way of stepping aside nobody defined is refused')
+    const badDuckHold = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?duckHoldSeconds=late`)
+    assert.deepEqual(badDuckHold.body, { ok: false, reason: 'duck-hold' }, 'and so is a hold that is not a number')
     const musicViewAnswer = await askGit(musicRoute, 'GET', MUSIC_PATH)
     assert.equal(musicViewAnswer.status, 200)
     assert.equal(musicViewAnswer.body.dir, musicFolder)
     assert.equal(musicViewAnswer.body.volume, 33)
     assert.equal(musicViewAnswer.body.shuffle, true, 'the view reports the local shuffle choice')
+    assert.equal(musicViewAnswer.body.duck, false, 'and the local step-aside switch')
+    assert.deepEqual([musicViewAnswer.body.duckMode, musicViewAnswer.body.duckLevel, musicViewAnswer.body.duckHoldSeconds],
+      ['pause', 35, 9], 'with the way it steps aside, its level, and its hold')
     assert.equal(musicViewAnswer.body.playlist, '', 'the playlist starts at every song on this machine too')
     assert.deepEqual(musicViewAnswer.body.entries.map(row => [row.link, row.state]), [[firstLink, 'missing']],
       'a link with no file yet is reported as missing')

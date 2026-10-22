@@ -25,9 +25,10 @@
  * half copies the profile's `little-icon` section and the Desktop's shortcut
  * document into the repository's `_mytools/settings/` when either changes, and
  * the launcher — or the pet, on a restart from its own menu — merges those files
- * back into a machine before the next start. The volume, the playlist, and the
- * shuffle choice are the exception: they are this machine's own listening
- * preferences and live beside the library, in `music-preferences.json`.
+ * back into a machine before the next start. The volume, the playlist, the shuffle
+ * choice, and how the music steps aside for another application are the exception:
+ * they are this machine's own listening preferences and live beside the library,
+ * in `music-preferences.json`.
  *
  * The menu's Git entry needs repository facts the page cannot read: this half
  * runs `git` itself and serves the result on same-origin routes, because the
@@ -159,7 +160,10 @@ const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
 /** POST `?action=`: ask the pet to play, pause, toggle, or step. */
 const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
 
-/** POST `?volume=`, `?playlist=`, or `?shuffle=`: this machine's listening choices. */
+/**
+ * POST `?volume=`, `?playlist=`, `?shuffle=`, or the stepping-aside choices: this
+ * machine's listening preferences.
+ */
 const MUSIC_PREFERENCES_PATH = '/api/little-icon/music/preferences'
 
 /** The playback commands that route accepts; anything else is refused. */
@@ -174,6 +178,12 @@ const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'f
 
 /** Volume a machine that has not chosen one plays at. */
 const MUSIC_VOLUME_DEFAULT = 70
+
+/** Seconds of silence another application keeps before the pet resumes. */
+const MUSIC_DUCK_HOLD_DEFAULT = 3
+
+/** Percent of the volume a fade leaves while somebody else plays. */
+const MUSIC_DUCK_LEVEL_DEFAULT = 20
 
 /** The Git executable; a machine without one on PATH is reported, not guessed at. */
 const GIT_EXECUTABLE = 'git'
@@ -324,27 +334,6 @@ export const Config = z.object({
    * reported rather than used quietly, because those files would be committed.
    */
   musicDir: z.string().default('').volatile(),
-  /**
-   * Whether the pet steps aside while another application plays sound on the
-   * default output device. The pet reads the audio sessions there itself — the
-   * page and this half have no business in somebody else's playback — so this is
-   * only the switch it obeys.
-   */
-  musicDuck: z.boolean().default(true).volatile(),
-  /**
-   * Seconds the other application has to stay quiet before the pet picks the
-   * music back up. Zero resumes on the first quiet sample, which is also what
-   * makes the pause between two videos sound like a stutter.
-   */
-  musicDuckHoldSeconds: z.number().step(1).min(0).max(60).default(3).volatile(),
-  /**
-   * How the pet steps aside: `fade` walks the volume down to `musicDuckLevel` and
-   * back, `pause` stops where it is. The pet performs either one itself — it owns
-   * the player — so this is the instruction it is handed.
-   */
-  musicDuckMode: z.union(['fade', 'pause']).default('fade').volatile(),
-  /** What a fade leaves: a percent of the configured volume, `0` to `100`. */
-  musicDuckLevel: z.number().step(1).min(0).max(100).default(20).volatile(),
 })
 
 /**
@@ -625,6 +614,18 @@ function clampVolume(value) {
   const percent = Math.round(Number(value))
   if (!Number.isFinite(percent)) return undefined
   return Math.max(0, Math.min(100, percent))
+}
+
+/**
+ * The silence the pet waits for before it resumes, as the preferences file stores
+ * it: whole seconds between 0 and 60.
+ * @param value - the requested hold, in seconds.
+ * @returns whole seconds, or undefined when that is not a number.
+ */
+function clampDuckHold(value) {
+  const seconds = Math.round(Number(value))
+  if (!Number.isFinite(seconds)) return undefined
+  return Math.max(0, Math.min(60, seconds))
 }
 
 /**
@@ -1702,10 +1703,10 @@ export function apply(ctx, config) {
     ctx.logger.warn('little-icon music: could not write %s: %s', musicFile, String(error))
   })
   /**
-   * What this machine plays at, which playlist it plays, and whether it draws the
-   * next song at random. None is a setting: they describe this machine's speakers
-   * and this machine's listening, so they live beside the audio and never travel in
-   * the repository's settings file.
+   * What this machine plays at, which playlist it plays, whether it draws the next
+   * song at random, and how it steps aside for another application. None is a
+   * setting: they describe this machine's speakers and this machine's listening, so
+   * they live beside the audio and never travel in the repository's settings file.
    */
   const musicPreferencesFile = join(dataDir, 'music-preferences.json')
 
@@ -1713,7 +1714,7 @@ export function apply(ctx, config) {
    * Read the listening choices this machine stored. A missing file is a machine
    * that has not chosen yet; an unreadable one is reported and treated the same
    * way, because the defaults are still a playable library.
-   * @returns the volume, playlist, and shuffle choice this machine last made.
+   * @returns the listening choices this machine last made.
    */
   const readMusicPreferences = () => {
     let stored
@@ -1725,14 +1726,21 @@ export function apply(ctx, config) {
       }
     }
     const volume = clampVolume(stored?.volume)
+    // A step-aside level is a percent of the volume, so the volume's own clamp holds.
+    const level = clampVolume(stored?.duckLevel)
+    const hold = clampDuckHold(stored?.duckHoldSeconds)
     return {
       volume: volume === undefined ? MUSIC_VOLUME_DEFAULT : volume,
       playlist: typeof stored?.playlist === 'string' ? stored.playlist : '',
       shuffle: stored?.shuffle === true,
+      duck: stored?.duck === undefined ? true : stored.duck === true,
+      duckMode: stored?.duckMode === 'pause' ? 'pause' : 'fade',
+      duckLevel: level === undefined ? MUSIC_DUCK_LEVEL_DEFAULT : level,
+      duckHoldSeconds: hold === undefined ? MUSIC_DUCK_HOLD_DEFAULT : hold,
     }
   }
 
-  /** @type {{ volume: number, playlist: string, shuffle: boolean }} */
+  /** @type {{ volume: number, playlist: string, shuffle: boolean, duck: boolean, duckMode: 'fade' | 'pause', duckLevel: number, duckHoldSeconds: number }} */
   let musicPreferences = readMusicPreferences()
 
   /**
@@ -1927,11 +1935,12 @@ export function apply(ctx, config) {
       shuffle,
       // The switch, how it steps aside, and its hold, for the pet's own probe: it
       // reads the sessions on the default output device and steps the music aside
-      // while somebody else plays.
-      duck: config.musicDuck.get() === true,
-      duckHoldSeconds: config.musicDuckHoldSeconds.get(),
-      duckMode: config.musicDuckMode.get(),
-      duckLevel: config.musicDuckLevel.get(),
+      // while somebody else plays. They are this machine's preferences, read from
+      // the file beside the library rather than from the profile.
+      duck: musicPreferences.duck,
+      duckHoldSeconds: musicPreferences.duckHoldSeconds,
+      duckMode: musicPreferences.duckMode,
+      duckLevel: musicPreferences.duckLevel,
       missing,
       sync: current.progress,
       command: musicCommand,
@@ -2635,6 +2644,10 @@ export function apply(ctx, config) {
             volume: musicPreferences.volume,
             playlist: musicPreferences.playlist,
             shuffle: musicPreferences.shuffle,
+            duck: musicPreferences.duck,
+            duckMode: musicPreferences.duckMode,
+            duckLevel: musicPreferences.duckLevel,
+            duckHoldSeconds: musicPreferences.duckHoldSeconds,
             sync: current.progress,
             player: readMusicPlayer(),
           })
@@ -2643,10 +2656,11 @@ export function apply(ctx, config) {
     }), `little-icon: GET ${MUSIC_PATH}`)
 
     // The listening choices that belong to this machine: the volume the pet plays
-    // at, the playlist it plays, and whether it draws the next song at random. They
-    // are stored beside the library rather than in the profile configuration, so the
-    // repository's settings file carries none of them and every machine picks its
-    // own. One request may set any of them.
+    // at, the playlist it plays, whether it draws the next song at random, and how
+    // it steps aside for another application. They are stored beside the library
+    // rather than in the profile configuration, so the repository's settings file
+    // carries none of them and every machine picks its own. One request may set any
+    // of them.
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
       path: MUSIC_PREFERENCES_PATH,
@@ -2666,9 +2680,33 @@ export function apply(ctx, config) {
             if (shuffle !== 'true' && shuffle !== 'false') return { ok: false, reason: 'shuffle' }
             next.shuffle = shuffle === 'true'
           }
+          if (query.has('duck')) {
+            const duck = query.get('duck')
+            if (duck !== 'true' && duck !== 'false') return { ok: false, reason: 'duck' }
+            next.duck = duck === 'true'
+          }
+          if (query.has('duckMode')) {
+            const mode = query.get('duckMode')
+            if (mode !== 'fade' && mode !== 'pause') return { ok: false, reason: 'duck-mode' }
+            next.duckMode = mode
+          }
+          if (query.has('duckLevel')) {
+            const level = clampVolume(query.get('duckLevel'))
+            if (level === undefined) return { ok: false, reason: 'duck-level' }
+            next.duckLevel = level
+          }
+          if (query.has('duckHoldSeconds')) {
+            const hold = clampDuckHold(query.get('duckHoldSeconds'))
+            if (hold === undefined) return { ok: false, reason: 'duck-hold' }
+            next.duckHoldSeconds = hold
+          }
           const changed = next.volume !== musicPreferences.volume
             || next.playlist !== musicPreferences.playlist
             || next.shuffle !== musicPreferences.shuffle
+            || next.duck !== musicPreferences.duck
+            || next.duckMode !== musicPreferences.duckMode
+            || next.duckLevel !== musicPreferences.duckLevel
+            || next.duckHoldSeconds !== musicPreferences.duckHoldSeconds
           const previous = musicPreferences
           musicPreferences = next
           // The pet is told the new choice only when it is safely stored: a write
@@ -2683,6 +2721,10 @@ export function apply(ctx, config) {
             volume: musicPreferences.volume,
             playlist: musicPreferences.playlist,
             shuffle: musicPreferences.shuffle,
+            duck: musicPreferences.duck,
+            duckMode: musicPreferences.duckMode,
+            duckLevel: musicPreferences.duckLevel,
+            duckHoldSeconds: musicPreferences.duckHoldSeconds,
           }
         })
       },
@@ -2891,9 +2933,9 @@ export function apply(ctx, config) {
     guarded('publish', publish)
     // The link list and the music directory reach the pet through its own file, so
     // a settings write is what tells a pet that is already running about a new song
-    // or a new folder — neither half restarts for it. The volume, the playlist, and
-    // the shuffle choice are not settings and arrive through the preferences route
-    // instead.
+    // or a new folder — neither half restarts for it. The volume, the playlist, the
+    // shuffle choice, and how the music steps aside are not settings and arrive
+    // through the preferences route instead.
     guarded('music publish', publishMusic)
     schedule()
     scheduleSettingsSync()

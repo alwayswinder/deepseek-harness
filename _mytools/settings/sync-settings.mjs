@@ -77,13 +77,28 @@ const YAML = loadYaml()
 const ENTRY_ID = 'little-icon'
 
 /**
- * Pet fields that are not settings: the volume, the playlist, and the shuffle
- * choice are this machine's own listening preferences, kept in
- * `$DSH_HOME/little-icon/music-preferences.json`. A patch written before they
- * moved still names them, and exporting that would put one machine's choice back
- * into every machine's settings file.
+ * Pet fields that are not settings: the volume, the playlist, the shuffle choice,
+ * and how the music steps aside for another application are this machine's own
+ * listening preferences, kept in `$DSH_HOME/little-icon/music-preferences.json`.
+ * A patch written before they moved still names them, and carrying that either way
+ * would put one machine's choice into every machine's settings file.
  */
-const LEGACY_PET_FIELDS = ['musicVolume', 'musicPlaylist', 'musicShuffle']
+const LOCAL_PET_FIELDS = [
+  'musicVolume', 'musicPlaylist', 'musicShuffle',
+  'musicDuck', 'musicDuckMode', 'musicDuckLevel', 'musicDuckHoldSeconds',
+]
+
+/**
+ * One config section without the fields that belong to a machine rather than to
+ * the repository.
+ * @param {Record<string, unknown>} config - a pet config section.
+ * @returns a copy of it, without the machine-local fields.
+ */
+function withoutLocalFields(config) {
+  const copy = { ...config }
+  for (const field of LOCAL_PET_FIELDS) delete copy[field]
+  return copy
+}
 
 /** Package name the pet is registered under, used to check a profile really loads it. */
 const PACKAGE_NAME = 'dsh-little-icon'
@@ -384,8 +399,7 @@ function exportSettings(options, patchPath, statePath) {
   if (containsJsTag(node)) {
     throw new Error(`${patchPath}: the "${ENTRY_ID}" section holds a !!js expression, which this file cannot carry`)
   }
-  const config = valueIn(document, [index, 'config']) ?? {}
-  for (const field of LEGACY_PET_FIELDS) delete config[field]
+  const config = withoutLocalFields(valueIn(document, [index, 'config']) ?? {})
   const name = document.getIn([index, 'name'])
   const next = {
     version: FORMAT_VERSION,
@@ -435,23 +449,52 @@ function exportSettings(options, patchPath, statePath) {
  * The machine-local listening choices the pet keeps beside its library. They used
  * to be configuration fields; the first apply after that move copies what the
  * patch still carries into that file, so a machine keeps its own volume, playlist,
- * and shuffle choice instead of starting from the plugin defaults. A machine that
- * already has the file is left alone.
+ * shuffle choice, and stepping-aside choices instead of starting from the plugin
+ * defaults. A field the file already holds is never overwritten, and an unreadable
+ * file is left as it is rather than replaced.
  * @param {Record<string, unknown>} current - the pet's config section as this patch has it.
  */
 function migratePetPreferences(current) {
   const path = join(resolveDshHome(), 'little-icon', 'music-preferences.json')
-  if (existsSync(path)) return
-  const volume = typeof current.musicVolume === 'number' ? current.musicVolume : undefined
-  const playlist = typeof current.musicPlaylist === 'string' ? current.musicPlaylist : ''
-  const shuffle = typeof current.musicShuffle === 'boolean' ? current.musicShuffle : undefined
-  if (volume === undefined && playlist === '' && shuffle === undefined) return
-  const value = {
-    version: 1,
-    volume: volume === undefined ? 70 : Math.min(100, Math.max(0, Math.round(volume))),
-    playlist,
-    shuffle: shuffle === true,
+  const text = readText(path)
+  let stored
+  if (text !== undefined) {
+    try {
+      stored = JSON.parse(text)
+    } catch {
+      // The plugin falls back to its defaults, and overwriting a file this script
+      // cannot read would discard choices it may still hold.
+      return
+    }
+    if (stored === null || typeof stored !== 'object' || Array.isArray(stored)) return
   }
+  const percent = (value) => Math.min(100, Math.max(0, Math.round(value)))
+  const seconds = (value) => Math.min(60, Math.max(0, Math.round(value)))
+  const legacy = {
+    volume: typeof current.musicVolume === 'number' ? percent(current.musicVolume) : undefined,
+    playlist: typeof current.musicPlaylist === 'string' ? current.musicPlaylist : undefined,
+    shuffle: typeof current.musicShuffle === 'boolean' ? current.musicShuffle : undefined,
+    duck: typeof current.musicDuck === 'boolean' ? current.musicDuck : undefined,
+    duckMode: current.musicDuckMode === 'pause' ? 'pause' : current.musicDuckMode === 'fade' ? 'fade' : undefined,
+    duckLevel: typeof current.musicDuckLevel === 'number' ? percent(current.musicDuckLevel) : undefined,
+    duckHoldSeconds: typeof current.musicDuckHoldSeconds === 'number' ? seconds(current.musicDuckHoldSeconds) : undefined,
+  }
+  const value = text === undefined ? { version: 1 } : { version: 1, ...stored }
+  let changed = text === undefined
+  if (text === undefined) {
+    // A machine that never chose anything starts from the plugin's defaults, with
+    // whatever the patch still carries laid over them below.
+    Object.assign(value, {
+      volume: 70, playlist: '', shuffle: false,
+      duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3,
+    })
+  }
+  for (const [field, choice] of Object.entries(legacy)) {
+    if (value[field] !== undefined || choice === undefined) continue
+    value[field] = choice
+    changed = true
+  }
+  if (!changed) return
   mkdirSync(dirname(path), { recursive: true })
   writeAtomic(path, `${JSON.stringify(value, null, 2)}\n`)
 }
@@ -477,21 +520,27 @@ function applySettings(options, patchPath, statePath, profileDir) {
   const document = parsePatch(patchText, patchPath)
   const index = findEntryIndex(document)
   const record = state.pet?.[options.profile]
+  // A patch written before the listening choices moved still names them. Copy what
+  // it holds into this machine's preferences file before anything else, even when
+  // this file was already applied, so a value is never stranded in the patch.
+  if (index >= 0) migratePetPreferences(valueIn(document, [index, 'config']) ?? {})
   if (!options.force && record !== undefined && record.hash === hash && index >= 0) {
     if (!options.quiet) console.log(`[settings] 已应用过这份桌宠设置，本机设置保持不变（要强制覆盖加 --force）`)
     return 0
   }
   const current = index < 0 ? undefined : valueIn(document, [index, 'config'])
-  if (current !== undefined) migratePetPreferences(current)
-  const changed = differences(current ?? {}, parsed.config, '')
+  // A file that still names a machine-local field cannot put it back into the
+  // patch: those fields belong to the file beside the library.
+  const nextConfig = withoutLocalFields(parsed.config)
+  const changed = differences(current ?? {}, nextConfig, '')
   if (index < 0) {
     document.add(document.createNode({
       id: ENTRY_ID,
       name: typeof parsed.name === 'string' && parsed.name !== '' ? parsed.name : `@local/${PACKAGE_NAME}`,
-      config: parsed.config,
+      config: nextConfig,
     }))
   } else {
-    document.setIn([index, 'config'], document.createNode(parsed.config))
+    document.setIn([index, 'config'], document.createNode(nextConfig))
   }
   document.contents.flow = false
   const text = String(document)
@@ -499,7 +548,7 @@ function applySettings(options, patchPath, statePath, profileDir) {
   // longer carries these settings would break the next boot instead.
   const verifyDocument = parsePatch(text, patchPath)
   const verifyIndex = findEntryIndex(verifyDocument)
-  if (verifyIndex < 0 || !isDeepStrictEqual(valueIn(verifyDocument, [verifyIndex, 'config']), parsed.config)) {
+  if (verifyIndex < 0 || !isDeepStrictEqual(valueIn(verifyDocument, [verifyIndex, 'config']), nextConfig)) {
     throw new Error(`${patchPath}: refusing to write a patch that does not carry these settings back`)
   }
   if (text !== patchText) writeAtomic(patchPath, text)
@@ -530,7 +579,7 @@ function statusSettings(options, patchPath, statePath) {
   const document = patchText === undefined ? undefined : parsePatch(patchText, patchPath)
   const index = document === undefined ? -1 : findEntryIndex(document)
   const current = index < 0 ? {} : valueIn(document, [index, 'config']) ?? {}
-  const changed = differences(current, parsed.config, '')
+  const changed = differences(current, withoutLocalFields(parsed.config), '')
   const applied = record !== undefined && record.hash === hash
   const state = record === undefined
     ? '本机从未应用过这份文件'

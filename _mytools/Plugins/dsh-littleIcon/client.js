@@ -109,7 +109,7 @@ window.__ModuleLoader__.load({
     const MUSIC_ADDED_PATH = '/api/little-icon/music/added'
     const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
     const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
-    /** POST `?volume=`, `?playlist=`, or `?shuffle=`: this machine's listening choices. */
+    /** POST `?volume=`, `?playlist=`, `?shuffle=`, or a step-aside choice: this machine's own. */
     const MUSIC_PREFERENCES_PATH = '/api/little-icon/music/preferences'
 
     /**
@@ -122,10 +122,10 @@ window.__ModuleLoader__.load({
     /** Volume a machine that has not chosen one plays at; mirrors the Host default. */
     const MUSIC_VOLUME_DEFAULT = 70
 
-    /** Seconds of silence before the pet resumes; mirrors the Host schema default. */
+    /** Seconds of silence before the pet resumes; the Host's default for a fresh machine. */
     const MUSIC_DUCK_HOLD_DEFAULT = 3
 
-    /** Where a fade leaves the volume; mirrors the Host schema default. */
+    /** Where a fade leaves the volume; the Host's default for a fresh machine. */
     const MUSIC_DUCK_LEVEL_DEFAULT = 20
 
     /**
@@ -186,10 +186,6 @@ window.__ModuleLoader__.load({
       sites: [],
       musicLinks: [],
       musicDir: '',
-      musicDuck: true,
-      musicDuckHoldSeconds: MUSIC_DUCK_HOLD_DEFAULT,
-      musicDuckMode: 'fade',
-      musicDuckLevel: MUSIC_DUCK_LEVEL_DEFAULT,
     }
 
     /** Slider bounds, matching the Host schema. */
@@ -204,9 +200,9 @@ window.__ModuleLoader__.load({
     const HIDDEN_SECONDS = { min: 2, max: 600, step: 2 }
     const AUTO_HIDE_SECONDS = { min: 0, max: 600, step: 5 }
     const MUSIC_VOLUME = { min: 0, max: 100, step: 1 }
-    /** Beats the Host schema's step and bounds for the duck hold, which is seconds. */
+    /** The bounds of the duck hold, which is seconds. */
     const MUSIC_DUCK_HOLD = { min: 0, max: 60, step: 1 }
-    /** The same for where a fade leaves the volume, which is a percent. */
+    /** The bounds of where a fade leaves the volume, which is a percent. */
     const MUSIC_DUCK_LEVEL = { min: 0, max: 100, step: 1 }
 
     /** How long a slider drag settles before its writes are merged into one. */
@@ -1004,7 +1000,7 @@ window.__ModuleLoader__.load({
      * @returns the section.
      */
     function MusicSection(props) {
-      const { t, editable, draft, write, slider, pickDirectory } = props
+      const { t, editable, draft, write, pickDirectory } = props
       const [library, setLibrary] = React.useState(null)
       const [busy, setBusy] = React.useState('')
       const [message, setMessage] = React.useState('')
@@ -1014,6 +1010,9 @@ window.__ModuleLoader__.load({
       // settles, the same way the settings sliders behave; the Host's answer clears it.
       const [volumeDraft, setVolumeDraft] = React.useState(undefined)
       const volumeTimer = React.useRef(undefined)
+      // The same for the two step-aside sliders, keyed by the preference they write.
+      const [duckDraft, setDuckDraft] = React.useState({})
+      const duckTimer = React.useRef(undefined)
       // Which sets are unfolded. The songs are the detail behind a set's own line, so a
       // hundred-part video does not push everything else off the card.
       const [openSets, setOpenSets] = React.useState(() => ({}))
@@ -1055,20 +1054,25 @@ window.__ModuleLoader__.load({
         }
         void load()
         const timer = setInterval(() => { void load() }, MUSIC_POLL_MS)
-        return () => { cancelled = true; clearInterval(timer); clearTimeout(volumeTimer.current) }
+        return () => { cancelled = true; clearInterval(timer); clearTimeout(volumeTimer.current); clearTimeout(duckTimer.current) }
       }, [])
 
       /**
        * Write one of this machine's listening choices on the Host. They are not
        * settings: the Host keeps them beside the library, and its answer carries what
        * it kept, so the card shows that without a second read.
-       * @param patch - `volume`, `playlist`, or both.
+       * @param patch - any of `volume`, `playlist`, `shuffle`, `duck`, `duckMode`,
+       *   `duckLevel`, and `duckHoldSeconds`.
        */
       const savePreferences = async (patch) => {
         const params = new URLSearchParams()
         if (patch.volume !== undefined) params.set('volume', String(patch.volume))
         if (patch.playlist !== undefined) params.set('playlist', patch.playlist)
         if (patch.shuffle !== undefined) params.set('shuffle', String(patch.shuffle === true))
+        if (patch.duck !== undefined) params.set('duck', String(patch.duck === true))
+        if (patch.duckMode !== undefined) params.set('duckMode', patch.duckMode)
+        if (patch.duckLevel !== undefined) params.set('duckLevel', String(patch.duckLevel))
+        if (patch.duckHoldSeconds !== undefined) params.set('duckHoldSeconds', String(patch.duckHoldSeconds))
         try {
           const response = await fetch(`${MUSIC_PREFERENCES_PATH}?${params}`, { method: 'POST' })
           const answer = await response.json()
@@ -1078,11 +1082,16 @@ window.__ModuleLoader__.load({
             volume: answer.volume,
             playlist: answer.playlist,
             shuffle: answer.shuffle,
+            duck: answer.duck,
+            duckMode: answer.duckMode,
+            duckLevel: answer.duckLevel,
+            duckHoldSeconds: answer.duckHoldSeconds,
           })
         } catch (error) {
           // The Host kept the old value, so the slider goes back to it rather than
           // showing a choice that was not written.
           if (patch.volume !== undefined) setVolumeDraft(undefined)
+          if (patch.duckLevel !== undefined || patch.duckHoldSeconds !== undefined) setDuckDraft({})
           setMessage(t('musicPreferenceFailed'))
         }
       }
@@ -1109,6 +1118,27 @@ window.__ModuleLoader__.load({
         clearTimeout(volumeTimer.current)
         volumeTimer.current = setTimeout(() => { void savePreferences({ volume: value }) }, WRITE_DELAY_MS)
       }
+      // The step-aside choices are this machine's own as well, so the card shows what
+      // the Host answered and writes them through the same preferences route. A
+      // slider still being dragged wins over that answer until its write lands.
+      React.useEffect(() => {
+        setDuckDraft((current) => {
+          const shown = Object.entries(current).filter(([field, value]) => value !== library?.[field])
+          return shown.length === Object.keys(current).length ? current : Object.fromEntries(shown)
+        })
+      }, [library])
+      /** Show a step-aside slider at once and write it once the drag settles. */
+      const changeDuck = (field, value) => {
+        setDuckDraft((current) => ({ ...current, [field]: value }))
+        clearTimeout(duckTimer.current)
+        duckTimer.current = setTimeout(() => { void savePreferences({ [field]: value }) }, WRITE_DELAY_MS)
+      }
+      const duck = library?.duck === true
+      const duckMode = library?.duckMode === 'pause' ? 'pause' : 'fade'
+      const duckLevel = duckDraft.duckLevel
+        ?? (typeof library?.duckLevel === 'number' ? library.duckLevel : MUSIC_DUCK_LEVEL_DEFAULT)
+      const duckHoldSeconds = duckDraft.duckHoldSeconds
+        ?? (typeof library?.duckHoldSeconds === 'number' ? library.duckHoldSeconds : MUSIC_DUCK_HOLD_DEFAULT)
       /** What the playlist picker offers: everything, then one row per playlist. */
       const playlistOptions = [
         h('option', { value: '', key: 'all' }, t('musicPlaylistAll', { count: groups.length })),
@@ -1347,46 +1377,48 @@ window.__ModuleLoader__.load({
           }),
         }),
         // Not playing over somebody else's video is the pet's own decision, made
-        // where the audio is: these fields are what it obeys. A fade is the default
+        // where the audio is: these choices are what it obeys. A fade is the default
         // because it reads as a gesture rather than as an interruption, and the
         // level only means anything while the fade is the one in force.
         h(Row, {
           label: t('musicDuck'), text: t('musicDuckHint'), inline: true, disabled: !editable,
           control: h('input', {
-            type: 'checkbox', disabled: !editable, checked: draft.musicDuck === true,
-            onChange: (event) => write({ musicDuck: event.target.checked }, true),
+            type: 'checkbox', disabled: !editable, checked: duck,
+            onChange: (event) => { void savePreferences({ duck: event.target.checked }) },
           }),
         }),
         h(Row, {
           label: t('musicDuckMode'), text: t('musicDuckModeHint'),
-          disabled: !editable || draft.musicDuck !== true,
+          disabled: !editable || !duck,
           control: h('select', {
             className: 'dli-select',
-            disabled: !editable || draft.musicDuck !== true,
-            value: draft.musicDuckMode === 'pause' ? 'pause' : 'fade',
-            onChange: (event) => write({ musicDuckMode: event.target.value }, true),
+            disabled: !editable || !duck,
+            value: duckMode,
+            onChange: (event) => { void savePreferences({ duckMode: event.target.value }) },
           },
           h('option', { value: 'fade' }, t('musicDuckFade')),
           h('option', { value: 'pause' }, t('musicDuckPause'))),
         }),
-        draft.musicDuck === true && draft.musicDuckMode === 'pause' ? null : h(Row, {
+        duck && duckMode === 'pause' ? null : h(Row, {
           label: t('musicDuckLevel'),
-          value: t('percent', { value: Math.round(draft.musicDuckLevel) }),
-          text: t('musicDuckLevelHint'), disabled: !editable || draft.musicDuck !== true,
+          value: t('percent', { value: Math.round(duckLevel) }),
+          text: t('musicDuckLevelHint'), disabled: !editable || !duck,
           control: h('input', {
             min: MUSIC_DUCK_LEVEL.min, max: MUSIC_DUCK_LEVEL.max, step: MUSIC_DUCK_LEVEL.step,
-            ...slider('musicDuckLevel'),
-            disabled: !editable || draft.musicDuck !== true,
+            className: 'dli-slider', type: 'range', value: duckLevel,
+            disabled: !editable || !duck,
+            onChange: (event) => { changeDuck('duckLevel', Number(event.target.value)) },
           }),
         }),
         h(Row, {
           label: t('musicDuckHold'),
-          value: t('seconds', { value: Math.round(draft.musicDuckHoldSeconds) }),
-          text: t('musicDuckHoldHint'), disabled: !editable || draft.musicDuck !== true,
+          value: t('seconds', { value: Math.round(duckHoldSeconds) }),
+          text: t('musicDuckHoldHint'), disabled: !editable || !duck,
           control: h('input', {
             min: MUSIC_DUCK_HOLD.min, max: MUSIC_DUCK_HOLD.max, step: MUSIC_DUCK_HOLD.step,
-            ...slider('musicDuckHoldSeconds'),
-            disabled: !editable || draft.musicDuck !== true,
+            className: 'dli-slider', type: 'range', value: duckHoldSeconds,
+            disabled: !editable || !duck,
+            onChange: (event) => { changeDuck('duckHoldSeconds', Number(event.target.value)) },
           }),
         }),
         rows.length === 0 ? h('div', { className: 'dli-hint' }, t('musicListEmpty'))

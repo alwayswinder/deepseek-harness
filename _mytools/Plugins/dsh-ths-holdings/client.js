@@ -73,6 +73,21 @@ window.__ModuleLoader__.load({
       return { color: value > 0 ? RISE : FALL }
     }
 
+    // ---- display order ----------------------------------------------------
+
+    /**
+     * The orders the table can show. "file" is the snapshot's own row order,
+     * which is also the order a save writes; the P&L orders are a view over the
+     * same draft, so editing or deleting a row always acts on its stored row.
+     */
+    const SORT_OPTIONS = [
+      { id: 'pnl-desc', label: '累计盈亏% 从高到低' },
+      { id: 'pnl-asc', label: '累计盈亏% 从低到高' },
+      { id: 'file', label: '文件顺序' },
+    ]
+    /** The order the table opens with: the largest cumulative gain first. */
+    const DEFAULT_SORT = 'pnl-desc'
+
     // ---- styles -----------------------------------------------------------
 
     const S = {
@@ -110,6 +125,10 @@ window.__ModuleLoader__.load({
         font: 'inherit', fontSize: '12px', flex: '1 1 360px', minWidth: '0', padding: '4px 8px',
         borderRadius: '5px', border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent',
         color: 'inherit',
+      },
+      select: {
+        font: 'inherit', fontSize: '12px', padding: '3px 6px', borderRadius: '5px', cursor: 'pointer',
+        border: '1px solid var(--dsw-alias-border-l3)', background: 'transparent', color: 'inherit',
       },
       fileBlock: {
         display: 'flex', flexDirection: 'column', gap: '6px', padding: '8px 10px',
@@ -190,6 +209,7 @@ window.__ModuleLoader__.load({
 
       const [view, setView] = useState(null)
       const [draft, setDraft] = useState([])
+      const [sort, setSort] = useState(DEFAULT_SORT)
       const [baseline, setBaseline] = useState('[]')
       const [phase, setPhase] = useState('loading')
       const [failure, setFailure] = useState('')
@@ -356,6 +376,36 @@ window.__ModuleLoader__.load({
 
       const prices = useMemo(() => priceIndex(view), [view])
 
+      /**
+       * The draft indices in the order the table shows them.
+       *
+       * The P&L percentage is the same figure the 累计盈亏 cell prints, so a
+       * sorted row and its own cell cannot disagree; rows without a quote keep
+       * their stored order after the priced ones. Ties keep the stored order.
+       */
+      const order = useMemo(() => {
+        const indices = draft.map((_row, index) => index)
+        if (sort === 'file') return indices
+        const pct = new Map()
+        for (const index of indices) {
+          const quote = prices.get(String(draft[index].code).trim())
+          if (quote === undefined) continue
+          const unit = Number(draft[index].cost)
+          const costValue = unit * Number(draft[index].qty)
+          pct.set(index, costValue > 0 ? ((quote.price - unit) / unit) * 100 : 0)
+        }
+        const direction = sort === 'pnl-asc' ? 1 : -1
+        return indices.sort((left, right) => {
+          const a = pct.get(left)
+          const b = pct.get(right)
+          if (a === undefined || b === undefined) {
+            if (a === undefined && b === undefined) return left - right
+            return a === undefined ? 1 : -1
+          }
+          return a === b ? left - right : (a - b) * direction
+        })
+      }, [draft, prices, sort])
+
       const totals = useMemo(() => {
         let market = 0
         let cost = 0
@@ -430,7 +480,8 @@ window.__ModuleLoader__.load({
       if (totals.unquoted > 0) notes.push('有 ' + String(totals.unquoted) + ' 行没有行情价，未计入下面的合计。')
 
       const columns = ['代码', '名称', '数量', '成本', '现价', '市值', '累计盈亏', '今日盈亏', '']
-      const rows = draft.map((row, index) => {
+      const rows = order.map((index) => {
+        const row = draft[index]
         const bad = badFields.get(index) ?? new Set()
         const quote = prices.get(String(row.code).trim())
         const qty = Number(row.qty)
@@ -551,6 +602,17 @@ window.__ModuleLoader__.load({
             : null,
           assetsFailure === '' ? null : h('div', { style: S.error }, assetsFailure),
           assetsNotice === '' ? null : h('div', { style: S.sub }, assetsNotice)),
+        h('div', { style: S.bar },
+          h('span', { style: S.sub }, '排序'),
+          h('select', {
+            style: S.select,
+            value: sort,
+            'aria-label': '持仓排序',
+            onChange: (event) => { setSort(event.currentTarget.value) },
+          }, ...SORT_OPTIONS.map(option => h('option', { key: option.id, value: option.id }, option.label))),
+          sort === 'file'
+            ? h('span', { style: S.sub }, '按持仓文件里的原有行序显示')
+            : h('span', { style: S.sub }, '按累计盈亏百分比显示；保存仍按文件的原有行序写入')),
         h('div', { style: S.tableWrap },
           h('table', { style: S.table },
             h('thead', null, h('tr', null, ...columns.map((label, index) => h('th', {
@@ -575,9 +637,15 @@ window.__ModuleLoader__.load({
         }, String(error.message ?? ''))),
         ...fieldErrors
           .filter(error => typeof error.index === 'number' && error.index >= 0)
-          .map((error, index) => h('div', {
-            key: 'rowError' + String(index), style: S.error,
-          }, `第 ${String(Number(error.index) + 1)} 行 ${String(error.field)}：${String(error.message ?? '')}`)),
+          .map((error, index) => {
+            // The row numbers are the stored ones, which a sorted table may show
+            // elsewhere, so the holding's code names the row as well.
+            const row = draft[Number(error.index)]
+            const code = row === undefined ? '' : String(row.code).trim()
+            return h('div', {
+              key: 'rowError' + String(index), style: S.error,
+            }, `第 ${String(Number(error.index) + 1)} 行${code === '' ? ' ' : `（${code}）`}${String(error.field)}：${String(error.message ?? '')}`)
+          }),
         h('div', { style: S.sub },
           '保存会直接改写上面的持仓文件；盈亏卡片在下一次轮询（约 20 秒）后使用新数据。'),
       )

@@ -84,6 +84,7 @@ This working copy ships the host half of `dsh-ths-holdings` only, so the day-to-
 - **See** — one row per holding with its code, name, quantity, and cost, plus the price, market value, cumulative P&L (against the position's own cost), and today's P&L (against the previous close) that the public quote feed gives; the account totals sit above the table, and unpriced rows are called out.
 - **Edit** — change the code, name, quantity, or cost straight in the table and click save to write it back to the holdings file; discard-and-reload returns to the last loaded state.
 - **Add and delete** — "添加一行" appends an empty row, and the row's "删除" control drops one.
+- **Sort** — the control above the table orders the rows by cumulative P&L percentage, highest or lowest first, or by the file's own row order; it opens on the highest gain so the biggest winners and losers come first. The order is a view: edits and deletes still act on each stored holding, a save still writes the file's row order, and rows without a quote stay last.
 - **Validate before writing** — the whole list is checked before anything is written (six-digit code, quantity > 0, cost ≥ 0, no repeated code); a rejected row is marked and explained, and one bad row means nothing is written at all.
 - **Write-back** — saving replaces the holdings file atomically, keeps the `exported_at` / `export_date` / `source_file` the export flow wrote, and records an `updated_at`; the P&L card picks the new data up on its next poll (about 20 seconds), with no restart.
 - **Choose the file** — the 持仓文件位置 row above the table shows the file in force and where that path came from. Type an absolute path or use 选择目录… (the shell's directory picker); **保存位置** remembers it for this machine only, in `$DSH_HOME/ths-holdings.location.json`, and **恢复默认** forgets it. The default is `$DSH_HOME/ths-holdings/positions.json`; the profile's `positionsFile` configuration applies when this machine has not chosen a path, and a chosen path overrides it.
@@ -105,6 +106,7 @@ The snapshot is personal data and never lives inside this package: point the set
 - **⚙ Holdings manager page** — Settings → Plugins → open `dsh-ths-holdings`: edit cost and quantity, add and delete holdings, with live market value and P&L
 - **📁 File location setting** — choose where the holdings snapshot lives (default `$DSH_HOME/ths-holdings/positions.json`), so the real positions stay out of this public package and can sit in a private repository
 - **💰 Total assets and cash** — state the account total once and the page reports available cash (total minus holdings) and its share, kept on this machine
+- **↕ Sort by P&L %** — order the holdings table by cumulative P&L, highest or lowest first, or back to the file's row order
 - **↕ Draggable** — drag the title bar vertically along the right edge (position persists in localStorage)
 - **⚙ In-place settings** — paste Cookie and select portfolio from the card itself
 - **🔒 Credential-safe** — the Cookie never leaves the host process

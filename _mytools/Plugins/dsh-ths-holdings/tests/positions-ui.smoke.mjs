@@ -146,6 +146,18 @@ function type(label, value) {
   input(label).props.onChange({ currentTarget: { value } })
 }
 
+/** The one sort control on the page. */
+function sortControl() {
+  const matches = findAll(tree, node => node.type === 'select')
+  assert.equal(matches.length, 1, `expected exactly one sort control, found ${String(matches.length)}`)
+  return matches[0]
+}
+
+/** Choose one display order the way the browser does. */
+function sortBy(id) {
+  sortControl().props.onChange({ currentTarget: { value: id } })
+}
+
 /** Every input value in render order: the editable columns are inputs, not text. */
 function values() {
   return findAll(tree, node => node.type === 'input'
@@ -356,6 +368,38 @@ assert.ok(loadedText.includes('今日 +¥1,900.00 (+1.88%)'), 'the day P&L uses 
 assert.ok(!loadedText.includes('有未保存的修改'), 'a freshly loaded page is not dirty')
 assert.equal(button('保存').props.disabled, true, 'nothing to save yet')
 
+// ---- sorting by cumulative P&L percentage -----------------------------------
+
+// The page opens on the largest cumulative gain, which here happens to match
+// the file: 600941 gains 0.81 %, 601668 gains 0.49 %.
+assert.equal(sortControl().props.value, 'pnl-desc', 'the table opens sorted by P&L, highest first')
+assert.deepEqual(values(), ['600941', '中国移动', '400', '87.291', '601668', '中国建筑', '15000', '4.478'],
+  'the larger gain renders first')
+assert.ok(textOf(tree).includes('保存仍按文件的原有行序写入'), 'the page says the order is a view')
+
+// Ascending reverses the rows and leaves the list unsaved.
+sortBy('pnl-asc')
+await draw()
+assert.deepEqual(values(), ['601668', '中国建筑', '15000', '4.478', '600941', '中国移动', '400', '87.291'],
+  'the smaller gain renders first')
+assert.ok(!textOf(tree).includes('有未保存的修改'), 'changing the order is not an edit')
+assert.equal(button('保存').props.disabled, true, 'changing the order leaves nothing to save')
+
+// A row keeps its own fields wherever it is shown: the second stored holding is
+// the one rendered first here, and editing it prices that same holding.
+type('数量 第 2 行', '16000')
+await draw()
+assert.ok(textOf(tree).includes('¥107,200.00'), 'editing a row while sorted still prices the stored holding')
+type('数量 第 2 行', '15000')
+await draw()
+
+// The file order is still one of the choices.
+sortBy('file')
+await draw()
+assert.deepEqual(values(), ['600941', '中国移动', '400', '87.291', '601668', '中国建筑', '15000', '4.478'],
+  'file order restores the stored sequence')
+assert.ok(textOf(tree).includes('按持仓文件里的原有行序显示'), 'the page names the stored order')
+
 // ---- editing a quantity -----------------------------------------------------
 
 type('数量 第 1 行', '500')
@@ -483,7 +527,8 @@ await draw()
 press('保存')
 await draw()
 const rejectedText = textOf(tree)
-assert.ok(rejectedText.includes('第 1 行 qty：数量必须是大于 0 的数字'), 'the rejected field is named with its row')
+assert.ok(rejectedText.includes('第 1 行（600941）qty：数量必须是大于 0 的数字'),
+  'the rejected field is named with its stored row and holding')
 assert.ok(textOf(button('保存')).includes('保存'), 'the save control comes back after a rejection')
 
 console.log('dsh-ths-holdings page smoke: all assertions passed')

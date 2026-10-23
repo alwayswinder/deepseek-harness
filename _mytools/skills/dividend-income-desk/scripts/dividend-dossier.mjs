@@ -523,7 +523,7 @@ function renderMarkdown(report) {
     ? '- 可用资金：未设置总资产（插件页 → 持仓管理 → 总资产，或运行 scripts/set-assets.mjs --total <金额>）'
     : `- 账户：总资产 ¥${fmt(report.totals.totalAssets)}，持仓 ¥${fmt(report.totals.value)}，可用资金 ¥${fmt(report.totals.cash)}（${report.totals.cashPct}%）`)
   lines.push(`- 权重口径：${report.totals.weightBase}`)
-  lines.push(`- 决策阈值（config.json）：目标股息率 ${report.config.targetYieldPct}%，加仓下限 ${report.config.minYieldToBuyPct}%，减仓下限 ${report.config.trimYieldPct}%，单只上限 ${report.config.maxSingleWeightPct}%，计划现金 ${report.config.cashReservePct}%${report.config.repairCodes.length === 0 ? '' : `；价值修复类（不套股息率阈值）：${report.config.repairCodes.join('、')}`}`)
+  lines.push(`- 决策阈值（config.json）：目标股息率 ${report.config.targetYieldPct}%，加仓下限 ${report.config.minYieldToBuyPct}%，收益率下限 ${report.config.trimYieldPct}%，单只上限 ${report.config.maxSingleWeightPct}%，计划现金 ${report.config.cashReservePct}%${report.config.repairCodes.length === 0 ? '' : `；价值修复类（不套股息率阈值）：${report.config.repairCodes.join('、')}`}`)
   for (const warning of report.warnings) lines.push(`- ⚠ ${warning}`)
   lines.push('')
   lines.push('## 持仓与行情')

@@ -131,6 +131,20 @@ rem log then; Electron still starts, so a second press focuses the open window.
 copy /y nul "%DESKTOP_LOG%" >nul 2>&1
 if errorlevel 1 set "DESKTOP_LOG=%DESKTOP_DEVELOPMENT%\desktop-%RANDOM%.log"
 forfiles /p "%DESKTOP_DEVELOPMENT%" /m "desktop-*.log" /d -1 /c "cmd /c del @path" >nul 2>&1
+rem Every Desktop start mints one browser-session cookie for a random loopback
+rem port, and Chromium sends all of them to 127.0.0.1. Once that Cookie header
+rem passed Node's 16 KiB request limit the Host answered 431 and the app failed
+rem with "Web authentication failed": measured 2026-10-23, 71 cookies and 16196
+rem bytes, three failed starts in a row. Each cookie is dead after its launch, so
+rem drop them before this one. The profile is touched only while Desktop is
+rem closed, and the database is backed up before anything is removed.
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [desktop] WARNING: node was not found; skipping stale cookie cleanup.
+) else (
+    node "%~dp0prune-desktop-auth-cookies.mjs" "%DESKTOP_USER_DATA%"
+    if errorlevel 1 echo [desktop] WARNING: stale cookie cleanup failed; continuing.
+)
 wscript.exe //nologo "%~dp0start-dsh-service.vbs" "%DESKTOP_LOG%" "%DESKTOP_APP%" "%DESKTOP_EXE%" "--user-data-dir=%DESKTOP_USER_DATA%" "%DESKTOP_APP%"
 if errorlevel 1 goto :launchFailure
 echo [desktop] Launch requested. Log: %DESKTOP_LOG%

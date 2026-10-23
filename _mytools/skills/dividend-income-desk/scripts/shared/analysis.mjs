@@ -255,6 +255,24 @@ export function summarizeFundDividend(records, price, cost, targetYieldPct, toda
 }
 
 /**
+ * 判断天天基金分红页是否属于该基金、以及是否确认无分红。
+ *
+ * 东财会把别的基金的分红区块串进页面（实测 561580 的页面里出现过 159824 的
+ * 「暂无分红」）。串页时若照字面按「暂无分红」处理，一个正常分红的基金会被
+ * 静默算成 0% 股息率，所以归属判断单独拆出来。
+ * @param {string} html - 分红页正文。
+ * @param {string} code - 请求的基金代码。
+ * @returns {'records'|'empty'|'foreign-page'|'foreign-block'} `records` 可解析分红表；`empty` 确认本基金无分红；`foreign-*` 页面不可信，调用方应按取数失败处理。
+ */
+export function classifyFundDividendPage(html, code) {
+  const title = html.match(/<title>[^<]*?\((\d{6})\)[^<]*?<\/title>/)
+  if (title === null || title[1] !== code) return 'foreign-page'
+  const label = html.match(/<label class="left">\d{4}年度\s*<a href='[^']*?\/(\d+)\.html'>[^<]*<\/a>\s*暂无分红<\/label>/)
+  if (label === null) return 'records'
+  return label[1] === code ? 'empty' : 'foreign-block'
+}
+
+/**
  * 按行业汇总权重，降序返回，供组合集中度检查。
  * @param {ReadonlyArray<object>} rows - 已经算过 weightPct 与 sector 的标的。
  * @returns {Array<{name: string, weightPct: number}>} 各行业权重（%）。

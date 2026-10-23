@@ -10,8 +10,8 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  finalizeRows, findDividendGaps, isDistributionNotice, parseDividendNotice,
-  quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends,
+  classifyFundDividendPage, finalizeRows, findDividendGaps, isDistributionNotice,
+  parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends,
 } from '../scripts/shared/analysis.mjs'
 import { decodeEntities } from '../scripts/shared/text.mjs'
 
@@ -318,5 +318,28 @@ describe('backfilled record whose ex-date is still ahead', () => {
 describe('decodeEntities', () => {
   it('restores the entities the announcement API returns', () => {
     assert.equal(decodeEntities('A&amp;B&nbsp;10&lt;4&gt;&quot;x&quot;'), "A&B 10<4>\"x\"")
+  })
+})
+
+describe('classifyFundDividendPage', () => {
+  const page = (code, name, body) => `<title>${name}(${code})基金分红送配 _ 基金档案 _ 天天基金网</title>${body}`
+  /** 东财串页时的真实片段：561580 的页面里混进了 159824 的「暂无分红」。 */
+  const foreignBlock = '<label class="left">2026年度 <a href=\'http://fund.eastmoney.com/159824.html\'>新能源车ETF博时</a> 暂无分红</label>'
+
+  it('accepts the fund\'s own page as parseable', () => {
+    assert.equal(classifyFundDividendPage(page('561580', '央企红利ETF华泰柏瑞', "<table class='w782'><tr></tr></table>"), '561580'), 'records')
+  })
+
+  it('confirms a fund that really has no distribution', () => {
+    const own = '<label class="left">2026年度 <a href=\'http://fund.eastmoney.com/512890.html\'>红利低波ETF华泰柏瑞</a> 暂无分红</label>'
+    assert.equal(classifyFundDividendPage(page('512890', '红利低波ETF华泰柏瑞', own), '512890'), 'empty')
+  })
+
+  it('refuses a page carrying another fund\'s empty marker', () => {
+    assert.equal(classifyFundDividendPage(page('561580', '央企红利ETF华泰柏瑞', foreignBlock), '561580'), 'foreign-block')
+  })
+
+  it('refuses a page titled for another fund', () => {
+    assert.equal(classifyFundDividendPage(page('512890', '红利低波ETF华泰柏瑞', ''), '561580'), 'foreign-page')
   })
 })

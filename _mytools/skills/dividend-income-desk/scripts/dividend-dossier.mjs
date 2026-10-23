@@ -15,7 +15,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { finalizeRows, findDividendGaps, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends } from './shared/analysis.mjs'
+import { classifyFundDividendPage, finalizeRows, findDividendGaps, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends } from './shared/analysis.mjs'
 import { decodeEntities } from './shared/text.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -481,7 +481,12 @@ async function attachFundDividend(row, targetYieldPct) {
     row.errors.push(`基金分红: ${describe(error)}`)
     return
   }
-  if (/暂无分红/.test(html)) {
+  const page = classifyFundDividendPage(html, row.code)
+  if (page === 'foreign-page' || page === 'foreign-block') {
+    row.errors.push(`基金分红: 东财返回的页面混入了其他基金的分红数据（${page}），本次未采用`)
+    return
+  }
+  if (page === 'empty') {
     row.dividend = summarizeFundDividend([], row.price, row.cost, targetYieldPct, todayIso)
     return
   }
@@ -595,7 +600,9 @@ function renderMarkdown(report) {
     if (row.dividend !== null && row.dividend.recent.length > 0) {
       lines.push(`- 近年分红：${row.dividend.recent.map(item => `${item.period} 每股 ${item.perShare} 元（除息 ${item.exDate}）`).join('；')}`)
     } else if (row.kind === 'ETF') {
-      lines.push('- 近年分红：无记录（基金未分配收益计入净值）')
+      lines.push(row.dividend === null
+        ? '- 近年分红：本次未取到（接口异常），不按「无分红」处理'
+        : '- 近年分红：无记录（基金未分配收益计入净值）')
     }
     if (row.dividend?.supplemental?.length > 0) {
       const today = report.generatedAt.slice(0, 10)

@@ -13,7 +13,7 @@
 | `packages/client/ui-sidebar-browser/README.md`、`README.zh.md`、`README.i18n.yaml` | Known Limitations 里那句「每个工作区一个持久分区 / 未归组 Session 单独隔离」改成「所有工作区共用一个持久分区 / 存储账号是应用而不是项目」，两侧改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write packages/client/ui-sidebar-browser/README.md` 重新记录摘要 |
 | `packages/client/ui-sidebar-browser/src/types.ts` | `DesktopBrowserReservation` 的 JSDoc 改成「所有 Sidebar 浏览器的存储」；`acquire` 的 `@param workspace` 说明它不再选择分区 |
 | `apps/desktop/src/main.ts` | 新增常量 `LITTLE_ICON_SHOW_WINDOW_MESSAGE = 0x8001`；`createMainWindow` 里（仅 win32）`window.hookWindowMessage(该消息, () => window.show())`。根因：点 X 时 `window.hide()` 让 Electron 节流渲染并保持页面 `visibilityState=hidden`；桌宠用外部 `ShowWindow(SW_RESTORE)` 恢复，Electron 只同步了 OS 层与 `isVisible()`，页面仍在 hidden、画面冻结。桌宠恢复后 `PostMessage` 该消息，主进程补一次 `show()`（对已可见窗口无害）把 `visibilityState` 翻回 visible。实测（Electron 44）：外部 SW_RESTORE / SW_MINIMIZE→SW_RESTORE / WM_SYSCOMMAND SC_RESTORE / SetForegroundWindow 都无法让 `document.visibilityState` 离开 hidden、定时器停在 1Hz；只有 `win.show()` 触发 `EVENT_SHOW` 后满速恢复；`hookWindowMessage` 能收到外部 PostMessage |
-| `.gitignore` | 加两行本副本自己的忽略项：`.pnpm-store/` 之后加 `.pnpm-tools/`，末尾加 `_mytools/build/dsh-web*.log`（启动脚本写的日志，不该进 git） |
+| `.gitignore` | 加三行本副本自己的忽略项：`.pnpm-store/` 之后加 `.pnpm-tools/`，末尾加 `_mytools/build/dsh-web*.log`（启动脚本写的日志，不该进 git）与 `.workbuddy/`（WorkBuddy 写在仓库根的记忆目录） |
 
 核心就是这一段（合并后若被上游改回 `randomUUID`，把它换回来）：
 

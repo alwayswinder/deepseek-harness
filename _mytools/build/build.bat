@@ -82,6 +82,26 @@ for %%I in ("%SCRIPT_DIR%..\..") do set "DSH_REPO=%%~fI"
 if not exist "%DSH_REPO%\package.json" goto :missingRepo
 cd /d "%DSH_REPO%" || goto :finishUnexpected
 
+rem ---- temp directory -----------------------------------------------------------
+rem esbuild hands a large transform request to its own service process through a
+rem temp file and has that process delete the file afterwards. The endpoint
+rem security agent on this machine denies that delete inside %TEMP% - the Web
+rem build then dies with "remove ...\esbuild-<hash>: Access is denied", which
+rem reads like a broken build and is not one. A build-local temp directory is
+rem unaffected, and it also keeps build by-products out of the user's %TEMP%.
+rem .cache is ignored by git, next to the runtime download cache this script
+rem already owns.
+rem The assignment belongs in this script rather than in a launcher: the
+rem detached hand-off starts its child through WMI, which passes no environment
+rem from the caller, so every build.bat run - detached included - has to set it
+rem for itself.
+set "BUILD_TMP=%DSH_REPO%\.cache\tmp"
+if not exist "%BUILD_TMP%" mkdir "%BUILD_TMP%" >nul 2>&1
+if exist "%BUILD_TMP%" (
+    set "TMP=%BUILD_TMP%"
+    set "TEMP=%BUILD_TMP%"
+)
+
 rem ---- detached hand-off ------------------------------------------------------
 rem The build stops this checkout's Electron, so a run started from inside the app
 rem must not be its descendant. WMI starts it instead; a runner keeps output in
@@ -202,8 +222,23 @@ rem by now, so nothing holds its cookie databases open.
 call "%SCRIPT_DIR%migrate-desktop-user-data.bat"
 
 echo [build] Cleaning previous build outputs...
+rem A file the previous app instance left an open handle on - desktop.log, almost
+rem always - makes Node's recursive rm fail with EBUSY on Windows, and that ends a
+rem build before it has compiled anything. The handle usually clears within
+rem seconds, and clean is idempotent, so retry before calling it a failure.
+set "CLEAN_ATTEMPT=0"
+:cleanAttempt
+set /a CLEAN_ATTEMPT+=1
 call "%PNPM_CMD%" run clean
-if errorlevel 1 goto :finishClean
+if not errorlevel 1 goto :cleanDone
+if %CLEAN_ATTEMPT% GEQ 3 goto :finishClean
+echo [build] Clean attempt %CLEAN_ATTEMPT% failed ^(a file under the build tree is still
+echo [build] in use^); retrying in 5 seconds...
+rem ping rather than timeout: timeout refuses to run with redirected input, which
+rem is exactly how a detached or agent-started build runs.
+ping -n 6 127.0.0.1 >nul 2>&1
+goto :cleanAttempt
+:cleanDone
 
 echo [build] Building DSH packages, CLI, and Web UI...
 call "%PNPM_CMD%" run build

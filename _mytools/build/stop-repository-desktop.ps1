@@ -65,18 +65,28 @@ if ($running.Count -gt 0) {
 }
 
 # cmd.exe releases the log only after the app it started is gone, and the clean
-# step deletes the directory holding it. Best effort: if the handle outlives this
-# wait, clean reports the file it cannot remove.
-for ($attempt = 0; $attempt -lt 40; $attempt += 1) {
-    if (-not (Test-Path -LiteralPath $log)) { break }
+# step deletes the directory holding it. Best effort: the wait is 30 seconds
+# because the handle is not always the launcher's - an orphaned child that
+# inherited the launcher's stdout, or a scanner still reading the file, holds it
+# for a while after the app is gone. If it outlives the wait, say so and name the
+# file: clean will fail on it, and this line is what makes that failure read as
+# "a leftover handle" instead of a bare EBUSY from somewhere in the build.
+$released = $false
+for ($attempt = 0; $attempt -lt 120; $attempt += 1) {
+    if (-not (Test-Path -LiteralPath $log)) { $released = $true; break }
     try {
         $handle = [System.IO.File]::Open($log, 'Open', 'ReadWrite', 'None')
         $handle.Close()
+        $released = $true
         break
     } catch {
-        # Still held by the launcher; wait for it to exit.
+        # Still held; wait for it to be released.
         Start-Sleep -Milliseconds 250
     }
+}
+if (-not $released) {
+    Write-Host ("[build] Still locked after 30s: {0}" -f $log)
+    Write-Host '[build] The clean step retries, and fails if the handle outlives its retries.'
 }
 
 exit 0

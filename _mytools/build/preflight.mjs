@@ -11,6 +11,9 @@
 //     package that was renamed or deleted leaves references behind, and `tsc -b`
 //     then fails somewhere else entirely)
 //   - packages that exist but no compiler face aggregates
+//   - every plugin row in a _mytools cordis.patch.yml against the exports the
+//     workspace package still declares (a merge that folds one entry point into
+//     another leaves these rows pointing at nothing)
 //   - the peer links the out-of-tree plugins import from their own directory
 //
 // Usage:
@@ -268,6 +271,87 @@ if (unreferenced.length > 0) {
   const names = unreferenced.map(path => path.slice(repositoryRoot.length + 1)).sort()
   report('warn', `${names.length} package director${names.length === 1 ? 'y' : 'ies'} reachable from no compiler face`,
     `${names.slice(0, 8).join(', ')}${names.length > 8 ? ', ...' : ''} - expected right after an upstream merge that added a package and before its aggregate entry.`)
+}
+
+// ---- the preset rows against the packages that exist ------------------------
+
+// A row names a package plus, sometimes, one of its entry points. A merge that
+// folds `foo/list-agents` into `foo` leaves the row behind: composing the
+// profile then fails at the end of a full build, naming the plugin rather than
+// the row that asked for it. Resolving every row against the workspace's own
+// `exports` maps answers the same question in milliseconds, before anything is
+// stopped or deleted.
+
+/** Workspace package name -> the exports map it declares. */
+const workspaceExports = new Map()
+for (const directory of packageDirectories) {
+  const text = readText(join(directory, 'package.json'))
+  if (text === undefined) continue
+  try {
+    const manifest = JSON.parse(text)
+    if (typeof manifest.name === 'string') workspaceExports.set(manifest.name, manifest.exports)
+  } catch {
+    // The install step reports an unreadable manifest with its own message.
+  }
+}
+
+/**
+ * Whether an `exports` map answers for one subpath specifier.
+ * @param exports - the package's `exports` value.
+ * @param specifier - the requested subpath, such as `./tools`.
+ * @returns whether it resolves, defaulting to `true` when nothing can be decided.
+ */
+function answersSubpath(exports, specifier) {
+  if (typeof exports !== 'object' || exports === null) return true
+  return Object.keys(exports).some((key) => {
+    if (key === specifier) return true
+    const star = key.indexOf('*')
+    if (star === -1) return false
+    return specifier.startsWith(key.slice(0, star)) && specifier.endsWith(key.slice(star + 1))
+  })
+}
+
+/** Every `cordis.patch.yml` under _mytools, skipping dependency trees and links. */
+function patchFilesUnder(directory, found = []) {
+  let entries
+  try {
+    entries = readdirSync(directory, { withFileTypes: true })
+  } catch {
+    // A tree this walk cannot read is reported by the build when it needs it.
+    return found
+  }
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name !== 'node_modules' && entry.name !== '.venv') patchFilesUnder(path, found)
+      continue
+    }
+    if (entry.name === 'cordis.patch.yml') found.push(path)
+  }
+  return found
+}
+
+const rowPattern = /^\s*(?:-\s*)?name:\s*['"]?(@deepseek-ai\/[^'"\s#]+)/
+for (const patchFile of patchFilesUnder(join(repositoryRoot, '_mytools'))) {
+  const text = readText(patchFile)
+  if (text === undefined) continue
+  const relative = patchFile.slice(repositoryRoot.length + 1)
+  text.split(/\r?\n/).forEach((line, index) => {
+    const match = rowPattern.exec(line)
+    if (match === null) return
+    const segments = match[1].split('/')
+    const packageName = segments.slice(0, 2).join('/')
+    const subpath = segments.slice(2).join('/')
+    if (!workspaceExports.has(packageName)) {
+      report('warn', `plugin row names a package this checkout does not contain: ${match[1]}`,
+        `${relative}:${index + 1}. Either the merge removed the package or the row belongs to a plugin installed outside this checkout; the composition fails only if nothing resolves it.`)
+      return
+    }
+    if (subpath === '' || answersSubpath(workspaceExports.get(packageName), `./${subpath}`)) return
+    report('error', `plugin row names an entry point the package no longer exports: ${match[1]}`,
+      `${relative}:${index + 1}. ${packageName} exports ${Object.keys(workspaceExports.get(packageName) ?? {}).join(', ')}; an upstream merge folded this entry point into another one, and the profile only fails to compose at the end of the build. Delete the row, or name the package that now owns it.`)
+  })
 }
 
 // ---- the out-of-tree plugins ------------------------------------------------

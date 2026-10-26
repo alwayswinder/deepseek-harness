@@ -1143,11 +1143,13 @@ if (process.platform === 'win32') {
   // The nine tiles are filled from the eight folders the person assigned and a
   // directory the page names, so the mapping is what a quiet bug would get wrong:
   // the middle slot is the Session's folder whatever the list says, a blank entry
-  // keeps its own tile empty, and the same folder twice is shown once.
+  // keeps its own tile empty, and an entry keeps its folder even when it repeats
+  // another entry or the Session's own, so no tile appears and disappears as the
+  // Session moves between working directories.
   const quickAccess = /quick-access: (.*)/.exec(selfTest.stdout)
   assert.ok(quickAccess !== null, 'the self test must report the quick access mapping')
-  assert.equal(quickAccess[1].trim(), 'a,empty,c,empty,main=b,empty,empty,empty,d',
-    'each ring entry keeps its own tile, and the middle one is the Session folder')
+  assert.equal(quickAccess[1].trim(), 'a,empty,c,a,main=b,empty,empty,b,d',
+    'each ring entry keeps its own tile, even a repeated folder, and the middle one is the Session folder')
   const quickAccessUser = /quick-access-user: (.*)/.exec(selfTest.stdout)
   assert.ok(quickAccessUser !== null, 'the self test must report the list as it was stored')
   assert.equal(quickAccessUser[1].trim(), 'C:\\one,blank,C:\\three,blank,blank,blank,blank,C:\\eight',

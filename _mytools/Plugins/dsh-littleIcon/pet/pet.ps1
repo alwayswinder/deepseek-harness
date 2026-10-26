@@ -2573,22 +2573,18 @@ function Get-ExplorerWindows {
 function Format-QuickAccessSlots($Folders, [string]$MainCwd) {
     # Nine slots with the middle one fixed: the Session's directory is index 4, and
     # ring slot i fills the tile at the i-th ring position in the order the person
-    # arranged them. A blank entry leaves its tile empty, and a ring folder that is
-    # the Session's own is left out rather than shown twice.
+    # arranged them. A blank entry leaves its tile empty. Every ring entry keeps the
+    # folder the person assigned, even when it is also the Session's own: a tile is
+    # what the person edited, not something the Session's directory can hide.
     $main = Get-FolderPath $MainCwd
     $slots = New-Object object[] 9
     if ($main -ne '') { $slots[4] = New-QuickAccessSlot $main $true }
     $order = $SCRIPT:QuickAccessOrder
     $ring = @($Folders)
-    $seen = @{}
-    if ($main -ne '') { $seen[$main.ToLowerInvariant()] = $true }
     for ($index = 0; $index -lt 8; $index++) {
         if ($index -ge $ring.Count) { break }
         $path = Get-FolderPath ([string]$ring[$index])
         if ($path -eq '') { continue }
-        $key = $path.ToLowerInvariant()
-        if ($seen.ContainsKey($key)) { continue }
-        $seen[$key] = $true
         $slots[$order[$index]] = New-QuickAccessSlot $path $false
     }
     return ,$slots
@@ -3644,9 +3640,10 @@ if ($SelfTest) {
     # The nine tiles are filled from the eight folders the person assigned and a
     # directory the page names, so the mapping is what a quiet bug would get wrong:
     # the middle slot is the Session's folder whatever the list says, a ring entry
-    # that is blank stays an empty tile in its own place, and the same folder twice
-    # is shown once.
-    $probeFolders = @('C:\a', '', 'C:\c', 'C:\a', '', '', '', 'C:\d')
+    # that is blank stays an empty tile in its own place, and an entry keeps the
+    # folder the person gave it even when it repeats another entry or the Session's
+    # own folder.
+    $probeFolders = @('C:\a', '', 'C:\c', 'C:\a', '', '', 'C:\b', 'C:\d')
     $probeSlots = Format-QuickAccessSlots $probeFolders 'C:\b'
     $probeText = @(0..8 | ForEach-Object {
         $slot = $probeSlots[$_]
@@ -3675,9 +3672,9 @@ if ($SelfTest) {
     $SCRIPT:QuickAccessSlots = Format-QuickAccessSlots @(
         'C:\Users\someone\Documents\A folder name long enough to be trimmed',
         'D:\Work\tmp', 'E:\Unreal\Projects\MyProject_5_8', 'D:\Unreal\resources',
-        'E:\AI\3dMax\Save\Quinn', 'E:\AI\Blender', 'D:\Work\StaticMesh', 'E:\Work\SSMainline'
+        'E:\AI\3dMax\Save\Quinn', 'E:\AI\Blender', 'E:\AI\DSH', 'E:\Work\SSMainline'
     ) 'E:\AI\DSH'
-    $SCRIPT:QuickAccessOpen = @{ 'd:\work\tmp' = [IntPtr]::Zero }
+    $SCRIPT:QuickAccessOpen = @{ 'd:\work\tmp' = [IntPtr]::Zero; 'e:\ai\dsh' = [IntPtr]::Zero }
     $SCRIPT:QuickAccessHover = 1
     $SCRIPT:QuickAccessFocus = 4
     $panelPath = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'quick-access-probe.png'

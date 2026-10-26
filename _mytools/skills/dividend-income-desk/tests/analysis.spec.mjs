@@ -10,8 +10,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  classifyFundDividendPage, finalizeRows, findDividendGaps, isDistributionNotice,
-  parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends,
+  attachEarningsFlag, attachExposureFlags, classifyFundDividendPage, finalizeRows, findDividendGaps,
+  isDistributionNotice, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend,
+  summarizeStockDividends, summarizeTargets,
 } from '../scripts/shared/analysis.mjs'
 import { decodeEntities } from '../scripts/shared/text.mjs'
 
@@ -341,5 +342,142 @@ describe('classifyFundDividendPage', () => {
 
   it('refuses a page titled for another fund', () => {
     assert.equal(classifyFundDividendPage(page('512890', '红利低波ETF华泰柏瑞', ''), '561580'), 'foreign-page')
+  })
+})
+
+describe('summarizeTargets', () => {
+  /** 601318 的真实样本：同花顺两家 + 东财两家，现价 52.62。 */
+  const REPORTS = [
+    { org: '西部证券', date: '2026-08-22', target: 78.95, source: '同花顺' },
+    { org: '东方证券', date: '2026-08-22', target: 78.95, source: '同花顺' },
+    { org: '招银国际', date: '2026-10-23', target: 73, source: '东财研报' },
+    { org: '国金证券', date: '2026-03-12', target: 92.68, source: '东财研报' },
+  ]
+
+  it('counts one target per broker and takes the median', () => {
+    const summary = summarizeTargets(REPORTS, 52.62, TODAY)
+    assert.equal(summary.status, 'ok')
+    assert.equal(summary.orgCount, 4)
+    assert.equal(summary.median, 78.95)
+    assert.equal(summary.min, 73)
+    assert.equal(summary.max, 92.68)
+  })
+
+  it('reports how far the price still is from the median', () => {
+    const summary = summarizeTargets(REPORTS, 52.62, TODAY)
+    assert.equal(summary.ratio, 0.6665)
+    assert.equal(summary.premiumPct, 50.04)
+  })
+
+  it('keeps the newest target of a broker that published twice', () => {
+    const summary = summarizeTargets([
+      { org: '华泰证券', date: '2026-08-20', target: 6.32 },
+      { org: '华泰证券', date: '2026-09-01', target: 6.5 },
+    ], 4.9, TODAY)
+    assert.equal(summary.orgCount, 1)
+    assert.equal(summary.median, 6.5)
+  })
+
+  it('calls a single broker thin instead of a consensus', () => {
+    const summary = summarizeTargets([{ org: '西南证券', date: '2026-09-23', target: 16.9 }], 13.84, TODAY)
+    assert.equal(summary.status, 'thin')
+    assert.equal(summary.orgCount, 1)
+  })
+
+  it('drops stale reports and targets that cannot belong to this stock', () => {
+    const summary = summarizeTargets([
+      ...REPORTS,
+      { org: '旧报告', date: '2025-01-01', target: 80 },
+      { org: '口径错误', date: '2026-09-01', target: 300 },
+    ], 52.62, TODAY)
+    assert.equal(summary.orgCount, 4)
+  })
+
+  it('returns none when nothing usable is left', () => {
+    const summary = summarizeTargets([], 52.62, TODAY)
+    assert.equal(summary.status, 'none')
+    assert.equal(summary.median, null)
+    assert.equal(summary.ratio, null)
+  })
+})
+
+describe('attachExposureFlags', () => {
+  const SETTINGS = { trimYieldPct: 2.5, maxSingleWeightPct: 15, takeProfitPct: 30, nearTargetRatio: 0.95 }
+  const analyst = (overrides = {}) => ({
+    status: 'ok', orgCount: 4, median: 78.95, min: 73, max: 92.68, ratio: 0.97, premiumPct: 2.6, ...overrides,
+  })
+  const row = (overrides = {}) => ({
+    flags: [], sellZone: false, gainHigh: false, weightPct: 5, price: 76.6, pct: 1,
+    dividend: null, performance: null, repair: false, kind: '股票', ...overrides,
+  })
+
+  it('flags a position whose price reached the broker median', () => {
+    const target = row({ pnlPct: 5, analyst: analyst() })
+    attachExposureFlags(target, SETTINGS)
+    assert.equal(target.sellZone, true)
+    assert.equal(target.gainHigh, false)
+    assert.match(target.flags.join(), /机构目标价中位/)
+  })
+
+  it('flags an already-over-target position differently from a near miss', () => {
+    const target = row({ pnlPct: 5, analyst: analyst({ ratio: 1.04 }) })
+    attachExposureFlags(target, SETTINGS)
+    assert.equal(target.sellZone, true)
+    assert.match(target.flags.join(), /已高于机构目标价中位/)
+  })
+
+  it('flags gain on its own even without any target price', () => {
+    const target = row({ pnlPct: 35, analyst: null })
+    attachExposureFlags(target, SETTINGS)
+    assert.equal(target.gainHigh, true)
+    assert.equal(target.sellZone, false)
+    assert.match(target.flags.join(), /浮盈 \+35\.0%/)
+    assert.match(target.flags.join(), /样本不足/)
+  })
+
+  it('does not treat a thin sample as a consensus', () => {
+    const target = row({ pnlPct: 5, analyst: analyst({ status: 'thin', orgCount: 1, ratio: 0.99 }) })
+    attachExposureFlags(target, SETTINGS)
+    assert.equal(target.sellZone, false)
+    assert.equal(target.flags.length, 0)
+  })
+
+  it('says nothing when the position is neither near target nor deep in profit', () => {
+    const target = row({ pnlPct: 3, analyst: analyst({ ratio: 0.72 }) })
+    attachExposureFlags(target, SETTINGS)
+    assert.equal(target.flags.length, 0)
+  })
+})
+
+describe('attachEarningsFlag', () => {
+  const perf = (overrides = {}) => ({ netProfitYoY: -24.3, oneOffPct: 13, ...overrides })
+
+  it('reports the plain year-on-year drop when nothing one-off is involved', () => {
+    const target = { flags: [], performance: perf() }
+    attachEarningsFlag(target)
+    assert.equal(target.oneOffDriven, false)
+    assert.equal(target.flags.join(), '净利同比 -24.3%')
+  })
+
+  it('names the one-off share instead of blaming operations', () => {
+    /** 600598 北大荒 2026H1：归母 -154.5%，14.1 亿补缴税款与滞纳金打进当期损益。 */
+    const target = { flags: [], performance: perf({ netProfitYoY: -154.5, oneOffPct: -61 }) }
+    attachEarningsFlag(target)
+    assert.equal(target.oneOffDriven, true)
+    assert.match(target.flags.join(), /非经常性损益占归母 61%/)
+    assert.match(target.flags.join(), /不能只看归母/)
+  })
+
+  it('stays silent for a mild drop', () => {
+    const target = { flags: [], performance: perf({ netProfitYoY: -3 }) }
+    attachEarningsFlag(target)
+    assert.equal(target.flags.length, 0)
+  })
+
+  it('does not guess when the deducted EPS is missing', () => {
+    const target = { flags: [], performance: perf({ netProfitYoY: -40, oneOffPct: null }) }
+    attachEarningsFlag(target)
+    assert.equal(target.oneOffDriven, false)
+    assert.equal(target.flags.join(), '净利同比 -40.0%')
   })
 })

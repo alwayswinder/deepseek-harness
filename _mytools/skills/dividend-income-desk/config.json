@@ -5,6 +5,9 @@
   "maxSingleWeightPct": 15,
   "maxIndustryWeightPct": 35,
   "cashReservePct": 10,
+  "takeProfitPct": 30,
+  "nearTargetRatio": 0.95,
+  "minAnalystCount": 2,
   "overrides": {},
   "repairCodes": ["601888", "513330"]
 }

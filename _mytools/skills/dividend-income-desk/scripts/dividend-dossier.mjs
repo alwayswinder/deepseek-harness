@@ -15,7 +15,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { classifyFundDividendPage, finalizeRows, findDividendGaps, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends } from './shared/analysis.mjs'
+import { classifyFundDividendPage, finalizeRows, findDividendGaps, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends, summarizeTargets } from './shared/analysis.mjs'
 import { decodeEntities } from './shared/text.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -26,8 +26,15 @@ const EM_ANN = 'https://np-anotice-stock.eastmoney.com/api/security/ann'
 const EM_BODY = 'https://np-cnotice-stock.eastmoney.com/api/content/ann'
 const QUOTE_URL = 'http://qt.gtimg.cn/q='
 const FUND_DIV_PAGE = 'https://fundf10.eastmoney.com/fhsp_'
+const THS_RESEARCH = 'https://basic.10jqka.com.cn/'
+const EM_REPORT = 'https://reportapi.eastmoney.com/report/list'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
 const DAY_MS = 86_400_000
+
+/** 同花顺 F10 的研报摘要块：标题 + 发布时间 + 来源券商。 */
+const THS_BLOCK = /<h1 class="cont_title">([\s\S]*?)<\/h1>\s*<h2 class="sub_cont_title">\s*发布时间：([\d-]+)\s*来源：([^<]*)<\/h2>/g
+/** 正文里的目标价写法：目标价 78.95 元 / 目标价为 78.95 元 / 对应目标价 78.95 元。 */
+const THS_TARGET = /目标价\s*(?:为|给予|至|约|在|是)?\s*([\d.]+)\s*元/
 
 /** 默认决策阈值；config.json 可覆盖。 */
 const DEFAULT_CONFIG = {
@@ -37,6 +44,9 @@ const DEFAULT_CONFIG = {
   maxSingleWeightPct: 15,
   maxIndustryWeightPct: 35,
   cashReservePct: 10,
+  takeProfitPct: 30,
+  nearTargetRatio: 0.95,
+  minAnalystCount: 2,
   overrides: {},
   repairCodes: [],
 }
@@ -308,10 +318,13 @@ async function enrich(position, quote, quoteFailure) {
     dividend: null,
     performance: null,
     appointment: null,
+    analyst: null,
     announcements: [],
     errors: [],
     flags: [],
     buyZone: false,
+    sellZone: false,
+    gainHigh: false,
   }
   if (!Number.isFinite(price)) {
     row.errors.push('无行情')
@@ -321,12 +334,13 @@ async function enrich(position, quote, quoteFailure) {
   if (isFund) {
     await attachFundDividend(row, targetYieldPct)
   } else {
-    const [dividends, performance, appointment, announcements, sector] = await Promise.all([
+    const [dividends, performance, appointment, announcements, sector, targets] = await Promise.all([
       emDividends(position.code).catch(error => ({ error })),
       emPerformance(position.code).catch(error => ({ error })),
       emAppointment(position.code).catch(error => ({ error })),
       args.news ? emAnnouncements(position.code).catch(error => ({ error })) : Promise.resolve([]),
       emSector(position.code).catch(error => ({ error })),
+      fetchAnalystTargets(position.code).catch(error => ({ error })),
     ])
     if (dividends.error !== undefined) row.errors.push(`分红: ${describe(dividends.error)}`)
     if (performance.error !== undefined) row.errors.push(`财报: ${describe(performance.error)}`)
@@ -334,6 +348,14 @@ async function enrich(position, quote, quoteFailure) {
     if (Array.isArray(announcements)) row.announcements = announcements
     else row.errors.push(`公告: ${describe(announcements.error)}`)
     row.sector = sector.error === undefined ? (sector ?? '未分类') : '未分类'
+    if (targets.error !== undefined) {
+      row.errors.push(`机构目标价: ${describe(targets.error)}`)
+    } else {
+      row.analyst = summarizeTargets(targets.samples, price, todayIso, {
+        minAnalystCount: config.minAnalystCount,
+      })
+      if (targets.problems.length > 0) row.errors.push(`机构目标价: ${targets.problems.join('；')}，样本可能不全`)
+    }
 
     row.dividend = summarizeStockDividends(dividends, performance, price, position.cost, targetYieldPct, todayIso)
     row.performance = summarizePerformance(performance)
@@ -424,6 +446,7 @@ async function emPerformance(code) {
     netProfitYoY: num(record.SJLTZ),
     roe: num(record.WEIGHTAVG_ROE),
     eps: num(record.BASIC_EPS),
+    deductEps: num(record.DEDUCT_BASIC_EPS),
     bps: num(record.BPS),
     grossMargin: num(record.XSMLL),
   }))
@@ -439,6 +462,95 @@ async function emAppointment(code) {
   }))
 }
 
+// ---------------------------------------------------------------- 机构目标价
+
+/**
+ * 合并两个来源的机构目标价：同花顺 F10 研报摘要 + 东财研报列表。
+ *
+ * 两边都失败才算失败；一边成功就用那一边，并在每条样本上标 `source`。
+ * @param {string} code - 6 位代码。
+ * @returns {Promise<Array<{org: string, date: string, target: number, source: string}>>} 目标价样本。
+ */
+async function fetchAnalystTargets(code) {
+  const [ths, em] = await Promise.allSettled([thsTargets(code), emTargets(code)])
+  const samples = []
+  const problems = []
+  if (ths.status === 'fulfilled') samples.push(...ths.value)
+  else problems.push(`同花顺 ${describe(ths.reason)}`)
+  if (em.status === 'fulfilled') samples.push(...em.value)
+  else problems.push(`东财 ${describe(em.reason)}`)
+  if (samples.length === 0 && problems.length === 2) throw new Error(problems.join('；'))
+  return { samples, problems }
+}
+
+/**
+ * 同花顺的请求串行化并留间隔：3 并发 × 多接口时它会把页面换成验证页。
+ *
+ * 队列挂在函数对象上而不是模块顶层变量：本文件在函数声明之前就先跑了主流程，
+ * 顶层 `let` 在那一刻还在 TDZ 里。
+ * @param {() => Promise<any>} task - 要执行的请求。
+ * @returns {Promise<any>} 请求结果。
+ */
+function thsThrottle(task) {
+  const queue = (thsThrottle.queue ??= { tail: Promise.resolve() })
+  const run = queue.tail.then(task, task)
+  queue.tail = run.then(
+    () => new Promise(resolve => setTimeout(resolve, 250)),
+    () => new Promise(resolve => setTimeout(resolve, 250)),
+  )
+  return run
+}
+
+/**
+ * 同花顺 F10 研报页：正文里「目标价 X 元」的写法比东财的结构化字段覆盖率高。
+ * @param {string} code - 6 位代码。
+ * @returns {Promise<Array<object>>} 目标价样本。
+ */
+async function thsTargets(code) {
+  const url = `${THS_RESEARCH}${code}/worth.html`
+  let html = await thsThrottle(() => getText(url, 'gbk', { Referer: THS_RESEARCH }))
+  let heads = [...html.matchAll(THS_BLOCK)]
+  if (heads.length === 0) {
+    // 被反爬拦下的典型表现是 200 + 极短页面：等一会儿重试一次。
+    await new Promise(resolve => setTimeout(resolve, 900))
+    html = await thsThrottle(() => getText(url, 'gbk', { Referer: THS_RESEARCH }))
+    heads = [...html.matchAll(THS_BLOCK)]
+  }
+  if (heads.length === 0) throw new Error('研报页结构无法解析（可能被反爬拦截）')
+  const out = []
+  for (let index = 0; index < heads.length; index++) {
+    const head = heads[index]
+    const start = head.index + head[0].length
+    const end = index + 1 < heads.length ? heads[index + 1].index : html.length
+    const text = html.slice(start, end).replace(/<[^>]+>/g, ' ')
+    const hit = text.match(THS_TARGET)
+    if (hit === null) continue
+    const target = Number(hit[1])
+    if (!Number.isFinite(target) || target <= 0) continue
+    out.push({ org: head[3].trim(), date: head[2].trim(), target, source: '同花顺' })
+  }
+  return out
+}
+
+/**
+ * 东财研报列表：只有部分研报带结构化目标价（`indvAimPriceT`），覆盖稀疏但稳定。
+ * @param {string} code - 6 位代码。
+ * @returns {Promise<Array<object>>} 目标价样本。
+ */
+async function emTargets(code) {
+  const begin = shiftDate(todayIso, -365)
+  const url = `${EM_REPORT}?industryCode=*&pageSize=50&industry=*&rating=&ratingChange=&beginTime=${begin}&endTime=${todayIso}&pageNo=1&fields=&qType=0&orgCode=&code=${code}&rcode=&p=1&pageNum=1&pageNumber=1`
+  const body = await getJson(url, { Referer: 'https://data.eastmoney.com/report/' })
+  return (body?.data ?? [])
+    .map(item => ({
+      org: String(item.orgSName ?? '').trim(),
+      date: String(item.publishDate ?? '').slice(0, 10),
+      target: num(item.indvAimPriceT),
+      source: '东财研报',
+    }))
+    .filter(item => item.target !== null && item.target > 0)
+}
+
 function summarizePerformance(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return null
   const [latest] = rows
@@ -450,14 +562,35 @@ function summarizePerformance(rows) {
     netProfitYoY: latest.netProfitYoY,
     roe: latest.roe,
     eps: latest.eps,
+    deductEps: latest.deductEps,
+    // 归母与扣非的差额占比：绝对值越大，说明当期利润被一次性损益扭曲得越多，
+    // 归母同比就不能单独拿来判断经营好坏（负数表示扣非高于归母，即一次性为负）。
+    oneOffPct: oneOffShare(latest.eps, latest.deductEps),
     bps: latest.bps,
     grossMargin: latest.grossMargin,
     history: rows.slice(0, 4).map(item => ({
       reportDate: item.reportDate,
       revenueYoY: item.revenueYoY,
       netProfitYoY: item.netProfitYoY,
+      oneOffPct: oneOffShare(item.eps, item.deductEps),
     })),
   }
+}
+
+/**
+ * 一次性损益占归母净利的比例（%）。
+ *
+ * A 股定期报告的「扣非」只剔除准则列举的非经常性损益，像补缴以前年度税款
+ * 这类直接计入所得税费用的项目仍留在扣非里，所以这个比例是**下限**，不是
+ * 全部一次性影响。返回 null 表示扣非数据缺失，不能当 0。
+ * @param {number | null} eps - 基本每股收益。
+ * @param {number | null} deductEps - 扣非每股收益。
+ * @returns {number | null} 一次性损益占归母的比例（%）。
+ */
+function oneOffShare(eps, deductEps) {
+  if (eps === null || eps === undefined || deductEps === null || deductEps === undefined) return null
+  if (!Number.isFinite(eps) || !Number.isFinite(deductEps) || eps === 0) return null
+  return round2(((eps - deductEps) / Math.abs(eps)) * 100)
 }
 
 function summarizeAppointment(rows) {
@@ -523,7 +656,7 @@ function renderMarkdown(report) {
     ? '- 可用资金：未设置总资产（插件页 → 持仓管理 → 总资产，或运行 scripts/set-assets.mjs --total <金额>）'
     : `- 账户：总资产 ¥${fmt(report.totals.totalAssets)}，持仓 ¥${fmt(report.totals.value)}，可用资金 ¥${fmt(report.totals.cash)}（${report.totals.cashPct}%）`)
   lines.push(`- 权重口径：${report.totals.weightBase}`)
-  lines.push(`- 决策阈值（config.json）：目标股息率 ${report.config.targetYieldPct}%，加仓下限 ${report.config.minYieldToBuyPct}%，收益率下限 ${report.config.trimYieldPct}%，单只上限 ${report.config.maxSingleWeightPct}%，计划现金 ${report.config.cashReservePct}%${report.config.repairCodes.length === 0 ? '' : `；价值修复类（不套股息率阈值）：${report.config.repairCodes.join('、')}`}`)
+  lines.push(`- 决策阈值（config.json）：目标股息率 ${report.config.targetYieldPct}%，加仓下限 ${report.config.minYieldToBuyPct}%，收益率下限 ${report.config.trimYieldPct}%，单只上限 ${report.config.maxSingleWeightPct}%，计划现金 ${report.config.cashReservePct}%，浮盈提醒线 ${report.config.takeProfitPct}%，接近目标价 ${Math.round(report.config.nearTargetRatio * 100)}%（至少 ${report.config.minAnalystCount} 家机构）${report.config.repairCodes.length === 0 ? '' : `；价值修复类（不套股息率阈值）：${report.config.repairCodes.join('、')}`}`)
   for (const warning of report.warnings) lines.push(`- ⚠ ${warning}`)
   lines.push('')
   lines.push('## 持仓与行情')
@@ -545,8 +678,8 @@ function renderMarkdown(report) {
   lines.push('')
   lines.push('## 收息与基本面')
   lines.push('')
-  lines.push('| 代码 | 名称 | 每股分红 | 现价股息率 | 成本股息率 | TTM 股息率 | 派息率 | 目标价 | 最新报告 | 营收同比 | 净利同比 | ROE | 下次披露 | 提醒 |')
-  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |')
+  lines.push('| 代码 | 名称 | 每股分红 | 现价股息率 | 成本股息率 | TTM 股息率 | 派息率 | 目标价 | 最新报告 | 营收同比 | 净利同比 | 一次性占比 | PB | ROE | 下次披露 | 提醒 |')
+  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |')
   for (const row of [...report.rows].sort((a, b) => b.weightPct - a.weightPct)) {
     const div = row.dividend
     const perf = row.performance
@@ -563,10 +696,53 @@ function renderMarkdown(report) {
       perf === null ? '—' : perf.reportDate,
       perf === null ? '—' : pctText(perf.revenueYoY),
       perf === null ? '—' : pctText(perf.netProfitYoY),
+      perf === null || perf.oneOffPct === null || perf.oneOffPct === undefined ? '—' : `${perf.oneOffPct > 0 ? '+' : ''}${perf.oneOffPct.toFixed(0)}%`,
+      row.pb === null || row.pb === undefined ? '—' : numText(row.pb),
       perf === null ? '—' : pctText(perf.roe),
       next,
       row.flags.length === 0 ? '' : row.flags.join('；'),
     ].map(cell => String(cell).replaceAll('|', '/')).join(' | ').replace(/^/, '| ').concat(' |'))
+  }
+  lines.push('')
+
+  lines.push('## 浮盈与机构目标价')
+  lines.push('')
+  lines.push('| 代码 | 名称 | 现价 | 成本 | 浮盈% | 机构目标价中位 | 区间 | 家数 | 距目标价 | 状态 |')
+  lines.push('| --- | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- |')
+  for (const row of [...report.rows].sort((a, b) => (b.pnlPct ?? -999) - (a.pnlPct ?? -999))) {
+    const analyst = row.analyst
+    const status = row.sellZone === true
+      ? (analyst.ratio >= 1 ? '⚠ 已超目标价' : '⚠ 接近目标价')
+      : (row.gainHigh === true ? '浮盈达线' : (analyst === null || analyst.status === 'none' ? '无机构目标价' : (analyst.status === 'thin' ? '样本不足' : '')))
+    lines.push([
+      row.code,
+      row.name,
+      numText(row.price),
+      numText(row.cost),
+      pctText(row.pnlPct),
+      analyst === null || analyst.median === null ? '—' : numText(analyst.median),
+      analyst === null || analyst.min === null ? '—' : `${numText(analyst.min)}–${numText(analyst.max)}`,
+      analyst === null ? '—' : String(analyst.orgCount),
+      analyst === null || analyst.premiumPct === null ? '—' : pctText(analyst.premiumPct),
+      status,
+    ].map(cell => String(cell).replaceAll('|', '/')).join(' | ').replace(/^/, '| ').concat(' |'))
+  }
+  lines.push('')
+
+  const review = report.rows.filter(row => row.sellZone === true || row.gainHigh === true)
+  lines.push('## 止盈复核')
+  lines.push('')
+  if (review.length === 0) {
+    lines.push('- 本轮没有标的触及浮盈提醒线或机构目标价，无需止盈操作。')
+  } else {
+    for (const row of review.sort((a, b) => (b.pnlPct ?? 0) - (a.pnlPct ?? 0))) {
+      const reasons = []
+      if (row.gainHigh === true) reasons.push(`浮盈 ${pctText(row.pnlPct)}（线 ${report.config.takeProfitPct}%）`)
+      if (row.sellZone === true) {
+        reasons.push(`现价 ${numText(row.price)} 为机构目标价中位 ${numText(row.analyst.median)} 的 ${Math.round(row.analyst.ratio * 100)}%（${row.analyst.orgCount} 家）`)
+      }
+      lines.push(`- **${row.code} ${row.name}**：${reasons.join('；')}；持有 ${fmtQty(row.qty)} 股，市值 ¥${fmt(row.value)}`)
+    }
   }
   lines.push('')
 
@@ -613,14 +789,25 @@ function renderMarkdown(report) {
     }
     if (row.dividend?.nextPlan != null) lines.push(`- 待实施：${row.dividend.nextPlan.plan}（除息 ${row.dividend.nextPlan.exDate}）`)
     if (row.performance !== null) {
-      const history = row.performance.history
-        .map(item => `${item.reportDate.slice(0, 7)} 营收 ${pctText(item.revenueYoY)} / 净利 ${pctText(item.netProfitYoY)}`)
+      const perf = row.performance
+      const history = perf.history
+        .map(item => `${item.reportDate.slice(0, 7)} 营收 ${pctText(item.revenueYoY)} / 净利 ${pctText(item.netProfitYoY)}${item.oneOffPct === null || item.oneOffPct === undefined ? '' : `（非经常性 ${item.oneOffPct.toFixed(0)}%）`}`)
         .join('；')
-      lines.push(`- 财报：最近 ${row.performance.reportDate}，ROE ${pctText(row.performance.roe)}，EPS ${numText(row.performance.eps)}；${history}`)
+      const oneOff = perf.oneOffPct === null || perf.oneOffPct === undefined
+        ? '扣非数据缺失'
+        : `非经常性损益占归母 ${perf.oneOffPct.toFixed(0)}%`
+      lines.push(`- 财报：最近 ${perf.reportDate}，ROE ${pctText(perf.roe)}，EPS ${numText(perf.eps)}，扣非EPS ${numText(perf.deductEps)}（${oneOff}）；${history}`)
     }
     if (row.appointment !== null) lines.push(`- 披露日程：${row.appointment.next ?? '—'} ${row.appointment.published ? '（已披露）' : '（预约）'}`)
     if (row.announcements.length > 0) {
       lines.push(`- 近期公告：${row.announcements.slice(0, 4).map(item => `[\`${item.title}\`](${item.url})（${item.date}）`).join('；')}`)
+    }
+    if (row.analyst !== null && row.analyst.status !== 'none') {
+      const analyst = row.analyst
+      const samples = analyst.sample.slice(0, 5)
+        .map(item => `${item.org} ${numText(item.target)}（${item.date}，${item.source}）`)
+        .join('；')
+      lines.push(`- 机构目标价：中位 ${numText(analyst.median)}，${analyst.orgCount} 家，区间 ${numText(analyst.min)}–${numText(analyst.max)}，距现价 ${pctText(analyst.premiumPct)}${analyst.status === 'thin' ? '（样本不足，只作参考）' : ''}；${samples}`)
     }
     if (row.errors.length > 0) lines.push(`- 数据问题：${row.errors.join('；')}`)
     lines.push('')
@@ -630,10 +817,24 @@ function renderMarkdown(report) {
 
 // ---------------------------------------------------------------- 工具
 
-async function getJson(url) {
-  const response = await fetchWithTimeout(url, { headers: { 'User-Agent': UA } })
+async function getJson(url, headers = {}) {
+  const response = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, ...headers } })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   return await response.json()
+}
+
+/** 抓 GBK/UTF-8 页面并解码；同花顺 F10 是 GBK，直接用 .text() 会乱码。 */
+async function getText(url, encoding = 'utf-8', headers = {}) {
+  const response = await fetchWithTimeout(url, { headers: { 'User-Agent': UA, ...headers } })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return new TextDecoder(encoding).decode(await response.arrayBuffer())
+}
+
+/** YYYY-MM-DD 加减天数，用于拼研报的查询区间。 */
+function shiftDate(iso, days) {
+  const base = Date.parse(`${iso}T00:00:00Z`)
+  if (!Number.isFinite(base)) return iso
+  return new Date(base + days * DAY_MS).toISOString().slice(0, 10)
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15_000) {

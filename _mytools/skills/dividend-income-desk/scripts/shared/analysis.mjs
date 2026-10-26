@@ -273,6 +273,69 @@ export function classifyFundDividendPage(html, code) {
 }
 
 /**
+ * 汇总机构目标价：每家机构取最新一次给出的目标价，再算中位数与区间。
+ *
+ * A 股研报给目标价的比例不高，而且同一家会在不同月份给不同数字，所以同一
+ * 机构只保留**最新一次有目标价**的那篇；一家只有一篇时也算。样本数不足
+ * `minAnalystCount` 时降级为 `thin`，调用方不得把单家目标价当成「机构共识」。
+ *
+ * 目标价与现价相差超过 [minRatio, maxRatio] 倍的记录会被丢掉：典型来源是
+ * A/H 两地报告混用（港币目标价套到 A 股）或单位错误，留着会把中位数带偏。
+ * @param {ReadonlyArray<object>} reports - 研报：org / date / target / source。
+ * @param {number} price - 现价，用于换算空间比例并剔除异常样本。
+ * @param {string} todayIso - 今天，YYYY-MM-DD。
+ * @param {object} [options] - maxAgeDays / minRatio / maxRatio / minAnalystCount。
+ * @returns {object} 目标价汇总；没有可用样本时 status 为 `none`。
+ */
+export function summarizeTargets(reports, price, todayIso, options = {}) {
+  const maxAgeDays = num(options.maxAgeDays) ?? 365
+  const minRatio = num(options.minRatio) ?? 0.4
+  const maxRatio = num(options.maxRatio) ?? 2.5
+  const minAnalystCount = num(options.minAnalystCount) ?? 2
+  const priced = Number.isFinite(price) && price > 0
+
+  const usable = []
+  for (const report of Array.isArray(reports) ? reports : []) {
+    if (report === null || report === undefined) continue
+    const target = num(report.target)
+    const org = String(report.org ?? '').trim()
+    const date = String(report.date ?? '').slice(0, 10)
+    if (target === null || target <= 0 || org.length === 0) continue
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+    const age = daysBetween(date, todayIso)
+    // 偶尔有比今天晚一两天的发布日（时区/预发布），不算过期；差一个月以上就是脏数据。
+    if (age === null || age > maxAgeDays || age < -30) continue
+    if (priced && (target < price * minRatio || target > price * maxRatio)) continue
+    usable.push({ org, date, target, source: report.source ?? null })
+  }
+
+  const byOrg = new Map()
+  for (const report of usable) {
+    const previous = byOrg.get(report.org)
+    if (previous === undefined || report.date > previous.date) byOrg.set(report.org, report)
+  }
+  const sample = [...byOrg.values()].sort((a, b) => b.date.localeCompare(a.date))
+  if (sample.length === 0) {
+    return { status: 'none', orgCount: 0, median: null, min: null, max: null, latest: null, ratio: null, premiumPct: null, sample: [] }
+  }
+
+  const values = sample.map(item => item.target).sort((a, b) => a - b)
+  const median = round2(medianOf(values))
+  const ratio = priced ? round4(price / median) : null
+  return {
+    status: sample.length >= minAnalystCount ? 'ok' : 'thin',
+    orgCount: sample.length,
+    median,
+    min: round2(values[0]),
+    max: round2(values[values.length - 1]),
+    latest: sample[0],
+    ratio,
+    premiumPct: priced ? round2(((median - price) / price) * 100) : null,
+    sample,
+  }
+}
+
+/**
  * 按行业汇总权重，降序返回，供组合集中度检查。
  * @param {ReadonlyArray<object>} rows - 已经算过 weightPct 与 sector 的标的。
  * @returns {Array<{name: string, weightPct: number}>} 各行业权重（%）。
@@ -320,8 +383,11 @@ export function attachFlags(row, settings, todayIso) {
   if (repair) flags.push('价值修复类，按退出条件判断')
   if (row.pct !== null && row.pct !== undefined && row.pct <= -4) flags.push(`今日大跌 ${row.pct.toFixed(2)}%`)
   if (row.pct !== null && row.pct !== undefined && row.pct >= 4) flags.push(`今日大涨 +${row.pct.toFixed(2)}%`)
-  if (row.performance?.netProfitYoY !== null && row.performance?.netProfitYoY !== undefined && row.performance.netProfitYoY <= -10) {
-    flags.push(`净利同比 ${row.performance.netProfitYoY.toFixed(1)}%`)
+  attachEarningsFlag(row)
+  // 破净是「价格已经在历史低位」的客观证据，也是周期底部的加分项（framework 第 5 节）：
+  // 它不构成买入理由，但能说明「净利下滑 + 高 PB」和「净利下滑 + 破净」不是一回事。
+  if (row.pb !== null && row.pb !== undefined && Number.isFinite(row.pb) && row.pb > 0 && row.pb < 1) {
+    flags.push(`破净 PB ${row.pb.toFixed(2)}`)
   }
   if (row.dividend?.payoutPct !== null && row.dividend?.payoutPct !== undefined && row.dividend.payoutPct >= 90) {
     flags.push(`派息率 ${row.dividend.payoutPct.toFixed(0)}%`)
@@ -348,6 +414,71 @@ export function attachFlags(row, settings, todayIso) {
     const days = daysBetween(todayIso, row.dividend.nextPlan.exDate)
     if (days !== null && days >= 0 && days <= 7) flags.push(`${days} 天后除息`)
   }
+  attachExposureFlags(row, settings)
+}
+
+/**
+ * 财报提醒：归母净利同比只在「不是一次性损益主导」时才算经营信号。
+ *
+ * A 股不少一过性事项（补缴以前年度税款、滞纳金、资产减值、处置收益）会把归母
+ * 单季数字打到极端值，这时拿归母同比去否定一家周期底部的公司是误判。扣非只能
+ * 剔除准则列举的非经常性项目，补缴税款本体仍留在扣非里，所以这个比例是下限。
+ * `Math.abs(oneOffPct) >= 30` 时标 `row.oneOffDriven`，交给上层去读公告正文。
+ * @param {object} row - 含 performance（netProfitYoY / oneOffPct）的标的。
+ * @returns {void}
+ */
+export function attachEarningsFlag(row) {
+  const flags = row.flags
+  const yoy = row.performance?.netProfitYoY ?? null
+  const oneOff = row.performance?.oneOffPct ?? null
+  const driven = oneOff !== null && Number.isFinite(oneOff) && Math.abs(oneOff) >= 30
+  row.oneOffDriven = driven
+  if (yoy === null || yoy === undefined || yoy > -10) return
+  if (driven) {
+    flags.push(`净利同比 ${yoy.toFixed(1)}%，非经常性损益占归母 ${Math.abs(oneOff).toFixed(0)}%（不能只看归母）`)
+  } else {
+    flags.push(`净利同比 ${yoy.toFixed(1)}%`)
+  }
+}
+
+/**
+ * 止盈提醒：只比「浮盈」和「机构目标价」，不看技术面、不预测点位。
+ *
+ * 两条独立的提醒线，命中任一条就把标的列进「止盈复核」：
+ * 1. 浮盈 ≥ `takeProfitPct`（默认 30%）——仓位已经赚够，用户自己决定是否落袋；
+ * 2. 现价 ≥ 机构目标价中位 × `nearTargetRatio`（默认 0.95）——价格已经进入
+ *    卖方给的合理区间上沿。
+ * 机构样本不足 `minAnalystCount` 家时，第二条不成立，只按浮盈提醒，并写明
+ * 「样本不足」，避免拿一家券商的目标价当共识。
+ * @param {object} row - 已算好 pnlPct / analyst / weightPct 的标的。
+ * @param {object} settings - config.json 的阈值。
+ * @returns {void}
+ */
+export function attachExposureFlags(row, settings) {
+  const flags = row.flags
+  const gain = row.pnlPct ?? null
+  const takeProfitPct = num(settings.takeProfitPct) ?? 30
+  const nearRatio = num(settings.nearTargetRatio) ?? 0.95
+  const analyst = row.analyst ?? null
+
+  if (gain !== null && gain >= takeProfitPct) {
+    row.gainHigh = true
+    flags.push(`浮盈 +${gain.toFixed(1)}%，已达 ${takeProfitPct}% 止盈提醒线`)
+  }
+
+  if (analyst !== null && analyst.status === 'ok'
+    && analyst.ratio !== null && analyst.ratio !== undefined) {
+    const reached = analyst.ratio >= nearRatio
+    if (reached) {
+      row.sellZone = true
+      const where = analyst.ratio >= 1
+        ? `现价已高于机构目标价中位 ${analyst.median}`
+        : `现价 ${Math.round(analyst.ratio * 100)}% 到机构目标价中位 ${analyst.median}`
+      flags.push(`${where}（${analyst.orgCount} 家，区间 ${analyst.min}–${analyst.max}）`)
+    }
+  } else if (gain !== null && gain >= takeProfitPct) {
+    flags.push('机构目标价样本不足，止盈只看浮盈')
+  }
 }
 
 /**
@@ -370,6 +501,11 @@ function num(value) {
   if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function medianOf(sorted) {
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2
 }
 
 function round2(value) {

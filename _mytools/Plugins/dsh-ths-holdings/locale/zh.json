@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "持仓盈亏",
-    "description": "DSH 持仓盈亏数据源与持仓管理页（同花顺投资账本 / 导出持仓 + 腾讯公开行情）。"
+    "description": "DSH 持仓盈亏数据源与持仓管理页（同花顺投资账本 / 导出持仓 + 腾讯公开行情）。",
+    "detail": "DETAIL.zh.md"
   }
 }

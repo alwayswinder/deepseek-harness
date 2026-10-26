@@ -66,6 +66,8 @@
     "assets/**/*.png",
     "README.md",
     "README.zh.md",
+    "DETAIL.md",
+    "DETAIL.zh.md",
     "LICENSE"
   ]
 }

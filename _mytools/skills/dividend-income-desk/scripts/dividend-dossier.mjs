@@ -45,7 +45,7 @@ const DEFAULT_CONFIG = {
   maxIndustryWeightPct: 35,
   cashReservePct: 10,
   takeProfitPct: 30,
-  nearTargetRatio: 0.95,
+  nearTargetRatio: 0.85,
   minAnalystCount: 2,
   overrides: {},
   repairCodes: [],
@@ -730,7 +730,7 @@ function renderMarkdown(report) {
   lines.push('')
 
   const review = report.rows.filter(row => row.sellZone === true || row.gainHigh === true)
-  lines.push('## 止盈复核')
+  lines.push('## 止盈提醒')
   lines.push('')
   if (review.length === 0) {
     lines.push('- 本轮没有标的触及浮盈提醒线或机构目标价，无需止盈操作。')
@@ -739,9 +739,14 @@ function renderMarkdown(report) {
       const reasons = []
       if (row.gainHigh === true) reasons.push(`浮盈 ${pctText(row.pnlPct)}（线 ${report.config.takeProfitPct}%）`)
       if (row.sellZone === true) {
-        reasons.push(`现价 ${numText(row.price)} 为机构目标价中位 ${numText(row.analyst.median)} 的 ${Math.round(row.analyst.ratio * 100)}%（${row.analyst.orgCount} 家）`)
+        const gap = row.analyst.median - row.price
+        const gapPct = gap / row.price * 100
+        const gapText = gap >= 0
+          ? `还差 ${gap.toFixed(2)} 元（需涨 ${gapPct.toFixed(1)}%）`
+          : `已超 ${Math.abs(gap).toFixed(2)} 元（${Math.abs(gapPct).toFixed(1)}%）`
+        reasons.push(`现价 ${numText(row.price)} 为机构目标价中位 ${numText(row.analyst.median)} 的 ${Math.round(row.analyst.ratio * 100)}%（${row.analyst.orgCount} 家），${gapText}`)
       }
-      lines.push(`- **${row.code} ${row.name}**：${reasons.join('；')}；持有 ${fmtQty(row.qty)} 股，市值 ¥${fmt(row.value)}`)
+      lines.push(`- **${row.code} ${row.name}**：${reasons.join('；')}；持仓市值 ¥${fmt(row.value)}`)
     }
   }
   lines.push('')

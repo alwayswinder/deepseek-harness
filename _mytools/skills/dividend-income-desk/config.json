@@ -6,8 +6,43 @@
   "maxIndustryWeightPct": 35,
   "cashReservePct": 10,
   "takeProfitPct": 30,
-  "nearTargetRatio": 0.95,
+  "nearTargetRatio": 0.85,
   "minAnalystCount": 2,
+  "riskReview": {
+    "dividendCutPct": 30,
+    "deductProfitYoYPct": -20,
+    "consecutivePeriods": 2,
+    "penaltyPctOfProfit": 10,
+    "volumeDeclineQuarters": 3,
+    "accelerationMinPct": 5,
+    "lowCostGainPct": -10,
+    "pricedInPercentile": 30,
+    "relativeStrengthMinPct": 10,
+    "minPeerCount": 3,
+    "peers": {
+      "600019": ["000898", "000932", "000825", "600282"],
+      "600585": ["000877", "000401", "600801"],
+      "601668": ["601390", "601186", "601800", "601669"],
+      "601006": ["601088", "601333", "600125"],
+      "000895": ["002216"],
+      "002027": ["300058", "002400"]
+    }
+  },
+  "rating": {
+    "addMinScore": 75,
+    "holdMinScore": 60,
+    "watchMinScore": 45,
+    "reduceMinScore": 30,
+    "sellBufferGainPct": -15,
+    "governanceCodes": ["600598"]
+  },
+  "cycleReview": {
+    "pbPercentileMax": 20,
+    "peerLossPctMin": 50,
+    "minSignals": 3,
+    "maxTranchePct": 33,
+    "structuralCodes": ["601006", "002027"]
+  },
   "overrides": {},
   "repairCodes": ["601888", "513330"]
 }

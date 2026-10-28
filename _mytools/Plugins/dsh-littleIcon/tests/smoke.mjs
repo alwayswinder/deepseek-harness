@@ -1121,6 +1121,22 @@ if (process.platform === 'win32') {
   assert.match(petSource, /Add-PetMenuItem \$menu\.Items \$SCRIPT:Labels\.Music 'music'/,
     'the music submenu hangs off the pet menu')
   assert.match(petSource, /case "music":/, 'the music submenu needs its own icon, like every other entry')
+  // The listening mode is a surface of the page, not a window of this process:
+  // the menu only names it after bringing DSH forward, and the bars it draws are
+  // driven by the level this process alone can measure.
+  assert.match(petSource, /Add-MusicItem \$SCRIPT:MusicMenu \$SCRIPT:Labels\.MusicStage 'stage'/,
+    'the mode is one row of the music submenu')
+  assert.match(petSource, /Send-MenuCommand 'listening-mode'/, 'the entry asks the page for the mode')
+  assert.equal(petSource.includes('Start-ListeningMode'), false,
+    'the mode must not be a window of this process any more')
+  assert.match(petSource, /case "stage":/, 'the row needs an icon of its own')
+  assert.match(petSource, /function Start-MusicMeter/, 'the pet measures its own playback level')
+  assert.match(petSource, /function Stop-MusicMeter/, 'and stops when the page closes the mode')
+  assert.match(petSource, /'meter-on' \{ Start-MusicMeter \}/, 'the page asks for the meter with the mode')
+  assert.match(petSource, /'meter-off' \{ Stop-MusicMeter \}/, 'and stops it with the mode')
+  assert.match(petSource, /OwnPeak/, 'the level is this process own audio session')
+  assert.match(petSource, /function Format-ListeningTrack/, 'a playlist entry is reduced to a song and an artist')
+  assert.match(petSource, /music-level\.json/, 'the reading is published beside the state file')
   // A capture lands beside the state file, in the harness home rather than the
   // repository, and its name is what tells two captures in one second apart.
   const shotFile = /shot-file: (.*)/.exec(selfTest.stdout)
@@ -1933,6 +1949,21 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
 
 // ---- browser half -----------------------------------------------------------
 
+// The two Host routes the listening mode needs: the picture, which the page can
+// only get from here, and the level, which the pet can only publish through here.
+// Both are named in one place in the Host and again in the page.
+const hostSource = readFileSync(join(root, 'index.js'), 'utf8')
+const clientSource = readFileSync(join(root, 'client.js'), 'utf8')
+assert.match(hostSource, /const WALLPAPER_PATH = '\/api\/little-icon\/wallpaper'/u,
+  'the Host must serve the wallpaper the mode draws')
+assert.match(hostSource, /const LEVEL_PATH = '\/api\/little-icon\/level'/u,
+  'and the stream the bars follow')
+assert.match(hostSource, /'listening-mode'/u, 'and relay the menu entry that opens it')
+assert.match(clientSource, /WALLPAPER_PATH = '\/api\/little-icon\/wallpaper'/u,
+  'the page must read the wallpaper from that route')
+assert.match(clientSource, /LEVEL_PATH = '\/api\/little-icon\/level'/u,
+  'and the level from that stream')
+
 /** Fake `window.__ModuleLoader__` plus the browser surface the activity ping uses. */
 let loadedRecord = null
 const windowListeners = new Map()
@@ -2082,10 +2113,12 @@ clientPlugin.apply(clientCtx)
 // The plugin registers the settings card and, once the right Sidebar's registry
 // is there, the Git page's body; the Git type itself is registered on that
 // registry rather than through a slot.
-assert.equal(registrations.length, 2, 'the browser half must register the card and the Git body')
+assert.equal(registrations.length, 3, 'the browser half must register the card, the Git body, and the listening overlay')
 const [registration] = registrations.filter(entry => entry.options.name === 'plugins.bundle.config')
 const [gitBody] = registrations.filter(entry => entry.options.name === 'sidebar.right.pane.tab')
-assert.ok(registration !== undefined && gitBody !== undefined, 'both registrations must be present')
+const [overlay] = registrations.filter(entry => entry.options.name === 'shell.overlay')
+assert.ok(registration !== undefined && gitBody !== undefined && overlay !== undefined,
+  'all three registrations must be present')
 // The card belongs on the bundle's own page: the Plugins list is where a person
 // looks, and the row page behind it is one click too deep.
 assert.equal(registration.options.name, 'plugins.bundle.config')
@@ -2098,6 +2131,14 @@ assert.equal(documentListeners.has('visibilitychange'), true)
 assert.deepEqual(pings[0], { url: ACTIVITY_PATH, method: 'POST' }, 'the page reports activity when it loads')
 windowListeners.get('pointermove')()
 assert.equal(pings.length, 1, 'activity pings must be throttled')
+
+// The listening mode is this page's own surface, registered where the aquarium
+// and the fish tank put theirs: it covers the window, not the desktop. The pet's
+// entry opens it through the command stream, and what it draws - the wallpaper,
+// the ring, the words - is all page content.
+assert.equal(overlay.options.locale, 'little-icon', 'the overlay reads this plugin own dictionary')
+const closedTree = overlay.component({ t: (key) => key })
+assert.equal(closedTree, null, 'the mode stays closed until the menu asks for it')
 
 // The pet's menu is drawn by another process, so its commands arrive here on a
 // Host-held event stream and this half performs them: "chat" opens the DeepSeek
@@ -2158,6 +2199,19 @@ try {
   clientServices.pluginNavigation = undefined
   commands.onmessage({ data: '{"command":"settings"}' })
   assert.deepEqual(openedBundles, [packageName], 'without the Plugins page nothing may be selected')
+  // The listening mode is this page's own overlay, so the command has nothing to
+  // reach for: it opens the surface registered above and nothing else happens.
+  commands.onmessage({ data: '{"command":"listening-mode"}' })
+  const afterListening = overlay.component({ t: (key) => key })
+  assert.equal(typeof afterListening?.type, 'function',
+    'the listening-mode command must open the overlay it registered')
+  const listeningStage = afterListening.type(afterListening.props)
+  assert.equal(listeningStage.props.className, 'dli-listen', 'the stage covers the window it belongs to')
+  const listeningChildren = (listeningStage.children ?? []).filter(child => child !== null && child !== undefined)
+  assert.equal(listeningChildren.some(child => child.props?.className === 'dli-listen-canvas'), true,
+    'the stage carries the canvas the ring is painted on')
+  assert.equal(listeningStage.children.some(child => child !== null && child.props?.src === '/api/little-icon/wallpaper'),
+    true, 'and the picture it draws comes from the Host')
   // "Aquarium" is the mini-games entry, and the tank belongs to another plugin:
   // the menu names that plugin's service instead of reaching into its overlay, so
   // a profile without it must say so rather than opening a blank screen.

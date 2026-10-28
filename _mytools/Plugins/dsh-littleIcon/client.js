@@ -113,6 +113,15 @@ window.__ModuleLoader__.load({
     const MUSIC_PREFERENCES_PATH = '/api/little-icon/music/preferences'
 
     /**
+     * The two routes the listening mode needs and nothing else does: the picture
+     * this machine's desktop shows, and a stream of the pet's own playback level.
+     * Both are Host routes because the page has neither a filesystem nor a way to
+     * read audio from another process.
+     */
+    const WALLPAPER_PATH = '/api/little-icon/wallpaper'
+    const LEVEL_PATH = '/api/little-icon/level'
+
+    /**
      * How often the card re-reads the library while it is on screen: a download's
      * progress and the pet's playback live on the Host, so the card follows them
      * rather than being told. The request is a local one and the page is not busy.
@@ -419,6 +428,13 @@ window.__ModuleLoader__.load({
       gitCommitLoading: '读取文件列表中…',
       gitCommitFiles: '{count} 个文件',
       gitCommitEmpty: '这次提交没有改动文件。',
+      // 听歌模式：覆盖 DSH 窗口的全屏壁纸，柱子跟着桌宠自己的播放电平跳。
+      listeningPlay: '播放',
+      listeningPause: '暂停',
+      listeningPrev: '上一首',
+      listeningNext: '下一首',
+      listeningEmpty: '还没有正在播放的歌',
+      listeningHint: 'Esc 退出 · 空格 播放/暂停 · ←/→ 切歌 · 双击全屏',
     }
 
     const en = {
@@ -632,6 +648,14 @@ window.__ModuleLoader__.load({
       gitCommitLoading: 'Reading the file list…',
       gitCommitFiles: '{count} files',
       gitCommitEmpty: 'This commit changed no files.',
+      // The listening mode: the DSH window covered by the desktop wallpaper, with
+      // bars that follow the pet's own playback level.
+      listeningPlay: 'Play',
+      listeningPause: 'Pause',
+      listeningPrev: 'Previous',
+      listeningNext: 'Next',
+      listeningEmpty: 'Nothing is playing yet',
+      listeningHint: 'Esc exits · Space play/pause · Left/Right songs · Double-click fullscreen',
     }
 
     /** Insert the card stylesheet once per document. */
@@ -839,6 +863,37 @@ window.__ModuleLoader__.load({
         '.dli-git-diff-del{color:#f85149;background:rgba(248,81,73,.12);}',
         '.dli-git-diff-hunk{color:#58a6ff;}',
         '.dli-git-diff-meta{color:var(--dsw-alias-label-secondary);}',
+        // The listening mode covers this window rather than the desktop: the
+        // wallpaper fills the page, the wash keeps the words readable on a bright
+        // picture, and the ring is a canvas over both.
+        '.dli-listen{position:fixed;inset:0;z-index:1600;overflow:hidden;background:#070b12;',
+        'color:#eaf7ff;font-family:"Microsoft YaHei UI","PingFang SC",system-ui,sans-serif;}',
+        '.dli-listen-image{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;',
+        'opacity:.92;pointer-events:none;user-select:none;}',
+        '.dli-listen-wash{position:absolute;inset:0;pointer-events:none;',
+        'background:linear-gradient(180deg,rgba(4,8,16,.38) 0%,rgba(4,8,16,.72) 55%,rgba(3,6,12,.92) 100%);}',
+        '.dli-listen-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}',
+        '.dli-listen-words{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);',
+        'display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;',
+        'width:min(62vmin,720px);pointer-events:none;}',
+        '.dli-listen-title{font-size:clamp(26px,5.4vmin,64px);font-weight:300;line-height:1.12;',
+        'letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}',
+        '.dli-listen-artist{font-size:clamp(13px,1.8vmin,22px);color:rgba(218,236,246,.82);',
+        'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}',
+        '.dli-listen-track{position:relative;width:min(42vmin,460px);height:2px;margin-top:8px;',
+        'border-radius:1px;background:rgba(255,255,255,.22);overflow:hidden;}',
+        '.dli-listen-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(120,232,255,.9);',
+        'transition:width .25s linear;}',
+        '.dli-listen-clock{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;',
+        'font-size:clamp(11px,1.6vmin,16px);letter-spacing:.1em;color:rgba(214,234,244,.78);}',
+        '.dli-listen-actions{position:absolute;left:50%;bottom:clamp(48px,7vmin,88px);',
+        'transform:translateX(-50%);display:flex;gap:12px;pointer-events:auto;}',
+        '.dli-listen-button{font:inherit;font-size:13px;color:#eaf7ff;cursor:pointer;',
+        'padding:8px 16px;border-radius:999px;background:rgba(255,255,255,.10);',
+        'border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(12px);}',
+        '.dli-listen-button:hover{background:rgba(120,232,255,.22);border-color:rgba(120,232,255,.5);}',
+        '.dli-listen-hint{position:absolute;left:30px;bottom:26px;font-size:12px;letter-spacing:.02em;',
+        'color:rgba(214,232,244,.55);pointer-events:none;}',
       ].join('')
       document.head.appendChild(style)
     }
@@ -2627,6 +2682,347 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dli-git' }, bar, pullNote, sendNote, discardNote(), body())
     }
 
+    // ---- listening mode -----------------------------------------------------
+    //
+    // A surface of this window, not of the desktop: opening it covers the page
+    // while the DSH window behind it is untouched. The picture is this machine's
+    // desktop wallpaper, served by the Host because the page has no filesystem;
+    // the bars follow the pet's own playback level, which arrives on the Host's
+    // level stream because the page cannot read audio from another process.
+
+    /** How many bars one ring holds. */
+    const LISTENING_BARS = 108
+
+    /** The overlay's open state, owned outside React so the pet's menu opens it. */
+    let listeningOpen = false
+    const listeningListeners = new Set()
+
+    /**
+     * Subscribe to the overlay's open state.
+     * @param listener - called after every change.
+     * @returns the unsubscribe function.
+     */
+    function subscribeListening(listener) {
+      listeningListeners.add(listener)
+      return () => { listeningListeners.delete(listener) }
+    }
+
+    /** @returns whether the listening mode is open right now. */
+    function listeningIsOpen() {
+      return listeningOpen
+    }
+
+    /**
+     * Put the mode into one state and wake its subscribers.
+     * @param next - the state the mode should be in.
+     */
+    function setListeningOpen(next) {
+      if (listeningOpen === next) return
+      listeningOpen = next
+      for (const listener of listeningListeners) listener()
+    }
+
+    /**
+     * Ask the pet for one playback command. The audio is in that other process,
+     * so this is the only way this page steers it.
+     * @param action - `play`, `pause`, `next`, or `prev`.
+     */
+    function sendMusicCommand(action) {
+      void fetch(`${MUSIC_COMMAND_PATH}?action=${encodeURIComponent(action)}`, { method: 'POST' })
+        .catch((error) => { console.warn('little-icon: the playback command failed', error) })
+    }
+
+    /**
+     * One clock reading as `mm:ss`.
+     * @param ms - milliseconds, negative or unknown allowed.
+     * @returns the text.
+     */
+    function formatListeningClock(ms) {
+      if (!Number.isFinite(ms) || ms < 0) return '00:00'
+      const total = Math.floor(ms / 1000)
+      return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+    }
+
+    /**
+     * The fixed texture of every bar. A small deterministic generator, so two
+     * opens of the mode draw the same ring rather than a new set of lengths.
+     * @returns one weight per bar, 0.18 to 1.
+     */
+    function listeningTextures() {
+      let seed = 20261028
+      const texture = new Float32Array(LISTENING_BARS)
+      for (let index = 0; index < LISTENING_BARS; index += 1) {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff
+        texture[index] = 0.18 + 0.82 * (seed / 0x7fffffff)
+      }
+      return texture
+    }
+
+    /**
+     * The full-screen mode: the wallpaper, the words, the ring, and the transport.
+     * @param props - the locale binding.
+     * @returns the stage element.
+     */
+    function ListeningStage(props) {
+      const t = props.t
+      const canvasRef = React.useRef(null)
+      const levelRef = React.useRef(0)
+      const lastFrameRef = React.useRef(null)
+      const startedRef = React.useRef(false)
+      const [frame, setFrame] = React.useState(null)
+      const [wallpaper, setWallpaper] = React.useState(true)
+      const [clock, setClock] = React.useState({ position: 0, duration: 0 })
+
+      // The level stream. Opening it is also what asks the pet to start
+      // measuring; closing it stops both.
+      React.useEffect(() => {
+        const stream = new EventSource(LEVEL_PATH)
+        stream.onmessage = (event) => {
+          let payload
+          try {
+            payload = JSON.parse(event.data)
+          } catch {
+            return
+          }
+          levelRef.current = typeof payload.level === 'number' ? payload.level : 0
+          const next = {
+            playing: payload.playing === true,
+            title: String(payload.title ?? ''),
+            artist: String(payload.artist ?? ''),
+            positionMs: Number(payload.positionMs ?? 0),
+            durationMs: Number(payload.durationMs ?? 0),
+            at: typeof payload.at === 'number' ? payload.at : Date.now(),
+          }
+          lastFrameRef.current = next
+          setFrame(next)
+          // The mode is for listening: opening it while nothing plays starts
+          // the music instead of showing a paused ring.
+          if (!startedRef.current) {
+            startedRef.current = true
+            if (!next.playing) sendMusicCommand('play')
+          }
+        }
+        return () => { stream.close() }
+      }, [])
+
+      // The clock. A frame carries a position and a timestamp, so a playing track
+      // advances between frames without asking anything.
+      React.useEffect(() => {
+        const tick = setInterval(() => {
+          const last = lastFrameRef.current
+          if (last === null) return
+          const elapsed = last.playing ? Date.now() - last.at : 0
+          const position = last.positionMs + elapsed
+          setClock({
+            position: last.durationMs > 0 ? Math.min(last.durationMs, position) : position,
+            duration: last.durationMs,
+          })
+        }, 250)
+        return () => { clearInterval(tick) }
+      }, [])
+
+      // The ring: one canvas painted at the display's own rate, with the same
+      // smoothing the pet's desktop surface used before the mode moved here.
+      React.useEffect(() => {
+        const canvas = canvasRef.current
+        if (canvas === null) return undefined
+        const context = canvas.getContext('2d')
+        if (context === null) return undefined
+        const texture = listeningTextures()
+        const bars = new Float32Array(LISTENING_BARS)
+        let energy = 0
+        let ceiling = 0.05
+        let clockAt = 0
+        let lastAt = 0
+        let stopped = false
+
+        const paint = (time) => {
+          if (stopped) return
+          requestAnimationFrame(paint)
+          if (lastAt === 0) lastAt = time
+          const dt = Math.min(0.1, (time - lastAt) / 1000)
+          lastAt = time
+          clockAt += dt
+
+          // The session meter reports a linear peak that can pass 1, so the
+          // softening is a square root without a clamp: the lulls keep their
+          // distance from the peaks, and the ceiling below turns whatever range
+          // this track has into the full height of the ring.
+          const peak = Math.max(0, levelRef.current)
+          const value = Math.sqrt(peak)
+          if (value > ceiling) ceiling = value
+          else ceiling = Math.max(0.02, ceiling - dt * 0.10)
+          const normalized = ceiling > 0.02 ? Math.min(1, value / ceiling) : 0
+          energy += (normalized - energy) * (normalized > energy ? 0.5 : 0.10)
+
+          const width = canvas.clientWidth
+          const height = canvas.clientHeight
+          const dpr = Math.min(2, window.devicePixelRatio || 1)
+          if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+            canvas.width = Math.round(width * dpr)
+            canvas.height = Math.round(height * dpr)
+          }
+          context.setTransform(dpr, 0, 0, dpr, 0, 0)
+          context.clearRect(0, 0, width, height)
+
+          const cx = width / 2
+          const cy = height / 2
+          const reach = Math.min(width, height) / 2
+          const inner = reach * 0.64
+          const span = reach * 0.30
+          const glowRadius = reach * (0.70 + energy * 0.12)
+
+          const glow = context.createRadialGradient(cx, cy, 0, cx, cy, glowRadius)
+          glow.addColorStop(0, `rgba(120, 235, 255, ${0.10 + energy * 0.12})`)
+          glow.addColorStop(1, 'rgba(120, 235, 255, 0)')
+          context.fillStyle = glow
+          context.beginPath()
+          context.arc(cx, cy, glowRadius, 0, Math.PI * 2)
+          context.fill()
+
+          context.strokeStyle = 'rgba(255, 255, 255, 0.10)'
+          context.lineWidth = 1
+          context.beginPath()
+          context.arc(cx, cy, inner - 10, 0, Math.PI * 2)
+          context.stroke()
+
+          context.lineCap = 'round'
+          for (let index = 0; index < LISTENING_BARS; index += 1) {
+            const wave = 0.5 + 0.5 * Math.sin(index * 0.42 - clockAt * 2.8)
+            const target = Math.min(1, energy * (0.12 + 0.88 * texture[index] * (0.22 + 0.78 * wave)))
+            bars[index] += (target - bars[index]) * (target > bars[index] ? 0.55 : 0.16)
+            const angle = -Math.PI / 2 + index * (Math.PI * 2 / LISTENING_BARS)
+            const length = span * (0.06 + bars[index] * 0.94)
+            const cos = Math.cos(angle)
+            const sin = Math.sin(angle)
+            context.strokeStyle = `rgba(98, 225, 255, ${(60 + bars[index] * 180) / 255})`
+            context.lineWidth = 3
+            context.beginPath()
+            context.moveTo(cx + cos * inner, cy + sin * inner)
+            context.lineTo(cx + cos * (inner + length), cy + sin * (inner + length))
+            context.stroke()
+          }
+
+          context.strokeStyle = 'rgba(120, 235, 255, 0.35)'
+          context.lineWidth = 1.2
+          context.beginPath()
+          context.arc(cx, cy, inner - 22, 0, Math.PI * 2)
+          context.stroke()
+        }
+        requestAnimationFrame(paint)
+        return () => { stopped = true }
+      }, [])
+
+      // The keys the mode offers, said at the bottom of the screen.
+      React.useEffect(() => {
+        const onKey = (event) => {
+          if (event.key === 'Escape') {
+            setListeningOpen(false)
+            event.preventDefault()
+            return
+          }
+          if (event.key === ' ') {
+            const last = lastFrameRef.current
+            sendMusicCommand(last !== null && last.playing ? 'pause' : 'play')
+            event.preventDefault()
+            return
+          }
+          if (event.key === 'ArrowLeft') {
+            sendMusicCommand('prev')
+            event.preventDefault()
+            return
+          }
+          if (event.key === 'ArrowRight') {
+            sendMusicCommand('next')
+            event.preventDefault()
+          }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => { window.removeEventListener('keydown', onKey) }
+      }, [])
+
+      // A double click toggles the window fullscreen. The window's caption
+      // buttons belong to the window and are painted over the page, so fullscreen
+      // is the only state that drops them; the mode never takes that on its own.
+      React.useEffect(() => {
+        const fullscreen = () => document.fullscreenElement !== null && document.fullscreenElement !== undefined
+        const toggle = (event) => {
+          if (fullscreen()) {
+            if (typeof document.exitFullscreen === 'function') {
+              try {
+                Promise.resolve(document.exitFullscreen()).catch(() => {})
+              } catch {
+                // Nothing to leave.
+              }
+            }
+          } else if (typeof document.documentElement?.requestFullscreen === 'function') {
+            try {
+              Promise.resolve(document.documentElement.requestFullscreen()).catch(() => {})
+            } catch {
+              // A window that will not go fullscreen still shows the mode.
+            }
+          }
+          event.preventDefault()
+        }
+        window.addEventListener('dblclick', toggle)
+        return () => {
+          window.removeEventListener('dblclick', toggle)
+          if (fullscreen() && typeof document.exitFullscreen === 'function') {
+            try {
+              Promise.resolve(document.exitFullscreen()).catch(() => {})
+            } catch {
+              // Nothing to leave.
+            }
+          }
+        }
+      }, [])
+
+      const title = frame === null ? '' : frame.title
+      const artist = frame === null ? '' : frame.artist
+      const playing = frame !== null && frame.playing
+      const ratio = clock.duration > 0 ? Math.min(1, Math.max(0, clock.position / clock.duration)) : 0
+      return h('div', { className: 'dli-listen' },
+        wallpaper
+          ? h('img', {
+            className: 'dli-listen-image',
+            src: WALLPAPER_PATH,
+            alt: '',
+            onError: () => { setWallpaper(false) },
+          })
+          : null,
+        h('div', { className: 'dli-listen-wash' }),
+        h('canvas', { className: 'dli-listen-canvas', ref: canvasRef }),
+        h('div', { className: 'dli-listen-words' },
+          h('div', { className: 'dli-listen-title' }, title === '' ? t('listeningEmpty') : title),
+          h('div', { className: 'dli-listen-artist' }, artist),
+          h('div', { className: 'dli-listen-track' },
+            h('div', { className: 'dli-listen-fill', style: { width: `${(ratio * 100).toFixed(2)}%` } })),
+          h('div', { className: 'dli-listen-clock' },
+            `${formatListeningClock(clock.position)} / ${formatListeningClock(clock.duration)}`),
+        ),
+        h('div', { className: 'dli-listen-actions' },
+          h('button', { type: 'button', className: 'dli-listen-button', onClick: () => { sendMusicCommand('prev') } },
+            t('listeningPrev')),
+          h('button', {
+            type: 'button',
+            className: 'dli-listen-button',
+            onClick: () => { sendMusicCommand(playing ? 'pause' : 'play') },
+          }, playing ? t('listeningPause') : t('listeningPlay')),
+          h('button', { type: 'button', className: 'dli-listen-button', onClick: () => { sendMusicCommand('next') } },
+            t('listeningNext')),
+        ),
+        h('div', { className: 'dli-listen-hint' }, t('listeningHint')),
+      )
+    }
+
+    /** The shell.overlay entry: the stage, mounted only while the mode is open. */
+    function ListeningOverlay(props) {
+      const [open, setOpen] = React.useState(listeningIsOpen())
+      React.useEffect(() => subscribeListening(() => { setOpen(listeningIsOpen()) }), [])
+      if (!open) return null
+      return h(ListeningStage, { t: props.t })
+    }
+
     // ---- plugin -------------------------------------------------------------
 
     const plugin = {
@@ -2779,6 +3175,11 @@ window.__ModuleLoader__.load({
               return
             }
             navigation.openBundle(PACKAGE_NAME)
+          },
+          'listening-mode': () => {
+            // The mode is this page's own surface, so the entry only opens it: the
+            // pet has already brought DSH forward, and the page draws the rest.
+            setListeningOpen(true)
           },
           aquarium: () => {
             // The glass aquarium belongs to another plugin and is opened through
@@ -3062,6 +3463,15 @@ window.__ModuleLoader__.load({
           locale: NS,
           inject: () => ({ hooks: { petSettings: store }, write, pickDirectory }),
         }, PetSettings)), 'little-icon: pet settings card')
+
+        // The listening mode covers this window, not the desktop: the pet's menu
+        // opens it through a command, and everything it shows is drawn here.
+        ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+          name: 'shell.overlay',
+          id: 'little-icon-listening',
+          order: 330,
+          locale: NS,
+        }, ListeningOverlay)), 'little-icon: listening overlay')
       },
     }
 

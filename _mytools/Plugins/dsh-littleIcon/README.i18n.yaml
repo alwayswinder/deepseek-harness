@@ -3,29 +3,29 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write _mytools/Plugins/dsh-littleIcon/README.md
 /:
-  en: 0cba545d25b2f979
+  en: dab7b7f9b1220c97
   zh: 41983995b17925ff
 /local-dsh-little-icon:
   en: 8a67acbbab28feab
   zh: d5e62b617ac8b9a1
 /local-dsh-little-icon/summary:
-  en: e67c4db3909b1ca7
-  zh: 345859bc8051bb23
+  en: 8a2cc0a725a51e72
+  zh: 4112b1efe2aa8ccf
 /local-dsh-little-icon/table-of-contents:
   en: 5bf183682720b33f
   zh: eb4a554325513e9e
 /local-dsh-little-icon/use-this-package:
-  en: 0e6426c923a9fd73
-  zh: 481cfebcb6fbabc6
+  en: 2f899d558858f747
+  zh: 85ee4aba6194ada0
 /local-dsh-little-icon/understand-the-implementation:
-  en: 3f1f163518458d64
-  zh: eb36ad4bab2f7f7f
+  en: 350dd3c2e5cbc8e4
+  zh: dbb20fe4f6380665
 /local-dsh-little-icon/model-experience:
   en: 662496e2fd2200d2
   zh: 9f7b87f7435ed11e
 /local-dsh-little-icon/known-limitations-and-deferred-work:
-  en: e4ddd3f48cb9461d
-  zh: 0c5a26d115c08ce7
+  en: 1c388d5fe8ee537f
+  zh: 88114a23f6e6fe3e
 /local-dsh-little-icon/known-limitations-and-deferred-work/dev-note:
-  en: cde513aade0b3752
-  zh: 5c04ce23e47c44e8
+  en: 3dc3b52c2a6f2279
+  zh: 791b4461739a2211

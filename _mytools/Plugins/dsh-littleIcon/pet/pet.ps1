@@ -415,6 +415,14 @@ namespace DshPet
                         graphics.DrawLine(pen, P(bounds, 15.4f, 9.6f), P(bounds, 15.4f, 13.6f));
                         graphics.DrawEllipse(pen, R(bounds, 10.2f, 13.6f, 5.2f, 4.4f));
                         break;
+                    case "stage":
+                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.4f, 2.2f, 17.2f, 12.4f)));
+                        graphics.DrawLine(pen, P(bounds, 10f, 14.6f), P(bounds, 10f, 17.4f));
+                        graphics.DrawLine(pen, P(bounds, 6.4f, 17.4f), P(bounds, 13.6f, 17.4f));
+                        graphics.DrawLine(pen, P(bounds, 6.2f, 6.2f), P(bounds, 6.2f, 10.8f));
+                        graphics.DrawLine(pen, P(bounds, 10f, 4.6f), P(bounds, 10f, 12.4f));
+                        graphics.DrawLine(pen, P(bounds, 13.8f, 6.8f), P(bounds, 13.8f, 10.2f));
+                        break;
                     case "play":
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 6f, 3.4f), P(bounds, 16f, 10f), P(bounds, 6f, 16.6f), P(bounds, 6f, 3.4f) });
                         break;
@@ -574,6 +582,8 @@ function Get-Labels {
         MusicAddedMany        = 'Added {0} songs; use Download missing to fetch them'
         MusicDuplicate        = 'That link is already in the list.'
         MusicAddFailed        = 'Could not add it ({0})'
+        MusicStage            = 'Listening mode'
+        MusicStageFailed      = 'The listening mode could not be opened.'
     }
     $path = Join-Path $SCRIPT:ScriptDir 'labels.json'
     if (-not (Test-Path -LiteralPath $path)) { return $fallback }
@@ -1680,6 +1690,26 @@ namespace DshPet
             return loudest;
         }
 
+        // What this process itself is playing: the peak of the sessions the music
+        // owns, which is what the page's listening mode draws its bars from. The
+        // same reading the probe prints, without the other applications. The
+        // value is not clamped: a session can report above 1, and the page smooths
+        // against the loudest recent sample rather than against an absolute scale.
+        public static float OwnPeak(int ownPid)
+        {
+            Session[] sessions = Read(ownPid);
+            if (sessions == null) return -1f;
+            float loudest = 0f;
+            for (int index = 0; index < sessions.Length; index++)
+            {
+                Session session = sessions[index];
+                if (session.ProcessId != ownPid) continue;
+                if (session.State == AudioSessionState.Expired) continue;
+                if (session.Peak > loudest) loudest = session.Peak;
+            }
+            return loudest < 0f ? 0f : loudest;
+        }
+
         public static string Describe(int ownPid)
         {
             Session[] sessions = Read(ownPid);
@@ -2245,6 +2275,10 @@ function Apply-MusicCommand($data) {
         'toggle' { Toggle-MusicPlay }
         'next' { Step-MusicTrack 1 $true }
         'prev' { Step-MusicTrack -1 $true }
+        # The page's listening mode is what wants the level, so it is what asks
+        # for the meter: the two turn on with the mode and off with it.
+        'meter-on' { Start-MusicMeter }
+        'meter-off' { Stop-MusicMeter }
         default { }
     }
     Save-MusicPlayerState
@@ -2404,6 +2438,19 @@ function Update-MusicMenu {
     $syncing = $null -ne $SCRIPT:MusicSync -and [bool]$SCRIPT:MusicSync.running
     $canPlay = $SCRIPT:MusicTracks.Count -gt 0
     if ($canPlay) {
+        # The mode is a surface of the page rather than a window of this process:
+        # the menu only names it, and the page - which owns the DSH window -
+        # draws it. DSH has to be on screen first, because a mode in a hidden
+        # window is a mode nobody sees.
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicStage 'stage' $true {
+            try {
+                Show-DshWindow
+                Send-MenuCommand 'listening-mode'
+            } catch {
+                Write-Log "opening the listening mode failed: $($_.Exception.Message)"
+                try { Show-PetNotice $SCRIPT:Labels.Music $SCRIPT:Labels.MusicStageFailed } catch { }
+            }
+        })
         [void](Add-MusicItem $SCRIPT:MusicMenu ($(if ($SCRIPT:MusicPlaying) { $SCRIPT:Labels.MusicPause } else { $SCRIPT:Labels.MusicPlay })) `
             $(if ($SCRIPT:MusicPlaying) { 'pause' } else { 'play' }) $true {
                 try { Toggle-MusicPlay } catch { Write-Log $_.Exception.Message }
@@ -2465,6 +2512,106 @@ function Update-MusicMenu {
         } catch { Write-Log $_.Exception.Message }
     })
     Set-PetMenuRowWidths $SCRIPT:MusicMenu.DropDown
+}
+
+# ---- listening meter --------------------------------------------------------
+# The page's listening mode draws a ring of bars around the track,
+# and the level behind it has to come from here: the page cannot see another
+# process's audio, and WPF's MediaPlayer exposes no samples. So this half reads
+# its own session on the default output device - the CoreAudio surface the
+# step-aside feature already uses - and publishes the peak with the track and
+# the position in music-level.json, which the host relays to the page while the
+# mode is open. The meter runs only after the page asks for it (`meter-on`) and
+# stops on `meter-off`, so a pet nobody is looking at writes nothing.
+
+$SCRIPT:MeterWanted = $false
+$SCRIPT:MeterTimer = $null
+
+function Get-MusicLevelFile {
+    return (Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'music-level.json')
+}
+
+# The track's own name and artist, out of the title the host publishes: a
+# playlist entry is named "<playlist> - <number>. <song> - <artist>", and all
+# three parts on one line is not a title to draw across a wall.
+function Format-ListeningTrack([string]$Title) {
+    $text = ([string]$Title).Trim()
+    if ($text -eq '') { return [pscustomobject]@{ Title = ''; Artist = '' } }
+    $cut = $text.IndexOf(' - ', [System.StringComparison]::Ordinal)
+    if ($cut -gt 0) { $text = $text.Substring($cut + 3).Trim() }
+    $text = [regex]::Replace($text, '^\d+\.\s*', '')
+    $parts = [regex]::Split($text, '\s+-\s+', 2)
+    $song = $parts[0].Trim()
+    $artist = if ($parts.Length -gt 1) { $parts[1].Trim() } else { '' }
+    return [pscustomobject]@{ Title = $song; Artist = $artist }
+}
+
+function Get-MusicPosition {
+    $position = 0.0
+    $duration = 0.0
+    if ($null -ne $SCRIPT:Music) {
+        try { $position = [double]$SCRIPT:Music.Position.TotalMilliseconds } catch { }
+        try {
+            if ($SCRIPT:Music.NaturalDuration.HasTimeSpan) { $duration = [double]$SCRIPT:Music.NaturalDuration.TimeSpan.TotalMilliseconds }
+        } catch { }
+    }
+    return [pscustomobject]@{ Position = $position; Duration = $duration }
+}
+
+function Write-MusicLevel([double]$Peak) {
+    $state = Get-MusicPosition
+    $parts = Format-ListeningTrack (Get-MusicTitle)
+    Write-Json (Get-MusicLevelFile) ([ordered]@{
+        version    = 1
+        level      = [double][Math]::Round([Math]::Max(0, $Peak), 4)
+        playing    = [bool]$SCRIPT:MusicPlaying
+        id         = [string]$SCRIPT:MusicCurrentId
+        title      = [string]$parts.Title
+        artist     = [string]$parts.Artist
+        positionMs = [long]$state.Position
+        durationMs = [long]$state.Duration
+        at         = [long][DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    })
+}
+
+# One sample: the level of this process's own audio session, at the same moment
+# as the track and the position, so the page never has to align two clocks.
+function Update-MusicMeter {
+    if (-not $SCRIPT:MeterWanted) { return }
+    $peak = 0.0
+    if (Initialize-AudioSessions) {
+        try { $peak = [double][DshPet.AudioSessions]::OwnPeak($PID) } catch {
+            Write-Log "reading the playback level failed: $($_.Exception.Message)"
+        }
+    }
+    if ($peak -lt 0 -or [double]::IsNaN($peak)) { $peak = 0 }
+    Write-MusicLevel $peak
+}
+
+function Start-MusicMeter {
+    # Started by the page when its listening mode opens; a machine without the
+    # session API simply has no bars, and the mode still draws the track.
+    if ($SCRIPT:MeterWanted) { return }
+    if (-not (Initialize-AudioSessions)) { return }
+    $SCRIPT:MeterWanted = $true
+    if ($null -eq $SCRIPT:MeterTimer) {
+        $SCRIPT:MeterTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $SCRIPT:MeterTimer.Interval = [TimeSpan]::FromMilliseconds(100)
+        $SCRIPT:MeterTimer.Add_Tick({
+            try { Update-MusicMeter } catch { Write-Log "the playback meter failed: $($_.Exception.Message)" }
+        })
+    }
+    if (-not $SCRIPT:MeterTimer.IsEnabled) { $SCRIPT:MeterTimer.Start() }
+    Update-MusicMeter
+}
+
+function Stop-MusicMeter {
+    # The page closed its mode: the timer stops and the file is taken away, so a
+    # host that asked for nothing finds no reading rather than a stale one.
+    if (-not $SCRIPT:MeterWanted) { return }
+    $SCRIPT:MeterWanted = $false
+    if ($null -ne $SCRIPT:MeterTimer -and $SCRIPT:MeterTimer.IsEnabled) { $SCRIPT:MeterTimer.Stop() }
+    try { Remove-Item -LiteralPath (Get-MusicLevelFile) -Force -ErrorAction SilentlyContinue } catch { }
 }
 
 # ---- quick access -----------------------------------------------------------

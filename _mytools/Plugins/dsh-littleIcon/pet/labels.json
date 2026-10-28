@@ -72,5 +72,7 @@
   "MusicAdded": "已添加：{0}",
   "MusicAddedMany": "已加入 {0} 首；用「补全缺失歌曲」开始下载",
   "MusicDuplicate": "这条链接已经在列表里了。",
-  "MusicAddFailed": "添加失败（{0}）"
+  "MusicAddFailed": "添加失败（{0}）",
+  "MusicStage": "听歌模式",
+  "MusicStageFailed": "听歌模式没能打开。"
 }

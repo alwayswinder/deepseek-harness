@@ -50,7 +50,7 @@
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, extname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 import { MusicLibrary, musicView, isInside, musicEntryId, parseBilibiliRef, playlistOf, playlistOfEntry, resolveMusicDir, resolveMusicLinks } from './music.js'
@@ -161,6 +161,21 @@ const MUSIC_REMOVE_PATH = '/api/little-icon/music/remove'
 const MUSIC_COMMAND_PATH = '/api/little-icon/music/command'
 
 /**
+ * GET: the picture the listening mode draws behind the track - the desktop's own
+ * wallpaper, because the page has no filesystem and a mode that needed a second
+ * choice configured first would be one nobody starts.
+ */
+const WALLPAPER_PATH = '/api/little-icon/wallpaper'
+
+/**
+ * GET: an event stream of the playback level while the listening mode is open.
+ * The page cannot read this machine's audio, so the pet publishes its own
+ * session's peak and this stream relays it; opening the stream is what asks the
+ * pet to start, closing it what asks it to stop.
+ */
+const LEVEL_PATH = '/api/little-icon/level'
+
+/**
  * POST `?volume=`, `?playlist=`, `?shuffle=`, or the stepping-aside choices: this
  * machine's listening preferences.
  */
@@ -174,7 +189,7 @@ const MUSIC_COMMANDS = new Set(['play', 'pause', 'toggle', 'next', 'prev'])
  * here (music sync, the volume) or belongs to a menu entry that no longer exists,
  * so it must not reach a listener that would only warn about it.
  */
-const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space'])
+const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space', 'listening-mode'])
 
 /** Volume a machine that has not chosen one plays at. */
 const MUSIC_VOLUME_DEFAULT = 70
@@ -1699,6 +1714,12 @@ export function apply(ctx, config) {
   const musicFile = join(dataDir, 'music.json')
   /** What the pet is playing; the pet writes it, the settings card reads it. */
   const musicPlayerFile = join(dataDir, 'music-player.json')
+  /**
+   * The pet's own playback level, written only while the page's listening mode is
+   * open: the bars on that page are driven by real audio, and this file is how the
+   * pet's reading of it crosses to the page.
+   */
+  const musicLevelFile = join(dataDir, 'music-level.json')
   const musicWriter = new StateFileWriter(musicFile, 4000, (error) => {
     ctx.logger.warn('little-icon music: could not write %s: %s', musicFile, String(error))
   })
@@ -2854,6 +2875,179 @@ export function apply(ctx, config) {
     }), `little-icon: POST ${MUSIC_COMMAND_PATH}`)
   })
 
+  // ---- listening mode ---------------------------------------------------------
+  //
+  // The mode is a page surface, and the two things it cannot get for itself come
+  // from here. The wallpaper is this machine's desktop picture, which only this
+  // half can read. The bars are driven by the pet's own playback level, which only
+  // that process can measure: it publishes the peak in a small file while the mode
+  // is open, and this stream relays it. Neither is a setting - the mode opens with
+  // nothing to configure first.
+
+  /** Paged connections waiting for a level frame. */
+  const levelStreams = new Set()
+
+  /** Reads the pet's level file while at least one page listens. */
+  let levelTimer
+
+  /** Starts relaying the level, and asks the pet to start measuring it. */
+  const startLevelRelay = () => {
+    if (levelTimer !== undefined) return
+    musicCommand = { action: 'meter-on', at: Date.now() }
+    publishMusic()
+    levelTimer = setInterval(() => {
+      let frame
+      try {
+        frame = JSON.parse(readFileSync(musicLevelFile, 'utf8'))
+      } catch {
+        // The pet has not written a sample yet, or is between two files: the page
+        // keeps the last frame it had rather than being told zero.
+        return
+      }
+      const data = `data: ${JSON.stringify(frame)}\n\n`
+      for (const stream of levelStreams) {
+        if (stream.writableEnded || stream.destroyed) {
+          levelStreams.delete(stream)
+          continue
+        }
+        stream.write(data)
+      }
+    }, 100)
+    levelTimer.unref?.()
+  }
+
+  /** Stops the relay, and tells the pet nobody is reading any more. */
+  const stopLevelRelay = () => {
+    if (levelTimer === undefined) return
+    clearInterval(levelTimer)
+    levelTimer = undefined
+    musicCommand = { action: 'meter-off', at: Date.now() }
+    publishMusic()
+  }
+
+  /** The desktop wallpaper path, kept for a half minute: the mode asks once. */
+  let wallpaperCache = { at: 0, path: '' }
+
+  /** Extensions this half can serve, and the types they are served as. */
+  const WALLPAPER_TYPES = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.bmp': 'image/bmp',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+  }
+
+  /**
+   * The picture on this machine's desktop, or undefined when the desktop is a
+   * plain colour. Read through PowerShell rather than `reg.exe`, because the
+   * value is a path that may hold characters the console's own code page cannot
+   * carry; the command pins its output to UTF-8 so what Node decodes is the path
+   * itself.
+   * @returns a promise of the absolute path of a file that exists, or undefined.
+   */
+  const readDesktopWallpaper = () => new Promise((resolveWallpaper) => {
+    if (Date.now() - wallpaperCache.at < 30_000) {
+      resolveWallpaper(wallpaperCache.path === '' ? undefined : wallpaperCache.path)
+      return
+    }
+    const command = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
+      + " (Get-ItemProperty -LiteralPath 'HKCU:\\Control Panel\\Desktop' -Name Wallpaper -ErrorAction Stop).Wallpaper"
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command],
+      { windowsHide: true, encoding: 'utf8' }, (error, stdout) => {
+        if (error !== null) {
+          wallpaperCache = { at: Date.now(), path: '' }
+          resolveWallpaper(undefined)
+          return
+        }
+        const path = String(stdout).trim()
+        const usable = path !== '' && existsSync(path) ? path : ''
+        wallpaperCache = { at: Date.now(), path: usable }
+        resolveWallpaper(usable === '' ? undefined : usable)
+      })
+  })
+
+  // The wallpaper the listening mode draws: whatever this machine's desktop shows.
+  // A plain-colour desktop answers 404, and the page paints its own gradient.
+  ctx.inject(['webServer'], (webCtx) => {
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: WALLPAPER_PATH,
+      handler: (req, res) => {
+        const connection = ctx.get('connection')
+        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end()
+          return
+        }
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        void readDesktopWallpaper().then((file) => {
+          const type = file === undefined ? '' : (WALLPAPER_TYPES[extname(file).toLowerCase()] ?? '')
+          let data
+          try {
+            data = file === undefined || type === '' ? undefined : readFileSync(file)
+          } catch (error) {
+            ctx.logger.warn('little-icon: could not read the wallpaper %s: %s', file, String(error))
+          }
+          if (data === undefined) {
+            res.writeHead(404)
+            res.end()
+            return
+          }
+          res.writeHead(200, {
+            'content-type': type,
+            'content-length': data.length,
+            'cache-control': 'no-store',
+          })
+          res.end(data)
+        })
+      },
+    }), `little-icon: GET ${WALLPAPER_PATH}`)
+  })
+
+  // The level the mode's bars follow, relayed from the pet. The stream is opened
+  // and closed by the mode itself, which is also what turns the pet's meter on and
+  // off; a page that goes away without closing it is forgotten on the next frame.
+  ctx.inject(['webServer'], (webCtx) => {
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: LEVEL_PATH,
+      handler: (req, res) => {
+        const connection = ctx.get('connection')
+        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+        if (rejection !== undefined) {
+          res.writeHead(rejection)
+          res.end()
+          return
+        }
+        if (req.method !== 'GET') {
+          res.writeHead(405)
+          res.end()
+          return
+        }
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        })
+        res.write(': little-icon playback level\n\n')
+        levelStreams.add(res)
+        startLevelRelay()
+        const forget = () => {
+          levelStreams.delete(res)
+          if (levelStreams.size === 0) stopLevelRelay()
+        }
+        req.on('close', forget)
+        res.on('error', forget)
+      },
+    }), `little-icon: GET ${LEVEL_PATH}`)
+  })
+
   const startPet = () => {
     if (child !== undefined || disposed) return
     if (process.platform !== 'win32') {
@@ -2953,6 +3147,12 @@ export function apply(ctx, config) {
     // no longer there to send anything.
     for (const stream of commandStreams) stream.end()
     commandStreams.clear()
+    if (levelTimer !== undefined) {
+      clearInterval(levelTimer)
+      levelTimer = undefined
+    }
+    for (const stream of levelStreams) stream.end()
+    levelStreams.clear()
   }, 'little-icon: pet lifetime')
 
   publish()

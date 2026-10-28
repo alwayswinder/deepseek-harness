@@ -54,6 +54,7 @@ node --test "tests/*.spec.mjs"                          # 纯计算用例
 | `trimYieldPct` | 2.5 | 现价股息率低于此值不进加仓候选（不代表要卖） |
 | `maxSingleWeightPct` | 15 | 单只权重上限 |
 | `maxIndustryWeightPct` | 35 | 行业权重上限，超过在报告里标 ⚠ |
+| `maxEtfWeightPct` | 40 | ETF/基金 合计权重上限，超过时新增资金优先买个股 |
 | `cashReservePct` | 10 | 计划保留的现金比例 |
 | `takeProfitPct` | 30 | 浮盈达到这个百分比就进止盈提醒 |
 | `nearTargetRatio` | 0.85 | 现价 ÷ 机构目标价中位 达到这个比例就进止盈提醒（≥1 即已超目标价） |

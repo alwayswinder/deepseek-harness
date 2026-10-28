@@ -352,6 +352,18 @@ export function sectorWeights(rows) {
 }
 
 /**
+ * 汇总 ETF/基金的整体权重，供组合上限检查。
+ *
+ * 单只 ETF 另有 maxSingleWeightPct 管着，这里管的是「ETF 一共占多少」：收息
+ * 组合靠 ETF 托底，但配得太多就摊薄了股息率。
+ * @param {ReadonlyArray<object>} rows - 已经算过 weightPct 与 kind 的标的。
+ * @returns {number} ETF/基金 合计权重（%）。
+ */
+export function fundWeight(rows) {
+  return round2(rows.reduce((sum, row) => sum + (row.kind === 'ETF' ? row.weightPct : 0), 0))
+}
+
+/**
  * 算权重并给每只标的打提醒。
  *
  * 权重必须在这里算完，提醒才能读到它：超上限的提醒依赖 weightPct，调用方

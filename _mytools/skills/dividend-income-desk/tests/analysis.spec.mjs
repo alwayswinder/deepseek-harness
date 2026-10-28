@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  attachEarningsFlag, attachExposureFlags, classifyFundDividendPage, finalizeRows, findDividendGaps,
+  attachEarningsFlag, attachExposureFlags, classifyFundDividendPage, finalizeRows, findDividendGaps, fundWeight,
   isDistributionNotice, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend,
   summarizeStockDividends, summarizeTargets,
 } from '../scripts/shared/analysis.mjs'
@@ -124,6 +124,21 @@ describe('sectorWeights', () => {
       { name: '银行Ⅱ', weightPct: 3.5 },
       { name: '未分类', weightPct: 0.5 },
     ])
+  })
+})
+
+describe('fundWeight', () => {
+  it('sums only the ETF/基金 rows, leaving stock weight out', () => {
+    const rows = [
+      { kind: 'ETF', weightPct: 24 },
+      { kind: '股票', weightPct: 40 },
+      { kind: 'ETF', weightPct: 12.5 },
+    ]
+    assert.equal(fundWeight(rows), 36.5)
+  })
+
+  it('returns 0 when the account holds no fund', () => {
+    assert.equal(fundWeight([{ kind: '股票', weightPct: 90 }]), 0)
   })
 })
 

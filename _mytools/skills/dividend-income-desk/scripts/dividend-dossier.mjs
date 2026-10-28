@@ -15,7 +15,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { classifyFundDividendPage, finalizeRows, findDividendGaps, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends, summarizeTargets } from './shared/analysis.mjs'
+import { classifyFundDividendPage, finalizeRows, findDividendGaps, fundWeight, parseDividendNotice, quoteTimeIso, sectorWeights, summarizeFundDividend, summarizeStockDividends, summarizeTargets } from './shared/analysis.mjs'
 import { decodeEntities } from './shared/text.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -43,6 +43,7 @@ const DEFAULT_CONFIG = {
   trimYieldPct: 2.5,
   maxSingleWeightPct: 15,
   maxIndustryWeightPct: 35,
+  maxEtfWeightPct: 40,
   cashReservePct: 10,
   takeProfitPct: 30,
   nearTargetRatio: 0.85,
@@ -90,9 +91,19 @@ if (quotes.latestTime !== null && quotes.latestTime.slice(0, 10) !== todayIso) {
   warnings.push(`行情时间是 ${quotes.latestTime.slice(0, 10)}，不是今天的：本报告按最近一次报价计算`)
 }
 for (const sector of sectors) {
+  // ETF/基金 单列一条上限，未分类 是数据缺口而不是集中度，两者都不套行业上限。
+  if (sector.name === 'ETF/基金' || sector.name === '未分类') continue
   if (sector.weightPct > config.maxIndustryWeightPct) {
     warnings.push(`行业集中：${sector.name} ${sector.weightPct}%（上限 ${config.maxIndustryWeightPct}%）`)
   }
+}
+const unsectorPct = sectors.find(sector => sector.name === '未分类')?.weightPct ?? 0
+if (unsectorPct > 0) {
+  warnings.push(`${unsectorPct}% 的标的没取到行业，行业集中度这项本次不可用`)
+}
+const fundPct = fundWeight(rows)
+if (fundPct > config.maxEtfWeightPct) {
+  warnings.push(`ETF/基金合计 ${fundPct}%（上限 ${config.maxEtfWeightPct}%）：底仓够厚了，新增资金优先买个股`)
 }
 
 const report = {
@@ -117,6 +128,7 @@ const report = {
   },
   warnings,
   sectors,
+  fundPct,
   config,
   rows,
 }
@@ -656,7 +668,7 @@ function renderMarkdown(report) {
     ? '- 可用资金：未设置总资产（插件页 → 持仓管理 → 总资产，或运行 scripts/set-assets.mjs --total <金额>）'
     : `- 账户：总资产 ¥${fmt(report.totals.totalAssets)}，持仓 ¥${fmt(report.totals.value)}，可用资金 ¥${fmt(report.totals.cash)}（${report.totals.cashPct}%）`)
   lines.push(`- 权重口径：${report.totals.weightBase}`)
-  lines.push(`- 决策阈值（config.json）：目标股息率 ${report.config.targetYieldPct}%，加仓下限 ${report.config.minYieldToBuyPct}%，收益率下限 ${report.config.trimYieldPct}%，单只上限 ${report.config.maxSingleWeightPct}%，计划现金 ${report.config.cashReservePct}%，浮盈提醒线 ${report.config.takeProfitPct}%，接近目标价 ${Math.round(report.config.nearTargetRatio * 100)}%（至少 ${report.config.minAnalystCount} 家机构）${report.config.repairCodes.length === 0 ? '' : `；价值修复类（不套股息率阈值）：${report.config.repairCodes.join('、')}`}`)
+  lines.push(`- 决策阈值（config.json）：目标股息率 ${report.config.targetYieldPct}%，加仓下限 ${report.config.minYieldToBuyPct}%，收益率下限 ${report.config.trimYieldPct}%，单只上限 ${report.config.maxSingleWeightPct}%，行业上限 ${report.config.maxIndustryWeightPct}%，ETF 合计上限 ${report.config.maxEtfWeightPct}%，计划现金 ${report.config.cashReservePct}%，浮盈提醒线 ${report.config.takeProfitPct}%，接近目标价 ${Math.round(report.config.nearTargetRatio * 100)}%（至少 ${report.config.minAnalystCount} 家机构）${report.config.repairCodes.length === 0 ? '' : `；价值修复类（不套股息率阈值）：${report.config.repairCodes.join('、')}`}`)
   for (const warning of report.warnings) lines.push(`- ⚠ ${warning}`)
   lines.push('')
   lines.push('## 持仓与行情')
@@ -672,7 +684,9 @@ function renderMarkdown(report) {
   lines.push('| 行业 | 权重% |')
   lines.push('| --- | ---: |')
   for (const sector of report.sectors) {
-    const over = sector.weightPct > report.config.maxIndustryWeightPct ? ' ⚠' : ''
+    // ETF/基金 套 ETF 合计上限；未分类 是数据缺口，不打浓度标。
+    const limit = sector.name === 'ETF/基金' ? report.config.maxEtfWeightPct : report.config.maxIndustryWeightPct
+    const over = sector.name !== '未分类' && sector.weightPct > limit ? ' ⚠' : ''
     lines.push(`| ${sector.name}${over} | ${sector.weightPct.toFixed(1)} |`)
   }
   lines.push('')

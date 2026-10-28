@@ -4,6 +4,7 @@
   "trimYieldPct": 2.5,
   "maxSingleWeightPct": 15,
   "maxIndustryWeightPct": 35,
+  "maxEtfWeightPct": 40,
   "cashReservePct": 10,
   "takeProfitPct": 30,
   "nearTargetRatio": 0.85,

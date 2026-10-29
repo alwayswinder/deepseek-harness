@@ -45,7 +45,7 @@ const DEFAULT_CONFIG = {
   maxIndustryWeightPct: 35,
   maxEtfWeightPct: 40,
   cashReservePct: 10,
-  takeProfitPct: 30,
+  takeProfitPct: 20,
   nearTargetRatio: 0.85,
   minAnalystCount: 2,
   overrides: {},

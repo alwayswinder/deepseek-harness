@@ -173,7 +173,7 @@ function ratingOf(row) {
     reasons.push(hits.join('、'))
   }
   // 覆盖规则 2：止盈触发，至少减仓（自己算一遍，不依赖 dossier 的标记）
-  const takeProfit = num(fileConfig.takeProfitPct) ?? 30
+  const takeProfit = num(fileConfig.takeProfitPct) ?? 20
   const nearTarget = num(fileConfig.nearTargetRatio) ?? 0.85
   const gainHigh = row.gainHigh === true || (gain !== null && gain >= takeProfit)
   const ratio = num(row.analyst?.ratio)

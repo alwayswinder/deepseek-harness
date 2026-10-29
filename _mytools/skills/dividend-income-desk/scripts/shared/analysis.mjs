@@ -457,7 +457,7 @@ export function attachEarningsFlag(row) {
  * 止盈提醒：只比「浮盈」和「机构目标价」，不看技术面、不预测点位。
  *
  * 两条独立的提醒线，命中任一条就把标的列进「止盈复核」：
- * 1. 浮盈 ≥ `takeProfitPct`（默认 30%）——仓位已经赚够，用户自己决定是否落袋；
+ * 1. 浮盈 ≥ `takeProfitPct`（默认 20%）——仓位已经赚够，用户自己决定是否落袋；
  * 2. 现价 ≥ 机构目标价中位 × `nearTargetRatio`（默认 0.85）——价格已经进入
  *    卖方给的合理区间上沿。
  * 机构样本不足 `minAnalystCount` 家时，第二条不成立，只按浮盈提醒，并写明
@@ -469,7 +469,7 @@ export function attachEarningsFlag(row) {
 export function attachExposureFlags(row, settings) {
   const flags = row.flags
   const gain = row.pnlPct ?? null
-  const takeProfitPct = num(settings.takeProfitPct) ?? 30
+  const takeProfitPct = num(settings.takeProfitPct) ?? 20
   const nearRatio = num(settings.nearTargetRatio) ?? 0.85
   const analyst = row.analyst ?? null
 

@@ -34,6 +34,7 @@ export const DESKTOP_IPC = {
   updatesPresentation: 'dsh-desktop:updates-presentation',
   nativeThemeSet: 'dsh-desktop:native-theme-set',
   windowFullscreen: 'dsh-desktop:window-fullscreen',
+  windowSetFullscreen: 'dsh-desktop:window-set-fullscreen',
   windowsAppearance: 'dsh-desktop:windows-appearance',
   windowsMenu: 'dsh-desktop:windows-menu',
 } as const
@@ -74,6 +75,20 @@ export interface DesktopUpdatePresentation {
   readonly failure?: DesktopUpdateFailureKind
 }
 
+/**
+ * The window chrome a product document may control. Fullscreen is the one state
+ * that drops the window's own caption buttons on Windows, and a page can only ask
+ * for it from a gesture, so the shell owns the transition.
+ */
+export interface DesktopWindowApi {
+  /**
+   * Enter or leave the main window's fullscreen state.
+   * @param fullscreen - whether the window should be fullscreen.
+   * @returns whether the window is fullscreen after the request.
+   */
+  setFullscreen(fullscreen: boolean): Promise<boolean>
+}
+
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi {
   readonly protocolVersion: 1
@@ -81,6 +96,8 @@ export interface DshDesktopProductApi {
   readonly fileDrag: DesktopFileDrag
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
+  /** The window's own chrome, which only the main process can change. */
+  readonly window: DesktopWindowApi
   /**
    * Local machine description for the feedback questionnaire.
    * @returns `name=value` fields separated by `; `, with no hostname, user name, or serial number.

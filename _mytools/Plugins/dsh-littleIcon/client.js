@@ -434,7 +434,9 @@ window.__ModuleLoader__.load({
       listeningPrev: '上一首',
       listeningNext: '下一首',
       listeningEmpty: '还没有正在播放的歌',
-      listeningHint: 'Esc 退出 · 空格 播放/暂停 · ←/→ 切歌 · 双击全屏',
+      listeningFullscreen: '全屏',
+      listeningExitFullscreen: '退出全屏',
+      listeningHint: 'Esc 退出 · 空格 播放/暂停 · ←/→ 切歌',
     }
 
     const en = {
@@ -655,7 +657,9 @@ window.__ModuleLoader__.load({
       listeningPrev: 'Previous',
       listeningNext: 'Next',
       listeningEmpty: 'Nothing is playing yet',
-      listeningHint: 'Esc exits · Space play/pause · Left/Right songs · Double-click fullscreen',
+      listeningFullscreen: 'Fullscreen',
+      listeningExitFullscreen: 'Exit fullscreen',
+      listeningHint: 'Esc exits · Space play/pause · Left/Right songs',
     }
 
     /** Insert the card stylesheet once per document. */
@@ -894,6 +898,15 @@ window.__ModuleLoader__.load({
         '.dli-listen-button:hover{background:rgba(120,232,255,.22);border-color:rgba(120,232,255,.5);}',
         '.dli-listen-hint{position:absolute;left:30px;bottom:26px;font-size:12px;letter-spacing:.02em;',
         'color:rgba(214,232,244,.55);pointer-events:none;}',
+        // The Desktop caption strip is a bar above this page, owned by the preload:
+        // the Application and Edit menus, and - in a windowed session - the window's
+        // own caption buttons. The menus are DOM, so hiding them while the mode is
+        // open lets the picture reach the top edge; the buttons are drawn by the
+        // window above the page and only fullscreen drops them. Two rules, not one:
+        // a browser that cannot evaluate `:has()` drops a whole selector list, and the
+        // attribute is what the stage sets for itself.
+        'html:has(.dli-listen) [data-windows-menu]{display:none!important;}',
+        'html[data-dsh-listening] [data-windows-menu]{display:none!important;}',
       ].join('')
       document.head.appendChild(style)
     }
@@ -2713,12 +2726,58 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Hide or restore the Desktop's caption strip - the Application and Edit menus
+     * the preload mounts above this page - while the mode covers the window. The
+     * strip is hidden inline and important as well as through the stylesheet: its
+     * own shadow tree sets its display, and an inline declaration settles that
+     * comparison whatever order the browser applies the two in.
+     * @param hidden - whether the strip should be out of the way.
+     */
+    function setCaptionHidden(hidden) {
+      if (typeof document === 'undefined') return
+      const root = document.documentElement
+      if (root !== undefined && root !== null) {
+        if (hidden) root.setAttribute('data-dsh-listening', '')
+        else root.removeAttribute('data-dsh-listening')
+      }
+      if (typeof document.querySelectorAll !== 'function') return
+      for (const menu of document.querySelectorAll('[data-windows-menu]')) {
+        if (!(menu instanceof HTMLElement)) continue
+        if (hidden) menu.style.setProperty('display', 'none', 'important')
+        else menu.style.removeProperty('display')
+      }
+    }
+
+    /**
+     * Lift the shell's overlay layer - the container this stage is mounted in - over
+     * the Desktop caption strip while the mode is open, and put it back afterwards.
+     * The strip is mounted on <body> with a z-index of its own, and an overlay layer
+     * nested inside the frame cannot rise above it by a stage's z-index alone.
+     * @param lifted - whether the layer should sit above the strip.
+     */
+    function setOverlayLayerLifted(lifted) {
+      if (typeof document === 'undefined' || typeof document.querySelector !== 'function') return
+      const layer = document.querySelector('[data-shell-overlay]')
+      if (!(layer instanceof HTMLElement)) return
+      if (lifted) layer.style.setProperty('z-index', '2000', 'important')
+      else layer.style.removeProperty('z-index')
+    }
+
+    /**
      * Put the mode into one state and wake its subscribers.
      * @param next - the state the mode should be in.
      */
     function setListeningOpen(next) {
       if (listeningOpen === next) return
       listeningOpen = next
+      // Hidden here rather than only in the stage's own effect: the command arrives
+      // before React renders, and the strip is out of the way from that moment.
+      setCaptionHidden(next)
+      setOverlayLayerLifted(next)
+      // The window's caption buttons belong to the window, and only fullscreen drops
+      // them. The shell performs that transition on request, so the mode opens into
+      // a picture with no chrome at all, and leaving it restores the window.
+      setDesktopFullscreen(next)
       for (const listener of listeningListeners) listener()
     }
 
@@ -2758,6 +2817,62 @@ window.__ModuleLoader__.load({
       return texture
     }
 
+    /** @returns whether the window is fullscreen right now, whichever path took it there. */
+    function fullscreenOn() {
+      if (typeof document === 'undefined') return false
+      const root = document.documentElement
+      return (document.fullscreenElement !== null && document.fullscreenElement !== undefined)
+        || (root !== null && root !== undefined && root.hasAttribute('data-fullscreen'))
+    }
+
+    /**
+     * Ask the Desktop shell to enter or leave fullscreen, when this page runs inside
+     * it. A browser tab has no such call and answers false. The shell owns the
+     * transition, which is what lets a surface opened from a menu command reach the
+     * real window state the browser refuses to grant without a gesture.
+     * @param fullscreen - whether the window should be fullscreen.
+     * @returns whether the shell took the request.
+     */
+    function setDesktopFullscreen(fullscreen) {
+      const api = typeof window === 'undefined' ? undefined : window.dshDesktop
+      const control = api?.window
+      if (control === undefined || control === null || typeof control.setFullscreen !== 'function') return false
+      try {
+        void Promise.resolve(control.setFullscreen(fullscreen)).catch(() => {})
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    /**
+     * Switch the window between fullscreen and windowed. Fullscreen is the only
+     * state that drops the window's own caption buttons, and the browser only grants
+     * it from a gesture, so this is called from a click or a double click, or from
+     * opening the mode, which the shell performs.
+     */
+    function toggleListeningFullscreen() {
+      if (fullscreenOn()) {
+        if (setDesktopFullscreen(false)) return
+        if (typeof document.exitFullscreen === 'function') {
+          try {
+            Promise.resolve(document.exitFullscreen()).catch(() => {})
+          } catch {
+            // Nothing to leave.
+          }
+        }
+        return
+      }
+      if (setDesktopFullscreen(true)) return
+      if (typeof document.documentElement?.requestFullscreen === 'function') {
+        try {
+          Promise.resolve(document.documentElement.requestFullscreen()).catch(() => {})
+        } catch {
+          // A window that will not go fullscreen still shows the mode.
+        }
+      }
+    }
+
     /**
      * The full-screen mode: the wallpaper, the words, the ring, and the transport.
      * @param props - the locale binding.
@@ -2772,6 +2887,7 @@ window.__ModuleLoader__.load({
       const [frame, setFrame] = React.useState(null)
       const [wallpaper, setWallpaper] = React.useState(true)
       const [clock, setClock] = React.useState({ position: 0, duration: 0 })
+      const [fullscreen, setFullscreen] = React.useState(false)
 
       // The level stream. Opening it is also what asks the pet to start
       // measuring; closing it stops both.
@@ -2941,39 +3057,59 @@ window.__ModuleLoader__.load({
         return () => { window.removeEventListener('keydown', onKey) }
       }, [])
 
-      // A double click toggles the window fullscreen. The window's caption
-      // buttons belong to the window and are painted over the page, so fullscreen
-      // is the only state that drops them; the mode never takes that on its own.
+      // A double click toggles the window fullscreen, and so does the transport's own
+      // button: the window's caption buttons belong to the window and are painted over
+      // the page, so fullscreen is the only state that drops them. The mode never
+      // takes that on its own - the browser grants fullscreen only from a gesture.
       React.useEffect(() => {
-        const fullscreen = () => document.fullscreenElement !== null && document.fullscreenElement !== undefined
         const toggle = (event) => {
-          if (fullscreen()) {
-            if (typeof document.exitFullscreen === 'function') {
-              try {
-                Promise.resolve(document.exitFullscreen()).catch(() => {})
-              } catch {
-                // Nothing to leave.
-              }
-            }
-          } else if (typeof document.documentElement?.requestFullscreen === 'function') {
-            try {
-              Promise.resolve(document.documentElement.requestFullscreen()).catch(() => {})
-            } catch {
-              // A window that will not go fullscreen still shows the mode.
-            }
-          }
+          toggleListeningFullscreen()
           event.preventDefault()
         }
         window.addEventListener('dblclick', toggle)
         return () => {
           window.removeEventListener('dblclick', toggle)
-          if (fullscreen() && typeof document.exitFullscreen === 'function') {
+          if (fullscreenOn() && typeof document.exitFullscreen === 'function') {
             try {
               Promise.resolve(document.exitFullscreen()).catch(() => {})
             } catch {
               // Nothing to leave.
             }
           }
+        }
+      }, [])
+
+      // While the mode is open the Desktop caption strip is hidden, so the picture
+      // reaches the top edge of the window; closing the mode puts the menus back.
+      // Opening already hid it; this covers a stage that outlives a reload of the
+      // strip, and the observer covers the preload mounting it after the mode opened.
+      React.useEffect(() => {
+        setCaptionHidden(true)
+        const restore = () => { setCaptionHidden(true) }
+        const observer = new MutationObserver(restore)
+        if (typeof document !== 'undefined' && document.body !== null && document.body !== undefined) {
+          observer.observe(document.body, { childList: true })
+        }
+        return () => {
+          observer.disconnect()
+          setCaptionHidden(false)
+          setOverlayLayerLifted(false)
+        }
+      }, [])
+
+      // Whether the window is fullscreen right now, so the transport's button says
+      // what its click will do. A browser announces its own changes on `document`; the
+      // Desktop shell publishes the window's state on the root element instead.
+      React.useEffect(() => {
+        const sync = () => { setFullscreen(fullscreenOn()) }
+        sync()
+        document.addEventListener('fullscreenchange', sync)
+        const root = document.documentElement
+        const observer = new MutationObserver(sync)
+        if (root !== undefined && root !== null) observer.observe(root, { attributes: true, attributeFilter: ['data-fullscreen'] })
+        return () => {
+          document.removeEventListener('fullscreenchange', sync)
+          observer.disconnect()
         }
       }, [])
 
@@ -3010,6 +3146,8 @@ window.__ModuleLoader__.load({
           }, playing ? t('listeningPause') : t('listeningPlay')),
           h('button', { type: 'button', className: 'dli-listen-button', onClick: () => { sendMusicCommand('next') } },
             t('listeningNext')),
+          h('button', { type: 'button', className: 'dli-listen-button', onClick: toggleListeningFullscreen },
+            fullscreen ? t('listeningExitFullscreen') : t('listeningFullscreen')),
         ),
         h('div', { className: 'dli-listen-hint' }, t('listeningHint')),
       )

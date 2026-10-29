@@ -128,6 +128,15 @@ it('reports host paths of picked files only to the local application document', 
   }
 })
 
+it('asks the shell for the window fullscreen state a page cannot grant itself', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  electron.ipcRenderer.invoke.mockResolvedValueOnce(true)
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  await expect(api.window.setFullscreen(true)).resolves.toBe(true)
+  expect(electron.ipcRenderer.invoke).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.windowSetFullscreen, true)
+})
+
 it.each(['dsh-app://app/', 'dsh-app://shell/plugin-manager.html', 'https://example.com/'])(
   'installs Windows appearance only for the application document (%s)', async (url) => {
     vi.stubGlobal('location', new URL(url))

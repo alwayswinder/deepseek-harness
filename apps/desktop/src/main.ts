@@ -815,6 +815,15 @@ async function main(): Promise<void> {
     assertProductSender(event)
     return readDeviceInfo()
   })
+  // Fullscreen is the one state that drops the window's own caption buttons on
+  // Windows, and a page may only ask the browser for it from a gesture. A surface
+  // that opens from a menu command has no gesture, so it asks the shell instead.
+  ipcMain.handle(DESKTOP_IPC.windowSetFullscreen, (event, fullscreen: unknown) => {
+    const owner = assertProductSender(event)
+    if (typeof fullscreen !== 'boolean') throw new Error('dsh desktop: fullscreen must be a boolean')
+    if (!owner.isDestroyed() && owner.isFullScreen() !== fullscreen) owner.setFullScreen(fullscreen)
+    return !owner.isDestroyed() && owner.isFullScreen()
+  })
   ipcMain.handle(DESKTOP_IPC.onboardingApiKey, async (event) => {
     assertProductSender(event)
     return (await readWelcomeState()).hasApiKey

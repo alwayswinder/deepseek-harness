@@ -27,6 +27,9 @@ function createProductApi(): DshDesktopProductApi {
       }) },
     },
     deviceInfo: () => ipcRenderer.invoke(DESKTOP_IPC.deviceInfo) as Promise<string>,
+    window: {
+      setFullscreen: (fullscreen: boolean) => ipcRenderer.invoke(DESKTOP_IPC.windowSetFullscreen, fullscreen) as Promise<boolean>,
+    },
     keyboard: {
       closeWindow: revision => ipcRenderer.invoke(DESKTOP_IPC.shortcutsCloseWindow, revision) as Promise<void>,
       subscribe: (listener) => {

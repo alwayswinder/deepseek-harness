@@ -26,9 +26,9 @@
  * document into the repository's `_mytools/settings/` when either changes, and
  * the launcher — or the pet, on a restart from its own menu — merges those files
  * back into a machine before the next start. The volume, the playlist, the shuffle
- * choice, and how the music steps aside for another application are the exception:
- * they are this machine's own listening preferences and live beside the library,
- * in `music-preferences.json`.
+ * choice, how the music steps aside for another application, and the picture the
+ * listening mode draws are the exception: they are this machine's own listening
+ * preferences and live beside the library, in `music-preferences.json`.
  *
  * The menu's Git entry needs repository facts the page cannot read: this half
  * runs `git` itself and serves the result on same-origin routes, because the
@@ -715,8 +715,14 @@ function readCommand(path) {
     const reported = JSON.parse(readFileSync(path, 'utf8'))
     if (typeof reported.at !== 'number' || typeof reported.command !== 'string') return undefined
     const url = openableUrl(reported.url)
-    // The volume entries carry a number; anything else the pet writes stays out.
-    const value = typeof reported.value === 'number' && Number.isFinite(reported.value) ? reported.value : undefined
+    // The volume entries carry a number, and the listening mode's picture carries the
+    // path the person picked; anything else the pet writes stays out. A path is
+    // bounded here, because this file is a file and the host trusts its own shape
+    // rather than its length.
+    const raw = reported.value
+    const value = typeof raw === 'number' && Number.isFinite(raw) ? raw
+      : typeof raw === 'string' && raw.length <= 4096 ? raw
+        : undefined
     return {
       command: reported.command,
       at: reported.at,
@@ -1758,10 +1764,15 @@ export function apply(ctx, config) {
       duckMode: stored?.duckMode === 'pause' ? 'pause' : 'fade',
       duckLevel: level === undefined ? MUSIC_DUCK_LEVEL_DEFAULT : level,
       duckHoldSeconds: hold === undefined ? MUSIC_DUCK_HOLD_DEFAULT : hold,
+      // The picture the listening mode draws, as a plain path this machine's file
+      // server can read. Empty is the desktop wallpaper, which is what the mode used
+      // before this choice existed. Whether the file is still there is decided when
+      // the mode asks, so a picture moved away falls back rather than breaking it.
+      stageBackground: typeof stored?.stageBackground === 'string' ? stored.stageBackground : '',
     }
   }
 
-  /** @type {{ volume: number, playlist: string, shuffle: boolean, duck: boolean, duckMode: 'fade' | 'pause', duckLevel: number, duckHoldSeconds: number }} */
+  /** @type {{ volume: number, playlist: string, shuffle: boolean, duck: boolean, duckMode: 'fade' | 'pause', duckLevel: number, duckHoldSeconds: number, stageBackground: string }} */
   let musicPreferences = readMusicPreferences()
 
   /**
@@ -1962,6 +1973,9 @@ export function apply(ctx, config) {
       duckHoldSeconds: musicPreferences.duckHoldSeconds,
       duckMode: musicPreferences.duckMode,
       duckLevel: musicPreferences.duckLevel,
+      // The listening mode's picture, so the pet's menu can offer the way back to the
+      // desktop wallpaper only while one is chosen.
+      stageBackground: musicPreferences.stageBackground,
       missing,
       sync: current.progress,
       command: musicCommand,
@@ -2293,6 +2307,17 @@ export function apply(ctx, config) {
       const value = clampVolume(pressed.value)
       if (value === undefined) return
       musicPreferences = { ...musicPreferences, volume: value }
+      writeMusicPreferences()
+      publishMusic()
+      return
+    }
+    // The listening mode's own picture, chosen from the pet's menu: a file dialog is
+    // a dialog, and only that half can show one, so the choice arrives here as the
+    // path it picked and is stored beside the rest of this machine's listening
+    // choices. An empty value is the way back to the desktop wallpaper.
+    if (pressed.command === 'stage-background') {
+      const value = typeof pressed.value === 'string' ? pressed.value.trim() : ''
+      musicPreferences = { ...musicPreferences, stageBackground: value }
       writeMusicPreferences()
       publishMusic()
       return
@@ -2878,11 +2903,13 @@ export function apply(ctx, config) {
   // ---- listening mode ---------------------------------------------------------
   //
   // The mode is a page surface, and the two things it cannot get for itself come
-  // from here. The wallpaper is this machine's desktop picture, which only this
-  // half can read. The bars are driven by the pet's own playback level, which only
-  // that process can measure: it publishes the peak in a small file while the mode
-  // is open, and this stream relays it. Neither is a setting - the mode opens with
-  // nothing to configure first.
+  // from here. The picture behind it is a file this half serves: a picture the person
+  // chose from the pet's menu, or, when they have chosen none, this machine's desktop
+  // wallpaper, which only this half can read. The bars are driven by the pet's own
+  // playback level, which only that process can measure: it publishes the peak in a
+  // small file while the mode is open, and this stream relays it. The mode opens with
+  // a picture already in place; choosing another is the pet menu's job, not a
+  // prerequisite.
 
   /** Paged connections waiting for a level frame. */
   const levelStreams = new Set()
@@ -2939,6 +2966,19 @@ export function apply(ctx, config) {
   }
 
   /**
+   * The picture a person chose for the listening mode, when it is still a file this
+   * half can serve. The choice is stored as a path rather than as a copy of the
+   * picture: a wallpaper is large, and the file it names is the one the person
+   * expects to change when they replace it.
+   * @returns the absolute path, or undefined when nothing usable is chosen.
+   */
+  const chosenStageBackground = () => {
+    const chosen = musicPreferences.stageBackground
+    if (chosen === '' || WALLPAPER_TYPES[extname(chosen).toLowerCase()] === undefined) return undefined
+    return existsSync(chosen) ? chosen : undefined
+  }
+
+  /**
    * The picture on this machine's desktop, or undefined when the desktop is a
    * plain colour. Read through PowerShell rather than `reg.exe`, because the
    * value is a path that may hold characters the console's own code page cannot
@@ -2967,8 +3007,16 @@ export function apply(ctx, config) {
       })
   })
 
-  // The wallpaper the listening mode draws: whatever this machine's desktop shows.
-  // A plain-colour desktop answers 404, and the page paints its own gradient.
+  /**
+   * The picture the listening mode draws: the one chosen from the pet's menu, or
+   * this machine's desktop wallpaper when none is chosen.
+   * @returns a promise of the absolute path of a file that exists, or undefined.
+   */
+  const resolveStageWallpaper = async () => chosenStageBackground() ?? await readDesktopWallpaper()
+
+  // The wallpaper the listening mode draws: the chosen picture, or whatever this
+  // machine's desktop shows. A plain-colour desktop - and a chosen file that has
+  // since been moved away - answers 404, and the page paints its own gradient.
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.register({
       kind: 'exact',
@@ -2986,7 +3034,7 @@ export function apply(ctx, config) {
           res.end()
           return
         }
-        void readDesktopWallpaper().then((file) => {
+        void resolveStageWallpaper().then((file) => {
           const type = file === undefined ? '' : (WALLPAPER_TYPES[extname(file).toLowerCase()] ?? '')
           let data
           try {

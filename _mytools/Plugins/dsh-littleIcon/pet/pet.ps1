@@ -423,6 +423,11 @@ namespace DshPet
                         graphics.DrawLine(pen, P(bounds, 10f, 4.6f), P(bounds, 10f, 12.4f));
                         graphics.DrawLine(pen, P(bounds, 13.8f, 6.8f), P(bounds, 13.8f, 10.2f));
                         break;
+                    case "image":
+                        graphics.DrawRectangle(pen, Rectangle.Round(R(bounds, 1.6f, 3.2f, 16.8f, 13.6f)));
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 3f, 15f), P(bounds, 7.6f, 10.2f), P(bounds, 11.2f, 13.6f), P(bounds, 13.4f, 11.4f), P(bounds, 17f, 15f) });
+                        graphics.DrawEllipse(pen, R(bounds, 11.8f, 5f, 3.4f, 3.4f));
+                        break;
                     case "play":
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 6f, 3.4f), P(bounds, 16f, 10f), P(bounds, 6f, 16.6f), P(bounds, 6f, 3.4f) });
                         break;
@@ -584,6 +589,12 @@ function Get-Labels {
         MusicAddFailed        = 'Could not add it ({0})'
         MusicStage            = 'Listening mode'
         MusicStageFailed      = 'The listening mode could not be opened.'
+        StageImage            = 'Listening mode picture...'
+        StageImageClear       = 'Use the desktop wallpaper'
+        StageImageTitle       = 'Choose the picture behind the listening mode'
+        StageImageFilter      = 'Pictures|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp'
+        StageImageUnsupported = 'The listening mode cannot draw that file. Use jpg, png, bmp, gif, or webp.'
+        StageImageFailed      = 'No picture was chosen.'
     }
     $path = Join-Path $SCRIPT:ScriptDir 'labels.json'
     if (-not (Test-Path -LiteralPath $path)) { return $fallback }
@@ -717,6 +728,10 @@ $SCRIPT:MusicVolume = 70
 $SCRIPT:MusicDir = ''
 $SCRIPT:MusicMissing = 0
 $SCRIPT:MusicSync = $null
+# The picture the page's listening mode draws, as the host published it: a path the
+# person chose from this menu, or empty for the desktop wallpaper. The menu offers the
+# way back only while one is chosen, so this is read at every rebuild.
+$SCRIPT:StageImage = ''
 $SCRIPT:MusicMenu = $null
 $SCRIPT:Music = $null
 $SCRIPT:MusicIndex = -1
@@ -2257,6 +2272,7 @@ function Read-MusicLibrary {
     $SCRIPT:MusicMissing = 0
     if ($null -ne $data.missing) { $SCRIPT:MusicMissing = [int]$data.missing }
     $SCRIPT:MusicSync = $data.sync
+    if ($null -ne $data.stageBackground) { $SCRIPT:StageImage = [string]$data.stageBackground }
     if ($null -ne $data.volume) { Set-MusicVolume ([double]$data.volume) }
     return $true
 }
@@ -2419,6 +2435,67 @@ function Add-MusicItem($Menu, [string]$Text, [string]$Icon, [bool]$Enabled, $OnC
     return $item
 }
 
+# ---- the mode's picture ------------------------------------------------------
+# The listening mode draws a picture behind the track, and this menu is where a person
+# chooses it: the file is on this machine, and a page can be handed a file's bytes but
+# not its path, while the host serves the path it is given. An empty choice is the
+# desktop wallpaper the mode has always drawn.
+
+# The picture types the host serves; a file outside this list would answer 404 and
+# leave the mode on its own gradient, so it is refused here instead.
+$SCRIPT:StageBackgroundTypes = @('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp')
+
+# A modal picker opened from the middle of a menu's own dismissal leaves the strip half
+# closed, so the click queues the work for the next dispatcher turn instead - the way
+# the quick access tile menu defers its folder picker.
+function Invoke-AfterMenu([scriptblock]$Work) {
+    $target = $window
+    if ($null -ne $target -and $target.Dispatcher.CheckAccess()) {
+        try {
+            [void]$target.Dispatcher.BeginInvoke([System.Action]$Work)
+            return
+        } catch {
+            Write-Log "queueing a menu action failed: $($_.Exception.Message)"
+        }
+    }
+    & $Work
+}
+
+function Select-StageBackground {
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    try {
+        $dialog.Title = $SCRIPT:Labels.StageImageTitle
+        $dialog.Filter = $SCRIPT:Labels.StageImageFilter
+        $dialog.CheckFileExists = $true
+        $current = [string]$SCRIPT:StageImage
+        if (-not [string]::IsNullOrWhiteSpace($current)) {
+            try {
+                $dir = [System.IO.Path]::GetDirectoryName($current)
+                if (-not [string]::IsNullOrWhiteSpace($dir) -and (Test-Path -LiteralPath $dir)) { $dialog.InitialDirectory = $dir }
+            } catch { }
+        }
+        if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+        $path = [string]$dialog.FileName
+        if ($path -eq '') { return }
+        $ext = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
+        if ($SCRIPT:StageBackgroundTypes -notcontains $ext) {
+            Show-PetNotice $SCRIPT:Labels.Music $SCRIPT:Labels.StageImageUnsupported
+            return
+        }
+        Send-MenuCommand 'stage-background' -Value $path
+    } catch {
+        Write-Log "choosing a listening-mode background failed: $($_.Exception.Message)"
+        try { Show-PetNotice $SCRIPT:Labels.Music $SCRIPT:Labels.StageImageFailed } catch { }
+    } finally {
+        try { $dialog.Dispose() } catch { }
+    }
+}
+
+function Clear-StageBackground {
+    # Empty is what the host reads as "use the desktop wallpaper again".
+    Send-MenuCommand 'stage-background' -Value ''
+}
+
 function Update-MusicMenu {
     # Rebuilt whole at every open, the way the sites submenu is:
     # the tracks, the volume, and a download's progress all move while it is closed,
@@ -2451,6 +2528,16 @@ function Update-MusicMenu {
                 try { Show-PetNotice $SCRIPT:Labels.Music $SCRIPT:Labels.MusicStageFailed } catch { }
             }
         })
+        # The picture behind that mode: chosen here because a file dialog is this
+        # process's to show, and stored by the host, which is what serves it to the page.
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.StageImage 'image' $true {
+            try { Invoke-AfterMenu { Select-StageBackground } } catch { Write-Log $_.Exception.Message }
+        })
+        if (-not [string]::IsNullOrWhiteSpace([string]$SCRIPT:StageImage)) {
+            [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.StageImageClear 'stage' $true {
+                try { Clear-StageBackground } catch { Write-Log $_.Exception.Message }
+            })
+        }
         [void](Add-MusicItem $SCRIPT:MusicMenu ($(if ($SCRIPT:MusicPlaying) { $SCRIPT:Labels.MusicPause } else { $SCRIPT:Labels.MusicPlay })) `
             $(if ($SCRIPT:MusicPlaying) { 'pause' } else { 'play' }) $true {
                 try { Toggle-MusicPlay } catch { Write-Log $_.Exception.Message }
@@ -3758,6 +3845,20 @@ if ($SelfTest) {
     $forward = Get-StepMusicIndex 1
     $SCRIPT:MusicIndex = $forward
     [void]$musicProbeLines.Add("order=$forward,$(Get-StepMusicIndex -1)")
+    # A chosen picture adds the one row that goes back to the desktop wallpaper: that
+    # row is built from what the host published, so it exists exactly while a picture
+    # is chosen, and the row for choosing one is there either way.
+    $SCRIPT:StageImage = 'C:\pics\wall.png'
+    Update-MusicMenu
+    $stageClearRow = @($SCRIPT:MusicMenu.DropDownItems | Where-Object { $_.Text -eq $SCRIPT:Labels.StageImageClear })
+    $stageClearText = if ($stageClearRow.Count -eq 1) {
+        "clear=rows=1 icon=$($stageClearRow[0].Tag):$($stageClearRow[0].Enabled)"
+    } else { "clear=rows=$($stageClearRow.Count)" }
+    $stagePickRows = @($SCRIPT:MusicMenu.DropDownItems | Where-Object { $_.Text -eq $SCRIPT:Labels.StageImage }).Count
+    $SCRIPT:StageImage = ''
+    Update-MusicMenu
+    $stageBackRows = @($SCRIPT:MusicMenu.DropDownItems | Where-Object { $_.Text -eq $SCRIPT:Labels.StageImageClear }).Count
+    $stageProbe = "pick=rows=$stagePickRows $stageClearText back=rows=$stageBackRows"
     $SCRIPT:MusicMenu.Dispose()
     $SCRIPT:MusicMenu = $null
     $SCRIPT:MusicLibrary = $null
@@ -3770,6 +3871,7 @@ if ($SelfTest) {
     Remove-Item -LiteralPath $musicProbeFile -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $SCRIPT:MusicPlayerFile -Force -ErrorAction SilentlyContinue
     Write-Output "music-menu: $($musicProbeLines -join ' >> ')"
+    Write-Output "stage-image: $stageProbe"
     # Where a capture lands, and what a backwards drag selects: both are built
     # here, and neither needs a screen to be read.
     Write-Output "shot-file: $(New-ShotPath)"

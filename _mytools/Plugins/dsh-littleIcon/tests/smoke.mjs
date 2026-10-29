@@ -1137,6 +1137,16 @@ if (process.platform === 'win32') {
   assert.match(petSource, /OwnPeak/, 'the level is this process own audio session')
   assert.match(petSource, /function Format-ListeningTrack/, 'a playlist entry is reduced to a song and an artist')
   assert.match(petSource, /music-level\.json/, 'the reading is published beside the state file')
+  // The picture behind the mode is chosen from this submenu, because a file dialog is
+  // this process's to show and the host serves the path it is handed. The row that
+  // goes back exists exactly while a picture is chosen.
+  assert.match(petSource, /Add-MusicItem \$SCRIPT:MusicMenu \$SCRIPT:Labels\.StageImage 'image'/,
+    'the mode\u2019s picture is chosen from the music submenu')
+  assert.match(petSource, /Send-MenuCommand 'stage-background' -Value \$path/,
+    'the chosen file reaches the host as the path it is')
+  assert.match(petSource, /case "image":/, 'the row needs an icon of its own')
+  assert.match(selfTest.stdout, /stage-image: pick=rows=1 clear=rows=1 icon=stage:True back=rows=0/,
+    'a chosen picture adds the way back, and only while one is chosen')
   // A capture lands beside the state file, in the harness home rather than the
   // repository, and its name is what tells two captures in one second apart.
   const shotFile = /shot-file: (.*)/.exec(selfTest.stdout)
@@ -1963,6 +1973,30 @@ assert.match(clientSource, /WALLPAPER_PATH = '\/api\/little-icon\/wallpaper'/u,
   'the page must read the wallpaper from that route')
 assert.match(clientSource, /LEVEL_PATH = '\/api\/little-icon\/level'/u,
   'and the level from that stream')
+// The mode covers the window, and the Desktop caption strip sits above the page:
+// its menus are DOM the stylesheet can hide, while the window's own buttons are
+// drawn by the window and only fullscreen drops them.
+assert.match(clientSource, /html\[data-dsh-listening\] \[data-windows-menu\]/u,
+  'the caption menus must be hidden while the mode covers the window')
+assert.match(clientSource, /data-dsh-listening', ''/u,
+  'and put back when the mode closes')
+assert.match(clientSource, /listeningFullscreen/u,
+  'the transport offers fullscreen, the one state that drops the caption buttons')
+// The mode opens from a menu command, which carries no user gesture, so the page
+// asks the Desktop shell for the window transition the browser would refuse it.
+assert.match(clientSource, /function setDesktopFullscreen\(fullscreen\)/u,
+  'the page asks the Desktop shell for the window fullscreen state')
+assert.match(clientSource, /setDesktopFullscreen\(next\)/u,
+  'and does it when the mode opens and closes, not only from a click')
+// The picture is the one the person chose, when they chose one: the pet's menu hands
+// the host a path, the host keeps it beside the other listening choices, and the route
+// serves it ahead of the desktop wallpaper it falls back to.
+assert.match(hostSource, /const resolveStageWallpaper = async \(\) => chosenStageBackground\(\) \?\? await readDesktopWallpaper\(\)/u,
+  'a chosen picture is served ahead of the desktop wallpaper')
+assert.match(hostSource, /pressed\.command === 'stage-background'/u,
+  'the host must take the picture the pet menu chose')
+assert.match(hostSource, /stageBackground: musicPreferences\.stageBackground,/u,
+  'and publish it, so the menu can offer the way back')
 
 /** Fake `window.__ModuleLoader__` plus the browser surface the activity ping uses. */
 let loadedRecord = null
@@ -2212,6 +2246,11 @@ try {
     'the stage carries the canvas the ring is painted on')
   assert.equal(listeningStage.children.some(child => child !== null && child.props?.src === '/api/little-icon/wallpaper'),
     true, 'and the picture it draws comes from the Host')
+  const listeningActions = (listeningStage.children ?? [])
+    .find(child => child !== null && child.props?.className === 'dli-listen-actions')
+  assert.ok(listeningActions !== undefined, 'the stage carries its transport')
+  assert.equal((listeningActions.children ?? []).length, 4,
+    'and the transport offers fullscreen beside the three playback controls')
   // "Aquarium" is the mini-games entry, and the tank belongs to another plugin:
   // the menu names that plugin's service instead of reaching into its overlay, so
   // a profile without it must say so rather than opening a blank screen.
@@ -3776,7 +3815,10 @@ $found
         `exact ${MUSIC_PATH}`, `exact ${MUSIC_PREFERENCES_PATH}`,
         `exact ${MUSIC_SYNC_PATH}`, `exact ${MUSIC_DOWNLOAD_PATH}`,
         `exact ${MUSIC_EXPAND_PATH}`, `exact ${MUSIC_ADDED_PATH}`,
-        `exact ${MUSIC_REMOVE_PATH}`, `exact ${MUSIC_COMMAND_PATH}`])
+        `exact ${MUSIC_REMOVE_PATH}`, `exact ${MUSIC_COMMAND_PATH}`,
+        // The two routes the listening mode reads: the picture behind it and the
+        // level the bars follow.
+        'exact /api/little-icon/wallpaper', 'exact /api/little-icon/level'])
 
     // The Git routes answer JSON for one directory and refuse everything else.
     // The directory is checked here rather than inferred from a spawn failure, so
@@ -3922,7 +3964,7 @@ $found
     // library — never in the profile row.
     const preferences = (patch) => ({
       version: 1, volume: 70, playlist: '', shuffle: false,
-      duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3, ...patch,
+      duck: true, duckMode: 'fade', duckLevel: 20, duckHoldSeconds: 3, stageBackground: '', ...patch,
     })
     const volumeAnswer = await askGit(musicPreferencesRoute, 'POST', `${MUSIC_PREFERENCES_PATH}?volume=33`)
     assert.deepEqual(volumeAnswer.body,
@@ -4054,6 +4096,59 @@ $found
     // settings file carries the links, and nothing else.
     config.musicLinks.set([])
     handlers.get('loader/volatile-update')()
+
+    // The listening mode's picture: the pet's menu hands this half a path, which is
+    // kept beside the other listening choices and served ahead of the desktop
+    // wallpaper. An empty choice is the way back, and a picture that has since gone
+    // falls back to the desktop wallpaper rather than leaving the mode blank.
+    const picture = join(pluginHome, 'stage-test.png')
+    writeFileSync(picture, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01]))
+    const choosePicture = (value) => {
+      writeFileSync(join(home, 'little-icon', 'command.json'),
+        `${JSON.stringify({ command: 'stage-background', value, at: Date.now() })}\n`, 'utf8')
+    }
+    /** Ask the picture route, which answers bytes rather than JSON. */
+    const askPicture = async () => {
+      const response = {
+        status: 0,
+        headers: {},
+        body: undefined,
+        writeHead(code, headers) { this.status = code; this.headers = headers ?? {} },
+        end(chunk) { if (chunk !== undefined) this.body = chunk },
+      }
+      routes.find((route) => route.path === '/api/little-icon/wallpaper')
+        .handler({ method: 'GET', on: () => {} }, response)
+      const deadline = Date.now() + 10_000
+      while (response.status === 0) {
+        if (Date.now() >= deadline) assert.fail('the picture route did not answer')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+      return response
+    }
+    /** Wait for a choice the pet wrote to land in the preferences file. */
+    const untilStage = async (value) => {
+      const deadline = Date.now() + 8000
+      while (readPreferencesFile().stageBackground !== value && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      assert.equal(readPreferencesFile().stageBackground, value,
+        'the picture the pet menu chose is stored on this machine')
+    }
+    choosePicture(picture)
+    await untilStage(picture)
+    assert.equal(readMusicFile().stageBackground, picture,
+      'and published, so the menu can offer the way back')
+    const served = await askPicture()
+    assert.equal(served.status, 200, 'the chosen picture must be served to the page')
+    assert.equal(served.headers['content-type'], 'image/png')
+    assert.deepEqual(Buffer.from(served.body), readFileSync(picture))
+    rmSync(picture)
+    const fallenBack = await askPicture()
+    assert.notDeepEqual(fallenBack.body, served.body,
+      'a picture that has gone falls back to the desktop wallpaper instead of breaking the mode')
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    choosePicture('')
+    await untilStage('')
 
     // The pet's right-click menu is drawn in another process, so the host relays
     // what it chooses: the page holds one stream open and receives a frame per

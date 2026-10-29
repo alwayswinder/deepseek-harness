@@ -14,6 +14,11 @@
 | `packages/client/ui-sidebar-browser/src/types.ts` | `DesktopBrowserReservation` 的 JSDoc 改成「所有 Sidebar 浏览器的存储」；`acquire` 的 `@param workspace` 说明它不再选择分区 |
 | `apps/desktop/src/main.ts` | 新增常量 `LITTLE_ICON_SHOW_WINDOW_MESSAGE = 0x8001`；`createMainWindow` 里（仅 win32）`window.hookWindowMessage(该消息, () => window.show())`。根因：点 X 时 `window.hide()` 让 Electron 节流渲染并保持页面 `visibilityState=hidden`；桌宠用外部 `ShowWindow(SW_RESTORE)` 恢复，Electron 只同步了 OS 层与 `isVisible()`，页面仍在 hidden、画面冻结。桌宠恢复后 `PostMessage` 该消息，主进程补一次 `show()`（对已可见窗口无害）把 `visibilityState` 翻回 visible。实测（Electron 44）：外部 SW_RESTORE / SW_MINIMIZE→SW_RESTORE / WM_SYSCOMMAND SC_RESTORE / SetForegroundWindow 都无法让 `document.visibilityState` 离开 hidden、定时器停在 1Hz；只有 `win.show()` 触发 `EVENT_SHOW` 后满速恢复；`hookWindowMessage` 能收到外部 PostMessage |
 | `.gitignore` | 加三行本副本自己的忽略项：`.pnpm-store/` 之后加 `.pnpm-tools/`，末尾加 `_mytools/build/dsh-web*.log`（启动脚本写的日志，不该进 git）与 `.workbuddy/`（WorkBuddy 写在仓库根的记忆目录） |
+| `apps/desktop/src/ipc.ts` | 新增通道 `windowSetFullscreen: 'dsh-desktop:window-set-fullscreen'`、接口 `DesktopWindowApi`（`setFullscreen(fullscreen: boolean): Promise<boolean>`），并在 `DshDesktopProductApi` 上加 `readonly window: DesktopWindowApi` |
+| `apps/desktop/src/main.ts` | 新增 `ipcMain.handle(DESKTOP_IPC.windowSetFullscreen)`：`assertProductSender(event)` 校验后 `owner.setFullScreen(fullscreen)`，返回 `owner.isFullScreen()`；参数不是布尔就抛错 |
+| `apps/desktop/src/preload-app.ts` | `createProductApi()` 里加 `window: { setFullscreen: (...) => ipcRenderer.invoke(DESKTOP_IPC.windowSetFullscreen, fullscreen) }` |
+| `apps/desktop/tests/preload-app.spec.ts` | 新增 1 条断言：`dshDesktop.window.setFullscreen(true)` 恰好以 `windowSetFullscreen, true` 调一次 IPC，并回传主进程的答案 |
+| `apps/desktop/README.md`、`apps/desktop/README.zh.md` | preload 暴露面那一段补一句 `dshDesktop.window.setFullscreen(boolean)` 的用途；改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write apps/desktop/README.md` 重新记录摘要 |
 
 核心就是这一段（合并后若被上游改回 `randomUUID`，把它换回来）：
 
@@ -64,6 +69,21 @@ pnpm --filter @deepseek-ai/dsh-desktop run build
 桌宠侧不用重建，改 `pet/pet.ps1` 后把设置里的**启用桌宠**关掉再打开（或重启 DSH）即可。
 
 复现路径（验证改动是否生效）：点 DSH 右上角 X 隐藏到托盘 → 点桌宠恢复 → 页面应立即恢复响应（之前是恢复后卡住、画面冻结在隐藏前那一帧）。消息号 `0x8001` 在 main.ts 与 pet.ps1 两处各有一份，改一处必须同步另一处。
+
+### 听歌模式的全屏请求（dshDesktop.window.setFullscreen）
+
+听歌模式是页面浮层，Windows 上窗口那三个最小化/最大化/关闭按钮由 Electron 的 `titleBarOverlay` 画在页面之上，页面元素盖不住，只有窗口全屏时才消失。而模式是由桌宠右键菜单通过命令流打开的，不是用户手势，浏览器会因为缺少 user activation 拒绝 `document.documentElement.requestFullscreen()`。因此只能让主进程代劳：`dshDesktop.window.setFullscreen(true/false)`，由插件 `client.js` 在打开/关闭模式时调用。
+
+重建桌面包（改的是主进程与 preload，必须重建并重启 DSH）：
+
+```powershell
+pnpm --filter @deepseek-ai/dsh-desktop run build
+(Select-String apps\desktop\lib\main.js -Pattern 'dsh-desktop:window-set-fullscreen').Matches.Value   # 应出现
+(Select-String apps\desktop\lib\main.js -Pattern 'setFullScreen\(fullscreen\)').Matches.Value         # 应出现
+(Select-String apps\desktop\lib\preload-app.cjs -Pattern 'setFullscreen').Matches.Value               # 应出现
+```
+
+验证：桌宠右键 → 听歌 → 听歌模式；窗口应直接进入全屏（顶部菜单与右侧三个按钮都不在），按 Esc 退出模式后窗口回到原状。若只在浏览器里打开同一页面（Web 版），`dshDesktop` 不存在，代码退回 HTML 全屏，只由底部「全屏」按钮或双击触发。
 
 ## 这处改动做不到什么
 

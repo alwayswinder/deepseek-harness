@@ -74,5 +74,11 @@
   "MusicDuplicate": "这条链接已经在列表里了。",
   "MusicAddFailed": "添加失败（{0}）",
   "MusicStage": "听歌模式",
-  "MusicStageFailed": "听歌模式没能打开。"
+  "MusicStageFailed": "听歌模式没能打开。",
+  "StageImage": "听歌模式背景…",
+  "StageImageClear": "改回桌面背景",
+  "StageImageTitle": "选择听歌模式用的图片",
+  "StageImageFilter": "图片|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp",
+  "StageImageUnsupported": "听歌模式画不了这种文件，换 jpg、png、bmp、gif 或 webp。",
+  "StageImageFailed": "没能选择背景图片。"
 }

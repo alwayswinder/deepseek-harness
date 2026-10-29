@@ -107,6 +107,7 @@ node --test "tests/*.spec.mjs"                          # 纯计算用例
 ```
 SKILL.md                  模型执行流程
 config.json               个人阈值
+reference/user-profile.md 用户本人的投资逻辑：底仓分档、补仓条件、ETF 波段、不做什么
 reference/framework.md    收息决策框架：股息率口径、分红可持续性、红利税、仓位、执行
 reference/data-sources.md 接口与字段说明、失败降级
 scripts/dividend-dossier.mjs  持仓 + 行情 + 分红 + 财报 + 公告

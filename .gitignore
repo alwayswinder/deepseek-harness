@@ -53,3 +53,6 @@ native/system/test/bin/
 
 # Generated company-signed CUA release record.
 /packages/experimental/cua-macos/cua-helper.json
+
+# 个人持仓档案（本地保留，不进公开仓库）
+_mytools/skills/dividend-income-desk/reference/user-profile.md

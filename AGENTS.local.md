@@ -14,9 +14,10 @@
 - 本工作副本是 DeepSeek 官方仓库 fork 到个人 git 的：`origin` = `alwayswinder/deepseek-harness`，上游 remote 本机叫 **`upstream`**（另一台机器可能叫 `deepseek-ai`，`update-and-build.bat` 两个名字都认）。更新方式是合并上游 `master`。
 - 个人改动只有下面这些，其余文件必须与上游一致；上游文件的那几处补丁记在 [UPSTREAM.md](_mytools/Plugins/dsh-littleIcon/UPSTREAM.md)，改动要往里追加：
   - `_mytools/**`，以及本文件 `AGENTS.local.md`；
-  - `apps/desktop/src/main.ts`、`apps/desktop/src/browser-guests.ts`、`apps/desktop/tests/browser-guests.spec.ts`；
+  - `apps/desktop/src/main.ts`、`browser-guests.ts`、`ipc.ts`、`preload-app.ts`，以及 `apps/desktop/tests/browser-guests.spec.ts`、`preload-app.spec.ts`；
+  - `apps/desktop/` 的三份 README（`README.md`、`README.zh.md`、`README.i18n.yaml`），为 preload 暴露面补了 `dshDesktop.window.setFullscreen` 一句；
   - `packages/client/ui-sidebar-browser/`（`src/types.ts` 与三份 README）；
-  - `.gitignore`（`.pnpm-tools/`、`_mytools/build/dsh-web*.log` 两行）。
+  - `.gitignore`（`.pnpm-tools/`、`_mytools/build/dsh-web*.log`、`.workbuddy/` 三行）。
 
 ## 多机使用
 
@@ -55,7 +56,7 @@
 1. **`--check` 预检**：git、上游 remote、node、pnpm 可用；工作树没有未提交的改动（未跟踪文件不算）、没有进行中的 merge。有问题先停下汇报。
 2. **更新**：`git fetch <上游>` → `git merge --no-edit <上游>/master`；有冲突就 `git merge --abort` 停下，**逐条处理并汇报**，不硬解、不带着冲突去构建（脚本 exit 2）。
 3. **不自动 push**：只有另外说「推送」或显式带 `--push` 才推 `origin master`。
-4. **preflight**：`node _mytools/build/preflight.mjs --mode desktop`；返回 2 就停下，修好再跑（脚本 exit 3），返回 1 只告警、继续。
+4. **preflight**：`node _mytools/build/preflight.mjs --mode desktop`；有 error 时返回 2，停下修好再跑（update-and-build.bat 此时 exit 3）；只有 warning 时正常退出 0、继续。
 5. **写契约**：`write-resume-plan.ps1` 把仓库、revision、日志路径与预期产物清单写进 `$DSH_HOME\build\resume-plan.json`，供构建结束后的 turn 核验。
 6. **构建**：`build.bat --detached --restart --log <日志>`。完整构建会停掉本副本的 Electron，而本会话跑在它的进程树里——**被停瞬间这一轮 turn 必然中断，这是机制不是失败**；detached 构建脱离进程树活到结束，成功后自动把 app 拉回来，会话存在 `$DSH_HOME\sessions`。
 7. **收尾**：app 回来后读 `resume-plan.json` 与 `$DSH_HOME\build\last-build.json`（外加日志）核对产物；detached 进程被 Ctrl+C / `0xC000013A` 打断也要从日志定位并修好，不允许静默烂尾。

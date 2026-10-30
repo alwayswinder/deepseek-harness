@@ -50,3 +50,6 @@ worktrees/
 _mytools/build/dsh-web*.log
 .workbuddy/
 native/system/test/bin/
+
+# Generated company-signed CUA release record.
+/packages/experimental/cua-macos/cua-helper.json

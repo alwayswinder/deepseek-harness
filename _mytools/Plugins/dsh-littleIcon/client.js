@@ -2826,6 +2826,17 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * @returns the Desktop shell's fullscreen control, or undefined in a browser tab
+     * that has only the browser's own API.
+     */
+    function desktopFullscreenControl() {
+      if (typeof window === 'undefined') return undefined
+      const control = window.dshDesktop?.window
+      if (control === undefined || control === null || typeof control.setFullscreen !== 'function') return undefined
+      return control
+    }
+
+    /**
      * Ask the Desktop shell to enter or leave fullscreen, when this page runs inside
      * it. A browser tab has no such call and answers false. The shell owns the
      * transition, which is what lets a surface opened from a menu command reach the
@@ -2834,9 +2845,8 @@ window.__ModuleLoader__.load({
      * @returns whether the shell took the request.
      */
     function setDesktopFullscreen(fullscreen) {
-      const api = typeof window === 'undefined' ? undefined : window.dshDesktop
-      const control = api?.window
-      if (control === undefined || control === null || typeof control.setFullscreen !== 'function') return false
+      const control = desktopFullscreenControl()
+      if (control === undefined) return false
       try {
         void Promise.resolve(control.setFullscreen(fullscreen)).catch(() => {})
         return true
@@ -3057,11 +3067,13 @@ window.__ModuleLoader__.load({
         return () => { window.removeEventListener('keydown', onKey) }
       }, [])
 
-      // A double click toggles the window fullscreen, and so does the transport's own
-      // button: the window's caption buttons belong to the window and are painted over
-      // the page, so fullscreen is the only state that drops them. The mode never
-      // takes that on its own - the browser grants fullscreen only from a gesture.
+      // A double click toggles the window fullscreen where the browser owns it, and
+      // so does the transport's own button: the window's caption buttons are painted
+      // over the page, so fullscreen is the only state that drops them. The Desktop
+      // shell performs the transition itself when the mode opens, so it has nothing
+      // to toggle here and the mode stays in the state it opened.
       React.useEffect(() => {
+        if (desktopFullscreenControl() !== undefined) return undefined
         const toggle = (event) => {
           toggleListeningFullscreen()
           event.preventDefault()
@@ -3146,8 +3158,13 @@ window.__ModuleLoader__.load({
           }, playing ? t('listeningPause') : t('listeningPlay')),
           h('button', { type: 'button', className: 'dli-listen-button', onClick: () => { sendMusicCommand('next') } },
             t('listeningNext')),
-          h('button', { type: 'button', className: 'dli-listen-button', onClick: toggleListeningFullscreen },
-            fullscreen ? t('listeningExitFullscreen') : t('listeningFullscreen')),
+          // The Desktop application owns the transition and opens the mode in it, so
+          // a button that could leave that state has no job there. A Web build has no
+          // bridge and keeps the button as its only way in.
+          desktopFullscreenControl() === undefined
+            ? h('button', { type: 'button', className: 'dli-listen-button', onClick: toggleListeningFullscreen },
+              fullscreen ? t('listeningExitFullscreen') : t('listeningFullscreen'))
+            : null,
         ),
         h('div', { className: 'dli-listen-hint' }, t('listeningHint')),
       )

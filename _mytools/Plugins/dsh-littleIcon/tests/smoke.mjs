@@ -1982,6 +1982,8 @@ assert.match(clientSource, /data-dsh-listening', ''/u,
   'and put back when the mode closes')
 assert.match(clientSource, /listeningFullscreen/u,
   'the transport offers fullscreen, the one state that drops the caption buttons')
+assert.match(clientSource, /desktopFullscreenControl\(\) === undefined/u,
+  'but only where the shell has no bridge: the Desktop mode opens in fullscreen and stays there')
 // The mode opens from a menu command, which carries no user gesture, so the page
 // asks the Desktop shell for the window transition the browser would refuse it.
 assert.match(clientSource, /function setDesktopFullscreen\(fullscreen\)/u,

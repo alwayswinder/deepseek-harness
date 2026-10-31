@@ -17,7 +17,9 @@
     "volumeDeclineQuarters": 3,
     "accelerationMinPct": 5,
     "lowCostGainPct": -10,
+    "pricedInMetric": "pbPercentile",
     "pricedInPercentile": 30,
+    "pricedInWindowYears": 10,
     "relativeStrengthMinPct": 10,
     "minPeerCount": 3,
     "peers": {

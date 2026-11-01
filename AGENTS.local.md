@@ -37,7 +37,8 @@
 
 ## 工作产物
 
-- **产物不进仓库，统一放 `D:\AI`**：`D:\AI\work`（3ds Max / Unreal 验证取证：场景副本、日志、截图、报告）、`D:\AI\Projects`（个人项目：`remotion\` 视频工程、`ai-game\` 战斗 demo）、`D:\AI\Note`（临时笔记）。桌宠的截图与音乐本来就指向 `D:\AI\Tmp`、`D:\AI\Music`。
+- **产物不进仓库，统一放 `D:\AI`**：`D:\AI\work`（3ds Max / Unreal 验证取证：场景副本、日志、截图、报告）、`D:\AI\Projects`（个人项目：`remotion\` 视频工程、`ai-game\` 战斗 demo）。桌宠的截图与音乐本来就指向 `D:\AI\Tmp`、`D:\AI\Music`。
+- **`D:\AI\Note` 弃用**（2026-11-01）：不再往这里写新东西。重要信息进个人隐私库 `D:\AI\temp-space`，临时产物进 `D:\AI\Tmp`；已有内容保持不动，需要时再逐个迁走。
 - 2026-10-20 起 `_mytools\Mode\dsh-3dsmax\work`、`_mytools\Mode\dsh-unreal\work`、`_mytools\Projects`、`_mytools\ai-game` 已搬到上面这些位置，仓库里不再有旧目录；3ds Max / Unreal 文档里写的落点就是 `D:\AI\work`（`Mode\*\work` 这个相对路径不再成立）。
 - 两个 Mode 的 `.gitignore` 仍忽略 `/work/`：那只是防止有人在仓库里误建后被提交，看到它出现就说明流程写错了位置。
 - 搬动 `D:\AI\Projects\remotion` 下的工程时注意 `node_modules` 是指向 `$DSH_HOME\data\dsh-remotion\runtime\node_modules` 的 junction，`robocopy` 要带 `/XJ` 并在目标处重建链接，否则会整份复制运行时。

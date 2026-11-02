@@ -20,7 +20,7 @@ config:
   sleepWhenHiddenSeconds: 118
   autoHide: false
   autoHideSeconds: 5
-  shotDir: D:\AI\Tmp
+  shotDir: D:\AI\Tmp\shots
   sites:
     - name: b站
       url: https://www.bilibili.com/

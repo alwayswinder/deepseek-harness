@@ -21,7 +21,7 @@ profile 里的 `web-search-opencode` 行，字段全部可选：
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `baseURL` | `https://opencode.ai/zen/go/v1` | Anthropic 兼容基址，自动追加 `/messages` |
-| `model` | `deepseek-v4.1-flash` | 网关模型；必须能执行原生 `web_search`（见下表） |
+| `model` | `deepseek-v4.1-flash` | 网关模型；必须能执行原生 `web_search`（见下表）。profile 的 patch 现选 `claude-haiku-5-5` |
 | `apiKeyEnv` | `OPENCODE_GO_API_KEY` | 凭据引用名；依次查凭据服务、进程环境变量 |
 | `apiVersion` | `2023-06-01` | `anthropic-version` 头 |
 | `maxTokens` | `4096` | 单次搜索的输出上限 |
@@ -32,15 +32,15 @@ profile 里的 `web-search-opencode` 行，字段全部可选：
 插件同时把 web 能力位的 `searchProvider` 改成 `opencode`；`deepseek-official`
 provider 仍然注册着，只是不再被选中。
 
-### Go 套餐里哪些模型能搜索（2026-10-21 实测）
+### Go 套餐里哪些模型能搜索（2026-10-21 实测，11-02 复核）
 
 Go 档网关（`GET /zen/go/v1/models`）共 37 个模型，Claude 只有 `claude-haiku-5-5`；
 能否搜索与“是不是 Claude”无关，取决于网关是否代跑 `web_search`：
 
 | 模型 | 实测 |
 |---|---|
-| `deepseek-v4.1-flash` | ✅ 10 条来源，5.9 s（默认，也是对话模型） |
-| `claude-haiku-5-5` | ✅ 9 条来源，7.9 s |
+| `deepseek-v4.1-flash` | ❌ 2026-11-02 起网关不再执行 `web_search`：模型直接答「不能联网」，没有工具结果块（10-21 时还可用） |
+| `claude-haiku-5-5` | ✅ 10 条来源，9.7 s（2026-11-02 复核；patch 现选它） |
 | `kimi-k3` | ✅ 7 条来源，24.6 s（慢） |
 | `qwen3.8-flash` / `qwen3.8-max` | ❌ 模型拒答“不能联网”，无工具结果块 |
 | `minimax-m3` | ❌ 只有文本回答，无 `web_search_tool_result` 块 |

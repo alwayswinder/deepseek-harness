@@ -11,9 +11,10 @@
         # Anthropic-compatible base; `/messages` is appended.
         baseURL: https://opencode.ai/zen/go/v1
         # The Go plan's gateway runs the native web_search tool on this route
-        # too, and it is also the conversation model. claude-haiku-5-5 is the
-        # alternative: cheaper on paper, weaker on Chinese pages.
-        model: deepseek-v4.1-flash
+        # too. deepseek-v4.1-flash stopped returning web_search_tool_result on
+        # 2026-11-02 (the model answers "I can't browse"); claude-haiku-5-5
+        # still executes it — weaker on Chinese pages, but it actually searches.
+        model: claude-haiku-5-5
         apiKeyEnv: OPENCODE_GO_API_KEY
         apiVersion: '2023-06-01'
         maxTokens: 4096
@@ -21,6 +22,10 @@
         sessionHeader: x-opencode-session
         disableThinking: true
 
+# A patch replaces `config` as a whole, so the base bundle's `fetchProvider: http`
+# must be repeated here — omitting it leaves two fetch providers registered and
+# every web_fetch call fails with WEB_PROVIDER_AMBIGUOUS.
 - id: web
   config:
     searchProvider: opencode
+    fetchProvider: http

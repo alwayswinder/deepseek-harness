@@ -561,6 +561,10 @@ window.__ModuleLoader__.load({
           h('span', null, `市值 ${fmtMoney(totals.market)}`),
           h('span', null, `成本 ${fmtMoney(totals.cost)}`),
           h('span', { style: tone(totals.pnl) }, `累计 ${fmtSigned(totals.pnl)} (${fmtPct(totals.pnlPct)})`),
+          typeof view.yearly_realized === 'number'
+            ? h('span', { style: tone(view.yearly_realized + totals.pnl) },
+              `今年 ${fmtSigned(view.yearly_realized + totals.pnl)}（已实现 + 浮盈）`)
+            : null,
           h('span', { style: tone(totals.day) }, `今日 ${fmtSigned(totals.day)} (${fmtPct(totals.dayPct)})`)),
         h('div', { style: S.fileBlock },
           h('div', { style: S.fileLabel }, '总资产与可用资金'),

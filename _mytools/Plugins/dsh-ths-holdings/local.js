@@ -11,6 +11,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 
 /** The batch quote endpoint (GBK-encoded, one `v_<secid>="..."` line per code). */
 export const QUOTE_URL = 'http://qt.gtimg.cn/q='
@@ -367,5 +368,23 @@ export async function collectLocalStats(input) {
     updated_at: now.toISOString(),
     error: missing.length === 0 ? '' : `无报价: ${missing.join('、')}`,
     token_expired: false,
+  }
+}
+
+/**
+ * Read the year's already-realized P&L recorded beside the position snapshot.
+ * The page adds it to the live float, so the yearly total follows the holdings
+ * without tracking every fill: a sale moves the same money from float to
+ * realized, leaving the sum unchanged.
+ * @param {string} positionsFile - absolute path of the position snapshot.
+ * @returns {Promise<number | undefined>} the realized amount, or undefined when the file is missing or invalid.
+ */
+export async function readYearlyRealized(positionsFile) {
+  try {
+    const text = await readFile(join(dirname(positionsFile), 'yearly.json'), 'utf8')
+    const realized = Number(JSON.parse(text)?.realized)
+    return Number.isFinite(realized) ? realized : undefined
+  } catch {
+    return undefined
   }
 }

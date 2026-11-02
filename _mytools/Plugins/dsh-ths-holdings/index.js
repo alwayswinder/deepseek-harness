@@ -17,7 +17,7 @@ import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { CookieAcquirer, resolvePlaywright } from './acquire.js'
 import { collectStats, cookieField, fetchFundKey, INDEX_URL, listPortfolios, normalizeCookie, PNL_URL, verifyCookie } from './fetch.js'
-import { collectLocalStats, DEFAULT_MINUTE_REFRESH_MS, QUOTE_URL } from './local.js'
+import { collectLocalStats, DEFAULT_MINUTE_REFRESH_MS, QUOTE_URL, readYearlyRealized } from './local.js'
 import {
   clearPositionsLocation, defaultPositionsFile, inspectPositionsChoice, LOCATION_FILE,
   resolveDshHome, resolvePositionsLocation, writePositionsLocation,
@@ -319,9 +319,18 @@ export function apply(ctx, config = {}) {
           return
         }
         const result = await savePositions({ ...input, body })
+        const realized = await readYearlyRealized(currentFile())
         writeJson(res, result.ok ? 200 : 400,
           result.ok
-            ? { ...result, view: { ...result.view, ...locationView(), ...assetsView(result.view) } }
+            ? {
+                ...result,
+                view: {
+                  ...result.view,
+                  ...locationView(),
+                  ...assetsView(result.view),
+                  ...(realized === undefined ? {} : { yearly_realized: realized }),
+                },
+              }
             : result)
         return
       }
@@ -332,7 +341,13 @@ export function apply(ctx, config = {}) {
         return
       }
       const view = await readPositionsView(input)
-      writeJson(res, 200, { ...view, ...locationView(), ...assetsView(view) })
+      const realized = await readYearlyRealized(currentFile())
+      writeJson(res, 200, {
+        ...view,
+        ...locationView(),
+        ...assetsView(view),
+        ...(realized === undefined ? {} : { yearly_realized: realized }),
+      })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
       if (res.headersSent) { res.destroy(); return }

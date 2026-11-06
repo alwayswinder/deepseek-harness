@@ -160,14 +160,14 @@ catch {
 
 # ---------------------------------------------------------------- 3. 校验
 if (-not $SkipCheck) {
-    # MCP 行的 config 键是否仍被当前 mcp-client 接受 —— check-presets 验不出这一半，
-    # 而键改名会让整个 preset 挂载失败、模式从选择器里静默消失。
-    $cfgCheck = Join-Path $packageRoot 'tools\check-config.mjs'
-    if (Test-Path $cfgCheck) {
-        Write-Host '[mode-unreal] 校验 MCP 行是否被 mcp-client 接受 ……'
-        & node $cfgCheck
+    # MCP 行现在注册在 profile 的 cordis.patch.yml（不属于本 preset），用统一脚本按
+    # mcp-client 自己的 Config schema 校验；键改名会在这里报出来。
+    $probe = Join-Path $repoRoot '_mytools\build\probe-mcp.mjs'
+    if (Test-Path $probe) {
+        Write-Host '[mode-unreal] 校验 profile 里的 MCP 行 ……'
+        & node $probe --no-connect
         if ($LASTEXITCODE -ne 0) {
-            Write-Warning 'MCP 行不被当前 mcp-client 接受；改 sync-preset.mjs 的 mcpConfig 后重新生成'
+            Write-Warning 'profile 里的 MCP 行不被当前 mcp-client 接受；检查 cordis.patch.yml 的 mcp-* 条目'
         }
     }
 
@@ -200,8 +200,8 @@ if (-not $SkipCheck) {
 
 Write-Host ''
 if ($probeOk) {
-    Write-Host '[mode-unreal] 完成。重启 DSH 后，在模式选择器里选「Unreal Engine」。'
+    Write-Host '[mode-unreal] 完成。重启 DSH 后，新会话自动带 mcp__unreal__* 工具；本模式只额外提供 UE 技能。'
 }
 else {
-    Write-Host '[mode-unreal] 注册完成，但 UE 端点当前不可用。先启动编辑器，再重启 DSH 并选「Unreal Engine」。'
+    Write-Host '[mode-unreal] 注册完成，但 UE 端点当前不可用。先启动编辑器，再重启 DSH（工具会随重连恢复）。'
 }

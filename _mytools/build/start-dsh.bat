@@ -103,6 +103,12 @@ rem The link keeps one copy of each skill: the repository source stays the only 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-skills.ps1"
 if errorlevel 1 echo [dsh] WARNING: personal skills could not be linked.
 
+rem Prepare the official Blender MCP server the profile registers globally
+rem (mcp__blender__* tools in every session). Idempotent: exits at once when
+rem the entry already exists; a failed download only warns.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-blender-mcp.ps1"
+if errorlevel 1 echo [dsh] WARNING: Blender MCP server could not be prepared; blender tools will be missing.
+
 rem The launching cmd.exe holds the log file open for the whole life of the service
 rem it started (start-dsh-service.vbs redirects the service output there), so while
 rem a service is running the redirection below cannot open this path and cmd.exe

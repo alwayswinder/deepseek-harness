@@ -1,8 +1,9 @@
 // 从上游 standard preset 生成本包的 cordis.patch.yml。
 //
 // Agent Preset 没有继承机制，所以本模式的 `plugins` 清单是
-// `packages/bundle/web-app/presets/standard.patch.yml` 的副本，外加 UE 的两处改动
-// （skill-filesystem 的 customSkillDirs、末尾的 mcp-unreal 行）。上游会持续改动
+// `packages/bundle/web-app/presets/standard.patch.yml` 的副本，外加本模式唯一的改动
+// （skill-filesystem 的 customSkillDirs）。Unreal 的 MCP 服务不再放进 preset：
+// 它注册在每个 profile 的 cordis.patch.yml，所有会话都直接带工具。上游会持续改动
 // 那份清单 —— 删掉一个 config 键就会让整个 preset 挂载失败，而挂载失败的 preset
 // 会从模式选择器里消失（选择器只列能组出会话的 preset）。
 //
@@ -35,46 +36,11 @@ const skillDirsExpression = "!!js process.getBuiltinModule('node:path').join("
   + "process.getBuiltinModule('node:path').dirname("
   + "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@local/dsh-mode-unreal/package.json')), 'skills')"
 
-/**
- * MCP 行的配置，写成 JS 对象而不是硬编码的 YAML 文本：tools/check-config.mjs 用
- * 同一份对象去跑 `@deepseek-ai/dsh-mcp-client` 的 Config schema，这样"某个键改名了"
- * 会在装机前炸出来，而不是等整个 preset 挂载失败、模式从选择器里消失。
- *
- * 为什么用 streamable-http 直连而不是 stdio 拉起 Node 桥：UE 5.8 的
- * ModelContextProtocol 插件自带 HTTP MCP 服务（默认 :8000/mcp），少一个进程、少一份
- * 要维护的桥，也不受 Windows 沙箱完整性标签影响（那是 3ds Max 模式的主要坑）。
- * URL 可用 DSH_UNREAL_MCP_URL 覆盖（改了项目设置里的端口，或同时开两个编辑器时）。
- * toolCallTimeoutMs 放到 120s：PIE 启停、关卡加载、ProgrammaticToolset 脚本都可能
- * 超过默认的 60s。
- */
-export const mcpConfig = {
-  serverName: 'unreal',
-  transport: 'streamable-http',
-  url: { $js: "process.env.DSH_UNREAL_MCP_URL || 'http://127.0.0.1:8000/mcp'" },
-  toolCallTimeoutMs: 120000,
-  failOnStartupError: false,
-}
-
-/** `!!js` 表达式用双引号包住（表达式里只用单引号）；其余标量不安全时才加引号。 */
-function renderScalar(value) {
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (typeof value === 'object' && value !== null && '$js' in value) return `!!js "${value.$js}"`
-  const text = String(value)
-  return /^[A-Za-z0-9_\-/.]+$/.test(text) ? text : `'${text}'`
-}
-
-const mcpRow = [
-  '          - id: mcp-unreal',
-  "            name: '@deepseek-ai/dsh-mcp-client'",
-  '            config:',
-  ...Object.entries(mcpConfig).map(([key, value]) => `              ${key}: ${renderScalar(value)}`),
-]
-
-const header = `# dsh-mode-unreal —— Unreal Engine 5.8 MCP 编辑模式（本地覆盖层，不属于上游仓库）
+const header = `# dsh-mode-unreal —— Unreal Engine 技能模式（本地覆盖层，不属于上游仓库）
 #
 # 本文件由 sync-preset.mjs 生成：plugins 清单复制自上游
-# packages/bundle/web-app/presets/standard.patch.yml，再追加本模式的两处改动
-# （skill-filesystem 的 customSkillDirs、末尾的 mcp-unreal 行）。
+# packages/bundle/web-app/presets/standard.patch.yml，再加上本模式唯一的改动
+# （skill-filesystem 的 customSkillDirs）。
 # preset 没有继承机制，上游改 standard 后重跑：
 #
 #   node _mytools/Mode/dsh-unreal/sync-preset.mjs
@@ -83,8 +49,8 @@ const header = `# dsh-mode-unreal —— Unreal Engine 5.8 MCP 编辑模式（�
 # 挂载失败；挂载失败的 preset 不会出现在模式选择器里（选择器只列能组出会话的
 # preset），只在「设置 → Agent 预设」里带错误标记显示。
 #
-# 该 presets 的 plugins 是"子插件清单"：MCP 与技能都只在这个模式的作用域内注册，
-# 其它模式（standard / ptc）不受影响，因此不为它们付 token。`.split('\n')
+# Unreal MCP 不在这个 preset 里：它注册在 profile 的 cordis.patch.yml，
+# 每个会话都带 mcp__unreal__* 工具，不再需要先选本模式。`.split('\n')
 
 const upstreamLines = readFileSync(upstreamPath, 'utf8').split(/\r?\n/)
 while (upstreamLines.length > 0 && upstreamLines.at(-1).trim() === '') upstreamLines.pop()
@@ -113,18 +79,15 @@ const lines = upstreamBody.map(line => {
 })
 lines.splice(lines.indexOf('        id: unreal') + 1, 0,
   '        name: Unreal Engine',
-  '        description: Unreal Engine 5.8 MCP 编辑模式：内置编辑器 MCP 服务（关卡、蓝图、材质、日志、PIE）。')
+  '        description: Unreal Engine 技能模式：编辑器 MCP 的路由与安全边界等专用技能；MCP 工具已全局加载。')
 lines.splice(lines.indexOf("            name: '@deepseek-ai/dsh-skill-filesystem'") + 1, 0,
   '            config:',
   '              customSkillDirs:',
   `                - ${skillDirsExpression}`)
 
-const content = [...header, ...lines, ...mcpRow, ''].join('\n')
+const content = [...header, ...lines, ''].join('\n')
 
-/**
- * 只在作为脚本运行时才读写输出文件：tools/check-config.mjs 会 import 本模块取
- * `mcpConfig`，那次 import 不能有副作用。
- */
+/** 只在作为脚本运行时才读写输出文件（`--check` 与生成共用同一份 content）。 */
 function isMain() {
   const entry = process.argv[1]
   if (entry === undefined) return false

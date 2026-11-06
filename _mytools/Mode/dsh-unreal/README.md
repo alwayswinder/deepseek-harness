@@ -1,18 +1,18 @@
-# dsh-mode-unreal — Unreal Engine 5.8 MCP 编辑模式
+# dsh-mode-unreal — Unreal Engine 技能模式
 
-DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，UE 编辑器内置的 MCP 服务
-（`ModelContextProtocol` 插件）的工具会自动挂载，UE 专用技能也自动出现在技能目录里。
-**其它模式（standard / ptc / 3ds Max）完全不受影响**，所以不为它们付 MCP 的 token。
+**Unreal 的 MCP 工具已经全局加载**：注册在 profile 的 `cordis.patch.yml`，任何预设、任何新会话
+都直接带 `mcp__unreal__*` 工具，不再需要先选这个模式。
+
+本模式（preset）现在只做一件事：把 UE 专用技能（`unreal-editor-mcp`）挂进会话的技能目录。
+它是一个**可选**技能包，选了才有技能；MCP 工具与选不选它无关。
 
 ## 怎么用
 
 1. 启动 UE 编辑器（**先起编辑器，再起 DSH**；见下面"已知限制"）。
-2. 重启 DSH（预设是宿主侧组合，只有重启才生效）。
-3. 新建会话时在**模式选择器**里选 **「Unreal Engine」**（`id: unreal`，roster 里排第 6）。
-4. 会话里应能看到 3 个 `mcp__unreal__*` 工具（`list_toolsets` / `describe_toolset` /
-   `call_tool`），以及技能目录里的 `unreal-editor-mcp`。
-
-> 默认模式没有改动，仍是 `standard`。本模式是**可选**的。
+2. 重启 DSH（宿主侧改动需要重启才生效）。
+3. 新会话默认就带 3 个 `mcp__unreal__*` 工具（`list_toolsets` / `describe_toolset` / `call_tool`）。
+4. 需要 UE 技能时，在**模式选择器**里选 **「Unreal Engine」**（`id: unreal`，roster 里排第 6），
+   技能目录里会出现 `unreal-editor-mcp`。
 
 ## 这个模式包含什么
 
@@ -23,7 +23,9 @@ DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，UE
 | `@deepseek-ai/dsh-persona`、`tool-pwsh`、`tool-fs`、`todo`、`present`… | 与 `standard` 相同的完整工具栈（preset 没有继承机制，必须自带） |
 | `skill-filesystem` + `customSkillDirs` | 指向本包的 `skills/`，**只在本模式注册** |
 | `tool-skill` | 暴露 `skill` 工具，让技能可被加载 |
-| `mcp-unreal` → `@deepseek-ai/dsh-mcp-client` | **streamable-http** 直连 `http://127.0.0.1:8000/mcp`，工具名为 `mcp__unreal__<tool>` |
+
+MCP 不在这张表里：它注册在 `$DSH_HOME/profiles/{desktop,web}/cordis.patch.yml` 的 `mcp-unreal` 条目，
+**streamable-http** 直连 `http://127.0.0.1:8000/mcp`，工具名为 `mcp__unreal__<tool>`，与预设无关。
 
 ### 路径是怎么做到不写死盘符的
 
@@ -42,18 +44,19 @@ DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，UE
 url: !!js "process.env.DSH_UNREAL_MCP_URL || 'http://127.0.0.1:8000/mcp'"
 ```
 
-## 为什么是 HTTP 直连，而不是像 3ds Max 模式那样 stdio 起一个桥
+## 为什么是 HTTP 直连，而不是像 3ds Max 那样 stdio 起一个桥
 
-| | 3ds Max 模式 | 本模式 |
+| | 3ds Max（全局） | Unreal（全局） |
 |---|---|---|
 | 传输 | stdio，`uv run 3dsmax-mcp` | Streamable HTTP，`http://127.0.0.1:8000/mcp` |
 | 上游 checkout | 有（钉 tag、`.venv`、仓库外放置） | **没有**：服务在编辑器里 |
 | 子进程 | 有（Python 解释器） | **没有** |
 | Windows 沙箱完整性标签坑 | 有（`Win32 error 5`） | **没有**（不启动进程，不涉及 Low 完整性） |
-| 工具数 | 184（full profile） | 3（渐进模式，见下） |
+| 工具数 | 7（progressive，DSH 固定） | 3（渐进模式，见下） |
 
-UE 5.8 的 `ModelContextProtocol` 插件自带 MCP 服务，`bAutoStartServer=True` 时随编辑器启动，
-所以这个模式**没有任何要 clone、要 `uv sync`、要钉版本的东西** —— `install.ps1` 只做 profile 注册与校验。
+两个服务都注册在 profile 的 `cordis.patch.yml`，与预设无关。UE 5.8 的 `ModelContextProtocol`
+插件自带 MCP 服务，`bAutoStartServer=True` 时随编辑器启动，所以这里**没有任何要 clone、
+要 `uv sync`、要钉版本的东西** —— `install.ps1` 只做 profile 注册与校验。
 
 > 项目里还装了 `McpAutomationBridge`（`DefaultGame.ini` 里 `bEnableNativeMCP=True`、
 > `NativeMCPPort=3000`），那条路需要额外的 Node 桥进程（`npx unreal-engine-mcp-server`）
@@ -76,9 +79,11 @@ UE 5.8 的 `ModelContextProtocol` 插件自带 MCP 服务，`bAutoStartServer=Tr
 
 ## token 开销（实测）
 
+这 3 个工具进入**每个会话的每个请求**（1,279 字节 schema，约 350 token）：
+
 | 档 | 工具数 | schema 字节 | 约合 token |
 |---|---|---|---|
-| `bEnableToolSearch=True`（默认，本模式采用） | 3 | 1,284 | ~350 |
+| `bEnableToolSearch=True`（默认，DSH 采用） | 3 | 1,279 | ~350 |
 | `bEnableToolSearch=False`（全原生） | 数百（19→23 个 toolset 随插件变化） | — | 数万 |
 
 代价是每次操作要先 `list_toolsets` → `describe_toolset` → `call_tool` 三步（技能里写了路由规则）。
@@ -127,7 +132,7 @@ powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-unreal\install.ps1
 1. 把本包链接进 `desktop` 与 `web` 两个 profile 的 `node_modules/@local/`，并写进
    `dependencies` 与 `dsh.profile.bundles`（末尾）
 2. 探测 UE MCP 端点：报告在不在、暴露几个工具、是不是渐进模式
-3. 用 `@deepseek-ai/dsh-mcp-client` 自己的 schema 校验 MCP 行（`tools/check-config.mjs`）
+3. 用 `_mytools\build\probe-mcp.mjs --no-connect` 校验 profile 里的三个 MCP 行
 4. 跑 `check-presets.mjs`（期望 `unreal: ok`）与 `sync-preset.mjs --check`
 
 然后重启 DSH。
@@ -140,18 +145,15 @@ powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-unreal\install.ps1
 ```powershell
 node _mytools\Mode\dsh-unreal\sync-preset.mjs          # 重新生成 cordis.patch.yml
 node _mytools\Mode\dsh-unreal\sync-preset.mjs --check   # 只检查是否漂移（exit 1 = 漂移）
-node _mytools\Mode\dsh-unreal\tools\check-config.mjs    # MCP 行的 config 键是否仍被接受
+node _mytools\build\probe-mcp.mjs --no-connect          # profile 里的三个 MCP 行是否仍被接受
 node _mytools\build\check-presets.mjs                   # 期望 exit 0，且 unreal: ok
 ```
 
-生成器把上游 `plugins` 块原样复制，再套上本模式的四处差异：preset 的
-`id` / `name` / `description` / `order`，`skill-filesystem` 的 `config.customSkillDirs`，
-末尾追加的 `mcp-unreal` 行。上游结构变了（找不到它要改的行）时 exit 2 报错，不会写半成品。
-
-MCP 行的配置写成 `sync-preset.mjs` 里的 `mcpConfig` **对象**而不是硬编码 YAML 文本，
-就是为了让 `check-config.mjs` 能用同一份对象跑真实 schema：
-`check-presets.mjs` 只验包能不能解析，**验不了 config 键**；而键被改名会让整个 preset
-挂载失败 —— 那种失败只会让模式从选择器里消失，日志里没有线索。
+生成器把上游 `plugins` 块原样复制，再套上本模式的差异：preset 的
+`id` / `name` / `description` / `order`，以及 `skill-filesystem` 的 `config.customSkillDirs`。
+MCP 行不再由生成器追加：它在 profile 的 `cordis.patch.yml` 里，由 `probe-mcp.mjs` 用
+`@deepseek-ai/dsh-mcp-client` 自己的 Config schema 校验（`check-presets.mjs` 只验包解析，
+验不了 config 键）。上游结构变了（找不到它要改的行）时生成器 exit 2 报错，不会写半成品。
 
 ### "模式不见了"怎么查
 
@@ -170,35 +172,36 @@ node _mytools\Mode\dsh-unreal\tools\probe-presets.mjs 9231   # 指定 inspector 
 junction）跑 `node --inspect=9231 apps\cli\lib\bin.js web --no-open --port 3123`，
 roster 返回 5 行，其中 `{"id":"unreal","order":6,"broken":null}` —— 挂载成功。测完杀进程、删临时目录。
 
-### "模式在，但会话里没有 `mcp__unreal__*`"怎么查
+### "会话里没有 `mcp__unreal__*`"怎么查
 
-先跑端点自检（用的是宿主实际加载的那份 MCP SDK，与 `connection.ts` 同一组 connect 选项）：
+先跑 profile 级诊断（读真正生效的 `cordis.patch.yml`，按 mcp-client 的 schema 校验，再实际连一次）：
 
 ```powershell
-node _mytools\Mode\dsh-unreal\tools\verify-endpoint.mjs
-# 成功：protocol: 2025-11-25 / tools (3) / smoke call 返回当前关卡路径
-# 失败：连不上（编辑器没开、端口不对）或工具数 > 3（bEnableToolSearch 被关）
+node _mytools\build\probe-mcp.mjs
+# 成功：三行 config ok + 连接成功 + 工具名单
+# 失败：连不上（编辑器没开、端口不对）或某个 config 键被拒
 ```
 
-端点正常但仍无工具，就是宿主侧没连上：重启 DSH（预设与 MCP 客户端都是启动时挂载的），
+端点正常但仍无工具，就是宿主侧没连上：重启 DSH（MCP 客户端在启动时挂载），
 或者用 `DSH_UNREAL_MCP_URL` 指向实际地址后再重启。
 
-## 与 3ds Max 模式的差异（维护视角）
+## 与 3ds Max 的差异（维护视角）
 
-| 关注点 | 3ds Max 模式 | 本模式 |
+| 关注点 | 3ds Max（全局 MCP） | Unreal（全局 MCP） |
 |---|---|---|
 | 装机成本 | clone + `uv sync` + 装 Max 桥插件 | 只写 profile 注册 |
 | 版本锁定 | `install.ps1` 顶部 `$UpstreamTag` | 不需要：服务随编辑器 |
-| 失败模式 | 完整性标签 → 每个调用 `Win32 error 5` | 编辑器没开 → 没有工具（模式仍挂载） |
-| 工具发现 | full profile 直接调用 | 必须走 3 个元工具 |
+| 失败模式 | 完整性标签 → 每个调用 `Win32 error 5` | 编辑器没开 → 没有工具（会话照常） |
+| 工具发现 | progressive：7 个工具，先 `list_toolsets` | 必须走 3 个元工具 |
 | 技能数量 | 1（`3dsmax-live-mcp`） | 1（`unreal-editor-mcp`） |
 
 ## 已知限制
 
-- **编辑器必须先开着**。`failOnStartupError: false` 保证编辑器不在时 DSH 照样启动、模式照样能选，
+- **编辑器必须先开着**。`failOnStartupError: false` 保证编辑器不在时 DSH 照样启动、会话照样能开，
   但那时没有任何 `mcp__unreal__*` 工具；DSH 会按重连策略（0.5s 起、翻倍到 30s、10 次）尝试，
   预算耗尽后工具不再出现 —— 这时重启 DSH，或用兜底脚本。
-- **需要重启 DSH 才生效**：预设是宿主侧组合，HMR 只覆盖客户端插件。
+- **需要重启 DSH 才生效**：profile 的 MCP 条目是宿主侧组合，HMR 只覆盖客户端插件。
+- **工具常驻每个会话**：这是全局加载的直接代价（约 350 token / 请求，比 3ds Max 与 Blender 小得多）。
 - **一次只能连一个编辑器实例**：服务端口是项目设置里的单值（默认 8000），两个编辑器抢同一个端口时
   后启动的那个起不来。要连另一个实例就改端口，然后用 `DSH_UNREAL_MCP_URL` 指过去。
 - **三层调用有额外 token 成本**：每次不熟悉的操作多一次 `describe_toolset`（一次几 KB 的 schema）。
@@ -208,6 +211,11 @@ node _mytools\Mode\dsh-unreal\tools\verify-endpoint.mjs
 - **头面部/MetaHuman 工作流**没有本模式专属技能，用 `MetaHumanToolset` 前先 `describe_toolset`。
 
 ## 回滚
+
+只想关掉 Unreal 的 MCP 工具（保留技能）：从 `$DSH_HOME\profiles\{desktop,web}\cordis.patch.yml`
+里删掉 `mcp-unreal` 那一条，重启 DSH。
+
+整个模式都不用了：
 
 ```powershell
 $h = $env:DSH_HOME
@@ -224,13 +232,17 @@ foreach ($p in 'desktop','web') {
 
 ## 实测记录（2026-10-20）
 
+- **2026-11-06，改为全局加载后验证**：`_mytools\build\probe-mcp.mjs` 读到 profile 的 `mcp-unreal`
+  行，schema 接受、连接成功（3 工具 / 1,279 字节）；另起一个 `dsh web` 实例
+  （`--inspect=9231`）读宿主 `ctx.tools.definitions(undefined)`，全局层有 3 个
+  `mcp__unreal__*` 工具，preset roster 里 `unreal` 仍 `broken: null`。
 - 端点 `http://127.0.0.1:8000/mcp` 握手成功，`tools/list` 返回 3 个工具 / 1,284 字节 schema
 - 用 mcp-client 依赖的同一个 SDK（`@modelcontextprotocol/client@2.2.0`）与同一组 connect 选项
   （`versionNegotiation: { mode: 'auto' }`）连通，协商到协议 `2025-11-25`（服务器上限，
   客户端偏好 2026-07-28 时自动回落）
 - `call_tool` → `SceneTools.get_current_level` 返回 `/Game/_MyTest/PCG/M_PCG_Test`
 - 传全名 `editor_toolset.toolsets.scene.SceneTools.get_current_level` 得到 `Unknown tool`（已验证的坑）
-- `check-config.mjs` 通过（`transport: streamable-http`、`url`、`toolCallTimeoutMs` 都被当前 schema 接受）
+- `probe-mcp.mjs --no-connect` 通过（`transport: streamable-http`、`url`、`toolCallTimeoutMs` 都被当前 schema 接受）
 - `check-presets.mjs`：`unreal: ok (2 disabled)`
 - 临时 `DSH_HOME` 挂载测试：roster 里 `unreal` `broken: null`
 
@@ -240,9 +252,9 @@ foreach ($p in 'desktop','web') {
 |---|---|
 | `package.json` | 包声明，`dsh.bundle.patch` 指向 `cordis.patch.yml` |
 | `cordis.patch.yml` | **生成物**，别手改；由 `sync-preset.mjs` 从上游 standard 复制并改写 |
-| `sync-preset.mjs` | 生成器；导出 `mcpConfig` 给 `check-config.mjs` 复用 |
+| `sync-preset.mjs` | 生成器；把上游 standard 的 `plugins` 复制过来并替换 id/name/order 与技能目录 |
 | `install.ps1` | 幂等装机：profile 注册 + 端点探测 + 三项校验 |
-| `tools/check-config.mjs` | 用 mcp-client 的 schema 校验 MCP 行 |
+| `_mytools\build\probe-mcp.mjs` | 读 profile 的 `mcp-*` 条目，按 mcp-client schema 校验并实际连接（三个服务共用） |
 | `tools/verify-endpoint.mjs` | 用宿主同一个 MCP SDK 直连端点并试调一次（排查"模式里没有工具"） |
 | `tools/ue-mcp.ps1` | 零 token 兜底客户端 |
 | `tools/probe-presets.mjs` | 连 inspector 读活着的 preset roster |

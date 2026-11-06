@@ -2,7 +2,7 @@
   "name": "@local/dsh-mode-unreal",
   "version": "1.0.0",
   "private": true,
-  "description": "DSH 的 Unreal Engine 5.8 MCP 编辑模式：以 preset 形式内置 UE 内置 MCP 服务（ModelContextProtocol 插件）的工具与 UE 专用技能。",
+  "description": "DSH 的 Unreal Engine 技能模式：以 preset 形式挂载 UE 专用技能；UE 编辑器内置的 MCP 工具已全局加载，每个会话都有。",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

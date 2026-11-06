@@ -1,10 +1,12 @@
 // Regenerate this package's cordis.patch.yml from the upstream standard preset.
 //
 // An Agent Preset has no inheritance, so this mode's `plugins` list is a copy of
-// `packages/bundle/web-app/presets/standard.patch.yml` plus the two 3ds Max
-// additions (skill directory, MCP server). Upstream periodically changes that
-// list — a removed config key makes the whole preset fail to mount, and a broken
-// preset disappears from the mode picker (the pickers choose the next session's
+// `packages/bundle/web-app/presets/standard.patch.yml` plus this mode's one
+// addition (the skill directory). The 3ds Max MCP server is no longer part of
+// the preset: it is registered globally in each profile's cordis.patch.yml so
+// every session gets its tools. Upstream periodically changes that list — a
+// removed config key makes the whole preset fail to mount, and a broken preset
+// disappears from the mode picker (the pickers choose the next session's
 // composition, so they list only presets that can compose one).
 //
 // Usage:
@@ -35,25 +37,11 @@ const skillDirsExpression = "!!js process.getBuiltinModule('node:path').join("
   + "process.getBuiltinModule('node:path').dirname("
   + "process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@local/dsh-mode-3dsmax/package.json')), 'skills')"
 
-/** The 3ds Max MCP server row appended after the copied standard rows. */
-const mcpRow = `          - id: mcp-3dsmax
-            name: '@deepseek-ai/dsh-mcp-client'
-            config:
-              serverName: 3dsmax
-              transport: stdio
-              command: uv
-              args:
-                - run
-                - --directory
-                - !!js process.env.DSH_3DSMAX_MCP_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@local/dsh-mode-3dsmax/package.json')), 'upstream', '3dsmax-mcp')
-                - 3dsmax-mcp
-              failOnStartupError: false`.split('\n')
-
-const header = `# dsh-mode-3dsmax —— 3ds Max MCP 编辑模式（本地覆盖层，不属于上游仓库）
+const header = `# dsh-mode-3dsmax —— 3ds Max 技能模式（本地覆盖层，不属于上游仓库）
 #
 # 本文件由 sync-preset.mjs 生成：plugins 清单复制自上游
-# packages/bundle/web-app/presets/standard.patch.yml，再追加本模式的两处改动
-# （skill-filesystem 的 customSkillDirs、末尾的 mcp-3dsmax 行）。
+# packages/bundle/web-app/presets/standard.patch.yml，再加上本模式唯一的改动
+# （skill-filesystem 的 customSkillDirs）。
 # preset 没有继承机制，上游改 standard 后重跑：
 #
 #   node _mytools/Mode/dsh-3dsmax/sync-preset.mjs
@@ -62,8 +50,8 @@ const header = `# dsh-mode-3dsmax —— 3ds Max MCP 编辑模式（本地覆盖
 # 挂载失败；挂载失败的 preset 不会出现在模式选择器里（选择器只列能组出会话的
 # preset），只在「设置 → Agent 预设」里带错误标记显示。
 #
-# 该 presets 的 plugins 是"子插件清单"：MCP 与技能都只在这个模式的作用域内注册，
-# 其它模式（standard / ptc）不受影响，因此不为它们付 token。`.split('\n')
+# 3ds Max MCP 不在这个 preset 里：它注册在 profile 的 cordis.patch.yml，
+# 每个会话都带 mcp__3dsmax__* 工具，不再需要先选本模式。`.split('\n')
 
 const upstreamLines = readFileSync(upstreamPath, 'utf8').split(/\r?\n/)
 while (upstreamLines.length > 0 && upstreamLines.at(-1).trim() === '') upstreamLines.pop()
@@ -90,13 +78,13 @@ const lines = upstreamBody.map(line => {
 })
 lines.splice(lines.indexOf('        id: 3dsmax') + 1, 0,
   '        name: 3ds Max',
-  '        description: 3ds Max MCP 编辑模式：内置 3dsmax-mcp 工具与 3ds Max 专用技能（控制器迁移、实时场景操控）。')
+  '        description: 3ds Max 技能模式：控制器迁移、实时场景操控等专用技能；MCP 工具已全局加载。')
 lines.splice(lines.indexOf("            name: '@deepseek-ai/dsh-skill-filesystem'") + 1, 0,
   '            config:',
   '              customSkillDirs:',
   `                - ${skillDirsExpression}`)
 
-const content = [...header, ...lines, ...mcpRow, ''].join('\n')
+const content = [...header, ...lines, ''].join('\n')
 const current = readFileSync(outputPath, 'utf8')
 const stale = current !== content
 

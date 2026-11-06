@@ -1,18 +1,18 @@
-# dsh-mode-3dsmax — 3ds Max MCP 编辑模式
+# dsh-mode-3dsmax — 3ds Max 技能模式
 
-DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，`3dsmax-mcp` 的工具会自动挂载，
-3ds Max 专用技能也自动出现在技能目录里。**其它模式（standard / ptc）完全不受影响**，
-所以不为它们付 MCP 的 token。
+**3ds Max 的 MCP 工具已经全局加载**：注册在 profile 的 `cordis.patch.yml`，任何预设、任何新会话
+都直接带 `mcp__3dsmax__*` 工具，不再需要先选这个模式。
+
+本模式（preset）现在只做一件事：把 3ds Max 专用技能（`3dsmax-live-mcp`）挂进会话的技能目录。
+它是一个**可选**技能包，选了才有技能；MCP 工具与选不选它无关。
 
 ## 怎么用
 
 1. 重启 DSH（宿主侧改动需要重启才生效）。
-2. 新建会话时在**模式选择器**里选 **「3ds Max」**（`id: 3dsmax`，roster 里排第 5）。
-3. 会话里应能看到一批 `mcp__3dsmax__*` 工具（`query_scene`、`manage_layers`、`merge_from_file`…），
-   以及技能目录里的 `3dsmax-live-mcp`。
+2. 新会话默认就带 `mcp__3dsmax__*` 工具（见下方「token 开销」里的档位说明）。
+3. 需要 3ds Max 专用技能时，在**模式选择器**里选 **「3ds Max」**（`id: 3dsmax`，roster 里排第 5），
+   技能目录里会出现 `3dsmax-live-mcp`。
 
-> 默认模式没有改动，仍是 `standard`。本模式是**可选**的。
->
 > 选择器里没有「3ds Max」时，先看 **设置 → Agent 预设**：那里的卡片会显示挂载错误，
 > 选择器则不显示挂载失败的 preset（见下面"上游更新后要重新生成 preset"）。
 
@@ -25,7 +25,9 @@ DSH 的一个 **Agent 模式（preset）**：在这个模式下的会话里，`3
 | `@deepseek-ai/dsh-persona`、`tool-pwsh`、`tool-fs`、`todo`、`present`… | 与 `standard` 相同的完整工具栈（preset 没有继承机制，必须自带） |
 | `skill-filesystem` + `customSkillDirs` | 指向本包的 `skills/`，**只在本模式注册** |
 | `tool-skill` | 暴露 `skill` 工具，让技能可被加载 |
-| `mcp-3dsmax` → `@deepseek-ai/dsh-mcp-client` | stdio 启动 `3dsmax-mcp`，工具名为 `mcp__3dsmax__<tool>` |
+
+MCP 工具不在这张表里：它注册在 `$DSH_HOME/profiles/{desktop,web}/cordis.patch.yml` 的
+`mcp-3dsmax` 条目，工具名为 `mcp__3dsmax__<tool>`，与预设无关。
 
 ### 路径是怎么做到不写死盘符的
 
@@ -63,7 +65,8 @@ _mytools\Mode\dsh-3dsmax\upstream\3dsmax-mcp\    ← 指向它的 junction，pre
 > 旧目录删不掉时先 `takeown` + `icacls /reset`。**迁移时若 MCP 服务正在跑，先退出 DSH**，
 > 否则 `.venv` 里的文件被占用，复制得出来但删不掉旧目录。
 
-preset 的 `--directory` 仍从本包位置推导（和上面的 `customSkillDirs` 一个写法），经 junction 落到仓库外：
+profile 的 `cordis.patch.yml` 里，`mcp-3dsmax` 的 `--directory` 从本包位置推导（和上面的
+`customSkillDirs` 一个写法），经 junction 落到仓库外：
 
 ```yaml
 - !!js process.env.DSH_3DSMAX_MCP_DIR || …resolve('@local/dsh-mode-3dsmax/package.json')
@@ -121,23 +124,24 @@ powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-3dsmax\install.ps1 -I
 
 ## token 开销（实测）
 
-`3dsmax-mcp` 默认 `tool_profile = full`，对外暴露 **184 个工具 / 274,564 字节** schema，
-约 **7–9 万 token**，会进入**每个请求**。这是本模式的主要开销，也是"只在需要时才进这个模式"的原因。
+MCP 工具现在进入**每个会话的每个请求**，所以档位很关键。DSH 的 profile patch 给
+`mcp-3dsmax` 设了 `MCP_TOOL_PROFILE=progressive`（只影响 DSH 这一个客户端）：
 
-想大幅压低，改 checkout 里的 `mcp_config.ini`（默认在 `upstream\3dsmax-mcp\mcp_config.ini`）：
-
-```ini
-tool_profile = progressive
-```
-
-progressive 只暴露 7 个工具（3 个元工具 + 4 个实例路由）= **2,047 字节 ≈ 600 token**（省 134 倍）。
-代价是每次要先 `list_toolsets` / `describe_toolset` 发现工具。
-
-| 档 | 工具数 | 字节 | 约合 token |
+| 档 | 工具数 | schema 字节 | 约合 token |
 |---|---|---|---|
-| `full`（默认） | 184 | 274,564 | 7–9 万 |
+| `progressive`（DSH 当前使用） | 7 | 9,119 | ~2,400 |
 | `core` | 118 | 127,649 | 3–4 万 |
-| `progressive` | 7 | 2,047 | ~600 |
+| `full`（服务器默认） | 179 | 362,610 | 约 9 万 |
+
+progressive 只暴露 3 个元工具 + 4 个实例路由（`list_toolsets` / `describe_toolset` / `call_tool`），
+代价是每次要先发现工具；技能里的路由规则就是为此写的。
+
+档位的来源顺序：环境变量 `MCP_TOOL_PROFILE` / `THREEDSMAX_MCP_TOOL_PROFILE` 优先，其次是
+**`%LOCALAPPDATA%\3dsmax-mcp\mcp_config.ini`**。注意服务器**不读** checkout 里的
+`upstream\3dsmax-mcp\mcp_config.ini` —— 改那份不会生效（2026-11-06 实测）。
+
+想让 DSH 也回到 full：改 profile patch 里 `mcp-3dsmax` 的 `env.MCP_TOOL_PROFILE`，然后重启 DSH。
+其它客户端（Codex 等）继续按 `%LOCALAPPDATA%` 的 ini 走。
 
 如果没有配 MCP，也可以用 checkout 里的 `scripts/mcpcall.py` 走命令行（零 token 成本，做法见技能）。
 
@@ -160,7 +164,8 @@ powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-3dsmax\install.ps1 -B
 3. `uv sync` 准备 `.venv`（`uv` 缺失只告警，不拦）
 4. 把本包链接进 `desktop` 与 `web` 两个 profile 的 `node_modules/@local/`，并写进 `dependencies`
    与 `dsh.profile.bundles`（末尾）
-5. 跑 `check-presets.mjs` 校验，并自检 checkout 解释器的完整性等级（期望 `High`）
+5. 跑 `check-presets.mjs` 校验 preset、`probe-mcp.mjs --no-connect` 校验 profile 里的 MCP 行，
+   并自检 checkout 解释器的完整性等级（期望 `High`）
 
 然后重启 DSH。常用开关：`-SkipUpstream`、`-SkipSync`、`-SkipCheck`、`-InstallMaxBridge`。
 脚本在 Windows PowerShell 5.1 与 PowerShell 7 下都能跑（README 里的 `powershell -File` 写法可用）。
@@ -177,9 +182,10 @@ node _mytools\Mode\dsh-3dsmax\sync-preset.mjs --check   # 只检查是否漂移�
 node _mytools\build\check-presets.mjs                   # 期望 exit 0，且 3dsmax: ok
 ```
 
-生成器把上游 `plugins` 块原样复制，再套上本模式的四处差异：preset 的
-`id` / `name` / `description` / `order`，`skill-filesystem` 的 `config.customSkillDirs`，
-末尾追加的 `mcp-3dsmax` 行。上游结构变了（找不到它要改的行）时它 exit 2 报错，不会写出半成品。
+生成器把上游 `plugins` 块原样复制，再套上本模式的差异：preset 的
+`id` / `name` / `description` / `order`，以及 `skill-filesystem` 的 `config.customSkillDirs`。
+MCP 行不再由生成器追加 —— 它在 profile 的 `cordis.patch.yml` 里。上游结构变了（找不到它要改的行）时
+生成器 exit 2 报错，不会写出半成品。
 
 `install.ps1` 的校验段会顺带跑 `--check`，漂移时只告警、不自动改写。
 
@@ -233,6 +239,11 @@ node _mytools\Mode\dsh-3dsmax\tools\probe-presets.mjs 9231   # 指定的 inspect
 
 ## 回滚
 
+只想关掉 3ds Max 的 MCP 工具（保留技能）：从 `$DSH_HOME\profiles\{desktop,web}\cordis.patch.yml`
+里删掉 `mcp-3dsmax` 那一条，重启 DSH。
+
+整个模式都不用了：
+
 ```powershell
 # 从两个 profile 移除（不改 `_mytools` 里的文件）
 $h = $env:DSH_HOME
@@ -254,6 +265,10 @@ Remove-Item "<仓库父目录>\dsh-3dsmax-mcp" -Recurse -Force
 
 ## 实测记录
 
+- **2026-11-06，改为全局加载后验证**：`_mytools\build\probe-mcp.mjs` 读 profile 的 `mcp-*` 条目，
+  schema 全部接受、三个服务都能连；另起一个 `dsh web` 实例（`--inspect=9231`）读宿主活着的
+  `ctx.tools.definitions(undefined)`，确认全局层有 7 个 `mcp__3dsmax__*` 工具，preset roster 里
+  `3dsmax` 仍 `broken: null`。progressive 实测 7 工具 / 9,119 字节。
 - **2026-10-16，模式在运行中的 DSH 里验证通过**：会话内可见 `mcp__3dsmax__*` 工具与
   `3dsmax-live-mcp` 技能（rig 迁移技能同日移除，见上）；`query_scene`、`capture_viewport`
   对 pid 17464（`Seven_Skin.max`）可用（截图 534×1128 PNG，`source: active`），
@@ -266,7 +281,8 @@ Remove-Item "<仓库父目录>\dsh-3dsmax-mcp" -Recurse -Force
 ## 已知限制
 
 - **与上游 standard 漂移**：见上面"上游更新后要重新生成 preset"。这是 preset 无继承带来的固有成本。
-- **需要重启 DSH 才生效**：预设是宿主侧组合，HMR 只覆盖客户端插件。
+- **需要重启 DSH 才生效**：profile 的 MCP 条目与预设都是宿主侧组合，HMR 只覆盖客户端插件。
+- **MCP 工具常驻每个会话**：这是全局加载的直接代价，所以 DSH 固定在 progressive 档；full 档约 9 万 token。
 - **依赖 checkout 留在工作区之外**：工作区根上的 Low 完整性标签会让树里的 exe 以 Low 运行，
   连不上提权运行的 3ds Max（每个 MCP 调用 `Win32 error 5`）。`install.ps1` 会自检并告警；
   如果 DSH 本身没有提权，而 3ds Max 提权了，则无论 checkout 放哪都连不上 —— 两边要么都提权，要么都不提权。

@@ -2,7 +2,7 @@
   "name": "@local/dsh-mode-3dsmax",
   "version": "1.0.0",
   "private": true,
-  "description": "DSH 的 3ds Max MCP 编辑模式：以 preset 形式内置 3dsmax-mcp 工具与 3ds Max 专用技能（控制器迁移、实时场景操控）。",
+  "description": "DSH 的 3ds Max 技能模式：以 preset 形式挂载 3ds Max 专用技能（控制器迁移、实时场景操控）；3dsmax MCP 工具已全局加载，每个会话都有。",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

@@ -338,10 +338,20 @@ if (-not $SkipCheck) {
             Write-Warning 'preset 与上游 standard 漂移；跑 node _mytools\Mode\dsh-3dsmax\sync-preset.mjs 重新生成后重启 DSH'
         }
     }
+
+    # MCP 行现在注册在 profile 的 cordis.patch.yml；只校验 config 是否仍被接受，不连服务。
+    $probe = Join-Path $repoRoot '_mytools\build\probe-mcp.mjs'
+    if (Test-Path $probe) {
+        Write-Host '[mode-3dsmax] 校验 profile 里的 MCP 行 ……'
+        & node $probe --no-connect
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'profile 里的 MCP 行不被当前 mcp-client 接受；检查 cordis.patch.yml 的 mcp-* 条目'
+        }
+    }
 }
 
 Write-Host ''
-Write-Host '[mode-3dsmax] 完成。重启 DSH 后，在模式选择器里选「3ds Max」。'
+Write-Host '[mode-3dsmax] 完成。重启 DSH 后，新会话自动带 mcp__3dsmax__* 工具；本模式只额外提供 3ds Max 技能。'
 if (-not $InstallMaxBridge) {
     Write-Host '[mode-3dsmax] 提示：若 3ds Max 里没有原生桥，用 -InstallMaxBridge 重跑本脚本。'
 }

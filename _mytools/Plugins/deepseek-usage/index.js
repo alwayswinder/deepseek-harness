@@ -24,6 +24,15 @@ import z from '@deepseek-ai/schemastery'
 const NS = 'deepseek-usage'
 const CURRENCY_SYMBOL = { CNY: '¥', USD: '$' }
 
+/**
+ * Subscription console amounts arrive as micro-cents (1e-8 of the currency
+ * unit) so a reading can be turned into money without losing precision.
+ */
+const MICRO_CENTS_PER_UNIT = 100_000_000
+
+/** The quota windows a subscription console reports, widest last. */
+const QUOTA_WINDOWS = ['fiveHour', 'week', 'month']
+
 function localDate() {
   const now = new Date()
   const pad = (n) => String(n).padStart(2, '0')
@@ -194,6 +203,69 @@ async function platformBalance(ctx, account) {
   }
 }
 
+/**
+ * Turn one console meter into money, a percentage, and its reset instant.
+ * @param meter - the console's meter record for one window.
+ * @returns the used and limit amounts in the account currency plus their ratio.
+ */
+function quotaOf(meter) {
+  const used = toFinite(meter?.usedMicroCents) / MICRO_CENTS_PER_UNIT
+  const limit = toFinite(meter?.limitMicroCents) / MICRO_CENTS_PER_UNIT
+  return {
+    used,
+    limit,
+    percent: limit > 0 ? (used / limit) * 100 : null,
+    resetsAt: typeof meter?.resetsAt === 'string' ? meter.resetsAt : null,
+  }
+}
+
+/**
+ * Read a subscription account's own usage meters from the vendor console. A
+ * subscription has no prepaid wallet, so this reading carries the windows a
+ * card shows instead of a balance.
+ * @param ctx - the plugin context.
+ * @param account - the account configuration.
+ * @returns the meters keyed by window, or `error` when nothing answered.
+ */
+async function quotaMeters(ctx, account) {
+  const endpoint = (account.quota?.baseUrl ?? '').trim()
+  if (endpoint === '') return { error: 'no quota endpoint configured' }
+  const key = await resolveKey(ctx, account)
+  if (key === undefined) {
+    return { error: `no credential "${account.credential}" (store it on the Models page or in ~/.dsh/.credentials.yaml)` }
+  }
+  const headers = { Authorization: `Bearer ${key}`, Accept: 'application/json' }
+  const orgId = (account.quota?.orgId ?? '').trim()
+  if (orgId !== '') headers['x-org-id'] = orgId
+  let body
+  try {
+    const response = await fetch(endpoint, { headers, signal: AbortSignal.timeout(20_000) })
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      return { error: `quota http ${response.status}${text ? ': ' + text.slice(0, 120) : ''}` }
+    }
+    body = await response.json()
+  } catch (error) {
+    return { error: error?.message ?? String(error) }
+  }
+  // A workspace without a subscription answers `access: null`; that is a real
+  // state (nothing to meter), not a transport failure.
+  const access = body?.access
+  if (access === undefined || access === null) return { error: 'this workspace holds no subscription' }
+  const meters = access.meters ?? {}
+  const windows = {}
+  for (const window of QUOTA_WINDOWS) {
+    const meter = meters[window]
+    if (meter !== undefined && meter !== null) windows[window] = quotaOf(meter)
+  }
+  if (Object.keys(windows).length === 0) return { error: 'the console reported no usage windows' }
+  return {
+    windows,
+    periodEndsAt: typeof access.endsAt === 'string' ? access.endsAt : null,
+    source: 'api',
+  }
+}
+
 export const name = 'deepseek-usage'
 
 export const Config = z.object({
@@ -202,9 +274,23 @@ export const Config = z.object({
   accounts: z.dict(z.object({
     id: z.string(),
     label: z.string(),
+    // What this account reports. `balance` is a prepaid wallet plus the local
+    // daily ledger; `quota` is a subscription's own usage meters, fetched from
+    // the vendor's console because a subscription has no wallet to read.
+    kind: z.union(['balance', 'quota']).default('balance'),
     provider: z.string(),
+    // Every LLM route id that bills this account. The same credential is often
+    // registered under more than one route id, and a route that is missing here
+    // is simply not this account's spend.
+    providers: z.array(z.string()).default([]),
     balanceBaseUrl: z.string(),
     credential: z.string(),
+    // Where a `quota` account reads its meters. `orgId` is the console workspace
+    // the endpoint scopes to; the vendor answers 400 without it.
+    quota: z.object({
+      baseUrl: z.string().default(''),
+      orgId: z.string().default(''),
+    }),
     // Which source answers this account's balance. `api` calls
     // `{balanceBaseUrl}/user/balance` with a stored API key; `platform` reads the
     // wallet the application's own Platform login already holds and therefore needs
@@ -281,6 +367,8 @@ function usageFromStream(stream) {
 class RequestSelector {
   provider = ''
   model = ''
+  /** When this route was last seen, so the freshest conversation names the active account. */
+  at = 0
 
   observe(event) {
     if (event.type !== 'request/header') return
@@ -290,10 +378,11 @@ class RequestSelector {
     if (config === undefined) return
     if (typeof config.provider === 'string') this.provider = config.provider
     if (typeof config.model === 'string') this.model = config.model
+    this.at = typeof event.time === 'number' ? event.time : Date.now()
   }
 
   route() {
-    return { provider: this.provider, model: this.model }
+    return { provider: this.provider, model: this.model, at: this.at }
   }
 }
 
@@ -308,16 +397,38 @@ class RequestSelector {
  */
 function routeOf(event, fallback) {
   const source = event.data?.message?.source
+  const at = typeof event.time === 'number' ? event.time : Date.now()
   if (source !== undefined && typeof source.provider === 'string' && typeof source.model === 'string') {
-    return { provider: source.provider, model: source.model }
+    return { provider: source.provider, model: source.model, at }
   }
-  return fallback
+  return { provider: fallback.provider, model: fallback.model, at }
 }
 
+/**
+ * Whether one account bills the given LLM route. `providers` names every route
+ * id the account answers for — one operator can register the same credential
+ * under several route ids — and a bare `provider` stays supported for accounts
+ * written before that list existed.
+ * @param account - the account configuration.
+ * @param provider - the route id a settlement actually used.
+ * @returns true when this account owns that route.
+ */
+function accountMatches(account, provider) {
+  if (provider === '') return false
+  if (Array.isArray(account.providers) && account.providers.includes(provider)) return true
+  return typeof account.provider === 'string' && account.provider !== '' && account.provider === provider
+}
+
+/**
+ * The account that owns one LLM route. An unmatched route belongs to no
+ * account: pricing it against the first account would let one provider's tokens
+ * move another provider's balance.
+ * @param accounts - the configured accounts by id.
+ * @param provider - the route id a settlement actually used.
+ * @returns the owning account, or `undefined` when none claims the route.
+ */
 function accountFor(accounts, provider) {
-  const direct = Object.values(accounts).find((a) => a.provider === provider)
-  if (direct !== undefined) return direct
-  return Object.values(accounts).find((a) => a.provider === '')
+  return Object.values(accounts).find((account) => accountMatches(account, provider))
 }
 
 /**
@@ -410,11 +521,16 @@ function isPeak(account, time) {
  * @returns input, cache-hit, and output prices in the account currency per 1M tokens.
  */
 function rateFor(account, model, time) {
+  // The schema materializes an absent `defaultRate` as `{}`, so a missing price
+  // is an undefined field rather than a missing table; reading it directly
+  // would multiply tokens by undefined and turn the day's cost into NaN.
   const base = account.rates?.[model] ?? account.defaultRate
-  if (base === undefined) return { input: 0, cacheHit: 0, output: 0 }
-  if (!isPeak(account, time)) return { input: base.input, cacheHit: base.cacheHit, output: base.output }
+  const input = toFinite(base?.input)
+  const cacheHit = toFinite(base?.cacheHit)
+  const output = toFinite(base?.output)
+  if (!isPeak(account, time)) return { input, cacheHit, output }
   const multiplier = toFinite(account.peak.multiplier) || 1
-  return { input: base.input * multiplier, cacheHit: base.cacheHit * multiplier, output: base.output * multiplier }
+  return { input: input * multiplier, cacheHit: cacheHit * multiplier, output: output * multiplier }
 }
 
 /**
@@ -517,9 +633,9 @@ function repriceCurrentDay(ledger, accounts, path) {
     if (day === undefined) continue
     const rate = account.defaultRate ?? { input: 0, cacheHit: 0, output: 0 }
     day.cost =
-      ((toFinite(day.inputTokens) + toFinite(day.cacheWriteTokens)) / 1_000_000) * rate.input
-      + (toFinite(day.cacheHitTokens) / 1_000_000) * rate.cacheHit
-      + (toFinite(day.outputTokens) / 1_000_000) * rate.output
+      ((toFinite(day.inputTokens) + toFinite(day.cacheWriteTokens)) / 1_000_000) * toFinite(rate.input)
+      + (toFinite(day.cacheHitTokens) / 1_000_000) * toFinite(rate.cacheHit)
+      + (toFinite(day.outputTokens) / 1_000_000) * toFinite(rate.output)
     repriced += 1
   }
   ledger.rateTable = fingerprint
@@ -548,22 +664,34 @@ export function apply(ctx, config) {
   }
   const selectors = new Map()
   const balances = new Map()
+  // Subagent sessions run whatever route their own preset chose; letting them
+  // name the active account would flip the strip away from what the operator
+  // is driving.
+  const subagentIds = new Set()
   let publishRevision = 0
 
   function foldMessage(session, event) {
+    const subagent = session.header?.origin === 'subagent'
+    if (subagent) subagentIds.add(session.id)
     if (event.type === 'request/header') {
       let selector = selectors.get(session.id)
       if (selector === undefined) {
         selector = new RequestSelector()
         selectors.set(session.id, selector)
       }
+      const previous = selector.provider
       selector.observe(event)
+      // A model switch shows up as a header before it produces a message;
+      // republishing here keeps the strip on the route the next request uses.
+      if (!subagent && selector.provider !== previous) schedulePublish()
       return
     }
     if (event.type !== 'assistant/message') return
     const usage = event.data?.usage ?? usageFromStream(event.data?.stream)
     if (usage === undefined) return
-    const route = routeOf(event, selectors.get(session.id)?.route() ?? { provider: '', model: '' })
+    const selector = selectors.get(session.id)
+    const route = routeOf(event, selector?.route() ?? { provider: '', model: '' })
+    if (selector !== undefined) selector.at = route.at
     const account = accountFor(accounts, route.provider)
     if (account === undefined) return
     const input = toFinite(usage.inputTokens)
@@ -602,9 +730,11 @@ export function apply(ctx, config) {
   })
   ctx.on('session/created', (session) => {
     if (!selectors.has(session.id)) selectors.set(session.id, new RequestSelector())
+    if (session.header?.origin === 'subagent') subagentIds.add(session.id)
   })
   ctx.on('session/disposed', (session) => {
     selectors.delete(session.id)
+    subagentIds.delete(session.id)
   })
 
   /**
@@ -620,10 +750,13 @@ export function apply(ctx, config) {
    */
   function sessionTotals() {
     const sessions = ctx.get('sessions')
-    if (sessions === undefined) return {}
+    if (sessions === undefined) return { totals: {}, lastRoute: null }
     const live = sessions.list()
     const byId = new Map(live.map((session) => [session.id, session]))
     const totals = {}
+    // The newest settlement names the route the operator is driving, so a
+    // restarted host still knows which account to show before new events land.
+    let lastRoute = null
     for (const session of live) {
       const selector = new RequestSelector()
       let cost = 0
@@ -641,6 +774,10 @@ export function apply(ctx, config) {
         const usage = event.data?.usage ?? usageFromStream(event.data?.stream)
         if (usage === undefined) continue
         const route = routeOf(event, selector.route())
+        if (session.header?.origin !== 'subagent' && route.provider !== ''
+          && (lastRoute === null || route.at > lastRoute.at)) {
+          lastRoute = { provider: route.provider, model: route.model, at: route.at }
+        }
         const account = accountFor(accounts, route.provider)
         if (account === undefined) continue
         const input = toFinite(usage.inputTokens)
@@ -686,37 +823,50 @@ export function apply(ctx, config) {
         aggregate.requests += own.requests
       }
     }
-    return totals
+    return { totals, lastRoute }
+  }
+
+  /**
+   * The freshest route a non-subagent conversation actually requested, taken
+   * from the live selectors.
+   * @returns that route, or null when no conversation has requested anything yet.
+   */
+  function activeSelector() {
+    let best = null
+    for (const [sessionId, selector] of selectors) {
+      if (subagentIds.has(sessionId)) continue
+      const route = selector.route()
+      if (route.provider === '') continue
+      if (best === null || route.at > best.at) {
+        best = { provider: route.provider, model: route.model, at: route.at }
+      }
+    }
+    return best
   }
 
   function snapshotFor() {
     const byAccount = {}
     const today = localDate()
+    const { totals, lastRoute } = sessionTotals()
     for (const account of Object.values(accounts)) {
-      const bal = balances.get(account.id)
+      const kind = account.kind ?? 'balance'
+      const reading = balances.get(account.id)
       const day = ledger.accounts[account.id]?.[today]
       const calibration = ledger.accounts[account.id]?.calibration
       const factor = factorOf(ledger, account)
       const dayOpen = ledger.accounts[account.id]?.dayOpen?.total ?? null
-      const officialToday = (dayOpen !== null && bal?.total !== null && dayOpen > bal?.total)
-        ? dayOpen - bal.total
+      const total = typeof reading?.total === 'number' ? reading.total : null
+      const officialToday = (dayOpen !== null && total !== null && dayOpen > total)
+        ? dayOpen - total
         : null
-      byAccount[account.id] = {
+      const shared = {
         id: account.id,
         label: account.label,
-        currency: currencyOf(bal?.currency ?? account.currency),
-        symbol: currencySymbol(bal?.currency ?? account.currency),
-        balanceAvailable: bal?.available ?? false,
-        balanceTotal: bal?.total ?? null,
-        balanceGranted: bal?.granted ?? null,
-        balanceToppedUp: bal?.toppedUp ?? null,
-        balanceDayOpen: dayOpen,
-        officialTodaySpend: officialToday,
-        balanceError: bal?.error ?? null,
-        balanceSource: bal?.source ?? '',
-        // Either source can answer: the endpoint when this account names one, and the
-        // Platform login otherwise.
-        balanceSupported: account.balanceBaseUrl !== '' || (account.balanceVia ?? 'auto') !== 'api',
+        kind,
+        provider: account.provider ?? '',
+        providers: Array.isArray(account.providers) ? [...account.providers] : [],
+        currency: currencyOf(reading?.currency ?? account.currency),
+        symbol: currencySymbol(reading?.currency ?? account.currency),
         rateFactor: factor,
         rateObservations: calibration?.observations ?? 0,
         today: day === undefined ? null : {
@@ -730,12 +880,53 @@ export function apply(ctx, config) {
           cacheWriteTokens: day.cacheWriteTokens,
         },
       }
+      if (kind === 'quota') {
+        // A subscription meters itself; there is no wallet and no balance delta
+        // to calibrate against, so those fields stay empty rather than zero.
+        byAccount[account.id] = {
+          ...shared,
+          balanceSupported: false,
+          balanceAvailable: false,
+          balanceTotal: null,
+          balanceGranted: null,
+          balanceToppedUp: null,
+          balanceDayOpen: null,
+          officialTodaySpend: null,
+          balanceError: null,
+          balanceSource: '',
+          quota: reading?.windows ?? null,
+          quotaError: reading?.error ?? null,
+          quotaPeriodEndsAt: reading?.periodEndsAt ?? null,
+        }
+        continue
+      }
+      byAccount[account.id] = {
+        ...shared,
+        balanceAvailable: reading?.available ?? false,
+        balanceTotal: total,
+        balanceGranted: reading?.granted ?? null,
+        balanceToppedUp: reading?.toppedUp ?? null,
+        balanceDayOpen: dayOpen,
+        officialTodaySpend: officialToday,
+        balanceError: reading?.error ?? null,
+        balanceSource: reading?.source ?? '',
+        // Either source can answer: the endpoint when this account names one, and the
+        // Platform login otherwise.
+        balanceSupported: account.balanceBaseUrl !== '' || (account.balanceVia ?? 'auto') !== 'api',
+        quota: null,
+        quotaError: null,
+        quotaPeriodEndsAt: null,
+      }
     }
+    const live = activeSelector()
+    const active = live !== null && (lastRoute === null || live.at >= lastRoute.at) ? live : lastRoute
     return {
       updatedAt: Date.now(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      // Which account the strip follows: the route the operator is driving.
+      active: active === null ? null : { provider: active.provider, model: active.model, at: active.at },
       accounts: byAccount,
-      sessions: sessionTotals(),
+      sessions: totals,
     }
   }
 
@@ -772,10 +963,26 @@ export function apply(ctx, config) {
     }
   }
 
-  async function refreshBalance(account, force) {
+  async function refreshAccount(account, force) {
     const cached = balances.get(account.id)
     const ttl = Math.max(1, config.refreshSeconds) * 1000
     if (!force && cached !== undefined && cached.at + ttl > Date.now()) return
+    const now = Date.now()
+    // A subscription account has no wallet: ask its console for the usage meters
+    // and keep that reading in the same cache the balance branch uses.
+    if ((account.kind ?? 'balance') === 'quota') {
+      const reading = await quotaMeters(ctx, account)
+      balances.set(account.id, {
+        at: now,
+        refreshedAt: now,
+        currency: currencyOf(account.currency),
+        windows: reading.windows ?? null,
+        periodEndsAt: reading.periodEndsAt ?? null,
+        error: reading.error ?? null,
+        source: reading.source ?? '',
+      })
+      return
+    }
     const base = {
       at: Date.now(), refreshedAt: Date.now(), total: null, granted: null, toppedUp: null,
       available: false, currency: currencyOf(account.currency), error: null, source: '',
@@ -858,7 +1065,7 @@ export function apply(ctx, config) {
   }
 
   async function refreshAll(force) {
-    await Promise.all(Object.values(accounts).map((account) => refreshBalance(account, force)))
+    await Promise.all(Object.values(accounts).map((account) => refreshAccount(account, force)))
     await publish()
   }
 

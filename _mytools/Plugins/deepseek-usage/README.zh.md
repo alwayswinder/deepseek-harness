@@ -2,16 +2,16 @@
 
 [English](README.md) | 中文
 
-DeepSeek Harness 的树外插件：在设置页（插件 → 插件配置）提供一张**用量与余额卡片**。按每个已配置的账户显示：
+DeepSeek Harness 的树外插件：在设置页（插件 → 插件配置）提供一张**用量卡片**。每个已配置的账户按它的 `kind` 显示：
 
-- **今日消费** —— 当日花费，由 DSH 已经记录在 `assistant/message` 会话事件上的 token 用量在本地计量，并按各账户配置的费率（¥/百万 token）计价；所有会话都计入，包含子 agent。
-- **总余额** —— 账户总余额，每 `refreshSeconds` 刷新一次（默认 300 秒）。来源由 `balanceVia`（默认 `auto`）决定：该账户存了 API Key 时用官方端点（`GET {balanceBaseUrl}/user/balance`），否则读**本应用已登录的平台钱包**——就是账户页显示的那个数，经 harness 的账户服务读取、完全不需要 API Key；`api` 或 `platform` 可各自固定一种来源。
+- **`balance`** —— 预付费钱包。卡片显示**今日消费**（由 DSH 已记录在 `assistant/message` 会话事件上的 token 用量在本地计量，并按账户配置的费率计价，单位为账户货币/百万 token）与**总余额**，余额每 `refreshSeconds` 刷新一次。`balanceVia`（默认 `auto`）决定余额来源：该账户存了 API Key 时用官方端点（`GET {balanceBaseUrl}/user/balance`），否则读**本应用已登录的平台钱包**——就是账户页显示的那个数，经 harness 的账户服务读取、完全不需要 API Key；`api` 或 `platform` 可各自固定一种来源。
+- **`quota`** —— 订阅制。卡片显示该服务商控制台计量的额度窗口：5 小时、本周、本月三档，每档带已用比例、对应金额与重置时间。订阅没有钱包，因此这一类型没有余额行，也没有费率系数。
 
-设置卡片和对话输入框下方的汇总条只显示这两项账户汇总；卡片顶部另有更新时间与时区提示。
+对话输入框下方的汇总条只报**一个**账户：当前对话正在使用的 LLM 路由所属的那个。每个账户用 `providers` 列出自己名下的路由 id，所以在服务商之间切换模型时，条上的数字跟着换，而不是并排多出一组。没有任何账户认领的路由完全不计量；刚启动、还没见过请求的 Host 没有路由，此时列出全部账户。
 
 ## 工作原理
 
-- **Host 侧**（`index.js`，纯 ESM）：通过 harness 凭据服务解析每个账户的凭据、拉取余额，把会话 token 用量折算成按账户、按本地日期记账的账本，持久化在 `$DSH_HOME/storages/deepseek-usage-meter.json`，并把去抖后的快照发布到 `deepseek-usage` Config 的热更新 `metrics` 字段。
+- **Host 侧**（`index.js`，纯 ESM）：通过 harness 凭据服务解析每个账户的凭据、拉取余额或额度读数，把会话 token 用量折算成按账户、按本地日期记账的账本并持久化在 `$DSH_HOME/storages/deepseek-usage-meter.json`，同时跟踪每个非 subagent 会话最近一次请求的路由，再把去抖后的快照发布到 `deepseek-usage` Config 的热更新 `metrics` 字段。
 - **浏览器侧**（`client.js`）：手工构建的 lazy-CJS 工厂 bundle，通过 `window.__ModuleLoader__.load` 注册。卡片经 `ctx.configForms` 读取 `deepseek-usage` 表单并渲染其中的 `metrics` 字段；标准配置镜像把 Host 的发布送达浏览器，无需自定义 RPC。
 
 不修改任何 harness 包。该插件位于包树之外，因此上游更新与构建不受影响。移除方式：`dsh plugin --profile web remove @local/dsh-deepseek-usage`。
@@ -29,18 +29,23 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 
 ## 配置
 
-编辑本目录下的 `cordis.patch.yml`（或在 `$DSH_HOME/profiles/web/cordis.patch.yml` 中覆盖 `deepseek-usage` 行）：
+编辑本目录下的 `cordis.patch.yml`（或在 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 中覆盖 `deepseek-usage` 行）：
 
 ```yaml
 - id: deepseek-usage
   name: '@local/dsh-deepseek-usage'
   config:
-    refreshSeconds: 300
+    refreshSeconds: 30
     accounts:
       <account-id>:
         id: <account-id>
         label: 显示名
-        provider: <llm provider route; '' means catch-all for unmatched routes>
+        # balance (default): prepaid wallet plus the local daily ledger.
+        # quota: the vendor console's own usage meters.
+        kind: balance
+        # The route ids that bill this account; a session on any of them is
+        # priced into this entry, and a route listed nowhere is not metered.
+        providers: [<route-id>, <another-route-id>]
         balanceBaseUrl: ''            # '' disables the balance endpoint
         credential: <credential ref name>
         # auto (default): the endpoint above when a key is stored for this account,
@@ -63,15 +68,31 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
         #   minObserved: 0.25     # ignore observations below this spend
         #   minFactor: 0.2        # accepted ratio band; outside it is rejected
         #   maxFactor: 5
+      <quota-account-id>:
+        id: <quota-account-id>
+        label: 显示名
+        kind: quota
+        providers: [<route-id>]
+        credential: <credential ref name>
+        currency: USD
+        quota:
+          # The console endpoint that answers this subscription's meters.
+          baseUrl: 'https://<vendor>/console/api/go/status'
+          # The workspace the console scopes the answer to; the endpoint rejects
+          # a request without it. It is the id in the console page URL.
+          orgId: '<org-id>'
 ```
 
 每笔结算的路由取自该 `assistant/message` 事件自带的 `message.source`（provider 与 model），因此按模型的 `rates` 会作用于真正产生该消息的模型；事件没有 source 时回退到折叠出的 `request/header`。
 
 随附默认值：
 
-| account | provider | balanceBaseUrl | credential | balanceVia |
+| account | kind | providers | 数据来源 | credential |
 |---|---|---|---|---|
-| deepseek-official | `''`（兜底所有未匹配路由） | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` | `auto` |
+| deepseek-official | `balance` | `deepseek-official`、`deepseek-account` | `https://api.deepseek.com`，否则用平台登录 | `DEEPSEEK_API_KEY` |
+| opencode-go | `quota` | `opencode-go` | `https://opencode.ai/console/api/go/status` | `OPENCODE_GO_API_KEY` |
+
+OpenCode Go 控制台的额度以金额计量：每档返回 `usedMicroCents` 与 `limitMicroCents`，卡片显示 `100 × 已用 / 上限` 以及这两个金额。5 小时、本周、本月分别是一个模型月额度的 20%、50%、100%，所以三行通常按这个比例分布。换了可用模型后，控制台在下一次刷新就返回新的上限，这里无需改动。
 
 ## 计价说明
 
@@ -94,4 +115,5 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 - 本地计量只覆盖流经本 DSH 实例的请求。
 - 官方余额比产生它的请求晚几分钟结算，因此余额差会短暂落后于本地计量值。
 - `assistant/attempt` 结算（已中断或报错、但仍上报了用量的流）不计入。
-- 官方端点需要把密钥存为 `DEEPSEEK_OFFICIAL_API_KEY` 凭据（例如通过模型页面或 `$DSH_HOME/.credentials.yaml`）。平台来源不需要密钥，但它取决于本应用的登录状态：未登录时卡片会如实说明而不是显示 0；并且**可用状态**在平台来源下按「钱包里有钱」判断，因为平台汇总里没有 `is_available` 字段。
+- 官方端点需要把密钥存为 `DEEPSEEK_API_KEY` 凭据（例如通过模型页面或 `$DSH_HOME/.credentials.yaml`）。平台来源不需要密钥，但它取决于本应用的登录状态：未登录时卡片会如实说明而不是显示 0；并且**可用状态**在平台来源下按「钱包里有钱」判断，因为平台汇总里没有 `is_available` 字段。
+- `quota` 账户在账本里只有 token 数、没有金额：订阅不按 token 计费，剩余多少只看它自己的控制台读数。

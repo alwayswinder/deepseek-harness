@@ -49,6 +49,35 @@ window.__ModuleLoader__.load({
         + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds())
     }
 
+    function fmtPercent(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+      return value >= 10 ? value.toFixed(1) + '%' : value.toFixed(2) + '%'
+    }
+
+    /** Month-day clock of a reset instant, compact enough for one line. */
+    function fmtReset(ts) {
+      if (!ts) return ''
+      const d = new Date(ts)
+      if (Number.isNaN(d.getTime())) return ''
+      const p = (n) => String(n).padStart(2, '0')
+      return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+    }
+
+    // Subscription windows, narrowest first, as the provider documents them.
+    const QUOTA_WINDOWS = [
+      { key: 'fiveHour', label: '5 小时', short: '5时' },
+      { key: 'week', label: '本周', short: '周' },
+      { key: 'month', label: '本月', short: '月' },
+    ]
+
+    /** Whether this account bills one LLM route id. */
+    function matchesProvider(account, provider) {
+      if (typeof provider !== 'string' || provider === '') return false
+      const list = Array.isArray(account.providers) ? account.providers : []
+      if (list.includes(provider)) return true
+      return typeof account.provider === 'string' && account.provider !== '' && account.provider === provider
+    }
+
     // ---- card controller --------------------------------------------------
 
     /**
@@ -109,7 +138,67 @@ window.__ModuleLoader__.load({
       }, props.text)
     }
 
+    const CARD_STYLE = {
+      border: '1px solid var(--dsw-alias-border-l1)',
+      borderRadius: '10px',
+      padding: '12px 14px',
+    }
+
+    /** Thin meter bar; the tone steps up as a window fills. */
+    function QuotaBar({ percent }) {
+      const known = typeof percent === 'number' && Number.isFinite(percent)
+      const width = known ? Math.max(0, Math.min(100, percent)) : 0
+      const tone = !known
+        ? 'var(--dsw-alias-label-secondary)'
+        : percent >= 85 ? 'var(--dsw-alias-state-error-primary)'
+          : percent >= 60 ? 'var(--dsw-alias-state-warn-primary)'
+            : 'var(--dsw-alias-state-success-primary)'
+      return h('div', {
+        style: {
+          height: '4px', borderRadius: '999px', overflow: 'hidden',
+          background: 'rgba(127,127,127,0.18)', margin: '0 0 10px',
+        },
+      }, h('div', { style: { width: width + '%', height: '100%', background: tone, borderRadius: '999px' } }))
+    }
+
+    /**
+     * One subscription account: the windows its console meters, each with the
+     * used share, the money behind it, and when it resets.
+     */
+    function QuotaCard({ account }) {
+      const rows = []
+      rows.push(h('div', { key: 'title', style: { fontSize: '13px', fontWeight: 600, marginBottom: '4px' } }, account.label))
+      rows.push(h('div', {
+        key: 'period',
+        style: { fontSize: '11px', color: 'var(--dsw-alias-label-secondary)', marginBottom: '8px' },
+      }, account.quotaPeriodEndsAt ? `订阅周期至 ${fmtTime(account.quotaPeriodEndsAt)}` : '订阅额度'))
+      if (account.quotaError !== null && account.quotaError !== undefined) {
+        rows.push(h(Row, { key: 'error', label: '额度' }, h(Badge, { tone: 'err', text: '查询失败' })))
+        rows.push(h('div', { key: 'detail', style: { fontSize: '11px', color: 'var(--dsw-alias-state-error-primary)', marginTop: '4px' } }, account.quotaError))
+        return h('div', { style: CARD_STYLE }, ...rows)
+      }
+      if (account.quota === null || account.quota === undefined) {
+        rows.push(h(Row, { key: 'pending', label: '额度' }, h(Badge, { tone: 'warn', text: '尚未取到' })))
+        return h('div', { style: CARD_STYLE }, ...rows)
+      }
+      for (const window of QUOTA_WINDOWS) {
+        const meter = account.quota[window.key]
+        if (meter === undefined) continue
+        rows.push(h(Row, { key: window.key, label: window.label }, h('span', null,
+          h('span', { style: { fontWeight: 600 } }, fmtPercent(meter.percent)),
+          h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
+            fmtMoney(account.symbol, meter.used) + ' / ' + fmtMoney(account.symbol, meter.limit)),
+          meter.resetsAt
+            ? h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
+                fmtReset(meter.resetsAt) + ' 重置')
+            : null)))
+        rows.push(h(QuotaBar, { key: window.key + '-bar', percent: meter.percent }))
+      }
+      return h('div', { style: CARD_STYLE }, ...rows)
+    }
+
     function AccountCard({ account }) {
+      if (account.kind === 'quota') return h(QuotaCard, { account })
       const today = account.today
       const rows = []
       rows.push(h('div', { key: 'title', style: { fontSize: '13px', fontWeight: 600, marginBottom: '8px' } }, account.label))
@@ -167,7 +256,7 @@ window.__ModuleLoader__.load({
         rows.push(h(Row, { key: 'balance', label: '总余额' },
           h(Badge, { tone: 'warn', text: '该平台无余额接口' })))
       }
-      return h('div', { style: { border: '1px solid var(--dsw-alias-border-l1)', borderRadius: '10px', padding: '12px 14px' } }, ...rows)
+      return h('div', { style: CARD_STYLE }, ...rows)
     }
 
     function UsageCard(props) {
@@ -186,9 +275,9 @@ window.__ModuleLoader__.load({
         list.push(h('div', { key: 'empty', style: { fontSize: '12px', color: 'var(--dsw-alias-label-secondary)' } }, '未配置任何账号。'))
       }
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
-        h('div', { style: { fontSize: '15px', fontWeight: 600 } }, 'DeepSeek 用量与余额'),
+        h('div', { style: { fontSize: '15px', fontWeight: 600 } }, '用量与余额'),
         h('div', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px' } },
-          `更新于 ${fmtTime(value.updatedAt)} · 时区 ${value.timezone} · 消费为本地记账估算`),
+          `更新于 ${fmtTime(value.updatedAt)} · 时区 ${value.timezone} · 余额与额度取自服务商 · 今日消费为本地记账估算`),
         ...list,
       )
     }
@@ -258,11 +347,35 @@ window.__ModuleLoader__.load({
       const accounts = state.status === 'unavailable' || state.value === undefined
         ? []
         : Object.values(state.value.accounts ?? {})
+      const active = state.status === 'unavailable' || state.value === undefined
+        ? null
+        : state.value.active
+      // The strip follows the route the operator is driving: only the account
+      // billing the current conversation is reported. A host that has not seen a
+      // request yet has no route, so every account stays visible then.
+      let shown = accounts
+      if (active !== null && active !== undefined && typeof active.provider === 'string' && active.provider !== '') {
+        const owner = accounts.find((a) => matchesProvider(a, active.provider))
+        shown = owner === undefined ? [] : [owner]
+      }
       // An account with neither a fetched balance nor local spend has nothing to
       // say; every other account stays visible so a missing credential or an
       // unreachable balance endpoint shows up instead of hiding the strip.
       const parts = []
-      for (const a of accounts) {
+      for (const a of shown) {
+        if (a.kind === 'quota') {
+          if (a.quota === null || a.quota === undefined) {
+            parts.push(a.label + ' ' + (a.quotaError ? '额度不可用' : '未取到额度'))
+            continue
+          }
+          const bits = []
+          for (const window of QUOTA_WINDOWS) {
+            const meter = a.quota[window.key]
+            if (meter !== undefined) bits.push(window.short + ' ' + fmtPercent(meter.percent))
+          }
+          parts.push(a.label + ' ' + bits.join(' · '))
+          continue
+        }
         const o = a.officialTodaySpend
         const loc = a.today
         const hasBalance = a.balanceSupported && a.balanceError === null && a.balanceTotal !== null

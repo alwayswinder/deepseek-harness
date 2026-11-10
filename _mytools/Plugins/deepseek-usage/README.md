@@ -2,28 +2,37 @@
 
 English | [中文](README.zh.md)
 
-Out-of-tree DeepSeek Harness plugin: a **usage & balance card** on the settings
-page (Plugins → 插件配置). Shows, per configured account:
+Out-of-tree DeepSeek Harness plugin: a **usage card** on the settings page
+(Plugins → 插件配置). Each configured account reports according to its `kind`:
 
-- **今日消费** — today's spend, metered locally from the token usage DSH already
-  records on `assistant/message` session events, priced with each account's
-  configured rates (¥/1M tokens). Every session counts here, subagents included.
-- **总余额** — total balance for the account, refreshed every `refreshSeconds`
-  (default 300s). `balanceVia` (default `auto`) picks the source: the official
-  endpoint (`GET {balanceBaseUrl}/user/balance`) when an API key is stored for the
-  account, and otherwise the **Platform wallet this application is signed in to** —
-  the figure the account page shows, read through the harness account service, which
+- **`balance`** — a prepaid wallet. The card shows today's spend, metered locally
+  from the token usage DSH already records on `assistant/message` session events
+  and priced with the account's configured rates (account currency per 1M
+  tokens), plus the account's total balance, refreshed every `refreshSeconds`.
+  `balanceVia` (default `auto`) picks the balance source: the official endpoint
+  (`GET {balanceBaseUrl}/user/balance`) when an API key is stored for the account,
+  and otherwise the **Platform wallet this application is signed in to** — the
+  figure the account page shows, read through the harness account service, which
   needs no API key at all. `api` or `platform` pins one source.
+- **`quota`** — a subscription. The card shows the usage windows its vendor
+  console meters: the 5-hour, weekly and monthly windows, each with the used
+  share, the money behind it, and when it resets. A subscription has no wallet,
+  so this kind has no balance row and no price factor.
 
-The settings card and the summary below the composer show only these account totals. The card header also reports the update time and timezone.
+The composer strip reports **one** account: the one that bills the LLM route the
+current conversation is driving. Each account lists the route ids it owns in
+`providers`, so switching models between providers switches the strip's figures
+instead of adding a second set. A route no account claims is not metered at all,
+and a host that has not seen a request yet has no route and lists every account.
 
 ## How it works
 
 - **Host half** (`index.js`, plain ESM): resolves each account's credential
-  through the harness credentials service, fetches balances, folds session
-  token usage into a per-account per-local-day ledger persisted at
-  `$DSH_HOME/storages/deepseek-usage-meter.json`, and publishes a debounced
-  snapshot into the `deepseek-usage` Config's live `metrics` field.
+  through the harness credentials service, fetches balance or quota readings,
+  folds session token usage into a per-account per-local-day ledger persisted at
+  `$DSH_HOME/storages/deepseek-usage-meter.json`, tracks the freshest route each
+  non-subagent conversation requested, and publishes a debounced snapshot into
+  the `deepseek-usage` Config's live `metrics` field.
 - **Browser half** (`client.js`): a hand-built lazy-CJS factory bundle
   registered via `window.__ModuleLoader__.load`. The card reads the
   `deepseek-usage` form through `ctx.configForms` and renders its `metrics`
@@ -57,18 +66,23 @@ every build and start script runs it.
 ## Configuration
 
 Edit `cordis.patch.yml` in this directory (or override the `deepseek-usage` row
-in `$DSH_HOME/profiles/web/cordis.patch.yml`):
+in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`):
 
 ```yaml
 - id: deepseek-usage
   name: '@local/dsh-deepseek-usage'
   config:
-    refreshSeconds: 300
+    refreshSeconds: 30
     accounts:
       <account-id>:
         id: <account-id>
         label: 显示名
-        provider: <llm provider route; '' means catch-all for unmatched routes>
+        # balance (default): prepaid wallet plus the local daily ledger.
+        # quota: the vendor console's own usage meters.
+        kind: balance
+        # The route ids that bill this account; a session on any of them is
+        # priced into this entry, and a route listed nowhere is not metered.
+        providers: [<route-id>, <another-route-id>]
         balanceBaseUrl: ''            # '' disables the balance endpoint
         credential: <credential ref name>
         # auto (default): the endpoint above when a key is stored for this account,
@@ -91,6 +105,19 @@ in `$DSH_HOME/profiles/web/cordis.patch.yml`):
         #   minObserved: 0.25     # ignore observations below this spend
         #   minFactor: 0.2        # accepted ratio band; outside it is rejected
         #   maxFactor: 5
+      <quota-account-id>:
+        id: <quota-account-id>
+        label: 显示名
+        kind: quota
+        providers: [<route-id>]
+        credential: <credential ref name>
+        currency: USD
+        quota:
+          # The console endpoint that answers this subscription's meters.
+          baseUrl: 'https://<vendor>/console/api/go/status'
+          # The workspace the console scopes the answer to; the endpoint rejects
+          # a request without it. It is the id in the console page URL.
+          orgId: '<org-id>'
 ```
 
 Each settlement takes its route from the `assistant/message` event's own
@@ -100,9 +127,17 @@ for events that carry no source.
 
 Shipping defaults:
 
-| account | provider | balanceBaseUrl | credential | balanceVia |
+| account | kind | providers | source | credential |
 |---|---|---|---|---|
-| deepseek-official | `''` (catch-all) | `https://api.deepseek.com` | `DEEPSEEK_OFFICIAL_API_KEY` | `auto` |
+| deepseek-official | `balance` | `deepseek-official`, `deepseek-account` | `https://api.deepseek.com`, else the Platform login | `DEEPSEEK_API_KEY` |
+| opencode-go | `quota` | `opencode-go` | `https://opencode.ai/console/api/go/status` | `OPENCODE_GO_API_KEY` |
+
+The OpenCode Go console meters are money-denominated: each window reports
+`usedMicroCents` and `limitMicroCents`, and the card shows `100 × used / limit`
+together with both amounts. The 5-hour, weekly and monthly windows are 20%, 50%
+and 100% of the model's monthly allowance, so the three rows usually differ by
+that ratio. When a subscribed model changes, the console reports the new limits
+on the next refresh; nothing here needs editing.
 
 ## Pricing notes
 
@@ -153,8 +188,10 @@ billing — and note that:
   it, so the balance delta trails the locally metered figure briefly.
 - `assistant/attempt` settlements (an aborted or errored stream that still
   reported usage) are not metered.
-- The official endpoint needs its key stored as the `DEEPSEEK_OFFICIAL_API_KEY`
+- The official endpoint needs its key stored as the `DEEPSEEK_API_KEY`
   credential (e.g. via the Models page or `$DSH_HOME/.credentials.yaml`). The Platform
   source needs no key, but it is only as good as this application's own sign-in: signed
   out, the card says so rather than showing a zero, and it reports 可用状态 as "the
   wallet holds something" because the Platform summary carries no `is_available` flag.
+- A `quota` account keeps a token count in the ledger but no cost: a subscription
+  is not billed per token, so only its console meters say what is left.

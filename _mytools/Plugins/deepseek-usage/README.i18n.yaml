@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write _mytools/Plugins/deepseek-usage/README.md
 /deepseek-usage:
-  en: f084bf4f42d52a41
-  zh: 4eace1bfb73db978
+  en: 32382cb056793146
+  zh: 9db4ee97e5e3cc1f
 /deepseek-usage/how-it-works:
-  en: e5af64a94c4e555c
-  zh: 82968b694dcf491c
+  en: 80d1849ea0fa9509
+  zh: 3b01388e5f95dfe4
 /deepseek-usage/installing:
   en: 3046cf211a349370
   zh: e12b4fc987813d87
 /deepseek-usage/configuration:
-  en: 8bf072a763e54c38
-  zh: a92dfb63a610e363
+  en: 129ac59ad7aaba00
+  zh: c4b73bbc5a3f7f62
 /deepseek-usage/pricing-notes:
   en: 77548b02bd7011d5
   zh: 29dcc6dda658a353
 /deepseek-usage/pricing-notes/self-calibration:
-  en: b0bd3db90616e16f
-  zh: f58c73d20d26bf03
+  en: e1fe83298c8366a4
+  zh: 2ddd172d03cb0edb

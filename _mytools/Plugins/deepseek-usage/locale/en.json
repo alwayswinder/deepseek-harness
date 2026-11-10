@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "DeepSeek Usage",
-    "description": "Per-account usage and balance card on the settings page: today's spend and total balance."
+    "title": "Usage",
+    "description": "Per-account usage card on the settings page: wallet accounts show today's spend and total balance, subscription accounts show their 5-hour, weekly and monthly usage."
   }
 }

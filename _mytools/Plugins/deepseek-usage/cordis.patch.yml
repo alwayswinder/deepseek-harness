@@ -1,5 +1,15 @@
 # deepseek-usage bundle patch: one host row mounting the plugin package.
 #
+# Two account kinds:
+#   kind: balance — a prepaid wallet. The card shows the account's own balance
+#                   and a locally metered today's spend.
+#   kind: quota   — a subscription. The card shows the windows the vendor's
+#                   console meters (5-hour / weekly / monthly) instead.
+#
+# `providers` lists every LLM route id that bills the account. A route missing
+# from every account is not metered at all: attributing it to the first account
+# would let one provider's tokens move another provider's balance.
+#
 # Rates are the provider's published prices in the account currency per 1M
 # tokens (uncached input, cache hit, output). DeepSeek cut the Flash list on
 # 2026-09-10 12:00 Beijing time: off-peak 1 / 0.02 / 4, doubled during the peak
@@ -15,9 +25,15 @@
           deepseek-official:
             id: deepseek-official
             label: DeepSeek 官方
-            provider: ''
+            kind: balance
+            provider: deepseek-official
+            # The Platform-login route and the API-key route reach the same
+            # account, so a session on either one bills this entry.
+            providers:
+              - deepseek-official
+              - deepseek-account
             balanceBaseUrl: 'https://api.deepseek.com'
-            credential: DEEPSEEK_OFFICIAL_API_KEY
+            credential: DEEPSEEK_API_KEY
             # Where the balance comes from. `auto` uses the endpoint above when a key
             # is stored for it and the Platform login this app is already signed in to
             # otherwise, so a machine that only signed in still shows a balance.
@@ -59,3 +75,21 @@
               minObserved: 0.25
               minFactor: 0.2
               maxFactor: 5
+          opencode-go:
+            id: opencode-go
+            label: OpenCode Go
+            # A subscription has no wallet. Its meters are money-denominated in
+            # the vendor's console, so the card shows the used share of each
+            # window and what it costs in USD.
+            kind: quota
+            provider: opencode-go
+            providers:
+              - opencode-go
+            credential: OPENCODE_GO_API_KEY
+            currency: USD
+            # The console scopes every answer to one workspace and rejects a
+            # request without that workspace id. Both halves of this block come
+            # from the Go page URL: opencode.ai/console/<orgId>/go.
+            quota:
+              baseUrl: 'https://opencode.ai/console/api/go/status'
+              orgId: 'org_01M4YNWXJZJK70Y681KEB7FY5N'

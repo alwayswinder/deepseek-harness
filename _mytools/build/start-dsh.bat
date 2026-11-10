@@ -263,6 +263,12 @@ rem ============================================================
 :ensureLocalPlugins
 set "PLUGIN_MODE=%~1"
 set "PLUGIN_ANY_FAILED="
+rem Fill in whatever this machine's web profile is missing from the shared
+rem baseline (_mytools\build\profile-plugins.json) before the registration below
+rem adds its own links. Idempotent, so a satisfied profile costs one file read; a
+rem slow or offline machine keeps the plugin set it had and still launches.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-profile-plugins.ps1" -Profile web
+if errorlevel 1 echo [dsh] WARNING: profile plugins not reconciled - see _mytools\build\profile-plugins.json
 if "%PLUGIN_MODE%"=="local" goto :pluginsLocal
 if "%PLUGIN_MODE%"=="global" goto :pluginsRegister
 echo [dsh] WARNING: cannot auto-register the plugins while launching through npx. Run this once in a terminal:

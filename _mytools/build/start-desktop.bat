@@ -73,6 +73,14 @@ rem pulled plugin change is what this launch loads.
 call "%~dp0sync-plugins.bat" desktop
 if errorlevel 1 goto :pluginFailure
 
+rem Fill in whatever this machine's Desktop profile is missing from the shared
+rem baseline (_mytools\build\profile-plugins.json): local plugins arrive as links
+rem to this checkout, npm plugins by their recorded spec, and each bundle row the
+rem loader mounts at boot. Idempotent, so a satisfied profile costs one file read.
+rem A slow or offline machine keeps the plugin set it had and still launches.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-profile-plugins.ps1" -Profile desktop
+if errorlevel 1 echo [desktop] WARNING: profile plugins not reconciled - see _mytools\build\profile-plugins.json
+
 rem Register the local 3ds Max agent-mode bundle into this machine's profile.
 rem The install record lives under DSH_HOME and never syncs with the repository,
 rem so a fresh clone needs this once per machine; the script is idempotent, and a

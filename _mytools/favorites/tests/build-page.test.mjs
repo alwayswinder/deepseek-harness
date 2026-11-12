@@ -134,3 +134,31 @@ test('the machine tags ride on the card, and the row above lists folders only', 
   assert.match(card, /class="hit"/u)
   assert.doesNotMatch(card, /class="mark ai"/u)
 })
+
+test('the served copy carries the editing surface and the file copy carries none of it', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'favorites-page-'))
+  try {
+    const library = libraryIn(directory)
+    const served = buildPage(library, {
+      root: directory, editable: true, revision: '123-456', savePath: '/probe/save',
+    })
+    assert.match(served, /<body class="editing">/u)
+    assert.match(served, /id="add"/u)
+    assert.match(served, /<dialog id="editor">/u)
+    assert.match(served, /data-id="one"/u)
+    assert.match(served, /class="tool" data-act="edit"/u)
+    assert.match(served, /const SAVE = "\/probe\/save"/u)
+    assert.match(served, /"revision":"123-456"/u)
+    // Nothing in the data block may close the script element early: a title holding
+    // `</script>` would end it and put the rest of the library on the page as text.
+    const block = served.slice(served.indexOf('id="library-data"'), served.indexOf('</script>', served.indexOf('id="library-data"')))
+    assert.doesNotMatch(block, /</u)
+    assert.match(block, /\\u003c/u)
+
+    const file = buildPage(library, { root: directory })
+    assert.doesNotMatch(file, /library-data|data-id=|id="editor"|class="tool"/u)
+    assert.doesNotMatch(file, /<body class="editing">/u)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})

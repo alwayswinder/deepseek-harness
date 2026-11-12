@@ -50,8 +50,8 @@
 import { execFile, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, extname, isAbsolute, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 import { MusicLibrary, musicView, isInside, musicEntryId, parseBilibiliRef, playlistOf, playlistOfEntry, resolveMusicDir, resolveMusicLinks } from './music.js'
 
@@ -189,7 +189,7 @@ const MUSIC_COMMANDS = new Set(['play', 'pause', 'toggle', 'next', 'prev'])
  * here (music sync, the volume) or belongs to a menu entry that no longer exists,
  * so it must not reach a listener that would only warn about it.
  */
-const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space', 'listening-mode'])
+const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space', 'listening-mode', 'favorites'])
 
 /** Volume a machine that has not chosen one plays at. */
 const MUSIC_VOLUME_DEFAULT = 70
@@ -267,6 +267,35 @@ const SETTINGS_SYNC_PROFILE = 'desktop'
  * library or a missing tool would start one node process per tick.
  */
 const FAVORITES_RETRY_MS = 120_000
+
+/**
+ * Same-origin route that serves the navigation page in its editable form. The page
+ * opened from disk is read-only because a file has no way to write the library
+ * back; this copy is served by the Host, so a save request lands in the same
+ * process that already knows how to write the YAML and regenerate the page.
+ */
+const FAVORITES_PATH = '/api/little-icon/favorites'
+
+/**
+ * POST route the served page saves through: the whole list the page showed, plus
+ * the revision it was generated from, so a stale tab cannot undo a newer edit.
+ */
+const FAVORITES_SAVE_PATH = '/api/little-icon/favorites/save'
+
+/**
+ * GET route the plugin's own Sidebar page reads the library from. The page is
+ * rendered in this window rather than in a Browser tab guest: the Desktop's guest
+ * partition refuses every request to this Host, so an embedded webview cannot
+ * reach the save route at all. A page of this plugin's own is same-origin and
+ * carries the connection, which is why the editor lives there.
+ */
+const FAVORITES_DATA_PATH = '/api/little-icon/favorites/data'
+
+/**
+ * Ceiling on one save request's body. The library is about a hundred entries of a
+ * few hundred bytes each, so anything past this is not a list a person edited.
+ */
+const FAVORITES_SAVE_MAX_BYTES = 1024 * 1024
 
 /**
  * How many commits one page of the history column holds. The page asks for the
@@ -1656,8 +1685,51 @@ function favoritesAt(directory) {
   if (!existsSync(library)) return undefined
   return {
     library,
+    // The rules the importer, the generator, and the editor share. The Host reads
+    // them from here rather than carrying a second copy, which is what keeps a
+    // card built in the dialog identical to the one the importer writes.
+    module: join(directory, 'library.mjs'),
     page: join(directory, 'dist', 'index.html'),
     build: join(directory, 'build-page.mjs'),
+  }
+}
+
+/**
+ * Write one save request against a library: check it against what is on disk,
+ * write the YAML, and regenerate the page the pet opens, so the two products of
+ * one library never disagree about what it holds.
+ * @param paths - the library's paths, as {@link favoritesAt} answers them.
+ * @param modules - the library's own modules: `readLibrary`, `writeLibrary`,
+ *   `applyLibrary`, `revisionOf`, and `loadYaml`, plus the page's `buildPage`.
+ * @param body - the parsed request: the `revision` the page was generated from
+ *   and the whole `bookmarks` list it showed.
+ * @returns the JSON answer the page renders, never throwing for a refusal.
+ */
+export function saveFavorites(paths, modules, body) {
+  const current = modules.revisionOf(paths.library)
+  if (current === undefined) return { ok: false, reason: 'no-library', message: '网站库读不出来' }
+  // A tab opened before another edit would otherwise write a list built from an
+  // older library and silently undo that edit.
+  if (typeof body?.revision !== 'string' || body.revision !== current) {
+    return { ok: false, reason: 'stale', message: '库已经被别处改过了，刷新页面再编辑' }
+  }
+  const yaml = modules.loadYaml()
+  const result = modules.applyLibrary(modules.readLibrary(yaml, paths.library), body?.bookmarks)
+  if (result.ok !== true) return { ok: false, reason: result.reason, message: result.message }
+  // A save that stopped halfway would leave a truncated file, and this one is
+  // tracked: the new text lands beside the old and replaces it in one step.
+  const staging = `${paths.library}.saving`
+  writeFileSync(staging, modules.writeLibrary(yaml, result.library))
+  renameSync(staging, paths.library)
+  mkdirSync(dirname(paths.page), { recursive: true })
+  writeFileSync(paths.page, modules.buildPage(result.library))
+  return {
+    ok: true,
+    revision: modules.revisionOf(paths.library),
+    count: result.library.bookmarks.length,
+    added: result.added,
+    updated: result.updated,
+    removed: result.removed,
   }
 }
 
@@ -2144,7 +2216,7 @@ export function apply(ctx, config) {
   // whenever the library moved ahead of it. That is what makes an edit made in the
   // plugin's own page, or a library that arrived with `git pull`, show up at the
   // next click instead of at the next restart.
-  const favorites = { paths: undefined, resolved: false }
+  const favorites = { paths: undefined, resolved: false, modules: undefined }
   let favoritesRebuilding = false
   let favoritesRetryAt = 0
 
@@ -2214,6 +2286,163 @@ export function apply(ctx, config) {
     }
     return existsSync(paths.page) ? paths.page : ''
   }
+
+  /**
+   * The library's own modules, loaded once on first use. Reading, checking, and
+   * rendering are the code the command-line tools use, so the Host carries no
+   * second copy of any rule about what a bookmark is.
+   * @returns the module namespace plus the page generator, or undefined when this
+   *   machine has no library.
+   */
+  const loadFavoritesModules = async () => {
+    if (favorites.modules !== undefined) return favorites.modules
+    const paths = favoritesPaths()
+    if (paths === undefined) return undefined
+    const [libraryModule, pageModule] = await Promise.all([
+      import(pathToFileURL(paths.module).href),
+      import(pathToFileURL(paths.build).href),
+    ])
+    favorites.modules = {
+      ...libraryModule,
+      buildPage: pageModule.buildPage,
+      iconDataUri: pageModule.iconDataUri,
+    }
+    return favorites.modules
+  }
+
+  /**
+   * Write one save request: check it against the library on disk, write the YAML,
+   * and regenerate the file the pet opens.
+   * @param body - the parsed request: the `revision` the page was generated from
+   *   and the whole `bookmarks` list it showed.
+   * @returns the JSON answer the page renders, never throwing for a refusal.
+   */
+  const saveFavoriteList = async (body) => {
+    const paths = favoritesPaths()
+    if (paths === undefined) return { ok: false, reason: 'no-library', message: '这台机器没有网站库' }
+    return saveFavorites(paths, await loadFavoritesModules(), body)
+  }
+
+  // The editable page, and the route it saves through. The pet's menu opens this
+  // one in DSH's own Browser tab rather than the system browser because only a
+  // page DSH served carries the connection cookie these routes check; the file
+  // beside the library stays the read-only copy for everything else.
+  ctx.inject(['webServer'], (webCtx) => {
+    /**
+     * Whether a request may be answered: the connection's own same-origin and
+     * authentication check, then the method this route takes.
+     * @param req - the request.
+     * @param res - the response.
+     * @param method - the method this route accepts.
+     * @returns whether the handler should continue.
+     */
+    const allowed = (req, res, method) => {
+      const connection = ctx.get('connection')
+      const rejection = connection === undefined ? undefined : connection.requestRejection(req)
+      if (rejection !== undefined) {
+        res.writeHead(rejection)
+        res.end()
+        return false
+      }
+      if (req.method !== method) {
+        res.writeHead(405)
+        res.end()
+        return false
+      }
+      return true
+    }
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: FAVORITES_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'GET')) return
+        void (async () => {
+          const paths = favoritesPaths()
+          if (paths === undefined) {
+            const text = '这台机器上没有网站库：_mytools/favorites/bookmarks.yml'
+            res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'content-length': Buffer.byteLength(text) })
+            res.end(text)
+            return
+          }
+          const modules = await loadFavoritesModules()
+          const library = modules.readLibrary(modules.loadYaml())
+          const html = modules.buildPage(library, {
+            editable: true,
+            revision: modules.revisionOf(paths.library) ?? '',
+            savePath: FAVORITES_SAVE_PATH,
+          })
+          res.writeHead(200, {
+            'content-type': 'text/html; charset=utf-8',
+            'content-length': Buffer.byteLength(html),
+            'cache-control': 'no-store',
+          })
+          res.end(html)
+        })().catch((error) => {
+          // A half-written page renders as a page that lost most of its cards, so
+          // a failure here is answered as one rather than as a partial body.
+          ctx.logger.warn('little-icon: could not serve the website library: %s', String(error))
+          if (!res.headersSent) res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
+          res.end('网站库读不出来，见 DSH 日志')
+        })
+      },
+    }), `little-icon: GET ${FAVORITES_PATH}`)
+
+    // The same library as JSON, for the plugin's own Sidebar page: that page is
+    // rendered in this window, so it can reach this Host, and the icons travel
+    // inline the way the generated page carries them — one request per card would
+    // be a request per row.
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: FAVORITES_DATA_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'GET')) return
+        void (async () => {
+          const paths = favoritesPaths()
+          if (paths === undefined) {
+            sendJson(res, { ok: false, reason: 'no-library', message: '这台机器没有网站库' })
+            return
+          }
+          const modules = await loadFavoritesModules()
+          const library = modules.readLibrary(modules.loadYaml(), paths.library)
+          sendJson(res, {
+            ok: true,
+            revision: modules.revisionOf(paths.library) ?? '',
+            bookmarks: library.bookmarks.map((entry) => ({
+              id: entry.id,
+              url: entry.url,
+              title: entry.title ?? '',
+              group: entry.group ?? '',
+              notes: entry.notes ?? '',
+              autoTags: Array.isArray(entry.autoTags) ? entry.autoTags.map(String) : [],
+              pinned: entry.pinned === true,
+              icon: modules.iconDataUri(entry, dirname(paths.build)) ?? '',
+            })),
+          })
+        })().catch((error) => {
+          ctx.logger.warn('little-icon: could not read the website library: %s', String(error))
+          sendJson(res, { ok: false, reason: 'failed', message: String(error) })
+        })
+      },
+    }), `little-icon: GET ${FAVORITES_DATA_PATH}`)
+
+    webCtx.effect(() => webCtx.webServer.register({
+      kind: 'exact',
+      path: FAVORITES_SAVE_PATH,
+      handler: (req, res) => {
+        if (!allowed(req, res, 'POST')) return
+        void readJsonBody(req, FAVORITES_SAVE_MAX_BYTES).then(
+          (body) => saveFavoriteList(body),
+        ).then(
+          (payload) => { sendJson(res, payload) },
+          (error) => {
+            ctx.logger.warn('little-icon: saving the website library failed: %s', String(error))
+            sendJson(res, { ok: false, reason: 'failed', message: String(error) })
+          },
+        )
+      },
+    }), `little-icon: POST ${FAVORITES_SAVE_PATH}`)
+  })
 
   const publish = () => {
     const now = Date.now()
@@ -3224,6 +3453,7 @@ export const internals = {
   resolveSites,
   resolveFavorites,
   favoritesAt,
+  saveFavorites,
   readGitRepository,
   readGitCommits,
   readGitRemoteStatus,
@@ -3255,6 +3485,10 @@ export const internals = {
   MUSIC_REMOVE_PATH,
   MUSIC_COMMAND_PATH,
   MUSIC_PREFERENCES_PATH,
+  FAVORITES_PATH,
+  FAVORITES_SAVE_PATH,
+  FAVORITES_DATA_PATH,
+  FAVORITES_SAVE_MAX_BYTES,
   GIT_DIFF_MAX_CHARS,
   GIT_DISCARD_MAX_BYTES,
   GIT_LOG_PAGE,

@@ -92,12 +92,26 @@ export function initialOf(entry) {
 }
 
 /**
+ * The buttons one editable card carries. The page is a generated file opened from
+ * disk most of the time, where nothing may change the library, so these exist only
+ * on the copy the Host serves.
+ * @returns the toolbar's HTML.
+ */
+function cardTools() {
+  return '<div class="tools">'
+    + '<button type="button" class="tool" data-act="edit" title="编辑">✎</button>'
+    + '<button type="button" class="tool" data-act="delete" title="删除">✕</button>'
+    + '</div>'
+}
+
+/**
  * One card.
  * @param entry - a library entry.
  * @param root - directory the entry's icon path is relative to.
+ * @param editable - whether the card carries its id and the edit buttons.
  * @returns the card's HTML.
  */
-export function renderCard(entry, root) {
+export function renderCard(entry, root, editable = false) {
   const icon = iconDataUri(entry, root)
   const host = (() => {
     try {
@@ -121,7 +135,9 @@ export function renderCard(entry, root) {
   // names a row whose note was left blank.
   const shown = String(entry.title ?? '').trim() !== '' ? String(entry.title) : host
   return [
-    `<li class="card" data-group="${escapeHtml(entry.group)}" data-search="${escapeHtml(searchText(entry))}">`,
+    '<li class="card"',
+    editable ? ` data-id="${escapeHtml(entry.id)}"` : '',
+    ` data-group="${escapeHtml(entry.group)}" data-search="${escapeHtml(searchText(entry))}">`,
     `<a class="hit" href="${escapeHtml(entry.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(entry.url)}">`,
     tile,
     '<span class="text">',
@@ -129,6 +145,7 @@ export function renderCard(entry, root) {
     `<span class="host">${escapeHtml(host)}</span>`,
     '</span>',
     '</a>',
+    editable ? cardTools() : '',
     marks === '' ? '' : `<div class="marks">${marks}</div>`,
     notes,
     '</li>',
@@ -137,13 +154,26 @@ export function renderCard(entry, root) {
 
 /**
  * Render the whole page.
+ *
+ * Two products come out of this one function. The default is the file the pet
+ * opens from disk: self-contained, read-only, and holding nothing about any
+ * bookmark except what a card shows. `editable` is the copy the Host serves to
+ * DSH's own Browser tab, where a save request can be answered: it carries each
+ * entry's fields in a JSON block and the editing script that posts them back.
  * @param library - the parsed library.
- * @param options - `root` for icon paths and `generatedAt` for the footer stamp.
+ * @param options - `root` for icon paths, `generatedAt` for the footer stamp,
+ *   `editable` for the served copy, `revision` for the stamp its saves carry, and
+ *   `savePath` for the route those saves are posted to.
  * @returns the page's HTML.
  */
 export function buildPage(library, options = {}) {
   const root = options.root ?? import.meta.dirname
   const generatedAt = options.generatedAt ?? new Date()
+  const editable = options.editable === true
+  const revision = typeof options.revision === 'string' ? options.revision : ''
+  const savePath = typeof options.savePath === 'string' && options.savePath !== ''
+    ? options.savePath
+    : '/api/little-icon/favorites/save'
   const bookmarks = Array.isArray(library.bookmarks) ? library.bookmarks : []
   const pinned = bookmarks.filter(entry => entry.pinned === true)
   const groups = new Map()
@@ -158,7 +188,7 @@ export function buildPage(library, options = {}) {
     `<span class="name">${escapeHtml(name)}</span>`,
     `<span class="tally">${entries.length}</span>`,
     '</button></h2>',
-    `<ul class="cards">${entries.map(entry => renderCard(entry, root)).join('')}</ul>`,
+    `<ul class="cards">${entries.map(entry => renderCard(entry, root, editable)).join('')}</ul>`,
     '</section>',
   ].join('')
   const chips = ['<button type="button" class="chip on" data-group="">全部</button>']
@@ -168,19 +198,37 @@ export function buildPage(library, options = {}) {
   // for a person looking at their own clock.
   const stamp = new Date(generatedAt.getTime() - generatedAt.getTimezoneOffset() * 60000)
     .toISOString().replace('T', ' ').slice(0, 16)
+  // Everything a save request needs, and nothing a reader does not: the icon path
+  // stays out because the dialog never changes it, and the Host keeps whatever the
+  // library already holds for an entry it is given back.
+  const data = editable
+    ? JSON.stringify({
+      revision,
+      bookmarks: bookmarks.map(entry => ({
+        id: entry.id,
+        url: entry.url,
+        title: entry.title ?? '',
+        group: entry.group ?? '',
+        notes: entry.notes ?? '',
+        autoTags: Array.isArray(entry.autoTags) ? entry.autoTags.map(String) : [],
+        pinned: entry.pinned === true,
+      })),
+    }).replace(/</gu, '\\u003c')
+    : ''
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(PAGE_TITLE)}</title>
-<style>${STYLE}</style>
+<style>${STYLE}${editable ? EDIT_STYLE : ''}</style>
 </head>
-<body>
+<body${editable ? ' class="editing"' : ''}>
 <header>
 <div class="bar">
 <h1>${escapeHtml(PAGE_TITLE)}</h1>
 <p class="meta">共 ${bookmarks.length} 个网站 · ${groups.size} 个分组 · 生成于 ${escapeHtml(stamp)}</p>
+${editable ? '<button type="button" id="add" class="primary">＋ 添加网站</button>' : ''}
 </div>
 <div class="find">
 <input id="q" type="search" placeholder="搜索标题、网址、备注、标签" autocomplete="off">
@@ -195,6 +243,7 @@ ${[...groups.entries()].map(([name, entries]) => section(name, entries)).join('\
 </main>
 <footer>${escapeHtml(libraryFile)} → ${escapeHtml(stamp)}</footer>
 <script>${SCRIPT}</script>
+${editable ? `${EDITOR_HTML}<script type="application/json" id="library-data">${data}</script><script>${editScript(savePath)}</script>` : ''}
 </body>
 </html>
 `
@@ -328,6 +377,211 @@ for (const fold of document.querySelectorAll('.fold')) {
 }
 apply()
 `
+
+/** Styling of the served copy only: the buttons, the dialog, and the narrow layout. */
+const EDIT_STYLE = `
+body.editing .card { position: relative; }
+body.editing .card .tools {
+  position: absolute; top: 6px; right: 6px; display: flex; gap: 4px;
+  opacity: 0; transition: opacity .12s ease;
+}
+body.editing .card:hover .tools, body.editing .card:focus-within .tools { opacity: 1; }
+@media (hover: none) { body.editing .card .tools { opacity: 1; } }
+.tool {
+  width: 24px; height: 24px; padding: 0; display: grid; place-items: center;
+  font: inherit; font-size: 12px; line-height: 1; color: var(--dim); cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+}
+.tool:hover { color: var(--ink); border-color: var(--accent); }
+.primary {
+  padding: 6px 12px; font: inherit; color: var(--panel); cursor: pointer;
+  background: var(--accent); border: 1px solid transparent; border-radius: 8px;
+}
+.primary:disabled { opacity: .55; cursor: default; }
+#add { margin-left: auto; align-self: center; }
+.plain {
+  padding: 6px 12px; font: inherit; color: var(--dim); cursor: pointer;
+  background: none; border: 1px solid var(--line); border-radius: 8px;
+}
+.plain:hover { color: var(--ink); }
+dialog#editor {
+  width: min(460px, calc(100vw - 32px)); padding: 0; color: var(--ink);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .28);
+}
+dialog#editor::backdrop { background: rgba(10, 12, 16, .45); }
+#editor-form { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px 16px; }
+#editor-form h2 { margin: 0 0 2px; font-size: 15px; font-weight: 650; }
+#editor-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); }
+#editor-form input[type="text"], #editor-form input[type="url"], #editor-form textarea {
+  padding: 7px 10px; font: inherit; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+#editor-form input:focus, #editor-form textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#editor-form textarea { resize: vertical; min-height: 64px; }
+#editor-form label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); }
+#editor-form .error { margin: 0; color: #c0392b; font-size: 12px; }
+#editor-form .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+`
+
+/** The dialog the served copy edits one entry in. */
+const EDITOR_HTML = `
+<dialog id="editor">
+<form id="editor-form">
+<h2 id="editor-head">添加网站</h2>
+<label>网址<input id="f-url" type="url" required placeholder="https://" autocomplete="off"></label>
+<label>标题<input id="f-title" type="text" placeholder="留空就用域名" autocomplete="off"></label>
+<label>分组<input id="f-group" type="text" list="group-options" placeholder="留空就是未分组" autocomplete="off"></label>
+<datalist id="group-options"></datalist>
+<label>标签<input id="f-tags" type="text" placeholder="用空格或逗号分隔" autocomplete="off"></label>
+<label>备注<textarea id="f-notes" rows="3" placeholder="可以写 Markdown"></textarea></label>
+<label class="check"><input id="f-pinned" type="checkbox">置顶</label>
+<p id="editor-error" class="error" hidden></p>
+<div class="buttons">
+<button type="button" id="editor-cancel" class="plain">取消</button>
+<button type="submit" id="editor-save" class="primary">保存</button>
+</div>
+</form>
+</dialog>
+`
+
+/**
+ * The served copy's editing script.
+ *
+ * Every change is one save request carrying the whole list, and a successful
+ * answer reloads the page: the Host has already written the library and the page
+ * that comes back is the one it wrote, so nothing here has to keep a second
+ * rendering of a card in step with the file.
+ * @param savePath - the route a save request is posted to.
+ * @returns the script's text.
+ */
+function editScript(savePath) {
+  return 'const SAVE = ' + JSON.stringify(savePath) + '\n' + `
+const dataBlock = document.getElementById('library-data')
+const data = JSON.parse(dataBlock.textContent)
+const bookmarks = data.bookmarks
+const revision = data.revision
+const dialog = document.getElementById('editor')
+const form = document.getElementById('editor-form')
+const head = document.getElementById('editor-head')
+const errorBox = document.getElementById('editor-error')
+const groupOptions = document.getElementById('group-options')
+const field = (id) => document.getElementById(id)
+let editingId = ''
+
+const refreshGroups = () => {
+  groupOptions.textContent = ''
+  const names = [...new Set(bookmarks.map((entry) => entry.group).filter((name) => name !== ''))].sort()
+  for (const name of names) {
+    const option = document.createElement('option')
+    option.value = name
+    groupOptions.append(option)
+  }
+}
+
+const showError = (message) => {
+  errorBox.textContent = message
+  errorBox.hidden = false
+}
+
+const report = (message) => {
+  window.alert(message)
+}
+
+const save = async (next) => {
+  let response
+  try {
+    response = await fetch(SAVE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ revision, bookmarks: next }),
+    })
+  } catch (error) {
+    report('保存失败：' + (error && error.message ? error.message : '连接不上 DSH'))
+    return false
+  }
+  let payload
+  try {
+    payload = await response.json()
+  } catch {
+    payload = undefined
+  }
+  if (payload === undefined || payload.ok !== true) {
+    const message = payload && payload.message ? payload.message : '保存失败（HTTP ' + response.status + '）'
+    report(message)
+    return false
+  }
+  location.reload()
+  return true
+}
+
+const openEditor = (entry) => {
+  editingId = entry ? entry.id : ''
+  head.textContent = entry ? '编辑网站' : '添加网站'
+  const chosen = document.querySelector('.chip.on')
+  const activeGroup = chosen === null ? '' : chosen.dataset.group
+  field('f-url').value = entry ? entry.url : ''
+  field('f-title').value = entry ? entry.title : ''
+  field('f-group').value = entry ? entry.group : activeGroup
+  field('f-tags').value = entry ? entry.autoTags.join(' ') : ''
+  field('f-notes').value = entry ? entry.notes : ''
+  field('f-pinned').checked = entry ? entry.pinned : false
+  errorBox.hidden = true
+  refreshGroups()
+  dialog.showModal()
+  field('f-url').focus()
+}
+
+document.getElementById('add').addEventListener('click', () => openEditor(undefined))
+document.getElementById('editor-cancel').addEventListener('click', () => dialog.close())
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault()
+  const url = field('f-url').value.trim()
+  if (url === '') {
+    showError('网址不能为空')
+    return
+  }
+  const raw = {
+    url,
+    title: field('f-title').value.trim(),
+    group: field('f-group').value.trim(),
+    notes: field('f-notes').value,
+    autoTags: field('f-tags').value.split(/[,，、;；\\s]+/).filter((tag) => tag !== ''),
+    pinned: field('f-pinned').checked,
+  }
+  const next = editingId === ''
+    ? [...bookmarks, raw]
+    : bookmarks.map((entry) => (entry.id === editingId ? { ...entry, ...raw } : entry))
+  const button = document.getElementById('editor-save')
+  const label = button.textContent
+  button.disabled = true
+  button.textContent = '保存中…'
+  const done = await save(next)
+  button.disabled = false
+  button.textContent = label
+  if (done) dialog.close()
+})
+
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('.tool')
+  if (button === null) return
+  const card = button.closest('.card')
+  const id = card === null ? undefined : card.dataset.id
+  if (id === undefined) return
+  const entry = bookmarks.find((item) => item.id === id)
+  if (entry === undefined) return
+  if (button.dataset.act === 'edit') {
+    openEditor(entry)
+    return
+  }
+  if (button.dataset.act === 'delete') {
+    if (!window.confirm('删除「' + (entry.title || entry.url) + '」？')) return
+    void save(bookmarks.filter((item) => item.id !== id))
+  }
+})
+`
+}
 
 /** Generate the page the way the command line asked for it. */
 function main() {

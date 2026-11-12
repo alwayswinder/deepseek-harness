@@ -29,7 +29,7 @@ const {
   readGitRepository, readGitCommits, readGitRemoteStatus,
   pullGitRepository, discardGitChanges, readGitDiff, readGitCommit,
   openWorkingDirectory, resolveShotDir, resolveSites, StateFileWriter,
-  resolveFavorites, favoritesAt,
+  resolveFavorites, favoritesAt, saveFavorites, FAVORITES_PATH, FAVORITES_SAVE_PATH, FAVORITES_DATA_PATH,
 } = internals
 const {
   MusicLibrary, musicView, parseBilibiliRef, musicEntryId, sanitizeFileStem,
@@ -696,6 +696,8 @@ assert.equal(labels.FishTank, '像素鱼缸', 'the mini game entry that opens th
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 assert.equal(labels.Sites, '网站', 'the menu entry the site list and the library page hang under')
 assert.equal(labels.SitesManage, '网站设置', 'the entry that opens the settings card for them')
+assert.equal(labels.Nav, '导航编辑', 'the entry that opens the editable library in DSH')
+assert.equal(labels.NavBrowser, '网站导航', 'the entry that opens the generated page in the system browser')
 assert.equal(labels.Music, '听歌', 'the menu entry the music hangs under')
 assert.equal(labels.MusicSettings, '听歌设置', 'the entry that opens the settings card for the music')
 assert.equal(labels.MusicPlay, '开始', 'the music entry that starts playing')
@@ -706,7 +708,8 @@ for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
   'QuickAccess', 'QuickAccessHint', 'QuickAccessCurrent', 'QuickAccessOpen',
   'QuickAccessPick', 'QuickAccessPickShort', 'QuickAccessPickTitle', 'QuickAccessClear',
   'QuickAccessNoCwd', 'QuickAccessFailed',
-  'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
+  'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Nav', 'NavBrowser', 'NavMissing', 'NavFailed',
+  'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
   'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
@@ -737,7 +740,8 @@ assert.match(petSource, /function Update-SiteMenu/, 'the sites submenu needs its
 // with the library page and the settings entry beside them: the list is one level
 // down, not two, and a list of any length must not push those fixed entries out.
 assert.match(petSource, /Add-SiteMenuItem \$items \$site/, 'the configured sites must be rows of the sites submenu itself')
-assert.match(petSource, /New-NavigationItem \$items/, 'the library page must be a sibling of the site rows')
+assert.match(petSource, /New-SiteListNavigationItem \$items/, 'the readable page must be a sibling of the site rows')
+assert.match(petSource, /New-EditorNavigationItem \$items/, 'and the editor under it')
 assert.match(petSource, /Add-PetMenuItem \$items \$SCRIPT:Labels\.SitesManage 'gear'/, 'and so must the settings entry')
 assert.match(petSource, /function Update-NavigationEntry/, 'the library entry is refreshed after its rebuild')
 assert.match(petSource, /\$SCRIPT:Sites = Get-SiteList \$State/, 'the published sites must reach the submenu')
@@ -1003,30 +1007,35 @@ if (process.platform === 'win32') {
   // address it carries, and the two fixed entries an empty list still needs.
   const siteMenu = /site-menu: (.*)/.exec(selfTest.stdout)
   assert.ok(siteMenu !== null, 'the self test must report the sites entry')
-  const [emptyList, twoSites, clickedEntry, nav, navBrowser, navFail, published] =
+  const [emptyList, twoSites, clickedEntry, navClick, nav, navBrowser, navFail, published] =
     siteMenu[1].trim().split(' >> ')
-  // An empty list says so, and the two fixed entries sit beside it: the library
-  // page (unclickable, not absent, until the host has built one) and the settings
-  // card that fills the list. A vanishing entry is what a person reports as a
-  // missing feature.
+  // An empty list says so, and the two fixed entries sit beside it: the readable
+  // page (unclickable, not absent, until the host has built one) above the editor,
+  // and the settings card that fills the list. A vanishing entry is what a person
+  // reports as a missing feature.
   assert.equal(emptyList,
-    `ToolStripMenuItem=${labels.SitesEmpty}[False]|ToolStripSeparator=[True]|ToolStripMenuItem=${labels.NavMissing}[False]|ToolStripMenuItem=${labels.SitesManage}[True]`,
-    'an empty list says so and still offers the library page and the settings card')
+    `ToolStripMenuItem=${labels.SitesEmpty}[False]|ToolStripSeparator=[True]|ToolStripMenuItem=${labels.NavMissing}[False]|ToolStripMenuItem=${labels.Nav}[True]|ToolStripMenuItem=${labels.SitesManage}[True]`,
+    'the readable page comes first, the editor under it, and the settings card last')
   assert.equal(twoSites,
-    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.NavMissing}@`, `${labels.SitesManage}@`].join('|'),
+    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.NavMissing}@`, `${labels.Nav}@`, `${labels.SitesManage}@`].join('|'),
     'each configured site is one entry carrying its own address, then the fixed entries')
-  // The library entry is the one that opens a page instead of an address, so what
-  // matters is that a page on disk turns it on, that the browser registered for the
-  // web is preferred over the file association, and that a machine where neither
-  // works says so instead of doing nothing: that silence is what a broken `.html`
-  // association produced the first time this was clicked.
+  // Two entries for one library: the editable one asks the page to open the library
+  // in DSH's own Browser tab, which is the only place a save can land, while the
+  // file one opens the generated page in the system browser.
+  assert.equal(navClick, 'nav-click=favorites',
+    'the editable entry must ask the page to open the library in DSH')
+  // The file entry opens a page instead of an address, so what matters is that a
+  // page on disk turns it on, that the browser registered for the web is preferred
+  // over the file association, and that a machine where neither works says so
+  // instead of doing nothing: that silence is what a broken `.html` association
+  // produced the first time this was clicked.
   const [navLabel, navEnabled, navOpened] = nav.split('|')
-  assert.equal(navLabel, `nav=${labels.Nav}`, 'a page on disk turns the library entry into the real one')
+  assert.equal(navLabel, `nav=${labels.NavBrowser}`, 'a page on disk turns the file entry into the real one')
   assert.equal(navEnabled, 'True', 'and makes it clickable')
   assert.match(navOpened, /nav-probe\.html$/u, 'clicking it opens the page the host published')
   assert.match(navBrowser, /^nav-browser=.*powershell\.exe\|file:\/\/\/.*nav-probe\.html$/u,
     'a registered browser is preferred, and it is handed a file address rather than a path')
-  assert.equal(navFail, `nav-fail=${labels.Nav}|${labels.NavFailed}`,
+  assert.equal(navFail, `nav-fail=${labels.NavBrowser}|${labels.NavFailed}`,
     'a page that no browser would open is reported above the pet, never silently dropped')
   // What the registered command line is read for: the executable, whatever switches
   // the browser wants around `%1`, and nothing at all when there is no executable.
@@ -1957,6 +1966,175 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
   console.log('skipping the real-repository read: no git on PATH')
 }
 
+// ---- the library's save path ------------------------------------------------
+//
+// A save is the one route here that writes a tracked file, so it is exercised on
+// a library of its own: the real one is the person's, and a test that edited it
+// would be a test that damaged the data it was measuring. The page it regenerates
+// is the one the pet opens from disk, and it must stay read-only.
+{
+  const directory = mkdtempSync(join(tmpdir(), 'little-icon-favorites-'))
+  try {
+    const paths = {
+      library: join(directory, 'bookmarks.yml'),
+      page: join(directory, 'dist', 'index.html'),
+      module: join(root, '..', '..', 'favorites', 'library.mjs'),
+      build: join(root, '..', '..', 'favorites', 'build-page.mjs'),
+    }
+    const libraryModule = await import(pathToFileURL(paths.module).href)
+    const pageModule = await import(pathToFileURL(paths.build).href)
+    const modules = { ...libraryModule, buildPage: pageModule.buildPage }
+    writeFileSync(paths.library, [
+      'version: 1',
+      'bookmarks:',
+      '  - id: aaa111aaa111',
+      '    url: https://a.example/',
+      '    title: a',
+      '    group: ""',
+      '',
+    ].join('\n'))
+
+    const stale = saveFavorites(paths, modules, { revision: 'not-the-one', bookmarks: [] })
+    assert.equal(stale.ok, false, 'a tab generated from another revision cannot write')
+    assert.equal(stale.reason, 'stale')
+
+    const saved = saveFavorites(paths, modules, {
+      revision: libraryModule.revisionOf(paths.library),
+      bookmarks: [
+        { id: 'aaa111aaa111', url: 'https://a.example/', title: 'a renamed', group: 'G', autoTags: 'x y' },
+        { url: 'https://b.example/', title: '', group: 'G' },
+      ],
+    })
+    assert.equal(saved.ok, true, `the save must be accepted: ${saved.message ?? ''}`)
+    assert.deepEqual([saved.added, saved.updated, saved.removed], [1, 1, 0],
+      'one card was added and one edited, in a library that had one entry')
+    const library = libraryModule.readLibrary(modules.loadYaml(), paths.library)
+    assert.deepEqual(library.bookmarks.map(entry => entry.title), ['a renamed', 'b.example'],
+      'a renamed card keeps its place, a card with no title is named by its host, and a new one is appended')
+    assert.deepEqual(library.bookmarks[0].autoTags, ['x', 'y'], 'the tags the dialog sent reach the file')
+    assert.equal(library.bookmarks[0].group, 'G', 'and so does the folder')
+    assert.ok(existsSync(paths.page), 'the page the pet opens is regenerated with the library')
+    const page = readFileSync(paths.page, 'utf8')
+    assert.match(page, /a renamed/u, 'so the file copy shows the edit')
+    assert.doesNotMatch(page, /id="editor"/u, 'and stays the read-only copy')
+
+    const twice = saveFavorites(paths, modules, {
+      revision: libraryModule.revisionOf(paths.library),
+      bookmarks: [
+        { id: 'aaa111aaa111', url: 'https://a.example/', title: 'a renamed' },
+        { url: 'https://a.example/', title: 'the same address again' },
+      ],
+    })
+    assert.equal(twice.ok, false, 'two cards for one address are refused')
+    assert.equal(twice.reason, 'duplicate')
+
+    const removed = saveFavorites(paths, modules, {
+      revision: libraryModule.revisionOf(paths.library),
+      bookmarks: [{ id: 'aaa111aaa111', url: 'https://a.example/', title: 'a renamed' }],
+    })
+    assert.equal(removed.ok, true)
+    assert.equal(removed.removed, 1, 'a card the request no longer carries is deleted')
+    assert.equal(removed.count, 1)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+  console.log('little-icon smoke: library save ok')
+}
+
+// The route that serves the page itself: the file copy is generated once, while
+// this one is produced per request, so a library that changed since the last
+// build is what the reader sees. Only GET is answered, and the page it answers
+// with is the editable copy, never the file one.
+{
+  const home = mkdtempSync(join(tmpdir(), 'little-icon-favorites-route-'))
+  const previousHome = process.env.DSH_HOME
+  process.env.DSH_HOME = home
+  const disposers = []
+  const routes = []
+  const hostCtx = {
+    get: () => undefined,
+    logger: { info: () => {}, warn: () => {} },
+    on: () => () => {},
+    effect: (factory) => { disposers.push(factory()) },
+    inject: (_services, callback) => callback({
+      effect: (factory) => { disposers.push(factory()) },
+      settings: { configure: () => () => {} },
+      webServer: { register: (route) => { routes.push(route); return () => {} } },
+    }),
+  }
+  const fixed = (value) => ({ get: () => value })
+  const config = {
+    enabled: fixed(false), size: fixed(160), translucent: fixed(true), idleOpacity: fixed(0.5),
+    frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
+    boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
+    autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
+    alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''), sites: fixed([]),
+  }
+  try {
+    apply(hostCtx, config)
+    const route = routes.find((entry) => entry.path === FAVORITES_PATH)
+    assert.ok(route !== undefined, 'the editable library page must be served')
+    const ask = (method) => {
+      const response = {
+        status: 0, body: '', headers: {},
+        writeHead(code, headers) { this.status = code; this.headers = headers ?? {} },
+        end(chunk) { this.body = chunk ?? '' },
+      }
+      route.handler({ method, url: FAVORITES_PATH, on: () => {} }, response)
+      return response
+    }
+    assert.equal(ask('POST').status, 405, 'the page is served, never written, by this route')
+    const response = ask('GET')
+    const deadline = Date.now() + 5000
+    while (response.status === 0 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(response.status, 200, 'a machine with a library answers with the page')
+    assert.match(response.headers['content-type'] ?? '', /text\/html/u)
+    assert.match(response.body, /id="library-data"/u, 'and with the editable copy, not the file one')
+    // The library may legitimately be empty, so a card is only checked for when one
+    // exists: what this route owes the page is the data block and the editing script.
+    assert.match(response.body, /id="add"/u, 'the served copy carries the editing surface')
+
+    // The JSON the plugin's own Sidebar page reads: the cards it draws, the icons
+    // inline, and the revision a save has to name. A Browser tab could never fetch
+    // this — the Desktop refuses its requests to this Host — which is why the editor
+    // is a page of the plugin's own.
+    const dataRoute = routes.find((entry) => entry.path === FAVORITES_DATA_PATH)
+    assert.ok(dataRoute !== undefined, 'the Sidebar page must be able to read the library')
+    const readJson = (method) => {
+      const answer = {
+        status: 0, body: '', headers: {},
+        writeHead(code, headers) { this.status = code; this.headers = headers ?? {} },
+        end(chunk) { this.body = chunk ?? '' },
+      }
+      dataRoute.handler({ method, url: FAVORITES_DATA_PATH, on: () => {} }, answer)
+      return answer
+    }
+    assert.equal(readJson('POST').status, 405, 'the data route is a read')
+    const jsonResponse = readJson('GET')
+    const jsonDeadline = Date.now() + 5000
+    while (jsonResponse.status === 0 && Date.now() < jsonDeadline) await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(jsonResponse.status, 200)
+    const payload = JSON.parse(jsonResponse.body)
+    assert.equal(payload.ok, true)
+    assert.ok(Array.isArray(payload.bookmarks), 'the library reaches the page, empty or not')
+    assert.equal(typeof payload.revision, 'string', 'and the revision its save must name')
+    for (const entry of payload.bookmarks) {
+      assert.equal(typeof entry.id, 'string')
+      assert.equal(typeof entry.url, 'string')
+    }
+    // An entry's icon travels inline, so the page draws a card without a second
+    // request; an entry with no icon file is a letter tile, which is also valid.
+    const withIcon = payload.bookmarks.find((entry) => /^data:image\//u.test(entry.icon))
+    assert.ok(withIcon === undefined || typeof withIcon.icon === 'string')
+  } finally {
+    for (const dispose of disposers) dispose()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(home, { recursive: true, force: true })
+  }
+  console.log('little-icon smoke: library route ok')
+}
+
 // ---- browser half -----------------------------------------------------------
 
 // The two Host routes the listening mode needs: the picture, which the page can
@@ -1964,6 +2142,24 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
 // Both are named in one place in the Host and again in the page.
 const hostSource = readFileSync(join(root, 'index.js'), 'utf8')
 const clientSource = readFileSync(join(root, 'client.js'), 'utf8')
+// The editable library is the same handshake in three halves: the pet writes the
+// command, the page opens its own Sidebar type, and the Host owns the routes that
+// page reads and saves through.
+assert.match(petSource, /Send-MenuCommand 'favorites'/, 'the pet menu must send the library command')
+assert.match(hostSource, /const FAVORITES_PATH = '\/api\/little-icon\/favorites'/u,
+  'the Host must serve the editable library page')
+assert.match(hostSource, /const FAVORITES_SAVE_PATH = '\/api\/little-icon\/favorites\/save'/u,
+  'and the route its saves are posted to')
+assert.match(hostSource, /const FAVORITES_DATA_PATH = '\/api\/little-icon\/favorites\/data'/u,
+  'and the JSON the plugin\'s own Sidebar page reads')
+assert.match(hostSource, /'listening-mode', 'favorites'/u, 'and relay the menu entry that opens it')
+// The library is edited in a page type of this plugin's own, never in the Browser
+// tab: that guest lives in another storage partition and the Desktop cancels every
+// request it makes to this Host, so only a page rendered in this window can save.
+assert.match(clientSource, /const FAVORITES_KIND = 'little-icon-favorites'/u,
+  'the page must register its own Sidebar type')
+assert.match(clientSource, /sidebar\.openTab\(FAVORITES_KIND\)/u,
+  'and the menu entry must open that page, not the Browser tab')
 assert.match(hostSource, /const WALLPAPER_PATH = '\/api\/little-icon\/wallpaper'/u,
   'the Host must serve the wallpaper the mode draws')
 assert.match(hostSource, /const LEVEL_PATH = '\/api\/little-icon\/level'/u,
@@ -2147,14 +2343,15 @@ const clientCtx = {
 }
 clientPlugin.apply(clientCtx)
 // The plugin registers the settings card and, once the right Sidebar's registry
-// is there, the Git page's body; the Git type itself is registered on that
-// registry rather than through a slot.
-assert.equal(registrations.length, 3, 'the browser half must register the card, the Git body, and the listening overlay')
+// is there, the Git page's body and the site list's; the two type registrations
+// themselves go on that registry rather than through a slot.
+assert.equal(registrations.length, 4, 'the browser half must register the card, the two tab bodies, and the listening overlay')
 const [registration] = registrations.filter(entry => entry.options.name === 'plugins.bundle.config')
-const [gitBody] = registrations.filter(entry => entry.options.name === 'sidebar.right.pane.tab')
+const [gitBody] = registrations.filter(entry => entry.options.name === 'sidebar.right.pane.tab' && entry.component.name === 'GitPanel')
+const [favoritesBody] = registrations.filter(entry => entry.options.name === 'sidebar.right.pane.tab' && entry.component.name === 'FavoritesPanel')
 const [overlay] = registrations.filter(entry => entry.options.name === 'shell.overlay')
-assert.ok(registration !== undefined && gitBody !== undefined && overlay !== undefined,
-  'all three registrations must be present')
+assert.ok(registration !== undefined && gitBody !== undefined && favoritesBody !== undefined && overlay !== undefined,
+  'all four registrations must be present')
 // The card belongs on the bundle's own page: the Plugins list is where a person
 // looks, and the row page behind it is one click too deep.
 assert.equal(registration.options.name, 'plugins.bundle.config')
@@ -2382,15 +2579,20 @@ assert.deepEqual(announceSession({ s2: { cwd: 'D:\\again', retainedBy: { mainVie
   { url: `${ACTIVITY_PATH}?cwd=D%3A%5Cagain`, method: 'POST' },
   'a new Session folder is reported once, when it changes')
 
-// The Git page is a tab type of this plugin's own: the right Sidebar's registry
-// carries the type, and its keyed seat carries the body that reads the Host.
-assert.equal(registeredTypes.length, 1, 'the page must register exactly one tab type')
-const [gitType] = registeredTypes
+// The Git page and the site list are tab types of this plugin's own: the right
+// Sidebar's registry carries each type, and its keyed seat carries the body that
+// reads the Host.
+assert.equal(registeredTypes.length, 2, 'the plugin must register both page types')
+const [gitType, favoritesType] = registeredTypes
 assert.equal(gitType.id, '@local/dsh-little-icon/git')
 assert.equal(gitType.kind, 'little-icon-git')
 assert.equal(gitType.title(), 'Git 改动', 'the chip reads the current language')
 assert.equal(gitBody.options.key, gitType.id, 'the body registers under the type implementation id')
 assert.equal(gitBody.options.locale, 'little-icon')
+assert.equal(favoritesType.id, '@local/dsh-little-icon/favorites')
+assert.equal(favoritesType.kind, 'little-icon-favorites')
+assert.equal(favoritesType.title(), '导航编辑', 'the editor chip reads the current language')
+assert.equal(favoritesBody.options.key, favoritesType.id, 'and its body registers under its own id')
 
 // The body never reads during render: it asks the Host for one directory and gets
 // one JSON object, which is what the injected `load` is. The inject face is built

@@ -531,7 +531,8 @@ function Get-Labels {
         Sites                 = 'Sites'
         SitesEmpty            = 'No sites yet. Add one under Site settings.'
         SitesManage           = 'Site settings'
-        Nav                   = 'Site list'
+        Nav                   = 'Edit site list'
+        NavBrowser            = 'Site list'
         NavMissing            = 'Site list (not generated yet)'
         NavFailed             = 'No browser would open it. Check the default browser setting.'
         Games                 = 'Mini games'
@@ -711,11 +712,12 @@ $SCRIPT:UpdateMenuItem = $null
 $SCRIPT:Sites = @()
 $SCRIPT:SitesItem = $null
 # The generated navigation page's path, as the host publishes it, and empty when
-# this machine has no library to show. The page is a build product, so the menu
-# entry is offered only once there is one to open: that entry is built together
-# with the rest of the submenu each time it opens, from this path.
+# this machine has no library to show. Both navigation entries are built together
+# with the rest of the submenu each time it opens: the editable one always works,
+# the file one from this path.
 $SCRIPT:FavoritesPage = ''
 $SCRIPT:NavItem = $null
+$SCRIPT:NavFileItem = $null
 # Music: the library the host published, the MediaPlayer that owns the audio, what
 # this process last reported about it, and the submenu itself. The submenu is
 # rebuilt at every open because a download that finished in between, a volume the
@@ -1322,14 +1324,26 @@ function Set-PetMenuRowWidths($Menu, [int]$MinRowWidth = 0, $Font = $null) {
     }
 }
 
-function New-NavigationItem($Items) {
-    # The one entry under the sites entry that opens a page of its own instead of an
-    # address: the page is a local file, so the browser association opens it and this
-    # process needs nothing from the host at the click. It is rebuilt with the rest of
-    # the submenu at every open and then refreshed from the published path (see
-    # Update-NavigationEntry), because whether there is a page to open is the only
-    # thing that changes about it.
+function New-EditorNavigationItem($Items) {
+    # The editor: asks the page to open the library in a page type of this plugin's
+    # own, in the right Sidebar. Editing is a DSH-window activity, because the page
+    # that writes the library has to be rendered there, so the pet brings that
+    # window forward before it writes the command.
     $nav = Add-PetMenuItem $Items $SCRIPT:Labels.Nav ''
+    $nav.add_Click({
+        try {
+            Show-DshWindow
+            Send-MenuCommand 'favorites'
+        } catch { Write-Log $_.Exception.Message }
+    })
+    return $nav
+}
+
+function New-SiteListNavigationItem($Items) {
+    # What the system browser opens: the generated file, which is read-only but
+    # wide, and works with DSH in the background. It is offered only once the Host
+    # has built one, because there is otherwise nothing to open.
+    $nav = Add-PetMenuItem $Items $SCRIPT:Labels.NavBrowser ''
     $nav.add_Click({
         try { Open-NavigationPage $SCRIPT:FavoritesPage } catch { Write-Log $_.Exception.Message }
     })
@@ -1382,9 +1396,14 @@ function Update-SiteMenu {
         foreach ($site in $sites) { Add-SiteMenuItem $items $site }
     }
     [void]$items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-    # The library page is a build product, so this entry is offered only once there
-    # is one to open; it opens a page of its own instead of an address.
-    $SCRIPT:NavItem = New-NavigationItem $items
+    # The readable page comes first: its name is what a person reaches for to look
+    # at their sites. The editor sits under it, where its own name says what it
+    # changes, and that page is a route of the Host, so it is always offered: a
+    # missing library is answered by the page with that fact rather than by an entry
+    # that cannot be clicked. The generated file beside it is offered only once it
+    # exists, because a file that is not there cannot be opened.
+    $SCRIPT:NavFileItem = New-SiteListNavigationItem $items
+    $SCRIPT:NavItem = New-EditorNavigationItem $items
     [void](Update-NavigationEntry)
     # The way to a list that is empty, and to a longer one: the settings card owns
     # the list, so this is the same page entry the main menu's own Settings opens.
@@ -1399,17 +1418,24 @@ function Update-SiteMenu {
 }
 
 function Update-NavigationEntry {
-    # Until the host has built a library there is no file to open, and saying so in
-    # the entry beats an entry that does nothing.
-    if ($null -eq $SCRIPT:NavItem) { return }
-    if ([string]::IsNullOrWhiteSpace($SCRIPT:FavoritesPage) -or -not (Test-Path -LiteralPath $SCRIPT:FavoritesPage)) {
-        $SCRIPT:NavItem.Text = $SCRIPT:Labels.NavMissing
-        $SCRIPT:NavItem.Tag = ''
-        $SCRIPT:NavItem.Enabled = $false
-    } else {
+    # The editable entry always works: the Host serves that page whether or not a
+    # file has ever been generated, and a machine with no library is answered by
+    # the page itself. The file entry has nothing to open until one is built, and
+    # saying so in the entry beats an entry that does nothing.
+    if ($null -ne $SCRIPT:NavItem) {
         $SCRIPT:NavItem.Text = $SCRIPT:Labels.Nav
         $SCRIPT:NavItem.Tag = 'globe'
         $SCRIPT:NavItem.Enabled = $true
+    }
+    if ($null -eq $SCRIPT:NavFileItem) { return }
+    if ([string]::IsNullOrWhiteSpace($SCRIPT:FavoritesPage) -or -not (Test-Path -LiteralPath $SCRIPT:FavoritesPage)) {
+        $SCRIPT:NavFileItem.Text = $SCRIPT:Labels.NavMissing
+        $SCRIPT:NavFileItem.Tag = ''
+        $SCRIPT:NavFileItem.Enabled = $false
+    } else {
+        $SCRIPT:NavFileItem.Text = $SCRIPT:Labels.NavBrowser
+        $SCRIPT:NavFileItem.Tag = 'globe'
+        $SCRIPT:NavFileItem.Enabled = $true
     }
 }
 
@@ -1474,7 +1500,7 @@ function Open-NavigationPage([string]$Page, [string]$BrowserCommand = '') {
         # A click that opens nothing reads as a click that missed, so the failure is
         # said above the pet as well as written where nobody looks.
         Write-Log "opening the navigation page failed: $($_.Exception.Message)"
-        Show-PetNotice $SCRIPT:Labels.Nav $SCRIPT:Labels.NavFailed
+        Show-PetNotice $SCRIPT:Labels.NavBrowser $SCRIPT:Labels.NavFailed
     }
 }
 
@@ -3630,20 +3656,27 @@ if ($SelfTest) {
     $clicked = Read-Json $probeCommand
     if ($null -eq $clicked) { [void]$siteMenuProbe.Add('click=no-command') }
     else { [void]$siteMenuProbe.Add("click=$($clicked.command)|$($clicked.url)") }
-    # The navigation entry is the other thing under this entry: it opens a page
-    # rather than an address, and it is offered only once that page is on disk. The
-    # probe gives it one and then fires it down all three roads: with a browser
-    # registered (the arm a healthy machine takes), with only the file association
-    # left, and with neither, where the failure has to become something the person
-    # sees, because a click that opens nothing is indistinguishable from a click that
-    # missed. Start-Process, Show-PetNotice, and the registry read are shadowed for
-    # these few lines, the way Show-DshWindow is above, so a self test never opens a
-    # browser and never depends on how this machine is configured.
+    # The two navigation entries. The editable one asks DSH's own page to open the
+    # library in its Browser tab - only a page the Host served can write the library
+    # back - so what it has to prove is the command it writes. The file entry opens
+    # the generated page in the system browser, and is fired down all three roads:
+    # with a browser registered (the arm a healthy machine takes), with only the file
+    # association left, and with neither, where the failure has to become something
+    # the person sees, because a click that opens nothing is indistinguishable from a
+    # click that missed. Start-Process, Show-PetNotice, and the registry read are
+    # shadowed for these few lines, the way Show-DshWindow is above, so a self test
+    # never opens a browser and never depends on how this machine is configured.
+    if (Test-Path -LiteralPath $probeCommand) { Remove-Item -LiteralPath $probeCommand -Force }
+    $navItem = $SCRIPT:NavItem
+    $navItem.PerformClick()
+    $navCommand = Read-Json $probeCommand
+    if ($null -eq $navCommand) { [void]$siteMenuProbe.Add('nav-click=no-command') }
+    else { [void]$siteMenuProbe.Add("nav-click=$($navCommand.command)") }
     $navProbe = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'nav-probe.html'
     Set-Content -LiteralPath $navProbe -Value '<!DOCTYPE html>' -Encoding UTF8
     $SCRIPT:FavoritesPage = $navProbe
     Update-NavigationEntry
-    $navItem = $SCRIPT:NavItem
+    $navFileItem = $SCRIPT:NavFileItem
     $SCRIPT:NavProbeExe = ''
     $SCRIPT:NavProbeUrl = ''
     $SCRIPT:NavProbeNotice = ''
@@ -3651,22 +3684,23 @@ if ($SelfTest) {
     function Start-Process { param([string]$FilePath, [string[]]$ArgumentList) $SCRIPT:NavProbeExe = $FilePath; $SCRIPT:NavProbeUrl = [string]$ArgumentList }
     function Show-PetNotice { param([string]$Title, [string]$Detail) $SCRIPT:NavProbeNotice = "$Title|$Detail" }
     function Get-WebBrowserCommand { return $SCRIPT:NavProbeBrowser }
-    $navItem.PerformClick()
-    [void]$siteMenuProbe.Add("nav=$($navItem.Text)|$($navItem.Enabled)|$($SCRIPT:NavProbeExe)")
+    $navFileItem.PerformClick()
+    [void]$siteMenuProbe.Add("nav=$($navFileItem.Text)|$($navFileItem.Enabled)|$($SCRIPT:NavProbeExe)")
     # The registered browser is asked for first, and it is handed a file address
     # rather than the file's path: this is the arm that works on a machine whose
     # `.html` association is broken, which is the machine this was written on.
     $SCRIPT:NavProbeBrowser = '"' + (Join-Path $PSHOME 'powershell.exe') + '" --single-argument %1'
-    $navItem.PerformClick()
+    $navFileItem.PerformClick()
     [void]$siteMenuProbe.Add("nav-browser=$($SCRIPT:NavProbeExe)|$($SCRIPT:NavProbeUrl)")
     function Start-Process { param([string]$FilePath, [string[]]$ArgumentList) throw 'no handler for this file' }
-    $navItem.PerformClick()
+    $navFileItem.PerformClick()
     [void]$siteMenuProbe.Add("nav-fail=$($SCRIPT:NavProbeNotice)")
     Remove-Item -LiteralPath 'function:\Start-Process' -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath 'function:\Show-PetNotice' -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath 'function:\Get-WebBrowserCommand' -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $navProbe -Force -ErrorAction SilentlyContinue
     $SCRIPT:FavoritesPage = ''
+    $SCRIPT:NavFileItem = $null
     # What Windows registers a browser as, and the executable this process takes out
     # of it: the quoted form Edge uses, the one Firefox puts a switch in, a bare
     # path, and one that names no executable at all.

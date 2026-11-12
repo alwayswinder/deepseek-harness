@@ -88,6 +88,24 @@ window.__ModuleLoader__.load({
     const GIT_PULL_PATH = '/api/little-icon/git/pull'
 
     /**
+     * The right-Sidebar page type the pet's "favorites" entry opens. The library is
+     * edited here rather than in a Browser tab: a guest there cannot request this
+     * Host at all (the Desktop cancels every request to the application's own
+     * origin), while a page of this plugin's own is same-origin and keeps the
+     * connection its fetch needs.
+     */
+    const FAVORITES_KIND = 'little-icon-favorites'
+
+    /** That page type's implementation identity, in the two stages the registry defines. */
+    const FAVORITES_TYPE_ID = '@local/dsh-little-icon/favorites'
+
+    /** The Host route the panel reads the library from. */
+    const FAVORITES_DATA_PATH = '/api/little-icon/favorites/data'
+
+    /** The Host route a save is posted to: the whole list, plus the revision it came from. */
+    const FAVORITES_SAVE_PATH = '/api/little-icon/favorites/save'
+
+    /**
      * The Host route that restores the changes a selection names. The selection
      * travels in the request body: it is a list, and a path may hold any
      * punctuation, so neither a query parameter nor a joined one would do.
@@ -354,6 +372,39 @@ window.__ModuleLoader__.load({
       saved: '已保存',
       failed: '保存失败，已回到上次的值。',
       gitTab: 'Git 改动',
+      favoritesTab: '导航编辑',
+      favoritesSearch: '搜索标题、网址、备注、标签',
+      favoritesAll: '全部',
+      favoritesUngrouped: '未分组',
+      favoritesEmpty: '还没有网站。点右上角「＋ 添加网站」加一个。',
+      favoritesNoMatch: '没有匹配的网站。',
+      favoritesCount: '{shown} / {total}',
+      favoritesAdd: '＋ 添加网站',
+      favoritesEdit: '编辑',
+      favoritesDelete: '删除',
+      favoritesDeleteConfirm: '删除「{title}」？',
+      favoritesPinned: '置顶',
+      favoritesFormAdd: '添加网站',
+      favoritesFormEdit: '编辑网站',
+      favoritesUrl: '网址',
+      favoritesUrlPlaceholder: 'https://',
+      favoritesTitle: '标题',
+      favoritesTitlePlaceholder: '留空就用域名',
+      favoritesGroup: '分组',
+      favoritesGroupPlaceholder: '留空就是未分组',
+      favoritesTags: '标签',
+      favoritesTagsPlaceholder: '用空格或逗号分隔',
+      favoritesNotes: '备注',
+      favoritesNotesPlaceholder: '可以写 Markdown',
+      favoritesPin: '置顶',
+      favoritesCancel: '取消',
+      favoritesSave: '保存',
+      favoritesSaving: '保存中…',
+      favoritesLoadFailed: '网站库读不出来：{message}',
+      favoritesSaveFailed: '保存失败：{message}',
+      favoritesStale: '库已经被别处改过了，刷新后再改。',
+      favoritesReload: '重新读取',
+      favoritesNeedUrl: '网址不能为空。',
       gitChanges: '未提交的改动',
       gitCommits: '最近提交',
       gitAuthorFilter: '按作者筛选',
@@ -576,6 +627,39 @@ window.__ModuleLoader__.load({
       saved: 'Saved',
       failed: 'Save failed; the previous value is back.',
       gitTab: 'Git changes',
+      favoritesTab: 'Edit site list',
+      favoritesSearch: 'Search titles, addresses, notes, tags',
+      favoritesAll: 'All',
+      favoritesUngrouped: 'Ungrouped',
+      favoritesEmpty: 'No sites yet. Add one with “+ Add site”.',
+      favoritesNoMatch: 'No matching site.',
+      favoritesCount: '{shown} / {total}',
+      favoritesAdd: '+ Add site',
+      favoritesEdit: 'Edit',
+      favoritesDelete: 'Delete',
+      favoritesDeleteConfirm: 'Delete “{title}”?',
+      favoritesPinned: 'Pinned',
+      favoritesFormAdd: 'Add a site',
+      favoritesFormEdit: 'Edit site',
+      favoritesUrl: 'Address',
+      favoritesUrlPlaceholder: 'https://',
+      favoritesTitle: 'Title',
+      favoritesTitlePlaceholder: 'Blank uses the host',
+      favoritesGroup: 'Folder',
+      favoritesGroupPlaceholder: 'Blank is ungrouped',
+      favoritesTags: 'Tags',
+      favoritesTagsPlaceholder: 'Separated by spaces or commas',
+      favoritesNotes: 'Note',
+      favoritesNotesPlaceholder: 'Markdown is allowed',
+      favoritesPin: 'Pin to the top',
+      favoritesCancel: 'Cancel',
+      favoritesSave: 'Save',
+      favoritesSaving: 'Saving…',
+      favoritesLoadFailed: 'The library could not be read: {message}',
+      favoritesSaveFailed: 'Save failed: {message}',
+      favoritesStale: 'The library changed elsewhere; reload before editing.',
+      favoritesReload: 'Reload',
+      favoritesNeedUrl: 'An address is required.',
       gitChanges: 'Uncommitted changes',
       gitCommits: 'Recent commits',
       gitAuthorFilter: 'Filter by author',
@@ -907,6 +991,67 @@ window.__ModuleLoader__.load({
         // attribute is what the stage sets for itself.
         'html:has(.dli-listen) [data-windows-menu]{display:none!important;}',
         'html[data-dsh-listening] [data-windows-menu]{display:none!important;}',
+        // ---- the website library panel ------------------------------------------
+        // The cards follow the generated page's look, at the Sidebar's width: one
+        // column of folders, a search box and the folder chips above it.
+        '.dli-fav{display:flex;flex-direction:column;gap:10px;height:100%;min-height:0;',
+        'color:var(--dsw-alias-label-primary);font-size:12.5px;line-height:18px;}',
+        '.dli-fav-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}',
+        '.dli-fav-bar .dli-text{flex:1 1 120px;min-width:0;}',
+        '.dli-fav-count{color:var(--dsw-alias-label-secondary);font-size:11px;white-space:nowrap;}',
+        '.dli-fav-chips{display:flex;flex-wrap:wrap;gap:5px;}',
+        '.dli-fav-chip{padding:2px 9px;font:inherit;font-size:11.5px;cursor:pointer;',
+        'color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));',
+        'border:1px solid transparent;border-radius:999px;}',
+        '.dli-fav-chip[data-on="true"]{color:#fff;background:var(--dsw-alias-brand-primary,#2b6cb0);}',
+        '.dli-fav-list{display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0;padding-bottom:12px;}',
+        '.dli-fav-group{display:flex;flex-direction:column;gap:6px;}',
+        '.dli-fav-group>h3{margin:0;padding:2px 0;display:flex;align-items:center;gap:6px;font:inherit;',
+        'font-size:11.5px;font-weight:600;color:var(--dsw-alias-label-secondary);background:none;border:0;cursor:pointer;}',
+        '.dli-fav-fold{font-size:9px;}',
+        '.dli-fav-tally{padding:0 6px;font-size:10.5px;border-radius:999px;',
+        'background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.14));}',
+        '.dli-fav-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:8px;',
+        'margin:0;padding:0;list-style:none;}',
+        '.dli-fav-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:9px 10px;',
+        'background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.08));border:1px solid rgba(127,127,127,.22);',
+        'border-radius:10px;}',
+        '.dli-fav-card:hover{border-color:var(--dsw-alias-brand-primary,#2b6cb0);}',
+        '.dli-fav-hit{display:flex;gap:8px;align-items:center;min-width:0;color:inherit;text-decoration:none;}',
+        '.dli-fav-icon{width:22px;height:22px;flex:0 0 auto;border-radius:6px;object-fit:contain;}',
+        '.dli-fav-tile{width:22px;height:22px;flex:0 0 auto;display:grid;place-items:center;border-radius:6px;',
+        'font-size:11px;font-weight:600;color:#fff;}',
+        '.dli-fav-text{display:flex;flex-direction:column;min-width:0;}',
+        '.dli-fav-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;',
+        '-webkit-line-clamp:2;-webkit-box-orient:vertical;}',
+        '.dli-fav-host{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;',
+        'text-overflow:ellipsis;white-space:nowrap;}',
+        '.dli-fav-marks{display:flex;flex-wrap:wrap;gap:4px;}',
+        '.dli-fav-mark{padding:0 7px;font-size:10.5px;color:var(--dsw-alias-label-secondary);',
+        'border:1px dashed rgba(127,127,127,.4);border-radius:999px;}',
+        '.dli-fav-mark[data-pin="true"]{color:#fff;background:var(--dsw-alias-brand-primary,#2b6cb0);border:1px solid transparent;}',
+        '.dli-fav-tools{position:absolute;top:5px;right:5px;display:flex;gap:3px;opacity:0;}',
+        '.dli-fav-card:hover .dli-fav-tools,.dli-fav-card:focus-within .dli-fav-tools{opacity:1;}',
+        '@media (hover:none){.dli-fav-tools{opacity:1;}}',
+        '.dli-fav-tool{width:20px;height:20px;padding:0;display:grid;place-items:center;font-size:10px;',
+        'line-height:1;cursor:pointer;color:var(--dsw-alias-label-secondary);',
+        'background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));border:1px solid rgba(127,127,127,.3);',
+        'border-radius:5px;}',
+        '.dli-fav-tool:hover{color:inherit;border-color:var(--dsw-alias-brand-primary,#2b6cb0);}',
+        '.dli-fav-form{display:flex;flex-direction:column;gap:8px;padding:10px 12px;',
+        'background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.1));border:1px solid rgba(127,127,127,.3);',
+        'border-radius:10px;}',
+        '.dli-fav-form h3{margin:0;font-size:12.5px;}',
+        '.dli-fav-form label{display:flex;flex-direction:column;gap:3px;font-size:11px;',
+        'color:var(--dsw-alias-label-secondary);}',
+        '.dli-fav-form input[type="text"],.dli-fav-form input[type="url"],.dli-fav-form textarea{',
+        'background:var(--dsw-alias-bg-layer-1,rgba(127,127,127,.12));color:inherit;',
+        'border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:4px 8px;font:inherit;}',
+        '.dli-fav-form textarea{resize:vertical;min-height:52px;}',
+        '.dli-fav-form label.dli-fav-check{flex-direction:row;align-items:center;gap:6px;',
+        'color:var(--dsw-alias-label-primary);}',
+        '.dli-fav-actions{display:flex;justify-content:flex-end;gap:6px;}',
+        '.dli-fav-error{color:var(--dsw-alias-state-error-primary);font-size:11px;margin:0;}',
       ].join('')
       document.head.appendChild(style)
     }
@@ -1525,6 +1670,363 @@ window.__ModuleLoader__.load({
           label: t('musicList'), disabled: !editable,
           control: list,
         }))
+    }
+
+    /**
+     * The host name one card shows under its title.
+     * @param url - the entry's address.
+     * @returns the host, or the address itself when no part of it parses.
+     */
+    function favoritesHost(url) {
+      try {
+        return new URL(url).hostname
+      } catch {
+        return url
+      }
+    }
+
+    /** The eight tile colours a card with no icon cycles through, by its id. */
+    const FAVORITES_HUES = [210, 265, 160, 20, 330, 90, 190, 45]
+
+    /**
+     * The tile colour of one entry, derived from its id so a card keeps its colour.
+     * @param id - the entry's id.
+     * @returns a hue in degrees.
+     */
+    function favoritesHue(id) {
+      let hash = 0
+      for (const character of String(id)) hash = (hash * 31 + character.codePointAt(0)) % 100000
+      return FAVORITES_HUES[hash % FAVORITES_HUES.length]
+    }
+
+    /**
+     * The letter a card with no icon shows: the title's first character, or the
+     * host's when the title is blank.
+     * @param entry - one entry.
+     * @returns one character.
+     */
+    function favoritesInitial(entry) {
+      const title = String(entry.title ?? '').trim()
+      const source = title !== '' ? title : favoritesHost(entry.url).replace(/^www\./u, '')
+      return [...source][0] ?? '?'
+    }
+
+    /**
+     * The library, edited in the plugin's own Sidebar page.
+     *
+     * The Browser tab cannot host this: the Desktop's guest partition refuses every
+     * request to this Host, so an embedded page could neither read the library nor
+     * save it. A page of this plugin's own is rendered in the application window,
+     * which is what makes its fetch same-origin and authenticated.
+     * @param props - slot props plus the inject face: `load` reads the library and
+     *   `save` posts the whole list back with the revision it was generated from.
+     * @returns the panel.
+     */
+    function FavoritesPanel(props) {
+      const { t } = props
+      const { tab } = props.useTabInfo()
+      const [phase, setPhase] = React.useState('loading')
+      const [data, setData] = React.useState(undefined)
+      const [failure, setFailure] = React.useState('')
+      const [attempt, setAttempt] = React.useState(0)
+      const [query, setQuery] = React.useState('')
+      const [group, setGroup] = React.useState('')
+      const [collapsed, setCollapsed] = React.useState({})
+      const [draft, setDraft] = React.useState(undefined)
+      const [saving, setSaving] = React.useState(false)
+
+      React.useEffect(() => {
+        const controller = new AbortController()
+        setPhase('loading')
+        props.load(controller.signal).then(
+          (result) => {
+            if (controller.signal.aborted) return
+            if (result.ok !== true) {
+              setFailure(result.message ?? result.reason ?? 'failed')
+              setPhase('failed')
+              return
+            }
+            setData(result)
+            setFailure('')
+            setPhase('settled')
+          },
+          (error) => {
+            if (controller.signal.aborted) return
+            setFailure(error instanceof Error ? error.message : String(error))
+            setPhase('failed')
+          },
+        )
+        return () => controller.abort()
+      }, [attempt, tab.navigation.revision])
+
+      const bookmarks = data !== undefined && Array.isArray(data.bookmarks) ? data.bookmarks : []
+
+      const groups = React.useMemo(() => {
+        const order = []
+        const byName = new Map()
+        for (const entry of bookmarks) {
+          const name = typeof entry.group === 'string' ? entry.group : ''
+          if (!byName.has(name)) {
+            byName.set(name, [])
+            order.push(name)
+          }
+          byName.get(name).push(entry)
+        }
+        return { order, byName }
+      }, [bookmarks])
+
+      const needle = query.trim().toLowerCase()
+      const matches = (entry) => {
+        if (group !== '' && (entry.group ?? '') !== group) return false
+        if (needle === '') return true
+        const tags = Array.isArray(entry.autoTags) ? entry.autoTags : []
+        return [entry.title, entry.url, entry.group, entry.notes, ...tags]
+          .join(' ').toLowerCase().includes(needle)
+      }
+
+      /**
+       * Post one list back and reload it.
+       * @param next - the whole list, as the panel would show it.
+       * @returns whether the Host accepted it.
+       */
+      const commit = async (next) => {
+        if (data === undefined) return false
+        setSaving(true)
+        setFailure('')
+        try {
+          const answer = await props.save(
+            data.revision,
+            next.map((entry) => ({
+              id: entry.id ?? '',
+              url: entry.url,
+              title: entry.title ?? '',
+              group: entry.group ?? '',
+              notes: entry.notes ?? '',
+              autoTags: Array.isArray(entry.autoTags) ? entry.autoTags : [],
+              pinned: entry.pinned === true,
+            })),
+          )
+          if (answer.ok !== true) {
+            setFailure(answer.reason === 'stale' ? t('favoritesStale') : (answer.message ?? 'failed'))
+            return false
+          }
+          setAttempt((value) => value + 1)
+          return true
+        } catch (error) {
+          setFailure(error instanceof Error ? error.message : String(error))
+          return false
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      /**
+       * Open the form on one entry, or on a new one.
+       * @param entry - the entry to edit, or undefined to add.
+       */
+      const openEditor = (entry) => {
+        setFailure('')
+        setDraft({
+          id: entry === undefined ? '' : entry.id,
+          url: entry === undefined ? '' : entry.url,
+          title: entry === undefined ? '' : (entry.title ?? ''),
+          // A new entry files under the folder the filter is showing, which is what
+          // makes "add one here" mean the place the person is looking at.
+          group: entry === undefined ? group : (entry.group ?? ''),
+          tags: entry === undefined ? '' : (Array.isArray(entry.autoTags) ? entry.autoTags.join(' ') : ''),
+          notes: entry === undefined ? '' : (entry.notes ?? ''),
+          pinned: entry === undefined ? false : entry.pinned === true,
+        })
+      }
+
+      const field = (name, patch) => setDraft((current) => ({ ...current, [name]: patch }))
+
+      const submit = async (event) => {
+        event.preventDefault()
+        if (draft === undefined) return
+        const url = draft.url.trim()
+        if (url === '') {
+          setFailure(t('favoritesNeedUrl'))
+          return
+        }
+        const raw = {
+          url,
+          title: draft.title.trim(),
+          group: draft.group.trim(),
+          notes: draft.notes,
+          autoTags: draft.tags.split(/[,，、;；\s]+/u).filter((tag) => tag !== ''),
+          pinned: draft.pinned,
+        }
+        const next = draft.id === ''
+          ? [...bookmarks, raw]
+          : bookmarks.map((entry) => (entry.id === draft.id ? { ...entry, ...raw } : entry))
+        if (await commit(next)) setDraft(undefined)
+      }
+
+      const remove = async (entry) => {
+        if (!window.confirm(t('favoritesDeleteConfirm', { title: entry.title || entry.url }))) return
+        await commit(bookmarks.filter((item) => item.id !== entry.id))
+      }
+
+      const card = (entry) => {
+        const tags = Array.isArray(entry.autoTags) ? entry.autoTags : []
+        const marks = []
+        if (entry.pinned === true) marks.push(h('span', { key: 'pin', className: 'dli-fav-mark', 'data-pin': 'true' }, t('favoritesPinned')))
+        for (const tag of tags) marks.push(h('span', { key: `tag-${tag}`, className: 'dli-fav-mark' }, tag))
+        return h('li', { key: entry.id, className: 'dli-fav-card' },
+          h('a', {
+            className: 'dli-fav-hit', href: entry.url, target: '_blank', rel: 'noopener noreferrer', title: entry.url,
+          },
+          entry.icon
+            ? h('img', { className: 'dli-fav-icon', src: entry.icon, alt: '' })
+            : h('span', {
+              className: 'dli-fav-tile',
+              style: { background: `hsl(${favoritesHue(entry.id)} 45% 46%)` },
+              'aria-hidden': 'true',
+            }, favoritesInitial(entry)),
+          h('span', { className: 'dli-fav-text' },
+            h('span', { className: 'dli-fav-name' }, (entry.title ?? '') !== '' ? entry.title : favoritesHost(entry.url)),
+            h('span', { className: 'dli-fav-host' }, favoritesHost(entry.url)))),
+          h('div', { className: 'dli-fav-tools' },
+            h('button', {
+              type: 'button', className: 'dli-fav-tool', title: t('favoritesEdit'),
+              onClick: () => openEditor(entry),
+            }, '✎'),
+            h('button', {
+              type: 'button', className: 'dli-fav-tool', title: t('favoritesDelete'),
+              disabled: saving,
+              onClick: () => { void remove(entry) },
+            }, '✕')),
+          marks.length === 0 ? null : h('div', { className: 'dli-fav-marks' }, marks))
+      }
+
+      const section = (item) => {
+        const key = item.key ?? (item.name === '' ? '\u0000ungrouped' : item.name)
+        const folded = collapsed[key] === true
+        return h('section', { key, className: 'dli-fav-group' },
+          h('h3', {
+            onClick: () => setCollapsed((current) => ({ ...current, [key]: !folded })),
+            'aria-expanded': folded ? 'false' : 'true',
+          }, h('span', { className: 'dli-fav-fold' }, folded ? '▸' : '▾'),
+            h('span', null, item.name === '' ? t('favoritesUngrouped') : item.name),
+            h('span', { className: 'dli-fav-tally' }, String(item.entries.length))),
+          folded ? null : h('ul', { className: 'dli-fav-cards' }, item.entries.map(card)))
+      }
+
+      // A folder may legitimately be named 置顶, so the pinned section carries a key
+      // of its own rather than borrowing the name it shows.
+      const pinned = bookmarks.filter((entry) => entry.pinned === true && matches(entry))
+      const sections = []
+      if (pinned.length > 0) sections.push({ key: '\u0000pinned', name: t('favoritesPinned'), entries: pinned })
+      for (const name of groups.order) {
+        const entries = groups.byName.get(name).filter(matches)
+        if (entries.length > 0) sections.push({ name, entries })
+      }
+      const shown = sections.reduce((total, item) => total + item.entries.length, 0)
+      // One key per chip: a folder named 未分组 is not the "all" chip, and the two
+      // would otherwise both be described by an empty name.
+      const chips = [{ key: '\u0000all', name: '', label: t('favoritesAll') }]
+        .concat(groups.order.map((name) => ({
+          key: name === '' ? '\u0000ungrouped' : name,
+          name,
+          label: name === '' ? t('favoritesUngrouped') : name,
+        })))
+
+      const form = draft === undefined ? null : h('form', { className: 'dli-fav-form', onSubmit: (event) => { void submit(event) } },
+        h('h3', null, draft.id === '' ? t('favoritesFormAdd') : t('favoritesFormEdit')),
+        h('label', null, t('favoritesUrl'),
+          h('input', {
+            type: 'url', className: 'dli-text', required: true, value: draft.url,
+            placeholder: t('favoritesUrlPlaceholder'),
+            onChange: (event) => field('url', event.target.value),
+          })),
+        h('label', null, t('favoritesTitle'),
+          h('input', {
+            type: 'text', className: 'dli-text', value: draft.title,
+            placeholder: t('favoritesTitlePlaceholder'),
+            onChange: (event) => field('title', event.target.value),
+          })),
+        h('label', null, t('favoritesGroup'),
+          h('input', {
+            type: 'text', className: 'dli-text', value: draft.group, list: 'dli-fav-groups',
+            placeholder: t('favoritesGroupPlaceholder'),
+            onChange: (event) => field('group', event.target.value),
+          })),
+        h('datalist', { id: 'dli-fav-groups' },
+          groups.order.filter((name) => name !== '')
+            .map((name) => h('option', { key: name, value: name }))),
+        h('label', null, t('favoritesTags'),
+          h('input', {
+            type: 'text', className: 'dli-text', value: draft.tags,
+            placeholder: t('favoritesTagsPlaceholder'),
+            onChange: (event) => field('tags', event.target.value),
+          })),
+        h('label', null, t('favoritesNotes'),
+          h('textarea', {
+            className: 'dli-text', rows: 3, value: draft.notes,
+            placeholder: t('favoritesNotesPlaceholder'),
+            onChange: (event) => field('notes', event.target.value),
+          })),
+        h('label', { className: 'dli-fav-check' },
+          h('input', {
+            type: 'checkbox', checked: draft.pinned === true,
+            onChange: (event) => field('pinned', event.target.checked),
+          }),
+          t('favoritesPin')),
+        failure === '' ? null : h('p', { className: 'dli-fav-error', role: 'alert' }, failure),
+        h('div', { className: 'dli-fav-actions' },
+          h('button', {
+            type: 'button', className: 'dli-button', disabled: saving,
+            onClick: () => { setDraft(undefined); setFailure('') },
+          }, t('favoritesCancel')),
+          h('button', {
+            type: 'submit', className: 'dli-button', disabled: saving,
+          }, saving ? t('favoritesSaving') : t('favoritesSave'))))
+
+      if (phase === 'loading' && data === undefined) {
+        return h('div', { className: 'dli-fav' }, h('p', { className: 'dli-hint' }, t('gitLoading')))
+      }
+      if (phase === 'failed') {
+        return h('div', { className: 'dli-fav' },
+          h('p', { className: 'dli-fav-error', role: 'alert' }, t('favoritesLoadFailed', { message: failure })),
+          h('div', null, h('button', {
+            type: 'button', className: 'dli-button', onClick: () => setAttempt((value) => value + 1),
+          }, t('favoritesReload'))))
+      }
+
+      return h('div', { className: 'dli-fav' },
+        h('div', { className: 'dli-fav-bar' },
+          h('input', {
+            type: 'search', className: 'dli-text', value: query,
+            placeholder: t('favoritesSearch'), 'aria-label': t('favoritesSearch'),
+            onChange: (event) => setQuery(event.target.value),
+          }),
+          h('span', { className: 'dli-fav-count' }, t('favoritesCount', { shown, total: bookmarks.length })),
+          // The library is also edited outside this page — a `git pull` on another
+          // machine, or a hand edit — so the read is repeatable on demand.
+          h('button', {
+            type: 'button', className: 'dli-button', disabled: saving,
+            onClick: () => setAttempt((value) => value + 1),
+          }, t('favoritesReload')),
+          h('button', {
+            type: 'button', className: 'dli-button', disabled: saving,
+            onClick: () => openEditor(undefined),
+          }, t('favoritesAdd'))),
+        h('div', { className: 'dli-fav-chips' }, chips.map((chip) => h('button', {
+          key: chip.key,
+          type: 'button',
+          className: 'dli-fav-chip',
+          'data-on': chip.name === group ? 'true' : 'false',
+          onClick: () => setGroup(chip.name),
+        }, chip.label))),
+        form,
+        failure !== '' && draft === undefined
+          ? h('p', { className: 'dli-fav-error', role: 'alert' }, failure)
+          : null,
+        h('div', { className: 'dli-fav-list' },
+          sections.length === 0
+            ? h('p', { className: 'dli-hint' }, bookmarks.length === 0 ? t('favoritesEmpty') : t('favoritesNoMatch'))
+            : sections.map((item) => section(item))))
     }
 
     /**
@@ -3318,6 +3820,19 @@ window.__ModuleLoader__.load({
             }
             sidebar.openTab(GIT_KIND)
           },
+          favorites: () => {
+            // The library is edited in this plugin's own Sidebar page, not in a
+            // Browser tab: that tab is a guest in another storage partition, and the
+            // Desktop cancels every request it makes to this Host. A page of this
+            // plugin's own is rendered in the application window and keeps the
+            // connection its read and save need.
+            const sidebar = ctx.get('sidebarRight')
+            if (sidebar === undefined || ctx.get('sidebarRightTabs')?.get(FAVORITES_KIND) === undefined) {
+              console.warn('little-icon: this DSH build has no right Sidebar to open the site list in')
+              return
+            }
+            sidebar.openTab(FAVORITES_KIND)
+          },
           settings: () => {
             // This card lives on the Plugins page, which belongs to the plugin
             // manager: reaching it is cross-plugin navigation through the service
@@ -3556,6 +4071,53 @@ window.__ModuleLoader__.load({
               },
             }),
           }, GitPanel)), 'little-icon: git tab body')
+        })
+
+        // The website library, as a page type of this plugin's own: the profile's
+        // card editor lives on the Plugins page, while the library wants the Sidebar
+        // because that is where a page can be wide, searchable, and still same-origin.
+        ctx.inject(['sidebarRightTabs', 'slots'], (scope) => {
+          scope.effect(() => scope.sidebarRightTabs.register({
+            id: FAVORITES_TYPE_ID,
+            kind: FAVORITES_KIND,
+            title: () => t('favoritesTab'),
+          }), 'little-icon: favorites tab type')
+          scope.effect(() => scope.slots.inject('sidebar.right.pane.tab', () => scope.slots.register({
+            name: 'sidebar.right.pane.tab',
+            key: FAVORITES_TYPE_ID,
+            locale: NS,
+            // The panel reaches no service itself: these two callbacks are its whole
+            // Host face, and both run in this window, which is what makes them
+            // authenticated where a Browser tab's request would be refused.
+            inject: () => ({
+              /**
+               * Read the library as the Host holds it.
+               * @param signal - aborts the read when the page moves on.
+               * @returns the Host's answer: `{ ok, revision, bookmarks }`.
+               */
+              load: async (signal) => {
+                const response = await fetch(FAVORITES_DATA_PATH, { signal })
+                if (!response.ok) throw new Error(`little-icon: the site list route answered ${response.status}`)
+                return response.json()
+              },
+              /**
+               * Save one whole list back.
+               * @param revision - the revision the list was read from, so a stale
+               *   page cannot undo an edit made since.
+               * @param bookmarks - every entry the page shows, in its order.
+               * @returns the Host's answer: `{ ok }`, or a refusal with its reason.
+               */
+              save: async (revision, bookmarks) => {
+                const response = await fetch(FAVORITES_SAVE_PATH, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ revision, bookmarks }),
+                })
+                if (!response.ok) throw new Error(`little-icon: the site list save route answered ${response.status}`)
+                return response.json()
+              },
+            }),
+          }, FavoritesPanel)), 'little-icon: favorites tab body')
         })
 
         // The Host document stays the single owner of every value; this half

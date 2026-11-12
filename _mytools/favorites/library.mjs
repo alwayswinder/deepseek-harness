@@ -296,11 +296,13 @@ export function compactEntry(entry) {
 /**
  * Read the library file.
  * @param yaml - the `yaml` module.
+ * @param file - the library file, the one this directory holds unless a caller
+ *   names another (a test keeps its own).
  * @returns the parsed document, or an empty library when the file is absent.
  */
-export function readLibrary(yaml) {
-  if (!existsSync(libraryFile)) return { version: 1, bookmarks: [] }
-  const parsed = yaml.parse(readFileSync(libraryFile, 'utf8'))
+export function readLibrary(yaml, file = libraryFile) {
+  if (!existsSync(file)) return { version: 1, bookmarks: [] }
+  const parsed = yaml.parse(readFileSync(file, 'utf8'))
   const bookmarks = Array.isArray(parsed?.bookmarks) ? parsed.bookmarks : []
   const version = typeof parsed?.version === 'number' ? parsed.version : 1
   return { version, bookmarks }
@@ -331,4 +333,228 @@ export function newestExport(directory = exportDir) {
     .map(name => ({ path: join(directory, name), at: statSync(join(directory, name)).mtimeMs }))
   dated.sort((left, right) => right.at - left.at)
   return dated[0]?.path
+}
+
+// ---- the editor ------------------------------------------------------------
+//
+// The navigation page edits the library in a browser, so a save request is
+// untrusted input by definition: it arrives as JSON over a local socket and its
+// fields hold whatever the page — or anything able to post there — sent. The
+// functions below are where such a request becomes a library entry, and the page
+// and the Host both use them, so an entry built in the dialog is exactly the
+// entry written to the file.
+
+/** Longest title a card keeps. */
+export const TITLE_MAX = 200
+
+/** Longest note a card keeps, in characters. */
+export const NOTES_MAX = 4000
+
+/** Most tags one entry may carry. */
+export const TAGS_MAX = 8
+
+/** Longest one tag may be. */
+export const TAG_MAX = 40
+
+/** Longest folder path one entry may name. */
+export const GROUP_MAX = 120
+
+/**
+ * Cut text to a character count without splitting a surrogate pair, which
+ * `slice` would do and which then renders as a replacement character.
+ * @param text - the text to cut.
+ * @param limit - most characters to keep.
+ * @returns the text, at most `limit` characters long.
+ */
+function clip(text, limit) {
+  const characters = [...String(text)]
+  return characters.length <= limit ? String(text) : characters.slice(0, limit).join('')
+}
+
+/**
+ * The host a card shows under its title.
+ * @param url - an absolute address.
+ * @returns the host name, or the address itself when no part of it parses.
+ */
+function hostOf(url) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+/**
+ * The tags one entry carries, cleaned the way the importer cleans a title:
+ * invisible characters gone, blanks folded, duplicates dropped. A tag is a word
+ * somebody types, so every separator a Chinese or English keyboard puts between
+ * words splits one.
+ * @param value - an array of tags, or the text of one input box.
+ * @returns at most {@link TAGS_MAX} tags, each at most {@link TAG_MAX} characters.
+ */
+export function normalizeTags(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string' ? value.split(/[,，、;；\s]+/u) : []
+  const tags = []
+  for (const item of raw) {
+    const tag = clip(cleanText(item), TAG_MAX)
+    if (tag === '' || tags.includes(tag)) continue
+    tags.push(tag)
+    if (tags.length >= TAGS_MAX) break
+  }
+  return tags
+}
+
+/**
+ * The folder path one entry files under: a slash-separated path with empty
+ * segments dropped, so replacing a missing segment and trailing slashes both
+ * describe the same folder.
+ * @param value - the raw folder text.
+ * @returns the cleaned path, empty for the root.
+ */
+export function normalizeGroup(value) {
+  const parts = cleanText(value).split('/').map(part => part.trim()).filter(part => part !== '')
+  return clip(parts.join('/'), GROUP_MAX)
+}
+
+/**
+ * Whether two entries carry the same content. Identity and the date an entry was
+ * added are not content; everything a card shows is.
+ * @param left - one entry.
+ * @param right - another.
+ * @returns whether an edit changed anything a reader would see.
+ */
+export function sameEntry(left, right) {
+  const tags = entry => (Array.isArray(entry.autoTags) ? entry.autoTags.join('\u0000') : '')
+  return left.url === right.url
+    && left.title === right.title
+    && (left.group ?? '') === (right.group ?? '')
+    && (left.notes ?? '') === (right.notes ?? '')
+    && tags(left) === tags(right)
+    && (left.pinned === true) === (right.pinned === true)
+}
+
+/**
+ * One entry a save request describes, as the library records it.
+ *
+ * The address decides identity: a request names the `id` it read from the page,
+ * and an entry keeps that id, its icon, and the date it was added. Everything
+ * else belongs to the request and is cleaned here — the title falls back to the
+ * host name, the folder to the root, and blank optional fields are left out
+ * rather than stored empty.
+ * @param raw - one bookmark as the request sent it.
+ * @param previous - the entry this one replaces, when the library already holds it.
+ * @param now - the instant a new or changed entry is stamped with.
+ * @returns `{ ok: true, entry }`, or `{ ok: false, reason, message }` when the
+ *   request cannot become an entry.
+ */
+export function normalizeEntry(raw, previous, now = new Date()) {
+  const url = openableUrl(raw?.url)
+  if (url === undefined) {
+    return { ok: false, reason: 'address', message: `不是可打开的 http/https 地址：${String(raw?.url ?? '')}` }
+  }
+  const asked = typeof raw?.id === 'string' ? raw.id.trim() : ''
+  const title = clip(cleanText(raw?.title), TITLE_MAX) || hostOf(url)
+  const group = normalizeGroup(raw?.group)
+  const notes = typeof raw?.notes === 'string'
+    ? String(raw.notes).replace(/\r\n?/gu, '\n').trim().slice(0, NOTES_MAX)
+    : ''
+  const entry = {
+    // A page that lost its id (a hand-written request, a stale card) still names
+    // one address, and the id is derived from the address, so it is the same id
+    // the library would have given it on import.
+    id: asked !== '' ? asked : idFor(url),
+    url,
+    title,
+    group,
+  }
+  if (notes !== '') entry.notes = notes
+  const tags = normalizeTags(raw?.autoTags)
+  if (tags.length > 0) entry.autoTags = tags
+  // The icon is the library's own file, not a field a page sets: whatever this
+  // entry had stays with it, and a new entry starts with a letter tile.
+  if (typeof previous?.icon === 'string' && previous.icon !== '') entry.icon = previous.icon
+  if (raw?.pinned === true) entry.pinned = true
+  entry.addedAt = typeof previous?.addedAt === 'string' ? previous.addedAt : now.toISOString()
+  if (previous === undefined) return { ok: true, entry }
+  if (sameEntry(previous, entry)) {
+    if (typeof previous.updatedAt === 'string') entry.updatedAt = previous.updatedAt
+    return { ok: true, entry }
+  }
+  entry.updatedAt = now.toISOString()
+  return { ok: true, entry }
+}
+
+/**
+ * The library a save request describes, checked against the one on disk.
+ *
+ * A request carries the whole list the page showed, so an entry missing from it
+ * was deleted and one with no id is new. Every entry is matched to the one it
+ * replaces by its id, which is what keeps an icon and the date an entry was added
+ * attached to a renamed card.
+ * @param current - the library as the file holds it.
+ * @param bookmarks - the list the request sent.
+ * @param now - the instant to stamp new and changed entries with.
+ * @returns `{ ok: true, library, added, updated, removed }`, or
+ *   `{ ok: false, reason, message, index }` for the first entry that cannot be one.
+ */
+export function applyLibrary(current, bookmarks, now = new Date()) {
+  if (!Array.isArray(bookmarks)) {
+    return { ok: false, reason: 'list', message: '请求里没有书签列表', index: 0 }
+  }
+  const known = new Map(current.bookmarks.map(entry => [entry.id, entry]))
+  const seenIds = new Set()
+  const seenUrls = new Map()
+  const next = []
+  let added = 0
+  let updated = 0
+  for (const [index, raw] of bookmarks.entries()) {
+    const asked = typeof raw?.id === 'string' ? raw.id.trim() : ''
+    const previous = asked !== '' ? known.get(asked) : undefined
+    if (asked !== '' && previous === undefined) {
+      return {
+        ok: false, reason: 'stale', index,
+        message: `第 ${index + 1} 条书签已经不在库里了（页面陈旧？），刷新后重试`,
+      }
+    }
+    const result = normalizeEntry(raw, previous, now)
+    if (!result.ok) return { ...result, index }
+    const entry = result.entry
+    if (seenIds.has(entry.id)) {
+      return { ok: false, reason: 'duplicate', index, message: `第 ${index + 1} 条书签重复出现` }
+    }
+    // Two cards for one address is what a browser export never produces and what a
+    // person adding a bookmarked page twice otherwise creates with no warning.
+    const first = seenUrls.get(entry.url)
+    if (first !== undefined) {
+      return {
+        ok: false, reason: 'duplicate', index,
+        message: `第 ${index + 1} 条与第 ${first + 1} 条是同一个地址：${entry.url}`,
+      }
+    }
+    seenIds.add(entry.id)
+    seenUrls.set(entry.url, index)
+    if (previous === undefined) added++
+    else if (!sameEntry(previous, entry)) updated++
+    next.push(entry)
+  }
+  const kept = new Set(next.map(entry => entry.id))
+  const removed = current.bookmarks.filter(entry => !kept.has(entry.id)).length
+  return { ok: true, library: { version: current.version, bookmarks: next }, added, updated, removed }
+}
+
+/**
+ * The version stamp of a library on disk: the pair a save request has to name for
+ * its write not to throw away an edit made since the page was opened.
+ * @param path - the library file.
+ * @returns the stamp, or undefined when the file cannot be read.
+ */
+export function revisionOf(path) {
+  try {
+    const stat = statSync(path)
+    return `${Math.round(stat.mtimeMs)}-${stat.size}`
+  } catch {
+    return undefined
+  }
 }

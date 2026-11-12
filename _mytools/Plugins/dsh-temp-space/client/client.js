@@ -57,9 +57,33 @@ var CANVAS_BOX = {
   height: CANVAS_HALF_HEIGHT * 2
 };
 var DEFAULT_SIZE = { text: { w: 260, h: 168 }, image: { w: 240, h: 200 }, file: { w: 240, h: 84 } };
+var MIN_SIZE = { text: { w: 160, h: 96 }, image: { w: 80, h: 60 }, file: { w: 140, h: 56 } };
 function defaultSizeOf(item) {
   if (item.kind !== "file") return DEFAULT_SIZE.text;
   return isImage(item.file) ? DEFAULT_SIZE.image : DEFAULT_SIZE.file;
+}
+function minSizeOf(item) {
+  if (item.kind !== "file") return MIN_SIZE.text;
+  return isImage(item.file) ? MIN_SIZE.image : MIN_SIZE.file;
+}
+var NOTE_MAX_HEIGHT = 480;
+var WIDE_CHARACTER = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u;
+function lineWidthOf(line) {
+  let units = 0;
+  for (const character of line) units += WIDE_CHARACTER.test(character) ? 2 : 1;
+  return units * 6.5;
+}
+function noteSizeOf(text) {
+  const body = DEFAULT_SIZE.text.w - 20;
+  let lines = 0;
+  for (const line of String(text ?? "").split(/\r?\n/)) {
+    lines += Math.max(1, Math.ceil(lineWidthOf(line) / body));
+  }
+  const height = 40 + lines * 19.5;
+  return {
+    w: DEFAULT_SIZE.text.w,
+    h: Math.min(NOTE_MAX_HEIGHT, Math.max(DEFAULT_SIZE.text.h, Math.round(height)))
+  };
 }
 function boxOf(item) {
   const size = defaultSizeOf(item);
@@ -96,7 +120,8 @@ var zh = {
   titleHint: "\u53CC\u51FB\u6807\u9898\u53EF\u4EE5\u6539\u540D\u5B57",
   titlePlaceholder: "\u672A\u547D\u540D",
   zoomReset: "\u56DE\u5230 100%",
-  zoomHint: "\u6EDA\u8F6E\u7F29\u653E\uFF1B\u5DE6\u952E\u62D6\u7A7A\u767D\u5904\u6846\u9009\uFF0C\u53F3\u952E\u6216\u4E2D\u952E\u62D6\u52A8\u5E73\u79FB\uFF1BDelete \u5220\u9664\u9009\u4E2D\uFF0CCtrl+C/V \u590D\u5236\u7C98\u8D34\uFF0CCtrl+Z \u64A4\u56DE",
+  zoomHint: "\u6EDA\u8F6E\u7F29\u653E\uFF1B\u5DE6\u952E\u62D6\u7A7A\u767D\u5904\u6846\u9009\uFF0C\u53F3\u952E\u6216\u4E2D\u952E\u62D6\u52A8\u5E73\u79FB\uFF1B\u62D6\u5361\u7247\u53F3\u4E0B\u89D2\u6539\u5927\u5C0F\uFF1BDelete \u5220\u9664\u9009\u4E2D\uFF0CCtrl+C/V \u590D\u5236\u7C98\u8D34\uFF0CCtrl+Z \u64A4\u56DE",
+  resizeHint: "\u62D6\u52A8\u53F3\u4E0B\u89D2\u53EF\u4EE5\u6539\u5361\u7247\u5927\u5C0F",
   usage: "{used} / {total}",
   fileMissing: "\u6587\u4EF6\u4E0D\u5728\u4E86",
   revealHint: "\u62D6\u52A8\u53EF\u4EE5\u79FB\u52A8\u5361\u7247\uFF1B\u53CC\u51FB\u5728\u6587\u4EF6\u7BA1\u7406\u5668\u91CC\u5B9A\u4F4D\u8FD9\u4E2A\u6587\u4EF6",
@@ -195,7 +220,8 @@ var en = {
   titleHint: "Double-click the title to rename it",
   titlePlaceholder: "Untitled",
   zoomReset: "Back to 100%",
-  zoomHint: "Wheel to zoom; left-drag the background to select, right- or middle-drag to pan; Delete removes the selection, Ctrl+C/V copy and paste, Ctrl+Z undoes",
+  zoomHint: "Wheel to zoom; left-drag the background to select, right- or middle-drag to pan; drag a card's corner to resize it; Delete removes the selection, Ctrl+C/V copy and paste, Ctrl+Z undoes",
+  resizeHint: "Drag the corner to resize the card",
   usage: "{used} / {total}",
   fileMissing: "File is gone",
   revealHint: "Drag to move the card; double-click to show the file in the file manager",
@@ -487,6 +513,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
   }, [store]);
   const addNote = (0, import_react.useCallback)((text) => {
     const base = itemsRef.current;
+    const size = noteSizeOf(text);
     remember();
     update([...base, {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -494,8 +521,8 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       text,
       x: 32 + base.length % 6 * 28,
       y: 32 + base.length % 6 * 26,
-      w: DEFAULT_SIZE.text.w,
-      h: DEFAULT_SIZE.text.h,
+      w: size.w,
+      h: size.h,
       z: base.reduce((top, row) => Math.max(top, row.z), 0) + 1
     }]);
   }, [remember, update]);
@@ -737,6 +764,25 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       outer.scrollTop = held.top - (event.clientY - held.originY);
       return;
     }
+    if (held.kind === "resize") {
+      const scale2 = zoomRef.current;
+      const w = Math.round(Math.max(
+        held.min.w,
+        Math.min(held.max.w, held.w + (event.clientX - held.originX) / scale2)
+      ));
+      const h2 = Math.round(Math.max(
+        held.min.h,
+        Math.min(held.max.h, held.h + (event.clientY - held.originY) / scale2)
+      ));
+      if (w === held.drawn.w && h2 === held.drawn.h) return;
+      if (!held.moved) {
+        held.moved = true;
+        remember();
+      }
+      held.drawn = { w, h: h2 };
+      patch(held.id, { w, h: h2 });
+      return;
+    }
     if (held.kind === "marquee") {
       if (!held.moved) {
         if (Math.abs(event.clientX - held.originX) < DRAG_THRESHOLD && Math.abs(event.clientY - held.originY) < DRAG_THRESHOLD) return;
@@ -772,7 +818,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       Math.min(held.bounds.maxX, Math.max(held.bounds.minX, travel.x)),
       Math.min(held.bounds.maxY, Math.max(held.bounds.minY, travel.y))
     );
-  }, [applySelection, layerPoint, moveMany, raiseMany, remember]);
+  }, [applySelection, layerPoint, moveMany, patch, raiseMany, remember]);
   const stopDrag = (0, import_react.useCallback)(() => {
     const held = drag.current;
     drag.current = null;
@@ -780,6 +826,9 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     window.removeEventListener("pointerup", stopDrag);
     window.removeEventListener("pointercancel", stopDrag);
     if (held === null) return;
+    if (held.kind === "resize") {
+      return;
+    }
     if (held.kind === "marquee") {
       setMarquee(null);
       if (!held.moved) {
@@ -827,6 +876,32 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     window.addEventListener("pointerup", stopDrag);
     window.addEventListener("pointercancel", stopDrag);
   }, [onWindowMove, selected, stopDrag]);
+  const startResize = (0, import_react.useCallback)((event, item) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const box = boxOf(item);
+    const min = minSizeOf(item);
+    drag.current = {
+      kind: "resize",
+      id: item.id,
+      moved: false,
+      // The size at the press and the size the card is drawn at, which is what a
+      // pull compares against: only a pull that changes it is a step back. Then
+      // the room left between the card and the far edge of the plane, since a
+      // card at that edge has nowhere to grow.
+      w: box.w,
+      h: box.h,
+      drawn: { w: box.w, h: box.h },
+      min,
+      max: { w: CANVAS_HALF_WIDTH - box.x, h: CANVAS_HALF_HEIGHT - box.y },
+      originX: event.clientX,
+      originY: event.clientY
+    };
+    applySelection({ id: item.id, mode: "only" });
+    window.addEventListener("pointermove", onWindowMove);
+    window.addEventListener("pointerup", stopDrag);
+    window.addEventListener("pointercancel", stopDrag);
+  }, [applySelection, onWindowMove, stopDrag]);
   const startMarquee = (0, import_react.useCallback)((event) => {
     const additive = event.ctrlKey === true || event.metaKey === true || event.shiftKey === true;
     const start = layerPoint(event);
@@ -1298,7 +1373,30 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
           // A card renamed by hand still has to say which file it holds.
           missing ? `${item.file} \u2014 ${t("fileMissing")}` : `${titleOf(item) === item.file ? "" : `${item.file} \xB7 `}${files.find((row) => row.name === item.file)?.bytes ?? 0} B`
         )
-      )
+      ),
+      // The corner is the card's second handle: a press there resizes instead of
+      // moving, which is what a note holding more text than the card shows needs,
+      // and what a picture needs to be seen at all. It is drawn as the lower-right
+      // triangle of a square, so it reads as the corner it grabs.
+      (0, import_react.createElement)("div", {
+        onPointerDown: (event) => {
+          startResize(event, item);
+        },
+        title: t("resizeHint"),
+        style: {
+          position: "absolute",
+          right: 0,
+          bottom: 0,
+          width: 0,
+          height: 0,
+          borderStyle: "solid",
+          borderWidth: "0 0 12px 12px",
+          borderColor: `transparent transparent ${chosen ? "var(--dsw-alias-brand-primary, #4f6ef7)" : "color-mix(in srgb, var(--dsw-alias-label-tertiary, #6b7280) 70%, transparent)"} transparent`,
+          cursor: "nwse-resize",
+          touchAction: "none",
+          userSelect: "none"
+        }
+      })
     );
   };
   (0, import_react.useEffect)(() => {

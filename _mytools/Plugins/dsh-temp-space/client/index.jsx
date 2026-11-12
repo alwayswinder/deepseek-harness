@@ -88,10 +88,72 @@ const CANVAS_BOX = {
 /** Width and height one item starts with, per kind. */
 const DEFAULT_SIZE = { text: { w: 260, h: 168 }, image: { w: 240, h: 200 }, file: { w: 240, h: 84 } }
 
+/**
+ * The smallest a card can be pulled down to, per kind: a note keeps its title bar
+ * and a few lines, a picture stays legible, and a file card keeps its one line.
+ */
+const MIN_SIZE = { text: { w: 160, h: 96 }, image: { w: 80, h: 60 }, file: { w: 140, h: 56 } }
+
 /** The default size of one item, for the items stored before sizes existed. */
 function defaultSizeOf(item) {
   if (item.kind !== 'file') return DEFAULT_SIZE.text
   return isImage(item.file) ? DEFAULT_SIZE.image : DEFAULT_SIZE.file
+}
+
+/** The smallest size of one item. */
+function minSizeOf(item) {
+  if (item.kind !== 'file') return MIN_SIZE.text
+  return isImage(item.file) ? MIN_SIZE.image : MIN_SIZE.file
+}
+
+/**
+ * The tallest a note opens at when it is created from a paste. Past this the
+ * field scrolls: one paste that covered the whole column would hide the rest of
+ * the canvas instead of showing more of itself.
+ */
+const NOTE_MAX_HEIGHT = 480
+
+/** Whether one character is drawn full width by the note's font. */
+const WIDE_CHARACTER = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/u
+
+/**
+ * How wide one line of a note is drawn, in pixels.
+ *
+ * A note is created before its field exists, so its text cannot be measured:
+ * character widths at the body's 13px font stand in, a full-width character
+ * counting as two half-width ones.
+ * @param line - one line of the note.
+ * @returns that line's width in pixels.
+ */
+function lineWidthOf(line) {
+  let units = 0
+  for (const character of line) units += WIDE_CHARACTER.test(character) ? 2 : 1
+  return units * 6.5
+}
+
+/**
+ * The size a pasted note opens with, so what was pasted is readable without
+ * dragging the card bigger first.
+ *
+ * Only the height follows the text: the width stays the default one, and the
+ * height stops at {@link NOTE_MAX_HEIGHT}. A note holding a normal amount of
+ * text opens at the default height, which is what the shortest pastes get.
+ * @param text - what the note starts out holding.
+ * @returns the width and height to create the note with.
+ */
+function noteSizeOf(text) {
+  // The body's own width: the card minus the horizontal padding it draws.
+  const body = DEFAULT_SIZE.text.w - 20
+  let lines = 0
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    lines += Math.max(1, Math.ceil(lineWidthOf(line) / body))
+  }
+  // The title bar plus the body's vertical padding, then one line height each.
+  const height = 40 + lines * 19.5
+  return {
+    w: DEFAULT_SIZE.text.w,
+    h: Math.min(NOTE_MAX_HEIGHT, Math.max(DEFAULT_SIZE.text.h, Math.round(height))),
+  }
 }
 
 /** One item's box in content coordinates, the way the card is drawn. */
@@ -145,7 +207,8 @@ const zh = {
   titleHint: '双击标题可以改名字',
   titlePlaceholder: '未命名',
   zoomReset: '回到 100%',
-  zoomHint: '滚轮缩放；左键拖空白处框选，右键或中键拖动平移；Delete 删除选中，Ctrl+C/V 复制粘贴，Ctrl+Z 撤回',
+  zoomHint: '滚轮缩放；左键拖空白处框选，右键或中键拖动平移；拖卡片右下角改大小；Delete 删除选中，Ctrl+C/V 复制粘贴，Ctrl+Z 撤回',
+  resizeHint: '拖动右下角可以改卡片大小',
   usage: '{used} / {total}',
   fileMissing: '文件不在了',
   revealHint: '拖动可以移动卡片；双击在文件管理器里定位这个文件',
@@ -245,7 +308,8 @@ const en = {
   titleHint: 'Double-click the title to rename it',
   titlePlaceholder: 'Untitled',
   zoomReset: 'Back to 100%',
-  zoomHint: 'Wheel to zoom; left-drag the background to select, right- or middle-drag to pan; Delete removes the selection, Ctrl+C/V copy and paste, Ctrl+Z undoes',
+  zoomHint: 'Wheel to zoom; left-drag the background to select, right- or middle-drag to pan; drag a card\'s corner to resize it; Delete removes the selection, Ctrl+C/V copy and paste, Ctrl+Z undoes',
+  resizeHint: 'Drag the corner to resize the card',
   usage: '{used} / {total}',
   fileMissing: 'File is gone',
   revealHint: 'Drag to move the card; double-click to show the file in the file manager',
@@ -668,6 +732,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
    */
   const addNote = useCallback((text) => {
     const base = itemsRef.current
+    const size = noteSizeOf(text)
     remember()
     update([...base, {
       id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -675,8 +740,8 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       text,
       x: 32 + (base.length % 6) * 28,
       y: 32 + (base.length % 6) * 26,
-      w: DEFAULT_SIZE.text.w,
-      h: DEFAULT_SIZE.text.h,
+      w: size.w,
+      h: size.h,
       z: base.reduce((top, row) => Math.max(top, row.z), 0) + 1,
     }])
   }, [remember, update])
@@ -1056,6 +1121,26 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       outer.scrollTop = held.top - (event.clientY - held.originY)
       return
     }
+    if (held.kind === 'resize') {
+      // The corner the pointer holds is the bottom-right one, so the size is what
+      // it was at the press plus the travel since, over the zoom — the top-left
+      // corner stays where the card is on the plane. The plane's edge and the
+      // kind's smallest size apply first: a pull that leaves the card at the size
+      // it already has on the canvas moved nothing, and takes no undo step.
+      const scale = zoomRef.current
+      const w = Math.round(Math.max(held.min.w,
+        Math.min(held.max.w, held.w + (event.clientX - held.originX) / scale)))
+      const h = Math.round(Math.max(held.min.h,
+        Math.min(held.max.h, held.h + (event.clientY - held.originY) / scale)))
+      if (w === held.drawn.w && h === held.drawn.h) return
+      if (!held.moved) {
+        held.moved = true
+        remember()
+      }
+      held.drawn = { w, h }
+      patch(held.id, { w, h })
+      return
+    }
     if (held.kind === 'marquee') {
       if (!held.moved) {
         // The same threshold a card drag uses: a left press on the background that
@@ -1109,7 +1194,7 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
       Math.min(held.bounds.maxX, Math.max(held.bounds.minX, travel.x)),
       Math.min(held.bounds.maxY, Math.max(held.bounds.minY, travel.y)),
     )
-  }, [applySelection, layerPoint, moveMany, raiseMany, remember])
+  }, [applySelection, layerPoint, moveMany, patch, raiseMany, remember])
 
   const stopDrag = useCallback(() => {
     const held = drag.current
@@ -1118,6 +1203,11 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     window.removeEventListener('pointerup', stopDrag)
     window.removeEventListener('pointercancel', stopDrag)
     if (held === null) return
+    if (held.kind === 'resize') {
+      // The press already chose the card it resizes, so letting go decides
+      // nothing else — the size is on the canvas from the first travel on.
+      return
+    }
     if (held.kind === 'marquee') {
       setMarquee(null)
       // A sweep has already selected what it covered; a left press on the
@@ -1185,6 +1275,41 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
     window.addEventListener('pointerup', stopDrag)
     window.addEventListener('pointercancel', stopDrag)
   }, [onWindowMove, selected, stopDrag])
+
+  /**
+   * Begin resizing one card from the corner it draws at its bottom-right.
+   *
+   * The corner is inside the card, so the press has to be kept from the card's
+   * own handlers: the title bar and the body both start a move. A resize is
+   * about one card, never about a selection, so the press also chooses it.
+   * @param event - the pointerdown on the corner.
+   * @param item - the card being resized.
+   */
+  const startResize = useCallback((event, item) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    const box = boxOf(item)
+    const min = minSizeOf(item)
+    drag.current = {
+      kind: 'resize',
+      id: item.id,
+      moved: false,
+      // The size at the press and the size the card is drawn at, which is what a
+      // pull compares against: only a pull that changes it is a step back. Then
+      // the room left between the card and the far edge of the plane, since a
+      // card at that edge has nowhere to grow.
+      w: box.w,
+      h: box.h,
+      drawn: { w: box.w, h: box.h },
+      min,
+      max: { w: CANVAS_HALF_WIDTH - box.x, h: CANVAS_HALF_HEIGHT - box.y },
+      originX: event.clientX, originY: event.clientY,
+    }
+    applySelection({ id: item.id, mode: 'only' })
+    window.addEventListener('pointermove', onWindowMove)
+    window.addEventListener('pointerup', stopDrag)
+    window.addEventListener('pointercancel', stopDrag)
+  }, [applySelection, onWindowMove, stopDrag])
 
   /**
    * Begin sweeping the canvas for cards.
@@ -1636,7 +1761,23 @@ function TempSpacePanel({ load, save, upload, removeBlob, gitStatus, gitAction, 
           // A card renamed by hand still has to say which file it holds.
           missing
             ? `${item.file} — ${t('fileMissing')}`
-            : `${titleOf(item) === item.file ? '' : `${item.file} · `}${files.find(row => row.name === item.file)?.bytes ?? 0} B`)))
+            : `${titleOf(item) === item.file ? '' : `${item.file} · `}${files.find(row => row.name === item.file)?.bytes ?? 0} B`)),
+    // The corner is the card's second handle: a press there resizes instead of
+    // moving, which is what a note holding more text than the card shows needs,
+    // and what a picture needs to be seen at all. It is drawn as the lower-right
+    // triangle of a square, so it reads as the corner it grabs.
+    h('div', {
+      onPointerDown: event => { startResize(event, item) },
+      title: t('resizeHint'),
+      style: {
+        position: 'absolute', right: 0, bottom: 0, width: 0, height: 0,
+        borderStyle: 'solid', borderWidth: '0 0 12px 12px',
+        borderColor: `transparent transparent ${chosen
+          ? 'var(--dsw-alias-brand-primary, #4f6ef7)'
+          : 'color-mix(in srgb, var(--dsw-alias-label-tertiary, #6b7280) 70%, transparent)'} transparent`,
+        cursor: 'nwse-resize', touchAction: 'none', userSelect: 'none',
+      },
+    }))
   }
 
   // The keyboard belongs to the canvas unless a field is being typed in: Delete in

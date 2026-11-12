@@ -1149,6 +1149,21 @@ function clickCard(tree, id, modifiers = {}) {
   handle.props.onPointerDown({ button: 0, clientX: 500, clientY: 400, ...modifiers })
   letGo()
 }
+/** The corner a card is resized by, found the way a pointer finds it. */
+const cornerOf = (tree, id) => elements(cardById(tree, id)).find(node => node.props?.style?.cursor === 'nwse-resize')
+/** The size one card is drawn at. */
+const sizeOf = (tree, id) => ({
+  w: cardById(tree, id).props.style.width,
+  h: cardById(tree, id).props.style.height,
+})
+/** Press one card's corner, travel, and let go. */
+function resizeCard(tree, id, dx, dy) {
+  const corner = cornerOf(tree, id)
+  assert.ok(corner !== undefined, `the card ${id} has a corner to resize it by`)
+  corner.props.onPointerDown({ button: 0, clientX: 500, clientY: 400, stopPropagation: () => {} })
+  for (const move of [...(windowListeners.get('pointermove') ?? [])]) move({ clientX: 500 + dx, clientY: 400 + dy })
+  letGo()
+}
 /** Type one key, as the window delivers it to the mounted panel. */
 function pressKey(key, init = {}) {
   const listeners = [...(windowListeners.get('keydown') ?? [])]
@@ -1205,6 +1220,60 @@ picked = await picking.settle()
 assert.equal(cardById(picked, 'note').props.style.left, noteLeft, 'Ctrl+Z puts the dragged card back')
 assert.equal(cardById(picked, 'doc').props.style.left, docLeft, 'and the card that travelled with it')
 assert.ok(texts(picked).some(text => text.includes('已撤回')), 'and says that it undid something')
+assert.equal(windowListeners.get('pointermove').size, 0, 'the drag released its listeners before this one')
+
+// The corner resizes the card in the same content coordinates a move uses: the
+// size is the one at the press plus the travel, the card stays where it is, and
+// one gesture is one step back. This is what a note holding more text than the
+// card shows needs, since the card is otherwise as big as it was made.
+clickCard(picked, 'note')
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 260, h: 168 }, 'a note starts at the size the state gives it')
+resizeCard(picked, 'note', 60, 40)
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 320, h: 208 }, 'the corner grows the card by the travel')
+assert.equal(cardById(picked, 'note').props.style.left, noteLeft, 'and leaves the card where it is')
+assert.equal(windowListeners.get('pointermove').size, 0, 'a resize releases its listeners when it ends')
+
+// Both ends are bounded: the plane cannot be outgrown, and a card keeps enough
+// of itself to still be a card.
+resizeCard(picked, 'note', -2000, -2000)
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 160, h: 96 }, 'a card stops at its smallest size')
+resizeCard(picked, 'note', 300, 300)
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 460, h: 396 }, 'the second gesture takes it back up')
+
+// One gesture is one undo step: the three resizes above are three steps, each
+// walking back to the size the card had before that gesture.
+pressKey('z', { ctrlKey: true })
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 160, h: 96 }, 'Ctrl+Z puts the size back to the one before it')
+pressKey('z', { ctrlKey: true })
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 320, h: 208 }, 'and one more undoes the gesture before that')
+pressKey('z', { ctrlKey: true })
+picked = await picking.settle()
+assert.deepEqual(sizeOf(picked, 'note'), { w: 260, h: 168 }, 'and the first resize is undone last')
+
+// A card already at the far edge of the plane has no room to grow past it.
+dragCard(picked, 'note', 1730, 0)
+picked = await picking.settle()
+assert.equal(cardById(picked, 'note').props.style.left, 2000 - 260, 'the note is dragged to the edge')
+resizeCard(picked, 'note', 300, 0)
+picked = await picking.settle()
+assert.equal(sizeOf(picked, 'note').w, 260, 'a card at the edge keeps the plane as its limit')
+
+// Put the card and the selection back where the steps below expect them: the pull
+// above could not change the size, so it took no undo step — one undo reaches the
+// state before the drag to the edge.
+pressKey('z', { ctrlKey: true })
+picked = await picking.settle()
+assert.equal(cardById(picked, 'note').props.style.left, noteLeft, 'undoing brings the note back')
+assert.deepEqual(sizeOf(picked, 'note'), { w: 260, h: 168 }, 'and the blocked pull left no step behind')
+clickCard(picked, 'note')
+clickCard(picked, 'doc', { shiftKey: true })
+picked = await picking.settle()
 
 // Delete takes the selection off the canvas, and the bytes stay behind: that is
 // what lets the next step bring the cards back whole.
@@ -1374,6 +1443,29 @@ await new Promise((resolve) => { setTimeout(resolve, 0) })
 picked = await picking.settle()
 assert.equal(clipboardCalls.some(entry => entry.url.includes('name=nope.png')), false,
   'pasting into a note stores nothing')
+
+// A paste holding more text than a card shows opens the note tall enough to show
+// it: the height follows the lines the text fills, so a long paste is readable
+// without dragging the card bigger first.
+const mediumText = Array.from({ length: 12 }, (_, index) => `第 ${index + 1} 行`).join('\n')
+pasteEvent({ items: [], getData: (type) => (type === 'text/plain' ? mediumText : '') })
+picked = await picking.settle()
+const mediumCard = cardsOf(picked).at(-1)
+assert.equal(mediumCard.props.style.width, 260, 'a pasted note keeps the default width')
+assert.equal(mediumCard.props.style.height, 274, 'and opens tall enough for the lines it holds')
+
+// Past the cap the note scrolls instead: one pasted manual must not cover the
+// column and hide everything else on the canvas.
+const hugeText = Array.from({ length: 60 }, () => '这一行一直重复到卡片高度的上限').join('\n')
+pasteEvent({ items: [], getData: (type) => (type === 'text/plain' ? hugeText : '') })
+picked = await picking.settle()
+assert.equal(cardsOf(picked).at(-1).props.style.height, 480, 'a huge paste stops at the tallest a note opens')
+
+// An empty note — what the "+ 文字" control makes — still opens at the default
+// size, since it holds nothing yet.
+elements(picked).find(node => node.type === 'button' && texts(node).includes('+ 文字')).props.onClick()
+picked = await picking.settle()
+assert.equal(cardsOf(picked).at(-1).props.style.height, 168, 'an empty note opens at the default height')
 
 // A host that started before this route existed answers with the web server's own
 // page instead of this plugin's JSON, and that is a restart, not a broken clipboard.

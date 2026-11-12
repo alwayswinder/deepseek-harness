@@ -1,4 +1,4 @@
-/** Prepare the development Desktop runtime without launching Electron. */
+/** Prepare the development Desktop runtime; Office assets load from the linked skill package. */
 
 import { execFileSync } from 'node:child_process'
 import {
@@ -22,7 +22,6 @@ import { prepareDevelopmentProject } from '../../apps/desktop/scripts/developmen
 import { desktopTargetBuildPaths, resolveDesktopBuildTarget } from '../../apps/desktop/scripts/desktop-build-paths.mjs'
 import { smokePrimaryRuntime } from '../../apps/desktop/scripts/prepare-primary-runtime.ts'
 import {
-  prepareOfficeSkillAssets,
   preparePrimaryRuntime as preparePrimaryRuntimePayload,
   primaryRuntimePayloadDigest,
 } from '../../scripts/primary-runtime/prepare.ts'
@@ -183,7 +182,6 @@ if (!cacheReady) {
     cache: DOWNLOAD_CACHE,
     version: release.version,
   })
-  removeOwnedPath(join(runtimeCache, 'office-skills'))
   writeFileSync(runtimeCacheMarker, marker)
   console.log(`desktop preparation: cached primary runtime ${payloadDigest}`)
 } else {
@@ -194,10 +192,5 @@ const primaryRuntime = join(buildPaths.runtime, 'primary-runtime')
 removeOwnedPath(primaryRuntime)
 removeOwnedPath(buildPaths.runtime)
 linkPackage(join(runtimeCache, 'primary-runtime'), primaryRuntime)
-const requireFromBuild = createRequire(import.meta.url)
-await prepareOfficeSkillAssets(
-  join(dirname(requireFromBuild.resolve('@deepseek-ai/dsh-skill-office/package.json')), 'assets'),
-  join(buildPaths.runtime, 'office-skills'),
-)
 smokePrimaryRuntime(primaryRuntime)
 console.log('desktop preparation: development project and primary runtime are ready')

@@ -17,7 +17,7 @@
         "dsh-ths-holdings": "link:_mytools/Plugins/dsh-ths-holdings",
         "dsh-qq-plugin": "^1.0.5",
         "dshmarket": "^1.73.17",
-        "ds-harness-remote": "^0.6.4"
+        "ds-harness-remote": "^0.6.5"
       },
       "bundles": [
         "@local/dsh-web-search-opencode",

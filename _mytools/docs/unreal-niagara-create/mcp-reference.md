@@ -1,6 +1,6 @@
 # Niagara MCP 调用参考
 
-本页供已有 MCP 调用能力的开发者查询 UE 5.9 当前构建中的工具入口。JSON 示例是 JSON-RPC 请求体；通过现有 MCP 客户端发送，HTTP 会话初始化、会话标识和通知由客户端管理。主教程见 [创建指南](README.md)。
+本页供已有 MCP 调用能力的开发者查询 UE 5.9 当前构建中的工具入口，覆盖闪电链和冰球。JSON 示例是 JSON-RPC 请求体；通过现有 MCP 客户端发送，HTTP 会话初始化、会话标识和通知由客户端管理。主教程见 [创建指南](README.md)。
 
 ## 发现入口
 
@@ -55,6 +55,8 @@
 ```
 
 本构建的对象引用通常以 `{"refPath":"..."}` 表示；具体字段以 Schema 为准。`/Game/` 是项目 Content 的虚拟根，不是磁盘路径。
+
+`search_symbols` 使用正则表达式 `pattern` 和数量上限 `max_results`，不接受 `query`、`limit`，也不把 `*Name*` 当作通配符。例如传入 `{"pattern":"Niagara.*[Cc]ompile","max_results":30}`，可在本构建中发现编译相关工具和项目辅助函数。
 
 ## Niagara 查询顺序
 
@@ -161,9 +163,107 @@ summary
 
 创建节点后读取实际引脚名，验证引脚有效性，并检查每次连接的返回值。关于数值类型、实例编辑权限和组件重复创建，见 [API 注意事项](troubleshooting.md#蓝图与-python-api)。
 
+## 创建与配置冰球 System
+
+创建和修改前，读取这些工具的 Schema。下表描述本例实际使用的参数入口；嵌套类型以编辑器返回值为准。
+
+| 工具 | 参数入口 | 本例用途 |
+|---|---|---|
+| `CreateNiagaraSystem` | `assetName`、`assetPath`、`templateSystem` | 使用 `/Niagara/DefaultAssets/DefaultSystem` 创建系统 |
+| `AddEmitter` | `system`、`templateEmitter`、`emitterName` | 添加 SingleLoopingParticle、Minimal 或 SimpleSpriteBurst 模板 |
+| `RemoveEmitter` | `emitterRef` | 移除模板自带的 Fountain |
+| `AddModule` | `moduleLocationRef`、`moduleAsset` | 给 Minimal 添加 SpawnRate |
+| `AddSetParametersModule` | `moduleLocationRef`、`parameters` | 写入粒子颜色、尺寸、局部轨道或初速度 |
+| `SetEmitterData` | `emitterRef`、`emitterData.propertyValues` | 设置局部或世界空间 |
+| `SetRendererData` | `rendererRef`、`rendererData.propertyValues` | 设置材质和透明排序 |
+
+属性 Schema 使用的名称与值数据的名称可能不同。读取 `GetEmitterSchema / GetRendererSchema` 及对应 Data 后，再构造 `propertyValues` JSON 字符串；本例写入 `bLocalSpace`、`Material`、`SortOrderHint` 和 `bCastShadows`。
+
+### Set Parameters 的参数类型
+
+每个 `parameters` 条目用 `variable.name` 指定完整参数名，用 `variable.type.classStructOrEnum.refPath` 指定类型。添加后从返回的 `moduleName` 取得真实名称，再用 `SetStackInputData` 设置表达式，不要硬编码生成的 GUID 名。
+
+| 粒子参数 | 类型路径 |
+|---|---|
+| `Particles.Lifetime / Particles.SpriteRotation` | `/Script/Niagara.NiagaraFloat` |
+| `Particles.Color` | `/Script/CoreUObject.LinearColor` |
+| `Particles.SpriteSize` | `/Script/CoreUObject.Vector2f` |
+| `Particles.Velocity` | `/Script/CoreUObject.Vector3f` |
+| `Particles.Position` | `/Script/Niagara.NiagaraPosition` |
+
+下面是添加一个颜色赋值模块的内部工具参数，调用 `AddSetParametersModule` 后再设置其颜色输入：
+
+```json
+{
+  "moduleLocationRef": {
+    "system": {"refPath":"/Game/VFX/FrostChain/NS_FrostOrb.NS_FrostOrb"},
+    "emitterName":"ColdTrail",
+    "scriptName":"ParticleUpdateScript"
+  },
+  "parameters":[{
+    "variable":{
+      "name":"Particles.Color",
+      "type":{"classStructOrEnum":{"refPath":"/Script/CoreUObject.LinearColor"}}
+    }
+  }]
+}
+```
+
+已有系统重跑创建步骤时，先检查组件、Emitter 和模块是否存在。只更新自己创建的对象；不要用删除全部 Set Parameters 模块的方式修改含有其他作者逻辑的系统。
+
+## 强制编译与运行数据核对
+
+本项目暴露 `unreal.MyProject5_9Demo.recompile_system(system)`，其 C++ 实现调用 `RequestCompile(true)` 并标记资产待保存。它是当前项目的辅助接口，其他项目必须重新发现可用编译入口。
+
+在此构建中，修改寿命后曾出现栈输入已更新、编译状态 UpToDate，但运行粒子的寿命和颜色不符合输入的情况。强制编译后重新开始模拟，运行值恢复一致。因此对这类问题要同时核对输入、编译状态和实际粒子数据。
+
+停止模拟后可执行以下编译检查；片段使用当前编辑器的顶层 `await call_tool`：
+
+```python
+import unreal
+
+system = unreal.EditorAssetLibrary.load_asset('/Game/VFX/FrostChain/NS_FrostOrb')
+assert unreal.MyProject5_9Demo.recompile_system(system)
+state = await call_tool(
+    'NiagaraToolsets.NiagaraToolset_System.GetSystemCompileState', system=system)
+assert not state['bHasErrors'] and not state['bHasWarnings']
+assert unreal.EditorAssetLibrary.save_loaded_asset(system)
+```
+
+### 采样运行粒子
+
+本构建可用 Niagara Sim Cache 读取粒子数量、年龄、颜色和寿命。下面片段在模拟已经开始且冰球已运行数帧后采样，不修改系统资产：
+
+```python
+import unreal
+
+world = unreal.EditorLevelLibrary.get_game_world()
+chain = next(a for a in unreal.GameplayStatics.get_all_actors_of_class(world, unreal.Actor)
+             if a.get_class().get_name() == 'BP_FrostChain_C')
+orb = next(c for c in chain.get_components_by_class(unreal.NiagaraComponent)
+           if c.get_name() == 'IceOrb')
+cache = unreal.NiagaraSimCacheFunctionLibrary.create_niagara_sim_cache(world)
+params = unreal.NiagaraSimCacheCreateParameters()
+params.set_editor_property('attribute_capture_mode', unreal.NiagaraSimCacheAttributeCaptureMode.ALL)
+cache = unreal.NiagaraSimCacheFunctionLibrary.capture_niagara_sim_cache_immediate(
+    cache, params, orb)
+counts = {str(name): len(cache.read_position_attribute('Position', name))
+          for name in cache.get_emitter_names()}
+ages = list(cache.read_float_attribute('Age', 'ColdTrail'))
+{'counts': counts, 'oldestTrailAge': max(ages) if ages else None}
+```
+
+目标是让持续播放保持有限粒子数量，而非只检查 Niagara Component 是否处于 Active。当前粒子数量的实测值见 [冰球验证数据](evidence/frost-chain.json)。
+
 ## 截图与结果内容
 
 `SceneCaptureToolset.SceneCaptureToolset.CaptureEditorViewport` 可捕获当前编辑器关卡视口。该工具响应包含文本元数据和 `type = image` 的图片内容块；本例将图片内容块的 Base64 数据解码为 PNG。
+
+视口窗口在后台、隐藏或最小化时，该工具可能拒绝捕获。需要场景画面且不依赖编辑器界面时，可以使用 `Capture(world, camera, mode, options)` 离屏渲染；它不含编辑器覆盖层、视口的时间历史或相机独有的后处理，不能将结果称为编辑器截图。
+
+`Capture` 使用 `mode = Lit`，`options` 中设置 `width`、`height` 和 `screenPercentage`，`camera` 提供世界坐标 `location`、角度 `rotation` 与 `fOV`。本例传入实际模拟世界 `/Game/_MyTest/UEDPIE_0_M_Test.M_Test`；模拟重启后需重新取得世界引用。
+
+本目录冰球 GIF 由 42 张运行世界离屏帧合成。每帧先让游戏时间前进约 0.10 秒，再暂停并捕获；结束后取消暂停并停止模拟。预览的游戏时间与截图调用耗时分别计算，不能用截图速度评估游戏性能。
 
 文本中的 `urn:toolresult:...` 标识不是已确认可直接读取的文件路径。本例通过 `resources/read` 读取该标识得到 HTTP 400；保存图片时应读取实际的图片内容块，不能只处理文本响应。
 

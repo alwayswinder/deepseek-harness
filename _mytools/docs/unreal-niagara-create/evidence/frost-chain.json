@@ -1,0 +1,104 @@
+{
+  "idle": true,
+  "launchOriginErrorCm": 0.0,
+  "hits": [
+    {
+      "n": 1,
+      "target": 0,
+      "next": 1,
+      "time": 0.937
+    },
+    {
+      "n": 2,
+      "target": 1,
+      "next": 2,
+      "time": 1.67
+    },
+    {
+      "n": 3,
+      "target": 2,
+      "next": 1,
+      "time": 2.471
+    },
+    {
+      "n": 4,
+      "target": 1,
+      "next": 0,
+      "time": 3.271
+    },
+    {
+      "n": 5,
+      "target": 0,
+      "next": 2,
+      "time": 4.005
+    },
+    {
+      "n": 6,
+      "target": 2,
+      "next": 0,
+      "time": 5.173
+    },
+    {
+      "n": 7,
+      "target": 0,
+      "next": 1,
+      "time": 6.339
+    },
+    {
+      "n": 8,
+      "target": 1,
+      "next": 0,
+      "time": 7.073
+    },
+    {
+      "n": 9,
+      "target": 0,
+      "next": 2,
+      "time": 7.806
+    },
+    {
+      "n": 10,
+      "target": 2,
+      "next": 1,
+      "time": 8.98
+    },
+    {
+      "n": 11,
+      "target": 1,
+      "next": 2,
+      "time": 9.782
+    },
+    {
+      "n": 12,
+      "target": 2,
+      "next": 1,
+      "time": 10.583
+    },
+    {
+      "n": 13,
+      "target": 1,
+      "next": 2,
+      "time": 11.383
+    },
+    {
+      "n": 14,
+      "target": 2,
+      "next": 0,
+      "time": 12.183
+    }
+  ],
+  "infinitePlaybackAfter14Hits": true,
+  "noImmediateRepeat": true,
+  "constantNiagaraComponentCount": 2,
+  "particleCountsAfter14Hits": {
+    "IceCore": 1,
+    "FrostHalo": 1,
+    "OrbitingIce": 34,
+    "ColdTrail": 51
+  },
+  "oldestTrailParticleSeconds": 0.4576455354690552,
+  "movingTargetHitErrorCm": 0.0,
+  "explicitStop": true,
+  "retriggerResets": true,
+  "invalidTargetStops": true
+}

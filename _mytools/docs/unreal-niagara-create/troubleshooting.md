@@ -1,112 +1,95 @@
 # Niagara 常见问题与 API 注意事项
 
-本页按现象查询创建闪电链时的排查方法。示例环境与完整步骤见 [创建指南](README.md)，参数编码见 [MCP 参考](mcp-reference.md)。
+本页供闪电链和冰球创建过程中的故障查询。完整操作分别见 [闪电链教程](chain-lightning.md) 与 [冰球教程](frost-chain.md)，参数编码见 [MCP 参考](mcp-reference.md)。
 
-## 场景中看不到闪电
+## 场景中看不到特效
 
-| 检查项 | 判断方法 | 处理 |
-|---|---|---|
-| 连接点被地面遮住 | 比较组件世界高度、地面高度及目标原点 | 修改 `TargetOffset`，使连接点处于可见位置 |
-| 当前处于放电间歇 | 检查 `User.Intensity` 和当前周期相位 | 等待下一次放电，或使用 `UpdateChain(false)` 检查完整预览 |
-| Niagara 未生成粒子 | 检查 Emitter 是否启用、Burst 是否发生、Lifetime 是否有效 | 在单个 Emitter 预览中定位生命周期问题 |
-| 材质或 Renderer 错误 | 检查 Ribbon Renderer 及其材质绑定 | 使用已验证材质确认形状，再调整外观 |
-| 参数没有写入 | 读取组件上的 `User.Length`、`User.Intensity` | 对齐完整 User 参数名与类型 |
-| 资产编译失败 | 读取 Niagara 编译状态和蓝图错误节点 | 先修复错误，再保存并重试 |
+先确认当前播放状态，再检查组件、粒子和材质。触发式特效在静止编辑器中隐藏属于正常表现。
 
-截图应结合播放观察。单帧处于发射间隙，不足以证明特效没有工作；编译成功也不足以证明它在场景中可见。
+| 检查项 | 判断与处理 |
+|---|---|
+| 没有触发 | 在运行实例上调用相应 Trigger 函数，或开启自动触发后开始 Play/Simulate |
+| 关卡关闭了闪电自动演示 | 当前 `ChainLightning_MCP.AutoTriggerOnBeginPlay = false`；独立演示时开启，并关闭冰球自动触发 |
+| 连接点在地面内 | 对比目标原点和地面高度，调整 `TargetOffset` 或发射 Actor 位置 |
+| 目标引用失效 | 任一绑定目标失效时，两种控制蓝图都会停止；重新指定后再触发 |
+| Niagara 没有粒子 | 检查 Emitter 启用状态、生成模块、寿命和 Sim Cache 的粒子数量 |
+| 组件有粒子却不可见 | 检查 Visibility、材质、粒子颜色透明度，以及 Renderer 使用的材质 |
+| 资产未正确编译 | 同时核对栈输入、编译状态和运行粒子数据；必要时停止模拟后强制编译 |
 
-## 闪电偏转、偏移或端点漂移
+单帧隐藏不等于创建失败；闪电会自行结束，截图也可能处于发射前或结束后。
 
-本例 Niagara 在局部空间工作，蓝图将 Niagara Component 放到起点，并让局部 X 轴朝向终点。不要同时把世界坐标写进局部粒子位置，否则会叠加组件变换。
+## 闪电起点或飞行顺序不对
 
-如果中间粒子持续偏离，检查 Particle Update 的顺序：先从当前 Beam Start/End 重新计算基准位置，再添加抖动。如果端点也抖动，检查抖动是否带有两端为零的包络，以及用于包络的进度是否确实归一化。
+当前顺序是特效 Actor 位置 → SourceActor → MiddleActor → EndActor，由三个组件负责三跳。首跳不是从 SourceActor 出发。检查 `TriggerChain` 是否捕获当前发射位置和时间，以及 Tick 是否接入 `UpdateTriggeredChain`。
 
-本例每个目标使用统一的世界空间偏移。这个偏移不会随目标旋转；若希望偏移跟随模型局部方向，应另行将局部偏移变换到世界空间。
+默认跳段启动时间为 0、0.28、0.56 秒。`HopDelay` 是头部到达后的等待时间；`TravelTime` 是本跳飞行时间。`PulsePeriod` 与旧 `UpdateChain` 不参与当前触发播放。时间计算见 [三跳计算](chain-lightning.md#3-每帧计算三跳)。
 
-## 闪电没有沿 Actor 顺序推进
+## 闪电偏移或端点漂移
 
-先检查三份 Actor 引用及两个组件的绑定顺序，再检查 `HopDelay`、`TravelTime`、`FlashDuration` 和 `PulsePeriod` 的实际类型及值。第二段开始前，第一段的显示窗口需要覆盖足够时间，才能观察到连锁关系。
+闪电粒子在组件局部空间计算；蓝图设置组件世界位置，并令局部 X 轴朝向终点。把世界坐标写进局部粒子位置会叠加组件变换。
 
-本例使用关卡的 Game Time 计算相位，所有实例默认共享时间来源。若需要每次调用都从第一段开始的单次技能，需要另外保存触发时间，以 `Now - TriggerTime` 计算相位，并增加激活、结束和再次触发的状态；当前资产没有实现这个接口。
+Particle Update 先恢复束上基准位置，再叠加抖动。抖动在两端衰减为零，用于计算衰减的 Ribbon 进度必须覆盖 0～1。当前 `TargetOffset` 是世界空间偏移，不跟随目标旋转；连接骨骼插槽需要另读 Socket Transform。
 
-## Actor 移动后没有立即跟随
+## 冰球不弹跳或连续命中同一个物体
 
-在播放或模拟中，确认 Event Tick 调用了 `UpdateChain(true)`，Actor Tick 启用，且每帧都重新读取目标位置。第一段应更新距离和旋转，第二段还应更新起点位置。
+检查三个目标引用是否有效且互不相同，`IsBouncing` 和 Actor Tick 是否启用。命中后索引按 `(CurrentIndex + RandomIntegerInRange(1,2)) % 3` 更新；两个不同索引如果引用同一个 Actor，仍会表现为重复命中同一物体。
 
-在编辑器静态场景中，单独移动其他 Actor 不会保证触发控制蓝图的 Construction Script。重新触发控制蓝图构造或显式调用预览函数后再观察；编辑器预览更新与运行时跟随是两项不同验证。
+冰球每帧读取当前目标位置，用恒速插值接近目标；进入 3 cm 范围后命中。它没有碰撞检测，因此不会被障碍物阻挡。目标移动速度超过冰球时，无法保证追上。
 
-## 目标为空时报错
+## 冰球越播越多或拖尾粘在球上
 
-读取 Actor 位置之前先执行有效性判断。无效时隐藏当前段，避免继续计算位置，同时让执行流进入下一段处理；不要让第一段的无效分支中断整条控制函数。
+球核与光晕各只发射一个粒子，Burst 开启循环次数限制，并关闭按寿命杀死。不要在每次 Tick 重新激活组件或生成新的 Actor。
 
-本例清空中间引用会同时隐藏两段，因为两段分别以它为终点和起点。其他目标的失效只影响与该目标有关的段。
+旋转冰屑使用局部空间，拖尾使用世界空间。拖尾只在新粒子出生时读取组件位置，已有粒子留在路径上。InitializeParticle 中配置实际 Lifetime，再用归一化年龄淡出；本例拖尾为 0.46 秒，冰屑为 0.7 秒。
+
+只修改后续赋值模块的 `Particles.Lifetime` 可能使初始化得到的派生值与寿命不一致；需要同步 InitializeParticle。栈配置正确但运行数据异常时，按 [强制编译与采样](mcp-reference.md#强制编译与运行数据核对) 核对，而不是仅延长寿命。
+
+## 命中冰霜被下一次命中重置
+
+当前 ImpactFX 是固定复用组件。下一次命中会重新初始化它；目标距离较近或提高速度时，上一次尚未结束的光环和碎冰会被重置。需要多个命中外观同时存在时，应增加有界组件池和独立回收逻辑。
+
+## Actor 移动后没有跟随
+
+在 Play/Simulate 中确认 Tick 启用，更新函数每帧重新读取运行世界的目标。控制 Actor 保留独立 Scene Root，运动组件不会拖动发射位置。
+
+静止编辑器中，移动另一个 Actor 不保证触发控制蓝图的 Construction Script。两种示例的构造函数都会停止特效；运行时追踪应在模拟中检查。
 
 ## 蓝图与 Python API
 
-### 浮点类型被意外创建成整数
+本构建部分 Python 反射接口与常见版本不同。先使用 `get_symbol / search_symbols` 查询实际 API，再创建节点与变量。
 
-本构建中，`BlueprintEditorLibrary.get_basic_type_by_name('float')` 不会创建预期的浮点类型，而是警告后退回整数。创建数值变量使用：
+| 现象 | 本构建的处理 |
+|---|---|
+| `get_basic_type_by_name('float')` 退回整数 | 使用 `'real'`，得到 Double 数值引脚；连接 Niagara Float 时允许类型转换 |
+| Vector 类型查找失败 | 使用 `get_struct_type(unreal.Vector.static_struct())` |
+| 数学节点不能设置小数 | 先连接确定类型的数值引脚，再设置常量默认值 |
+| 改变量类型后旧节点报错 | 重建相关 Getter、转换与连线，再编译 |
+| 设置实例可编辑后仍不能赋值 | 编译蓝图，重新获取生成类、CDO 和受重实例化影响的引用；内部变量不直接写关卡实例 |
+| `call_method` 参数类型错误 | 无参函数传空 tuple，例如 `actor.call_method('TriggerChain', ())` |
+| `can_ever_tick` 属性不存在 | 当前未暴露该字段；接入 Tick 事件，运行中检查 `is_actor_tick_enabled()` |
+| 重跑脚本重复添加组件 | 用实际组件或子对象查询接口核对，不能只凭成员变量名称列表判断 |
+| `CustomInput(input_name=...)` 报参数错误 | 创建 `unreal.CustomInput()`，再用 `set_editor_property('input_name', ...)` 赋值 |
 
-```python
-number_type = unreal.BlueprintEditorLibrary.get_basic_type_by_name('real')
-```
+默认值与关卡实例覆盖值分别存储。例如闪电类默认开启自动触发，但本关卡实例关闭；检查实际实例，不能只读 CDO。
 
-这会得到本构建的 Double 数值引脚。Niagara 的 Float 参数仍然保持 Float，蓝图连线需要允许数值转换。把 `0.16` 的跳转延迟保存成整数，会破坏延迟效果。
+## MCP 连接或调用失败
 
-### Vector 类型查找失败
+`ConnectionRefused` 时检查编辑器、运行日志中的 MCP 端口和当前项目。本机服务地址为 8001；其他环境使用实际监听地址。
 
-本构建中 `pin_type_from_text('vector')` 没有找到目标类型。使用已有结构体来创建引脚类型：
+HTTP 400 或参数校验失败时，先确认顶层 MCP 发现入口与 `call_tool` 的两层调用方式，再读取目标 Schema。常见差异包括发现工具的数组参数、对象的 `refPath`、输入的 `struct/value` 包装，以及符号查询字段 `pattern/max_results`。
 
-```python
-vector_type = unreal.BlueprintEditorLibrary.get_struct_type(
-    unreal.Vector.static_struct()
-)
-```
+## 模拟中资产工具失败或找不到运行 Actor
 
-### 改变量类型后旧节点报错
+资产加载、编辑和保存放在停止模拟之后执行。模拟期间优先使用已有引用、明确的资产路径或遍历运行世界 Actor，不用编辑器 Actor 验证运行时状态。
 
-修改变量类型后，旧 Getter 或已有转换节点可能仍然保留原类型。重新生成相关 Getter、转换与连线，再编译；不要只更改变量声明后继续设置实例默认值。必要时只重建受影响的自建函数图，保留其他逻辑。
+启动模拟后，轮询实际运行 Actor 是否创建，避免只等待固定时间就取数组第一个元素。采样中以 Game Time 判断已经过去的播放时长；本构建用 `await asyncio.sleep(0.03)` 让编辑器前进，再读取实际游戏时间，不能按循环次数推算秒数。
 
-### 设置实例可编辑后仍不能赋值
+## 截图失败或画面与视口不同
 
-调用 `set_blueprint_variable_instance_editable` 后需要编译 Blueprint，使生成类更新。随后重新获取生成类、CDO 和受重实例化影响的对象引用，再设置实例值；变量定义、CDO 默认值和关卡实例覆盖值需要分别确认。
-
-### 调用自建蓝图函数时参数报错
-
-本会话调用示例函数时使用以下形式：
-
-```python
-chain_actor.call_method('UpdateChain', (False,))
-```
-
-把布尔值直接作为第二个参数会得到要求 `tuple` 的类型错误。Python 反射方法的摘要签名可能不够精确，应以当前构建的实际调用结果核对。
-
-### 无法设置 can_ever_tick
-
-本构建的 `ActorTickFunction` 可编辑字段包含 `start_with_tick_enabled`，没有暴露 `can_ever_tick`。不要强行调用不存在的编辑器属性；接入 Tick 事件后，在运行时用 `is_actor_tick_enabled()` 检查实际状态。本例该状态为真。
-
-### 重复执行脚本产生重复组件
-
-`list_member_variable_names()` 的输出不能作为蓝图组件是否存在的唯一判断依据。本会话的输出没有列出实际存在的 `Link_01` 和 `Link_02`。重跑脚本前，应通过当前可用的组件或子对象查询接口确认对象；不要仅凭变量列表再次添加组件。
-
-### 未发现蓝图 DSL 工具
-
-先通过工具发现和符号查询确认能力。当前会话没有可用的 `BlueprintToolset` 或 `BlueprintDslToolset`，已有的节点与引脚编辑 API 可以完成本例。其他会话发现这些工具后，可以按其实际文档使用；不能假设磁盘上的工具源码已经注册到当前编辑器。
-
-## MCP 无法连接
-
-`ConnectionRefused` 需要先核对编辑器是否启动、服务器日志中的端口以及当前项目。本机的旧客户端地址是 8000，当前运行服务是 8001，改为实际端口后连接成功。不要仅根据配置文件推断运行中的监听地址。
-
-如果连接成功但参数校验失败，重新读取目标工具 Schema。尤其注意发现工具的数组参数、对象引用的 `refPath`，以及 Niagara 输入的 `struct` / `value` 包装。
-
-## 模拟模式下资产工具报错
-
-本会话在模拟期间调用 `EditorAssetLibrary.load_blueprint_class`，得到编辑器正处于播放模式的错误。资产编辑、复制和保存应在停止模拟后执行；模拟中使用已持有的运行时类型或遍历运行世界 Actor。
-
-本例测试通过 `get_game_world()` 取得运行世界，并在其中找到闪电链实例。不要用编辑器世界的 Actor 来验证运行时 Tick、位置或引用清空效果。
+CaptureEditorViewport 要求目标视口可见，后台、隐藏或最小化可能使它拒绝捕获。离屏 Capture 可以用于验证运行世界，但不会复现编辑器覆盖层和视口的时间历史。读取响应中的图片内容块；`urn:toolresult:...` 文本不等于可读的文件路径。
 
 ## 保存后重开丢失设置
 
-检查资产和关卡是否都已保存。Niagara System、材质和 Blueprint 是独立资产；目标 Actor 引用、实例参数和摆放保存在关卡中。编译之后再保存，记录各次操作的实际返回值。
+编译并分别保存材质、Niagara、Blueprint 和关卡，检查返回值。目标引用、实例参数与摆放保存在关卡；模拟中的修改不会自动成为编辑器场景内容。
 
-迁移到另一个项目时，需要同时迁移 Niagara、蓝图及其材质等依赖；三个关卡 Actor 引用需要在目标关卡重新指定。本例不包含跨项目迁移或打包验证。
+迁移时连同资产依赖一起迁移，并在目标关卡重新指定三个 Actor。当前验证不包含跨项目迁移、打包和多人运行。

@@ -3,8 +3,8 @@
 # Two account kinds:
 #   kind: balance — a prepaid wallet. The card shows the account's own balance
 #                   and a locally metered today's spend.
-#   kind: quota   — a subscription. The card shows the windows the vendor's
-#                   console meters (5-hour / weekly / monthly) instead.
+#   kind: quota   — a subscription. The card shows the used share of the windows
+#                   its usage endpoint reports (5-hour / weekly / monthly).
 #
 # `providers` lists every LLM route id that bills the account. A route missing
 # from every account is not metered at all: attributing it to the first account
@@ -78,18 +78,17 @@
           opencode-go:
             id: opencode-go
             label: OpenCode Go
-            # A subscription has no wallet. Its meters are money-denominated in
-            # the vendor's console, so the card shows the used share of each
-            # window and what it costs in USD.
+            # A subscription has no wallet. The Go usage endpoint reports the
+            # used share of each window, so the card shows that share and its
+            # reset instant.
             kind: quota
             provider: opencode-go
             providers:
               - opencode-go
             credential: OPENCODE_GO_API_KEY
             currency: USD
-            # The console scopes every answer to one workspace and rejects a
-            # request without that workspace id. Both halves of this block come
-            # from the Go page URL: opencode.ai/console/<orgId>/go.
+            # The endpoint answers from the API key alone; its windows are
+            # rolling (5 hours), weekly and monthly. It rejects `x-org-id` when
+            # the key belongs to another workspace, so no orgId is set.
             quota:
-              baseUrl: 'https://opencode.ai/console/api/go/status'
-              orgId: 'org_01M4YNWXJZJK70Y681KEB7FY5N'
+              baseUrl: 'https://opencode.ai/zen/go/v1/usage'

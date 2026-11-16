@@ -25,13 +25,14 @@ const NS = 'deepseek-usage'
 const CURRENCY_SYMBOL = { CNY: '¥', USD: '$' }
 
 /**
- * Subscription console amounts arrive as micro-cents (1e-8 of the currency
- * unit) so a reading can be turned into money without losing precision.
+ * The quota windows a subscription endpoint reports, narrowest first. The
+ * left name is this plugin's window key, the right one the vendor's field.
  */
-const MICRO_CENTS_PER_UNIT = 100_000_000
-
-/** The quota windows a subscription console reports, widest last. */
-const QUOTA_WINDOWS = ['fiveHour', 'week', 'month']
+const QUOTA_WINDOWS = [
+  ['fiveHour', 'rolling'],
+  ['week', 'weekly'],
+  ['month', 'monthly'],
+]
 
 function localDate() {
   const now = new Date()
@@ -204,23 +205,25 @@ async function platformBalance(ctx, account) {
 }
 
 /**
- * Turn one console meter into money, a percentage, and its reset instant.
- * @param meter - the console's meter record for one window.
- * @returns the used and limit amounts in the account currency plus their ratio.
+ * Read one usage window. A subscription publishes the used share of each
+ * window, not the money behind it, so a meter carries a percentage rather than
+ * an amount.
+ * @param meter - the endpoint's record for one window.
+ * @returns the used percentage, its reset instant, and the window status.
  */
 function quotaOf(meter) {
-  const used = toFinite(meter?.usedMicroCents) / MICRO_CENTS_PER_UNIT
-  const limit = toFinite(meter?.limitMicroCents) / MICRO_CENTS_PER_UNIT
+  const percent = typeof meter?.percent === 'number' && Number.isFinite(meter.percent)
+    ? meter.percent
+    : null
   return {
-    used,
-    limit,
-    percent: limit > 0 ? (used / limit) * 100 : null,
+    percent,
     resetsAt: typeof meter?.resetsAt === 'string' ? meter.resetsAt : null,
+    status: typeof meter?.status === 'string' ? meter.status : null,
   }
 }
 
 /**
- * Read a subscription account's own usage meters from the vendor console. A
+ * Read a subscription account's own usage meters from the vendor endpoint. A
  * subscription has no prepaid wallet, so this reading carries the windows a
  * card shows instead of a balance.
  * @param ctx - the plugin context.
@@ -235,6 +238,9 @@ async function quotaMeters(ctx, account) {
     return { error: `no credential "${account.credential}" (store it on the Models page or in ~/.dsh/.credentials.yaml)` }
   }
   const headers = { Authorization: `Bearer ${key}`, Accept: 'application/json' }
+  // A console endpoint scopes its answer to one workspace; a usage endpoint
+  // answers from the key alone and rejects the header when the key belongs to
+  // another workspace.
   const orgId = (account.quota?.orgId ?? '').trim()
   if (orgId !== '') headers['x-org-id'] = orgId
   let body
@@ -248,20 +254,19 @@ async function quotaMeters(ctx, account) {
   } catch (error) {
     return { error: error?.message ?? String(error) }
   }
-  // A workspace without a subscription answers `access: null`; that is a real
+  const usage = body?.usage
+  // An account without a subscription answers with no windows; that is a real
   // state (nothing to meter), not a transport failure.
-  const access = body?.access
-  if (access === undefined || access === null) return { error: 'this workspace holds no subscription' }
-  const meters = access.meters ?? {}
+  if (usage === undefined || usage === null) return { error: 'the endpoint reported no usage windows' }
   const windows = {}
-  for (const window of QUOTA_WINDOWS) {
-    const meter = meters[window]
+  for (const [window, field] of QUOTA_WINDOWS) {
+    const meter = usage[field]
     if (meter !== undefined && meter !== null) windows[window] = quotaOf(meter)
   }
-  if (Object.keys(windows).length === 0) return { error: 'the console reported no usage windows' }
+  if (Object.keys(windows).length === 0) return { error: 'the endpoint reported no usage windows' }
   return {
     windows,
-    periodEndsAt: typeof access.endsAt === 'string' ? access.endsAt : null,
+    periodEndsAt: windows.month?.resetsAt ?? null,
     source: 'api',
   }
 }
@@ -275,8 +280,9 @@ export const Config = z.object({
     id: z.string(),
     label: z.string(),
     // What this account reports. `balance` is a prepaid wallet plus the local
-    // daily ledger; `quota` is a subscription's own usage meters, fetched from
-    // the vendor's console because a subscription has no wallet to read.
+    // daily ledger; `quota` is a subscription's own usage windows, fetched from
+    // the vendor endpoint named in `quota.baseUrl` because a subscription has no
+    // wallet to read.
     kind: z.union(['balance', 'quota']).default('balance'),
     provider: z.string(),
     // Every LLM route id that bills this account. The same credential is often
@@ -285,8 +291,10 @@ export const Config = z.object({
     providers: z.array(z.string()).default([]),
     balanceBaseUrl: z.string(),
     credential: z.string(),
-    // Where a `quota` account reads its meters. `orgId` is the console workspace
-    // the endpoint scopes to; the vendor answers 400 without it.
+    // Where a `quota` account reads its usage windows, plus an optional
+    // workspace id. Only a console endpoint scoped to one workspace needs the
+    // id; a usage endpoint answers from the key alone and rejects the header
+    // when the key belongs to a different workspace.
     quota: z.object({
       baseUrl: z.string().default(''),
       orgId: z.string().default(''),

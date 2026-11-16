@@ -113,11 +113,11 @@ in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`):
         credential: <credential ref name>
         currency: USD
         quota:
-          # The console endpoint that answers this subscription's meters.
-          baseUrl: 'https://<vendor>/console/api/go/status'
-          # The workspace the console scopes the answer to; the endpoint rejects
-          # a request without it. It is the id in the console page URL.
-          orgId: '<org-id>'
+          # The endpoint that answers this subscription's meters.
+          baseUrl: 'https://<vendor>/zen/go/v1/usage'
+          # Optional: only a console endpoint scoped to one workspace needs its
+          # id; a usage endpoint answers from the key alone.
+          # orgId: '<org-id>'
 ```
 
 Each settlement takes its route from the `assistant/message` event's own
@@ -130,14 +130,13 @@ Shipping defaults:
 | account | kind | providers | source | credential |
 |---|---|---|---|---|
 | deepseek-official | `balance` | `deepseek-official`, `deepseek-account` | `https://api.deepseek.com`, else the Platform login | `DEEPSEEK_API_KEY` |
-| opencode-go | `quota` | `opencode-go` | `https://opencode.ai/console/api/go/status` | `OPENCODE_GO_API_KEY` |
+| opencode-go | `quota` | `opencode-go` | `https://opencode.ai/zen/go/v1/usage` | `OPENCODE_GO_API_KEY` |
 
-The OpenCode Go console meters are money-denominated: each window reports
-`usedMicroCents` and `limitMicroCents`, and the card shows `100 × used / limit`
-together with both amounts. The 5-hour, weekly and monthly windows are 20%, 50%
-and 100% of the model's monthly allowance, so the three rows usually differ by
-that ratio. When a subscribed model changes, the console reports the new limits
-on the next refresh; nothing here needs editing.
+The OpenCode Go usage endpoint reports a percentage per window — `rolling` (5
+hours), `weekly` and `monthly` — together with each window's reset instant, and
+the card shows those. A subscription publishes only the used share, not the
+money behind it. The endpoint answers from the API key alone, so no `orgId` is
+set; a console endpoint scoped to one workspace still accepts one.
 
 ## Pricing notes
 

@@ -34,6 +34,7 @@ def main(argv=None):
     run.add_argument('--offline', action='store_true')
     run.add_argument('--engine-root', type=Path)
     run.add_argument('--node-id')
+    run.add_argument('--bridge-port', type=int, help='显式使用本项目 UE_MCP_Bridge 的 WebSocket 端口（需 websockets）')
     run.add_argument('--timeout', type=float, default=20)
     run.add_argument('--dry-run', action='store_true')
     run.add_argument('--script-arg', action='append', default=[], help='离线脚本参数，例如 --script-arg=--prepare')
@@ -95,7 +96,8 @@ def main(argv=None):
         if args.script_arg:
             raise ValueError('--script-arg 当前用于离线脚本；UE 配方从任务配置读取目标')
         from ue_run import execute
-        ok = execute(script, ctx.project, config, args.engine_root, args.timeout, args.node_id)
+        ok = execute(script, ctx.project, config, args.engine_root, args.timeout, args.node_id,
+                     bridge_port=args.bridge_port)
     if ok and (ctx.managed/'.face-migration.json').exists():
         paths.cleanup(config.get('retention', {}).get('keep_backups_per_group', 3), apply=True)
     return 0 if ok else 1

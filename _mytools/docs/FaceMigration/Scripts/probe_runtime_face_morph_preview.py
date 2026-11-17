@@ -18,6 +18,8 @@ from face_paths import PACKAGE_ROOT, context, rig_dependency_folder
 _preview_job = json.loads((PACKAGE_ROOT / 'Jobs' / (context().job_id + '.json')).read_text(encoding='utf-8-sig'))
 PREVIEW_HOST = _preview_job.get('preview', {}).get('host', 'asset_editor')
 assert PREVIEW_HOST in ('asset_editor', 'pie'), PREVIEW_HOST
+if _preview_job.get('preview', {}).get('blocked_reason'):
+    raise RuntimeError('预览已阻止：' + _preview_job['preview']['blocked_reason'])
 
 class RuntimeFacePreviewProbe:
     def __init__(self):
@@ -42,11 +44,29 @@ class RuntimeFacePreviewProbe:
         self.h=self.live.get_hierarchy()
         self.saved={str(k.name):list(self.h.get_vector_from_control_value(self.h.get_control_value(k)).to_tuple()) for k in self.h.get_controls()}
         self.old_update=self.comp.get_editor_property('update_animation_in_editor')
-        self.rows=[]
-        for group in ('ExpressionSliders','PhonemeSliders','EyeExpressions'):
-            self.rows.extend(json.loads((_fm_read(self.root/f'Docs/Evidence/{group}/parameters.json')).read_text(encoding='utf-8'))['rows'])
-        self.expected={m['name']:.5*m.get('gain',1.0) for row in self.rows for m in row['morphs']}
-        assert len(self.expected)==28
+        catalog = json.loads((PACKAGE_ROOT/'Characters'/context().character/'face-controls.json').read_text(encoding='utf-8'))
+        self.rows = [{'control': b['ue_control']} for b in catalog['bindings']
+                     if b.get('enabled', True) and b['group'] in ('expressions', 'phonemes', 'eye_expressions')]
+        source = _fm_load_asset(catalog['reference']['control_rig'])
+        oracle = source.create_control_rig()
+        oracle.request_init()
+        oh = oracle.get_hierarchy()
+        assert len(oh.get_controls()) == len(source.get_hierarchy().get_controls())
+        oh.reset_pose_to_initial(unreal.RigElementType.CONTROL)
+        for name, value in self.saved.items():
+            oh.set_control_value(self.key(name), oh.make_control_value_from_vector(unreal.Vector(*value)))
+        assert oracle.execute('Forwards Solve')
+        curves = {n.find_pin('Curve').get_default_value().strip('"') for n in source.get_default_model().get_nodes()
+                  if hasattr(n, 'get_script_struct') and n.get_script_struct()
+                  and n.get_script_struct().get_name() == 'RigUnit_SetCurveValue'}
+        assert curves
+        self.expected_restored = {name: oh.get_curve_value(unreal.RigElementKey(type=unreal.RigElementType.CURVE, name=name))
+                                  for name in curves}
+        for row in self.rows:
+            oh.set_control_value(self.key(row['control']), oh.make_control_value_from_vector(unreal.Vector(4,0,0)))
+        assert oracle.execute('Forwards Solve')
+        self.expected = {name: oh.get_curve_value(unreal.RigElementKey(type=unreal.RigElementType.CURVE, name=name))
+                         for name in curves}
         self.phase='half';self.frames=0;self.result=dict(target=self.target.get_path_name(),host_kind=PREVIEW_HOST,pending=True,started_at=datetime.datetime.now().astimezone().isoformat(),preview_component=self.comp.get_path_name(),preview_host=self.live.get_path_name())
         self.time_before = self.live.get_absolute_time()
 
@@ -108,7 +128,7 @@ class RuntimeFacePreviewProbe:
                 if self.result['half_error']>1e-5:
                     self.result['stall_diagnosis']=self.diagnose_stall()
                 self.restore();self.phase='restored';self.frames=0;self.write();return
-            restored={m['name']:max(0,min(8,self.saved[row['control']][0]))/8*m.get('gain',1.0) for row in self.rows for m in row['morphs']}
+            restored=self.expected_restored
             err=max((self.h.get_vector_from_control_value(self.h.get_control_value(self.key(n)))-unreal.Vector(*v)).length() for n,v in self.saved.items())
             self.result.update(actual_restored=actual,expected_restored=restored,
                                restored_curve_error=max(abs(actual[n]-v) for n,v in restored.items()),
@@ -196,6 +216,14 @@ def prepare_pie_preview():
             actors.destroy_actor(actor)
             return
         unreal.unregister_slate_post_tick_callback(state['handle'])
+        from wrap_face_head_space import decoded
+        inventory = json.loads((runtime_path('Evidence')/'reference_inventory.json').read_text(encoding='utf-8'))
+        pose = inventory['binding_check'].get('target_initial_pose', {})
+        for bone in _runtime_face_preview_probe.h.get_bones():
+            if str(bone.name) in pose:
+                _runtime_face_preview_probe.h.set_global_transform(bone, decoded(pose[str(bone.name)]), False, True)
+        report['input_pose'] = 'original target reference pose injected into the live Rig hierarchy'
+        (runtime_path('Evidence')/'pie_preview_host.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
         _runtime_face_preview_probe.start()
     state['handle'] = unreal.register_slate_post_tick_callback(wait_for_host)
 

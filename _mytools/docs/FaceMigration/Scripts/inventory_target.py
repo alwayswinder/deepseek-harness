@@ -98,6 +98,8 @@ def summarize(asset, path, with_detail):
             'bones': len(hierarchy.get_bones()), 'curves': len(hierarchy.get_curves()),
             'curve_names': [str(c.name) for c in hierarchy.get_curves()],
             'controls': len(hierarchy.get_controls()), 'nodes': len(model.get_nodes()),
+            'animation_controls': sum(hierarchy.get_control_settings(k).animation_type != unreal.RigControlAnimationType.VISUAL_CUE
+                                      for k in hierarchy.get_controls()),
             'links': len(model.get_links()),
             'shape_libraries': [lib.get_path_name() for lib in asset.get_editor_property('shape_libraries')],
             'controls_detail': rows if with_detail else []}, hierarchy
@@ -126,6 +128,10 @@ def main():
     mesh_morphs = len(morphs)
     source_bones = bone_transforms(source_hierarchy)
     target_bones = bone_transforms(target_hierarchy)
+    written_curves = {node.find_pin('Curve').get_default_value().strip('"')
+                      for node in model_of(source).get_nodes()
+                      if hasattr(node, 'get_script_struct') and node.get_script_struct()
+                      and node.get_script_struct().get_name() == 'RigUnit_SetCurveValue'}
     drift = max(((max(abs(a - b) for a, b in zip(source_bones[n]['pos'], target_bones[n]['pos'])), n)
                  for n in source_bones if n in target_bones), default=(0.0, ''))
     # Binding equivalence is independent of the presence of authored controls.
@@ -140,6 +146,7 @@ def main():
     reference_mesh = source.get_preview_mesh()
     binding = {
         'bone_names_equal': [str(b.name) for b in source_hierarchy.get_bones()] == [str(b.name) for b in target_hierarchy.get_bones()],
+        'bone_name_sets_equal': set(source_bones) == set(target_bones),
         'bone_count_reference': reference['bones'], 'bone_count_target': target_before['bones'],
         'max_bone_position_drift_cm': round(float(drift[0]), 8), 'max_bone_position_drift_bone': drift[1],
         'mesh': str(mesh), 'mesh_morphs': mesh_morphs,
@@ -147,6 +154,8 @@ def main():
         'max_bone_rotation_quaternion_drift': rotation_drift,
         'max_bone_scale_drift': scale_drift,
         'reference_curves_not_in_mesh': sorted(set(reference['curve_names']) - set(morphs)),
+        'driven_curves': sorted(written_curves),
+        'driven_curves_not_in_mesh': sorted(written_curves - set(morphs)),
         'curves_only_in_reference': sorted(set(reference['curve_names']) - set(target_before['curve_names'])),
         'curves_only_in_target': sorted(set(target_before['curve_names']) - set(reference['curve_names'])),
         'target_has_solver': not (target_before['controls'] == 0 and target_before['nodes'] <= EMPTY_NODE_LIMIT),
@@ -160,13 +169,53 @@ def main():
                   and rotation_drift < 1e-6 and scale_drift < 1e-6
                   and not binding['reference_curves_not_in_mesh']
                   )
-    if not equivalent:
+    # 仅头部祖先的参考姿势变化可以由现有缓存/恢复求解空间处理。
+    # 面部局部参考、拓扑和网格必须独立一致，不能将新面部解剖误判为刚体配准。
+    from wrap_face_head_space import encoded, error, subtree, key
+    job = json.loads((PACKAGE_ROOT/'Jobs'/(context().job_id+'.json')).read_text(encoding='utf-8-sig'))
+    head_name = job['validation']['head_bone']
+    binding_config = job.get('binding', {})
+    local_tolerances = binding_config.get('local_tolerances', {'position_cm': 1e-4, 'rotation_deg': 1e-3, 'scale': 1e-5})
+    face = subtree(source_hierarchy, head_name)
+    ancestors = set()
+    parent = source_hierarchy.get_first_parent(key(head_name))
+    while source_hierarchy.contains(parent):
+        ancestors.add(str(parent.name))
+        parent = source_hierarchy.get_first_parent(parent)
+    local_differences = []
+    topology_equal = binding['bone_name_sets_equal']
+    if topology_equal:
+        for bone in source_hierarchy.get_bones():
+            a = source_hierarchy.get_first_parent(bone)
+            b = target_hierarchy.get_first_parent(bone)
+            topology_equal = topology_equal and str(a.name) == str(b.name) and a.type == b.type
+            errors = error(source_hierarchy.get_local_transform(bone, True), target_hierarchy.get_local_transform(bone, True))
+            if (errors[0] > local_tolerances['position_cm'] or errors[1] > local_tolerances['rotation_deg']
+                    or errors[2] > local_tolerances['scale']):
+                local_differences.append({'bone': str(bone.name), 'errors': errors})
+    model = model_of(source)
+    wrapper_present = all(model.find_node_by_name(name) for name in
+                          ('HSPACE_CacheAnimatedHead', 'HSPACE_NormalizeHead', 'HSPACE_RestoreAnimatedHead'))
+    head_frame_rebind = (binding_config.get('allow_head_space_rebind', False)
+                         and not equivalent and topology_equal and bool(local_differences)
+                         and all(row['bone'] in ancestors and row['errors'][2] < 1e-5 for row in local_differences)
+                         and wrapper_present and binding['same_preview_mesh']
+                         and bool(written_curves) and not binding['driven_curves_not_in_mesh'])
+    binding['head_frame_rebind'] = dict(eligible=bool(head_frame_rebind), head_bone=head_name,
+        face_bones=len(face), local_differences=local_differences, topology_equal=topology_equal,
+        local_tolerances=local_tolerances,
+        wrapper_present=bool(wrapper_present), canonical_initial_pose='reference rig; target mesh pose is an explicit current input')
+    binding['target_initial_pose'] = {str(k.name): encoded(target_hierarchy.get_global_transform(k, True))
+                                      for k in target_hierarchy.get_bones()}
+    if head_frame_rebind and not binding['target_has_solver']:
+        route = 'derive_with_head_space_binding'
+    elif not equivalent:
         route = 'rebind_and_refit'
     elif not binding['target_has_solver']:
         route = 'derive_from_reference_equivalence_check'
     else:
         route = 'incremental_repair_existing_target'
-    binding['verdict'] = 'equivalent' if equivalent else 'needs_rebinding'
+    binding['verdict'] = 'equivalent' if equivalent else ('head_frame_rebind' if head_frame_rebind else 'needs_rebinding')
 
     inventory = {
         'captured_at': datetime.datetime.now().astimezone().isoformat(),
@@ -201,6 +250,7 @@ def main():
         'route_reason': {
             'rebind_and_refit': '骨架、参考姿势或 Morph 集与示例不一致，按主流程第 3 节逐项重新绑定和定参',
             'derive_from_reference_equivalence_check': '目标骨架/网格/Morph 与示例一致且尚无求解，继承示例控制设计与求解，只需重新核验 Max 动作',
+            'derive_with_head_space_binding': '仅头部祖先参考姿势不同，面部局部参考与拓扑一致；保留示例求解参考空间，以目标原始姿势作为当前输入验证缓存/恢复及头部跟随',
             'incremental_repair_existing_target': '目标已有内容，先比较差异再增量修复；不得执行空目标构建器',
         }[route],
         'mapping': {'bindings': len(bindings), 'groups': groups,
@@ -209,8 +259,9 @@ def main():
                     'reference_controls_not_in_table': sorted(reference_controls - {b['ue_control'] for b in bindings})},
         'curve_sets': {'reference': reference['curve_names'], 'target_before': target_before['curve_names'],
                        'curves_dropped_by_build': binding['curves_only_in_target']},
-        'per_group': [{'group': g, 'roles': len(r), 'action': 'inherit_reference_design' if equivalent else 'rebind',
-                       'refit': not equivalent} for g, r in groups.items()],
+        'per_group': [{'group': g, 'roles': len(r), 'action': 'inherit_reference_design' if equivalent else
+                      ('head_frame_rebind' if head_frame_rebind else 'rebind'),
+                       'refit': not (equivalent or head_frame_rebind)} for g, r in groups.items()],
     }
     (E / 'adaptation_report.json').write_text(json.dumps(adaptation, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps({'route': route, 'verdict': binding['verdict'],

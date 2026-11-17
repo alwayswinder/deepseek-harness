@@ -157,6 +157,12 @@ Max 抽检要按骨分别报数。2026-11-10 第二轮实测同一控制（`CTRL
 
 ## 6. 证据保存
 
+### PIE 启动崩溃时的处理
+
+`probe_runtime_face_morph_preview.py` 返回“Scheduled”只代表已安排测试。必须读取同任务报告的 `pending=false`、`passed=true`；编辑器退出、连接拒绝、报告缺失或仍 pending 都不能算通过。停止后续预览和保存，保留崩溃目录、日志、任务阶段与最后保存摘要；重启后先核对 PID、端口、磁盘包和临时 Actor，再决定恢复步骤，不重新构建已有目标。
+
+Test 任务在 UE 5.8.4 启动模拟时触发 FSR 的 `FFXFrameInterpolation::GetRHIViewport()` 断言 `SlateWindow.IsValid()`（`FFXFrameInterpolation.cpp:1336`），发生在正常帧探测初始化之前。项目源码的 `OnViewportCreatedHandler_SetCustomPresent()` 无条件查询视口，不能把关闭插帧 CVar 当作已验证的修复。该兼容问题解决前，任务 `preview.blocked_reason` 保留原因，两个预览入口会在修改资产、创建 Actor 或启动 PIE 前拒绝执行。兼容性处理完成后才移除阻止原因并重新取证；本次失败不由历史 PIE 通过报告替代。具体状态见 [Test 角色记录](../../Characters/Test/README.md)。
+
 2026-11-06 左右眼球组合复核发现，`FRigComputedTransform::Equals` 默认以 `0.0001` 比较变换各分量；微小输入可能不触发层级写入。应另测连续切换与独立实例，记录缓存残差，并明确检查其符合引擎容差。独立实例的公式对照仍保持严格精度，不能直接放宽全部测试。实测及代码入口见 [眼球控制](../Recipes/EyeballControls.md)。
 
 每份报告写明日期、源资产、输入、预期值、实际值、误差与未测范围。本次报告和必要图片写到目标项目 `Saved/FaceMigration/Jobs/<任务>/Current/Evidence/`。原始采样、回归快照和图导出写 `Saved/FaceMigration/Characters/<角色>/`，不写回工具包；包内只保留 `parameters.json`、`bone_names.txt` 和小报告。正式采纳的新参数归入 `Characters/<角色>/Evidence/` 的 `parameters.json`；Seven 历史证据受摘要保护，已移出的批次记录在 `preservation.manifest.json` 的 `moved_out`。临时调试写 Current/Temp，不自动复制整套输入或新增一套运行文档。

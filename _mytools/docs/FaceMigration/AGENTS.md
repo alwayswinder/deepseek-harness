@@ -1,10 +1,10 @@
 # 面部迁移工具包入口
 
-内部推理、计划和中间分析使用中文。此包可整体复制到其他项目的 `Tools/FaceMigration/`，不依赖原项目绝对路径。新角色从[任务单](TASK.md)开始：用户在那一份表里填示例 CR、目标 CR 和 Max 控制器名单，AI 据此生成 `Jobs/`、`Characters/<角色>/face-controls.json` 并执行流程。然后读[使用说明](README.md)，按[迁移流程](Docs/AGENTS.md)执行。最终画面由用户确认，不使用 computer-use。
+内部推理、计划和中间分析使用中文。此包可整体复制到其他项目的 `Tools/FaceMigration/`，不依赖原项目绝对路径。新角色从[任务单](TASK.md)开始：用户在那一份表里填角色名和 Max 控制器名单，示例 CR 与目标 CR 的完整路径在开始任务的对话里给出，AI 据此生成 `Jobs/`、`Characters/<角色>/face-controls.json` 并执行流程。然后读[使用说明](README.md)，按[迁移流程](Docs/AGENTS.md)执行。最终画面由用户确认，不使用 computer-use。
 
 ## 维护规则
 
-- **后续角色产出目录固定**：以 `/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression` 为只读示例，输出为 `<父目录>/<角色名>ECR/CR_<角色名>_Expression`；主 CR 直接放角色包根目录，其他新生成或复制的角色专用依赖全部放同包 `ToolsPanel/`，依赖沿用示例功能名。完整规范与当前脚本路径适配缺口见 [角色产出目录与命名](Docs/Workflow/Build.md#角色产出目录与命名2026-11-17-起)。旧 job、证据与配方中的路径只作历史，不作为新任务默认值；仅整理文档时不修改脚本或 UE 资产。
+- **后续角色产出目录按规范**：只读示例由用户在开始任务的对话里指定，不在文档中预填资产路径；输出默认为 `<父目录>/<角色名>ECR/CR_<角色名>_Expression`；主 CR 直接放角色包根目录，其他新生成或复制的角色专用依赖全部放同包 `ToolsPanel/`，依赖沿用示例功能名。完整规范与当前脚本路径适配缺口见 [角色产出目录与命名](Docs/Workflow/Build.md#角色产出目录与命名2026-11-17-起)。旧 job、证据与配方中的路径只作历史，不作为新任务默认值；仅整理文档时不修改脚本或 UE 资产。
 - 正式入口是 `python Tools/FaceMigration/migrate.py`，命令从目标项目根运行。离线检查用 `check`；调用现有脚本用 `run <文件名> --job <任务名>`。不要重新创建项目根 `Docs` / `Scripts`。
 - 接任务单的八个固定入口见 [工具选择](Docs/Workflow/Tools.md#主流程入口按顺序执行全部在包内)：`check_character_task_sheet.py` → `inventory_target.py` → `build_runtime_face_controls.py` → `verify_runtime_face_controls.py` → `crosscheck_max_control.py` → `finalize_runtime_face_controls.py` → `probe_runtime_face_morph_preview.py` → `assemble_delivery.py`。新角色照这串执行；需要新能力时扩展这些共用脚本，不再往任务 `Temp/` 写一次性入口。
 - 同一功能修改共用脚本；换项目、Rig 路径用 `Jobs/*.json`。参数化路径不代表任意角色的求解已经通用化；新角色仍须重新采样、拟合、补齐名称映射和验证。

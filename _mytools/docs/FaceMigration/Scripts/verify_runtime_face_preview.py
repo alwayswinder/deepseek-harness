@@ -19,6 +19,8 @@ from face_paths import PACKAGE_ROOT, context, runtime_path
 _preview_job = json.loads((PACKAGE_ROOT / 'Jobs' / (context().job_id + '.json')).read_text(encoding='utf-8-sig'))
 PREVIEW_HOST = _preview_job.get('preview', {}).get('host', 'asset_editor')
 assert PREVIEW_HOST in ('asset_editor', 'pie'), PREVIEW_HOST
+if _preview_job.get('preview', {}).get('blocked_reason'):
+    raise RuntimeError('预览已阻止：' + _preview_job['preview']['blocked_reason'])
 
 
 class RuntimeFaceFrameValidation:
@@ -43,7 +45,13 @@ class RuntimeFaceFrameValidation:
         self.temp = self.asset.get_editor_asset().create_rig_vm_host()
         self.temp.request_init()
         self.th = self.temp.get_hierarchy()
-        assert len(self.th.get_bones()) == len(self.h.get_bones()) == 149
+        assert [str(k.name) for k in self.th.get_bones()] == [str(k.name) for k in self.h.get_bones()]
+        from wrap_face_head_space import decoded
+        inventory = json.loads((runtime_path('Evidence')/'reference_inventory.json').read_text(encoding='utf-8'))
+        for bone in self.th.get_bones():
+            tf = inventory['binding_check'].get('target_initial_pose', {}).get(str(bone.name))
+            if tf:
+                self.th.set_global_transform(bone, decoded(tf), False, True)
         self.saved = {str(k.name): self.h.get_vector_from_control_value(self.h.get_control_value(k)).to_tuple() for k in self.h.get_controls()}
         self.cases = [('neutral', {})]
         mixed = {}
@@ -57,6 +65,7 @@ class RuntimeFaceFrameValidation:
             self.cases.append((str(ck.name), {str(ck.name): values}))
             mixed[str(ck.name)] = values
         assert len(self.cases) == 73
+        self.control_count = len(self.cases) - 1
         validation = _preview_job.get('validation', {})
         self.head = (unreal.RigElementKey(type=unreal.RigElementType.BONE, name=validation['head_bone'])
                      if validation.get('head_bone') else None)
@@ -172,7 +181,7 @@ class RuntimeFaceFrameValidation:
                 self.write()
                 self.begin_case()
                 return
-            self.result.update(pending=False, passed=all(r['passed'] for r in self.rows), controls=72, cases=len(self.rows), bones_per_case=149, curves_per_case=28,
+            self.result.update(pending=False, passed=all(r['passed'] for r in self.rows), controls=self.control_count, cases=len(self.rows), bones_per_case=len(self.th.get_bones()), curves_per_case=len(self.th.get_curves()),
                                restored_input_error=max((self.h.get_vector_from_control_value(self.h.get_control_value(k))-unreal.Vector(*self.saved[str(k.name)])).length() for k in self.h.get_controls()),
                                captured_at=datetime.datetime.now().astimezone().isoformat())
             self.result['passed'] = self.result['passed'] and self.result['restored_input_error'] < 1e-6
@@ -181,7 +190,7 @@ class RuntimeFaceFrameValidation:
             if PREVIEW_HOST == 'pie':
                 worst = {name: max(row[name] for row in self.rows) for name in self.result['tolerance']}
                 report = dict(target=self.asset.get_path_name(), passed=self.result['passed'] and self.preview['passed'],
-                              host=self.comp.get_path_name(), controls_set=72, cases=len(self.rows),
+                              host=self.comp.get_path_name(), controls_set=self.control_count, cases=len(self.rows),
                               mesh_curves_equal_rig=worst['curve'] <= self.result['tolerance']['curve'],
                               rig_clock_advancing=all(r['time_advanced'] for r in self.rows),
                               result=worst, restored_input_error=self.result['restored_input_error'],

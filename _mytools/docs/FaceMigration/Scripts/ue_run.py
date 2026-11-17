@@ -68,6 +68,7 @@ def bootstrap(script, project, config):
     """建立显式上下文；脚本内容不复制到磁盘，嵌套导入使用同一工具包。"""
     return '\n'.join([
         'import sys, os',
+        'from pathlib import Path as _fm_Path',
         'sys.dont_write_bytecode = True',
         f'_fm_scripts = {str(PACKAGE_ROOT / "Scripts")!r}',
         'if _fm_scripts in sys.path: sys.path.remove(_fm_scripts)',
@@ -79,11 +80,36 @@ def bootstrap(script, project, config):
         f'assert os.path.normcase(os.path.realpath(unreal.Paths.project_dir())) == os.path.normcase(os.path.realpath({str(project)!r})), "UE project mismatch"',
         f'_fm_script = {str(script)!r}',
         '_fm_namespace = {"__name__": "__main__", "__file__": _fm_script}',
-        'exec(compile(open(_fm_script, encoding="utf-8-sig").read(), _fm_script, "exec"), _fm_namespace)',
+        'exec(compile(_fm_Path(_fm_script).read_text(encoding="utf-8-sig"), _fm_script, "exec"), _fm_namespace)',
     ])
 
 
-def execute(script, project, config, engine_root=None, timeout=20, node_id=None):
+def execute_bridge(script, project, config, port, timeout):
+    """通过显式指定的本机 UE_MCP_Bridge 执行；项目身份在任何脚本操作前核验。"""
+    from websockets.sync.client import connect as connect_websocket
+    if not 1 <= port <= 65535:
+        raise ValueError('UE_MCP_Bridge 端口必须为 1..65535')
+    with connect_websocket(f'ws://127.0.0.1:{port}', open_timeout=timeout, ping_interval=None,
+                           max_size=16 * 1024 * 1024) as connection:
+        connection.send(json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'execute_python',
+            'timeoutMs': timeout * 1000,
+            'params': {'code': bootstrap(script, project, config)}}))
+        response = json.loads(connection.recv(timeout=timeout))
+    if response.get('id') != 1:
+        raise RuntimeError('UE_MCP_Bridge 响应 ID 不匹配；执行结果未知，先检查报告和资产状态')
+    if 'error' in response:
+        raise RuntimeError(json.dumps(response['error'], ensure_ascii=False))
+    result = response['result']
+    if result.get('output'):
+        print(result['output'])
+    if not result['success']:
+        print(result.get('result', 'UE Python 执行失败'), file=sys.stderr)
+    return bool(result['success'])
+
+
+def execute(script, project, config, engine_root=None, timeout=20, node_id=None, bridge_port=None):
+    if bridge_port is not None:
+        return execute_bridge(script, project, config, bridge_port, timeout)
     folder = engine_python(project, engine_root)
     sys.path.insert(0, str(folder))
     remote = importlib.import_module('remote_execution')

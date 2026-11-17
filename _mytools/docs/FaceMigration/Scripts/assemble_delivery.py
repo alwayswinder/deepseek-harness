@@ -66,17 +66,20 @@ def main():
                              'problems': len(sheet['problems']) if sheet else None,
                              'warnings': len(sheet.get('warnings', [])) if sheet else 0}) if sheet
                     else segment('task_sheet', False, {}, skipped=True, reason='未运行 check_character_task_sheet.py'))
-    if final:
+    if final and inventory:
+        expected = inventory['reference']
+        expected_animation_controls = expected['animation_controls']
         segments.append(segment('structure',
-                                final['animation_controls'] == 72 and final['visual_cues'] == 2
-                                and final['controls'] == 74 and final['bones'] == 149 and final['curves'] == 28,
+                                final['animation_controls'] == expected_animation_controls
+                                and final['controls'] == expected['controls']
+                                and final['bones'] == expected['bones'] and final['curves'] == expected['curves'],
                                 {k: final[k] for k in ('controls', 'animation_controls', 'visual_cues', 'bones',
                                                        'curves', 'nodes', 'links')}))
     else:
         segments.append(segment('structure', False, {}, skipped=True,
                                 reason='没有 final_state.json；先运行 finalize_runtime_face_controls.py'))
     if adaptation:
-        segments.append(segment('binding_probe', adaptation['binding_probe']['verdict'] == 'equivalent',
+        segments.append(segment('binding_probe', adaptation['binding_probe']['verdict'] in ('equivalent', 'head_frame_rebind'),
                                 {'verdict': adaptation['binding_probe']['verdict'], 'route': adaptation['route'],
                                  'bone_drift_cm': adaptation['binding_probe']['max_bone_position_drift_cm'],
                                  'curves_dropped_by_build': adaptation['curve_sets']['curves_dropped_by_build']}))

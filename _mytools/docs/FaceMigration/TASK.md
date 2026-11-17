@@ -1,34 +1,35 @@
 # 面部迁移任务单
 
-> **只改这一份。** 编辑下面第 1、2 节（第 3 节可选），保存，把本文件路径交给 AI。AI 按第 5 节协议生成配置并执行流程，不需要另写说明。
+> **只改这一份。** 编辑第 1 节的角色名与第 2 节的控制器名单（第 3 节可选），保存，把本文件路径交给 AI。示例 CR 与目标 CR 的完整资产路径不在本表填写，由你在开始任务的对话里直接给出；AI 按第 5 节协议生成配置并执行流程，不需要另写说明。
 > 第 2 节默认值就是 Seven 当前状态；新角色逐行替换 Max 控制器名即可，其余列一般不动。
 
 ## 0. 这份表的作用
 
-| 内容                    | 谁维护                       | 写到哪                                                           |
-| --------------------- | ------------------------- | ------------------------------------------------------------- |
-| 示例 CR、目标 CR、网格、Max 场景 | 用户，本表第 1 节                | AI 生成 `Jobs/<角色>.json` 与 `Characters/<角色>/face-controls.json` |
-| 72 个 Max 控制器名         | 用户，本表第 2 节                | 同上，并替换采样脚本里的硬编码名单                                             |
-| 骨骼/Morph 映射           | 一般留空；新角色与 Seven 不同时填第 3 节 | AI 生成角色证据目录下的映射                                               |
+| 内容                       | 谁维护                                          | 写到哪                                                               |
+| -------------------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
+| 角色名、目标网格、Max 场景 | 用户，本表第 1 节                               | AI 生成 `Jobs/<角色>.json` 与 `Characters/<角色>/face-controls.json` |
+| 示例 CR、目标 CR           | 用户，开始任务的对话里给出完整 `/Game/...` 路径 | 不写进本表；AI 按对话给出的路径写入上面两份配置                      |
+| 72 个 Max 控制器名         | 用户，本表第 2 节                               | 同上，并替换采样脚本里的硬编码名单                                   |
+| 骨骼/Morph 映射            | 一般留空；新角色与 Seven 不同时填第 3 节        | AI 生成角色证据目录下的映射                                          |
 
 不要在本表之外再维护第二份名单。`Characters/Seven/face-controls.json` 是示例角色的已填版本，不是新角色的配置位置。
 
 ## 1. 任务
 
-| 字段            | 值（可直接改）                                                       | 说明                                         |
-| ------------- | ------------------------------------------------------------- | ------------------------------------------ |
-| 角色名           | Seven01 | 新角色填新名字；用于 `Characters/<角色>/` 与 `Jobs/`    |
-| 示例 ControlRig | `/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression` | 只读，提供成熟控制设计与求解                             |
-| 示例类型          | `ControlRigBlueprint`                                         | 换成 `ControlRigRuntimeAsset` 时同样可读，但 API 不同 |
-| 目标 ControlRig | `/Game/_MyTest/Mouth/Seven01ECR/CR_Seven01_Expression` | 实际输出资产，需已存在；父目录以 `/Game/` 开头，必须与示例不同 |
-| 目标依赖目录 | `/Game/_MyTest/Mouth/Seven01ECR/ToolsPanel` | 从目标 CR 所在目录推导，其他角色专用依赖全部放这里 |
-| 目标类型          | `ControlRigRuntimeAsset`                                      | 空壳可直接构建；已有内容走增量                            |
-| 目标网格          | `/Game/_MyTest/Mouth/Mesh/Seven`                              | 决定骨骼、Morph 与预览                             |
-| Max 场景        | `D:/Download/Seven_Skin_New.max`                              | 执行前确认编辑器里打开的正是它                            |
-| 采样帧           | 0                                                             | 中性帧                                        |
-| 任务 ID         | seven01-taskflow-20261117 | 换资产必须换 ID，避免读旧结果                           |
+| 字段            | 值（可直接改）                   | 说明                                                                                             |
+| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 角色名          | Test                          | 新角色填新名字；用于 `Characters/<角色>/` 与 `Jobs/`                                             |
+| 示例 ControlRig | （对话中指定）                   | 本表不填资产路径；开始任务时由用户给出完整路径。只读，提供成熟控制设计与求解                     |
+| 示例类型        | `ControlRigBlueprint`            | 换成 `ControlRigRuntimeAsset` 时同样可读，但 API 不同                                            |
+| 目标 ControlRig | （对话中指定）                   | 本表不填资产路径；开始任务时由用户给出完整路径，需已存在，父目录以 `/Game/` 开头，必须与示例不同 |
+| 目标依赖目录    | （由目标 CR 推导）               | 取目标 CR 所在目录下的 `ToolsPanel`；其他角色专用依赖全部放这里                                  |
+| 目标类型        | `ControlRigRuntimeAsset`         | 空壳可直接构建；已有内容走增量                                                                   |
+| 目标网格        | `/Game/SevGame/Art/Player/Seven/Mesh/Seven` | 决定骨骼、Morph 与预览                                                                           |
+| Max 场景        | `D:/Download/Seven_Skin_New.max` | 执行前确认编辑器里打开的正是它                                                                   |
+| 采样帧          | 0                                | 中性帧                                                                                           |
+| 任务 ID         | test-taskflow-20261117        | 换资产必须换 ID，避免读旧结果                                                                    |
 
-目录和命名按[角色产出规范](Docs/Workflow/Build.md#角色产出目录与命名2026-11-17-起)：根目录为角色名加 `ECR`，CR 名为 `CR_<角色名>_Expression`；`ToolsPanel` 内沿用示例依赖名。若目标角色仍是 Seven，须另选父目录，不能覆盖当前只读 SevenECR 示例。旧任务中的 `TMp/NewControlRigRuntimeAsset` 不再作为新目标默认值。
+CR 的完整路径以用户在对话中给出的为准；用户未指定命名时按[角色产出规范](Docs/Workflow/Build.md#角色产出目录与命名2026-11-17-起)默认：根目录为角色名加 `ECR`，CR 名为 `CR_<角色名>_Expression`，`ToolsPanel` 内沿用示例依赖名。若目标角色仍是 Seven，须另选父目录，不能覆盖只读示例。旧任务中的 `TMp/NewControlRigRuntimeAsset` 不再作为新目标默认值。
 
 ## 2. 3ds Max 控制器名称（默认 = Seven 当前）
 
@@ -123,20 +124,20 @@
 
 ## 4. 提交前的自检
 
-- [ ] 目标 CR 已在编辑器中存在，类型与本表一致
-- [ ] 根目录为 `<角色名>ECR`，主资产为 `CR_<角色名>_Expression`，其他角色专用依赖在 `ToolsPanel/`；示例与目标路径不同
+- [ ] 对话中给出的目标 CR 已在编辑器中存在，类型与本表一致
+- [ ] 目标 CR 与示例路径不同；角色专用依赖放目标 CR 同目录的 `ToolsPanel/`；未特别指定命名时根目录为 `<角色名>ECR`、主资产为 `CR_<角色名>_Expression`
 - [ ] Max 里打开的确实是指定场景，当前帧为采样帧
 - [ ] 第 2 节没有残留旧角色的控制器名
 - [ ] 目标资产已备份（AI 会在执行前再做一次磁盘与内存备份）
 
 ## 5. AI 执行协议（用户不要手改本节）
 
-1. **读表**：解析第 1、2 节；第 3 节为空则按“同名匹配”处理。
+1. **读表**：解析第 1、2 节；第 3 节为空则按“同名匹配”处理。示例 CR 与目标 CR 取用户在对话中给出的完整路径，不从本表读取。
 2. **建配置**：
-   - `Characters/<角色名>/face-controls.json`：以本表第 2 节生成 `bindings[]`（`role_id`、`group`、`label`、`side`、`ue_control`、`max_name`、`enabled`），`source`/`target`/`reference` 取自第 1 节。
+   - `Characters/<角色名>/face-controls.json`：以本表第 2 节生成 `bindings[]`（`role_id`、`group`、`label`、`side`、`ue_control`、`max_name`、`enabled`），`source`/`target`/`reference` 取自对话给出的 CR 路径与本表第 1 节的类型、网格、Max 场景。
    - `Jobs/<角色名>-<日期>.json`：`job_id` 独立，`character` 用第 1 节角色名，`asset_overrides` 至少包含
-     `"/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset": "<第 1 节目标 CR>"`；目标不同就用新 job，不复用旧结果。
-   - 示例旧固定路径 `/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation` 映射到第 1 节当前示例。空目标派生入口已复制并重绑定面板依赖，轨道、预览和验证共用 `rig_dependency_folder()`；示例依赖的只读盘点保持指向示例自身，不能把示例与目标资源映射混为一份。使用旧部位配方时，仍须按实际调用列出依赖的精确旧包路径 → 本角色 `ToolsPanel/` 路径。`asset_overrides` 不支持目录前缀替换，不能仅加一个目录键就运行旧入口。
+     `"/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset": "<对话中给出的目标 CR>"`；目标不同就用新 job，不复用旧结果。
+   - 示例旧固定路径 `/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation` 映射到对话中给出的示例。空目标派生入口已复制并重绑定面板依赖，轨道、预览和验证共用 `rig_dependency_folder()`；示例依赖的只读盘点保持指向示例自身，不能把示例与目标资源映射混为一份。使用旧部位配方时，仍须按实际调用列出依赖的精确旧包路径 → 本角色 `ToolsPanel/` 路径。`asset_overrides` 不支持目录前缀替换，不能仅加一个目录键就运行旧入口。
    - 将第 3 节头部骨和身体测试动画写入任务的 `validation.head_bone`、`validation.animation`；没有动画时须明确记录实际动画未测，不能用参考姿势通过代替。
 3. **改采样脚本**：把下列文件里硬编码的 Max 对象名替换成第 2 节的值（骨骼名在第 3 节）。
    `probe_lip_samples.ms`、`probe_cheek_samples.ms`、`probe_mouth_samples.ms`、`probe_nose_samples.ms`、`probe_nose_side_samples.ms`、`probe_chin_samples.ms`、`probe_eyeball_samples.ms`、`probe_gaze_master_samples.ms`、`probe_xyp_samples.ms`、`probe_expression_sliders.ms`、`probe_phoneme_sliders.ms`、`probe_eye_expression_sliders.ms`，眉毛与上眼皮另改 `probe_animcraft_*.ms`、`probe_syp*.ms` 里的对象名与骨骼名。

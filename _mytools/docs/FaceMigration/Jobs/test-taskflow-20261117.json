@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "job_id": "test-taskflow-20261117",
+  "character": "Test",
+  "legacy_runtime_adapter": false,
+  "asset_overrides": {
+    "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset": "/Game/Developers/StoryEditorExamples/Expression/test/CR_Test_Expression",
+    "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation": "/Game/Developers/StoryEditorExamples/Expression/SevenECR/CR_Seven_Expression"
+  },
+  "retention": {
+    "keep_backups_per_group": 3
+  },
+  "source": {
+    "max_scene": "D:/Download/Seven_Skin_New.max"
+  },
+  "crosscheck": {
+    "name": "lid",
+    "control": "CTRL_EYE_LID_R",
+    "max_node": "SYP_R001",
+    "morph_node": "Seven_Head",
+    "max_channel": "position",
+    "max_controller_index": 2,
+    "max_axis": 1,
+    "ui_axis": 2,
+    "ui_scale": 5.714285714285714,
+    "max_values": [
+      0.0,
+      -0.4375,
+      -0.875,
+      -1.3125,
+      -1.75
+    ],
+    "bones": [
+      "Bone028",
+      "Bone027",
+      "Eye_R"
+    ],
+    "primary_bone": "Bone028",
+    "tolerance": {
+      "primary_position_cm": 0.05,
+      "primary_rotation_deg": 0.15
+    },
+    "note": "right upper lid: Max SYP_R001 Position_List slot 2 axis Y (-1.75..0) maps to UE CTRL_EYE_LID_R Z (0..-10), factor 10/1.75. Bone028 is the driven lid bone, Bone027 a linked secondary bone."
+  },
+  "notes": "Independent new-character workflow for the exact reference and target supplied in conversation on 2026-11-17. No historical validation outcomes are reused.",
+  "preview": {
+    "prepare": true,
+    "host": "pie",
+    "blocked_reason": "2026-11-17 PIE viewport creation crashed in FFXFrameInterpolation::GetRHIViewport (SlateWindow.IsValid, line 1336). Resolve the viewport/plugin compatibility before retrying; no normal-frame preview passed."
+  },
+  "validation": {
+    "head_bone": "head001"
+  },
+  "binding": {
+    "allow_head_space_rebind": true,
+    "local_tolerances": {
+      "position_cm": 0.001,
+      "rotation_deg": 0.01,
+      "scale": 1e-05
+    }
+  }
+}

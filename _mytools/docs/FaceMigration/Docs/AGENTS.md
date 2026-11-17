@@ -4,17 +4,19 @@
 
 ## 从这里开始
 
-1. 读取[任务单](../TASK.md)：用户在其中写明示例 CR、目标 CR、网格、Max 场景和 72 个控制器名；按它的第 5 节协议生成任务配置。没有填写任务单时，再读[迁移配置](migration.config.json)确认当前角色和目标。
+1. 读取[任务单](../TASK.md)：用户在其中写明角色名、网格、Max 场景和 72 个控制器名；示例 CR 与目标 CR 由用户在开始任务的对话里给出完整路径。按第 5 节协议生成任务配置。没有填写任务单时，再读[迁移配置](migration.config.json)确认当前角色和目标。
 2. 执行唯一主流程 [Workflow/Build.md](Workflow/Build.md)。名称表填写用 [Markdown 模板](Templates/CharacterFaceControllers.md)或 [JSON 模板](Templates/CharacterFaceControllers.json)，二选一即可。
 3. 按需阅读 [探测与实现方法](Workflow/MigrationGuide.md)、[工具和脚本索引](Workflow/Tools.md)、[验证规范](Workflow/Validation.md)。
 4. 只读取本次涉及的部位配方与证据。Seven 的当前资产、计数和已知边界统一见 [角色记录](../Characters/Seven/README.md)，完整名称见 [名称总表](Reference/ControllerNames.md)。
 
 ## 执行约定
 
-- 后续输出遵守[角色产出目录与命名](Workflow/Build.md#角色产出目录与命名2026-11-17-起)：`<父目录>/<角色名>ECR/CR_<角色名>_Expression`，其余角色专用依赖全部在同包 `ToolsPanel/`。当前只读示例是 `/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression`。下列带日期的记录、旧 job 和角色表保留当时路径；新任务按 TASK.md 重新生成独立配置，并先适配共用脚本遗留路径。
+- Test 的最新运行在 PIE 视口创建阶段因 FSR 断言崩溃，见 [Test 角色记录](../Characters/Test/README.md)。该任务 `preview.blocked_reason` 保留时禁止启动预览；崩溃恢复与取证按[验证规范](Workflow/Validation.md#pie-启动崩溃时的处理)执行，其他角色的历史 PIE 通过不适用于本任务。
+
+- 后续输出遵守[角色产出目录与命名](Workflow/Build.md#角色产出目录与命名2026-11-17-起)：`<父目录>/<角色名>ECR/CR_<角色名>_Expression`，其余角色专用依赖全部在同包 `ToolsPanel/`。只读示例由用户在开始任务的对话里指定，不在文档中预填。下列带日期的记录、旧 job 和角色表保留当时路径；新任务按 TASK.md 重新生成独立配置，并先适配共用脚本遗留路径。
 - 最新新角色流程验证为 `seven01-taskflow-20261117`，目标是 `/Game/_MyTest/Mouth/Seven01ECR/CR_Seven01_Expression`。空壳独立探测为绑定等价，1175 组迁移对照、显示契约、每阶段 592 组动画空间检查、Max 代表控制抽检和 PIE 81 组正常帧通过；CR 与 ToolsPanel 全部 8 个依赖已保存重载，目标干净、输入恢复。最终画面/拾取、身体动画播放宿主和 Sequencer 待验收，详见[Seven01 记录](../Characters/Seven01/README.md)及本任务 `Current/Evidence/flow_findings.md`。`seven-taskflow-20261112` 和下方 2026-11-10 的“当前任务”保留为历史批次。
 
-- **分别确认示例、Max 源和输出目标。** 当前示例是 `/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression`，类型 `ControlRigBlueprint`；Max 核对真实动作，示例提供成熟控制设计。2026-11-10 第二轮按 TASK.md 协议在空壳 `/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset`（`ControlRigRuntimeAsset`，149 骨、87 曲线、0 控制、1 节点）上完成构建；第一轮目标 `.../TMp/NewControlRigRuntimeAsset1` 已不在磁盘，只能作为历史记录引用。流程要求把示例、当前 Max 角色和新目标当作三个不同角色处理，见[新角色与示例骨架相同的情况](Workflow/Build.md#新角色与示例骨架相同的情况)。该批次技术检查分段记录：结构、示例→目标、显示契约、Max 抽检、保存重载通过；正常帧预览未通过；用户画面待确认。历史任务为 `seven-taskflow-20261110`，问题清单在该任务的 `Current/Evidence/flow_findings.md`。历史运行资料见 [运行时资产记录](../Characters/Seven/Evidence/SevenRuntime/README.md)，当前状态见[角色记录](../Characters/Seven/README.md)。
+- **分别确认示例、Max 源和输出目标。** 示例由用户在开始任务的对话里指定完整路径，常见类型为 `ControlRigBlueprint` 或 `ControlRigRuntimeAsset`；Max 核对真实动作，示例提供成熟控制设计。2026-11-10 第二轮按 TASK.md 协议在空壳 `/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset`（`ControlRigRuntimeAsset`，149 骨、87 曲线、0 控制、1 节点）上完成构建；第一轮目标 `.../TMp/NewControlRigRuntimeAsset1` 已不在磁盘，只能作为历史记录引用。流程要求把示例、当前 Max 角色和新目标当作三个不同角色处理，见[新角色与示例骨架相同的情况](Workflow/Build.md#新角色与示例骨架相同的情况)。该批次技术检查分段记录：结构、示例→目标、显示契约、Max 抽检、保存重载通过；正常帧预览未通过；用户画面待确认。历史任务为 `seven-taskflow-20261110`，问题清单在该任务的 `Current/Evidence/flow_findings.md`。历史运行资料见 [运行时资产记录](../Characters/Seven/Evidence/SevenRuntime/README.md)，当前状态见[角色记录](../Characters/Seven/README.md)。
 - **继承控制设计后再适配。** 同角色优先复制、完整类型迁移或增量修复，保留形状、颜色、面板轨道、参考图、操作轴和行程；新角色保留设计并重新绑定、定参。默认不做全量拟合和统一默认形状重建。示例资产保持不变，目标已有内容时不为运行空目标构建器而先清空。
 - 名称表是功能入口映射。新角色必须重新探测骨骼、Morph、活动控制层、限位、空间、枢轴和增益；不复制 Seven 的绝对坐标或数值。现有脚本大多固定 Seven，适配目标与依赖后再执行，当前没有读取表格即通用一键生成的程序。
 - 修改前备份磁盘包和内存状态；采样保存并恢复帧、底层控制值和预览输入，异常时同样恢复并读回。保留已有控制接口、执行链和骨骼 / 曲线输出。

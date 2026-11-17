@@ -62,7 +62,9 @@ def instance(asset):
     if not h.get_all_keys():
         h.copy_hierarchy(asset.get_hierarchy())
         inst.request_init()
-    assert len(h.get_bones()) == 149 and len(h.get_curves()) == 28
+    expected = asset.get_hierarchy()
+    for getter in ('get_bones', 'get_curves', 'get_controls'):
+        assert [str(k.name) for k in getattr(h, getter)()] == [str(k.name) for k in getattr(expected, getter)()], getter
     names = {str(k.name) for k in h.get_controls()}
     assert len(names - {RAIL_CONTROL}) == 73
     return inst, h
@@ -154,10 +156,14 @@ def structural_and_transfer(phase):
     curve_names={str(k.name) for k in curve_keys}
     mesh=target.asset.get_editor_property('preview_skeletal_mesh')
     morphs={str(m) for m in mesh.get_all_morph_target_names()}
-    assert curve_names<=morphs,curve_names-morphs
+    written_curves = {n.find_pin('Curve').get_default_value().strip('"') for n in tm.get_nodes()
+                      if hasattr(n, 'get_script_struct') and n.get_script_struct()
+                      and n.get_script_struct().get_name() == 'RigUnit_SetCurveValue'}
+    assert written_curves <= curve_names and written_curves <= morphs, written_curves - morphs
     report=dict(captured_at=datetime.datetime.now().astimezone().isoformat(),target=TARGET,phase=phase,passed=True,
-                animation_controls=72,visual_cues=len(th.get_controls())-72,bones=149,curves=28,nodes=len(tm.get_nodes()),links=len(tm.get_links()),
+                animation_controls=len(actual),visual_cues=len(th.get_controls())-len(actual),bones=len(bone_keys),curves=len(curve_keys),nodes=len(tm.get_nodes()),links=len(tm.get_links()),
                 execution_edges=len(edges),bone_writes=len(driven),cases=len(cases),coverage=coverage,worst=worst,
+                driven_curves=sorted(written_curves), non_morph_curves=sorted(curve_names-morphs),
                 curve_targets_exist=True,comparison='live legacy Seven reference; migration equivalence, not new Max capture',
                 limits='compared with reference control values; role-specific verifiers assert functional limits')
     out=E/phase/'transfer_validation.json';_fm_output(out.parent).mkdir(parents=True,exist_ok=True)
@@ -193,6 +199,10 @@ def animated_space_validation(phase):
                     source=str(getattr(v,field)),target=str(getattr(other,field))))
     initial = th.get_global_transform(head, True)
     poses = [('reference', {})]
+    inventory = json.loads((_fm_read(EB/'reference_inventory.json')).read_text(encoding='utf-8'))
+    target_pose = inventory['binding_check'].get('target_initial_pose')
+    if target_pose:
+        poses.append(('original_target_reference_pose', target_pose))
     for label, delta, rotation in (('head_turn', (30,-20,12), (15,35,8)),
                                     ('head_opposite', (-15,5,-10), (-25,-50,30))):
         tf = unreal.Transform()

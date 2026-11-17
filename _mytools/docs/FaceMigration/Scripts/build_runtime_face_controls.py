@@ -18,7 +18,7 @@ from pathlib import Path
 import shutil
 import unreal
 from slider_handle_layout import apply_slider_layout, RAIL_CONTROL, OWNER_TAG
-from face_paths import rig_dependency_folder, context
+from face_paths import rig_dependency_folder, context, runtime_path
 
 ROOT = Path(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_dir()))
 SOURCE = _fm_asset('/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation')
@@ -128,14 +128,19 @@ def main():
     source, target = unreal.load_asset(SOURCE), unreal.load_asset(TARGET)
     assert source and target
     assert target.get_class().get_name() == 'ControlRigRuntimeAsset'
-    assert TARGET.rsplit('/', 1)[-1] == 'CR_' + context().character + '_Expression'
-    assert TARGET.rsplit('/', 2)[-2] == context().character + 'ECR'
     assert target.get_editor_property('preview_skeletal_mesh') == source.get_preview_mesh()
     editor = target.get_editor_asset()
     sh, th = source.get_hierarchy(), target.hierarchy
     sm, tm = source.get_default_model(), editor.get_default_model()
     assert len(th.get_controls()) == 0 and len(tm.get_nodes()) <= 1, '目标已有内容，停止覆盖'
-    assert len(sh.get_bones()) == 149 and len(sh.get_curves()) == 28
+    inventory = json.loads((runtime_path('Evidence')/'reference_inventory.json').read_text(encoding='utf-8'))
+    assert inventory['reference']['path'] == SOURCE and inventory['target_before']['path'] == TARGET
+    assert inventory['binding_check']['verdict'] in ('equivalent', 'head_frame_rebind'), '先完成本任务独立绑定探测'
+    if inventory['binding_check']['verdict'] == 'head_frame_rebind':
+        assert inventory['binding_check']['head_frame_rebind']['eligible']
+    assert {str(k.name) for k in sh.get_bones()} == {str(k.name) for k in th.get_bones()}
+    assert len(sh.get_bones()) == inventory['reference']['bones']
+    assert len(sh.get_curves()) == inventory['reference']['curves']
     assert len({str(k.name) for k in sh.get_controls()} - {RAIL_CONTROL}) == 73
     assert not source.get_local_function_library().get_nodes(), '存在本地函数，需额外迁移'
     _fm_output(E).mkdir(parents=True, exist_ok=True)
@@ -153,6 +158,8 @@ def main():
                   engine=unreal.SystemLibrary.get_engine_version(), backup=str(backup),
                   source_disk_sha256=source_hash, graph_export_sha256=hashlib.sha256(text.encode()).hexdigest(),
                   source_nodes=len(sm.get_nodes()), source_links=len(sm.get_links()), passed=False)
+    report['binding'] = inventory['binding_check']['verdict']
+    report['initial_pose_policy'] = 'reference canonical solve pose; original target pose is validated as incoming animation, never discarded from evidence'
     (_fm_output(E / 'build_report.json')).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     auto = editor.get_auto_vm_recompile()
     try:

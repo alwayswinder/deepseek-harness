@@ -5,6 +5,7 @@ import contextlib
 import hashlib
 import io
 import os
+import re
 from pathlib import Path
 import runpy
 import shutil
@@ -65,6 +66,22 @@ class PackageTests(unittest.TestCase):
         for invalid in ('/Engine/CR_Test', '/Game/Cast/', '/Game/Cast/../CR_Test'):
             with self.assertRaises(ValueError):
                 paths.rig_dependency_folder(invalid)
+
+    def test_blocked_preview_stops_before_editor_access(self):
+        job = self.package/'Jobs/test.json'
+        job.parent.mkdir(parents=True)
+        job.write_text(json.dumps({'preview': {'host': 'pie', 'prepare': True,
+                                              'blocked_reason': 'viewport crash unresolved'}}))
+        paths.configure(project=self.project, config={'job_id': 'test', 'character': 'Seven'})
+        class NoEditorAccess(types.ModuleType):
+            def __getattr__(self, name):
+                raise AssertionError('blocked preview accessed editor API: ' + name)
+        scripts = Path(__file__).resolve().parents[1]/'Scripts'
+        for filename in ('probe_runtime_face_morph_preview.py', 'verify_runtime_face_preview.py'):
+            with self.subTest(script=filename), mock.patch.dict(sys.modules, {'unreal': NoEditorAccess('unreal')}):
+                with self.assertRaisesRegex(RuntimeError, 'viewport crash unresolved'):
+                    runpy.run_path(str(scripts/filename), run_name='__main__')
+        self.assertFalse(self.ctx.current.exists())
 
     def test_project_side_evidence_wins_over_package_baseline(self):
         baseline=self.data/'max_samples.json';baseline.write_text('package')
@@ -188,6 +205,66 @@ class PackageTests(unittest.TestCase):
         result=prepare_max.prepare(script,self.project,str(job),create=False)
         self.assertIn(self.project.as_posix(),result['code'])
         self.assertFalse((self.project/'Saved').exists())
+
+    def test_conversation_paths_require_resolved_assets_and_matching_job(self):
+        original = Path(__file__).resolve().parents[1]
+        task = (original/'TASK.md').read_text(encoding='utf-8')
+        task = re.sub(r'^\| 角色名\s*\|[^|]*\|', '| 角色名 | Seven |', task, flags=re.M)
+        (self.package/'TASK.md').write_text(task, encoding='utf-8')
+        (self.package/'Scripts').mkdir(exist_ok=True)
+        catalog = json.loads((original/'Characters/Seven/face-controls.json').read_text(encoding='utf-8'))
+        catalog['source']['max_scene'] = 'D:/Download/Seven_Skin_New.max'
+        catalog['reference']['control_rig'] = '/Game/Reference/CR_Source'
+        catalog['target']['control_rig'] = '/Game/CustomFolder/CR_Target'
+        path = self.package/'Characters/Seven/face-controls.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        class RuntimeAsset:
+            hierarchy = types.SimpleNamespace(get_bones=lambda: [])
+        unreal = types.SimpleNamespace(ControlRigRuntimeAsset=RuntimeAsset, load_asset=lambda _: RuntimeAsset())
+        mappings = {'/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation': '/Game/Reference/CR_Source',
+                    '/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset': '/Game/CustomFolder/CR_Target'}
+        for scenario in ('valid', 'missing', 'wrong_job', 'missing_target', 'same_asset'):
+            with self.subTest(scenario=scenario):
+                current = json.loads(json.dumps(catalog))
+                overrides = dict(mappings)
+                if scenario == 'missing':
+                    current['reference']['control_rig'] = ''
+                    current['target']['control_rig'] = ''
+                    overrides = {}
+                elif scenario == 'wrong_job':
+                    overrides['/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset'] = '/Game/Other/CR_Other'
+                elif scenario == 'same_asset':
+                    current['target']['control_rig'] = current['reference']['control_rig']
+                unreal.load_asset = lambda _: None if scenario == 'missing_target' else RuntimeAsset()
+                path.write_text(json.dumps(current), encoding='utf-8')
+                paths.configure(project=self.project, config={'job_id':'check-'+scenario, 'character':'Seven',
+                                                              'asset_overrides': overrides})
+                with mock.patch.dict(sys.modules, {'unreal':unreal}), contextlib.redirect_stdout(io.StringIO()):
+                    runpy.run_path(str(original/'Scripts/check_character_task_sheet.py'), run_name='__main__')
+                report = json.loads((paths.context().current/'Evidence/task_sheet_check.json').read_text(encoding='utf-8'))
+                self.assertEqual(report['passed'], scenario == 'valid', report['problems'])
+
+    def test_bridge_execution_reports_failures_and_preserves_project_check(self):
+        connection = mock.MagicMock()
+        client = types.ModuleType('websockets.sync.client')
+        client.connect = mock.MagicMock()
+        client.connect.return_value.__enter__.return_value = connection
+        response = {'jsonrpc':'2.0','id':1,'result':{'success':True,'output':''}}
+        with mock.patch.dict(sys.modules, {'websockets.sync.client':client}), contextlib.redirect_stderr(io.StringIO()):
+            connection.recv.return_value = json.dumps(response)
+            self.assertTrue(ue_run.execute_bridge(self.package/'Scripts/check.py', self.project, {}, 12345, 60))
+            request = json.loads(connection.send.call_args.args[0])
+            self.assertIn('UE project mismatch', request['params']['code'])
+            self.assertEqual(request['timeoutMs'], 60000)
+            response['result'] = {'success':False,'result':'Traceback: build failed'}
+            connection.recv.return_value = json.dumps(response)
+            self.assertFalse(ue_run.execute_bridge(self.package/'Scripts/check.py', self.project, {}, 12345, 60))
+            connection.recv.return_value = json.dumps({'id':1,'error':{'code':-32000,'message':'editor blocked'}})
+            with self.assertRaises(RuntimeError):
+                ue_run.execute_bridge(self.package/'Scripts/check.py', self.project, {}, 12345, 60)
+            connection.recv.return_value = json.dumps({'id':2,'result':{'success':True}})
+            with self.assertRaises(RuntimeError):
+                ue_run.execute_bridge(self.package/'Scripts/check.py', self.project, {}, 12345, 60)
 
     def test_source_files_resolve_from_target_and_missing_input_fails(self):
         source=self.project/'Source Files/角色.fbx'

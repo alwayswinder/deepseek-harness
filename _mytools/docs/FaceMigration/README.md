@@ -1,8 +1,10 @@
 # FaceMigration
 
+最新 Test 测试的目标为用户指定的 `Expression/test/CR_Test_Expression`。构建、显示、保存重载及独立实例验证通过；Max 原始姿势抽检未通过，PIE 启动触发 FSR 视口断言，正常帧与最终验收未通过。当前状态及阻止复跑的原因见 [Test 角色记录](Characters/Test/README.md)。以下 Seven01 与 Seven 结果仅属于各自任务。
+
 2026-11-17 已按新角色流程完成 `Seven01ECR/CR_Seven01_Expression` 的技术检查：独立绑定探测、72 动画控制 + 2 Visual Cue、1175 组迁移对照、592 组动画空间检查、Max 代表控制抽检和 PIE 81 组正常帧通过；CR 与 `ToolsPanel/` 下全部 8 个依赖已保存重载，示例保持只读。外观/拾取、身体动画播放宿主及 Sequencer 待验收，范围见[Seven01 角色记录](Characters/Seven01/README.md)，配置见[本轮任务](Jobs/seven01-taskflow-20261117.json)。
 
-后续角色产出统一按用户整理的 **SevenECR** 示例：`<父目录>/<角色名>ECR/CR_<角色名>_Expression`，主 CR 直接放根目录，其余新生成或复制的角色专用依赖全部放同包 `ToolsPanel/`。当前示例为 `/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression`，依赖沿用 `T_expression`、`M_/SM_/SL_PhonemeReference`、`M_/SM_/SL_SliderRails` 的功能名。完整目录树、主流程路径支持和交付检查见[角色产出目录与命名](Docs/Workflow/Build.md#角色产出目录与命名2026-11-17-起)。2026-11-17 主流程已支持独立复制并重绑定 `ToolsPanel` 依赖，保存重载后核对引用；下方带日期的运行记录仍保留当时路径与结论。
+后续角色产出统一按示例派生：`<父目录>/<角色名>ECR/CR_<角色名>_Expression`，主 CR 直接放根目录，其余新生成或复制的角色专用依赖全部放同包 `ToolsPanel/`。示例 CR 由用户在开始任务的对话里给出，不在文档中预填；依赖沿用 `T_expression`、`M_/SM_/SL_PhonemeReference`、`M_/SM_/SL_SliderRails` 的功能名。完整目录树、主流程路径支持和交付检查见[角色产出目录与命名](Docs/Workflow/Build.md#角色产出目录与命名2026-11-17-起)。2026-11-17 主流程已支持独立复制并重绑定 `ToolsPanel` 依赖，保存重载后核对引用；下方带日期的运行记录仍保留当时路径与结论。
 
 2026-11-12 已在用户新建的空目标 `NewControlRigRuntimeAsset` 上按新角色流程重跑，配置 [seven-taskflow-20261112.json](Jobs/seven-taskflow-20261112.json)。重新读表、独立探测及备份后判为绑定等价，迁入更新后的示例设计：72 动画控制 + 2 Visual Cue、149 骨、28 曲线、1927 节点 / 2645 连接，包含私有头部缓存与 FACE_SPACE。保存前和重载后各 1175 组迁移对照误差为零、显示契约无差异、各 592 组动画姿势检查通过；当前 Max 上眼皮五点抽检及 PIE 81 组正常帧检查通过。源只读，临时 PIE Actor 已清理，未保存用户关卡。
 
@@ -12,11 +14,11 @@
 
 ## 开始：填任务单
 
-新角色只编辑 [TASK.md](TASK.md)：第 1 节填示例 CR、目标 CR、网格和 Max 场景，第 2 节是 72 个 Max 控制器名（默认就是 Seven 当前值），第 3 节按需填骨骼/Morph 映射。保存后把该文件交给 AI，按其中第 5 节协议生成 `Jobs/<角色>.json`、`Characters/<角色>/face-controls.json` 并执行流程。
+新角色只编辑 [TASK.md](TASK.md)：第 1 节填角色名、网格和 Max 场景，第 2 节是 72 个 Max 控制器名（默认就是 Seven 当前值），第 3 节按需填骨骼/Morph 映射；示例 CR 与目标 CR 的完整资产路径不写进任务单，在开始任务的对话里直接给出。保存后把该文件交给 AI，按其中第 5 节协议生成 `Jobs/<角色>.json`、`Characters/<角色>/face-controls.json` 并执行流程。
 
-同一角色换目标资产时同样只改这份表的目标 CR 和任务 ID；不要复制脚本、不要改 `Characters/Seven/`。表之外不再维护第二份名单。
+同一角色换目标资产时，在对话中给出新目标路径，并在任务单更新任务 ID；AI 据此同步角色配置和 job，不复用旧任务结果。不要复制脚本、不要改 `Characters/Seven/`。表之外不再维护第二份名单。
 
-默认流程为**示例 Rig 派生 + Max 源核验 + 目标适配**，见[唯一主流程](Docs/Workflow/Build.md)。当前示例是 `/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression`：允许读取、复制和复用实现，保留控制形状、配色、滑轨、参考图、行程和操作方式。Max 核对真实动作；新角色重新绑定并适配参数。2026-11-10 的从零重建外观已被用户指出不符合示例，数值通过不能作为整体验收通过。
+默认流程为**示例 Rig 派生 + Max 源核验 + 目标适配**，见[唯一主流程](Docs/Workflow/Build.md)。示例 CR 由用户在开始任务的对话里给出：允许读取、复制和复用实现，保留控制形状、配色、滑轨、参考图、行程和操作方式。Max 核对真实动作；新角色重新绑定并适配参数。2026-11-10 的从零重建外观已被用户指出不符合示例，数值通过不能作为整体验收通过。
 
 2026-11-10 另做了一次“当成新角色”的流程验证：示例、当前 Max 角色和用户新建的 `/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset1` 被当作三个不同角色处理，先独立探测目标绑定，再继承示例设计并在空目标上构建。结果分段记录：结构、示例→目标（1175 组 worst 全 0）、显示契约（0 差异）、上眼皮 Max 抽检（0.00344 cm / 0.00059°）和保存重载通过；**正常帧预览未通过**（Rig 时间停在 0.4 s，两次 refresh 未恢复）；用户画面待验收。执行配置为 `Jobs/seven-newchar-20261110.json`，问题清单在该任务 `Current/Evidence/flow_findings.md`。该目标 `Asset1` 随后被删除，本轮记录只作历史。
 
@@ -24,7 +26,7 @@
 
 ```text
 Tools/FaceMigration/
-  TASK.md                     用户填写的任务单（示例/目标 CR、Max 控制器名单）
+  TASK.md                     用户填写的任务单（角色名、Max 控制器名单；示例/目标 CR 在对话中给出）
   migrate.py                  固定命令入口
   AGENTS.md                   AI 执行和维护约定
   Docs/                       通用流程、配方、模板、排障
@@ -100,13 +102,17 @@ python Tools/FaceMigration/migrate.py run build_lip_controls.py --job seven-runt
 
 正常帧验证可使用任务配置 `"preview": {"host": "pie", "prepare": true}`：
 `probe_runtime_face_morph_preview.py` 在角色包 `ToolsPanel/` 目录创建带 owner 标记的
-`ABP_FacePreview`，添加临时关卡网格并启动模拟，先测 28 条 Morph。
+`ABP_FacePreview`，添加临时关卡网格并启动模拟，先测示例图实际驱动的 Morph；半程期望从只读示例的独立实例计算，不要求新角色复制历史参数文件。
 等本任务 `SevenRuntime/pie_morph_check.json` 的 `pending=false` 且 `passed=true`，
-再运行 `verify_runtime_face_preview.py` 测 72 个控制、组合与恢复，共 75 组。
+再运行 `verify_runtime_face_preview.py` 测 72 个控制、组合与恢复；配置头部锚点时另加六组头部变换，共 81 组。
 后者完成后关闭工具启动的 PIE 并移除临时 Actor，不保存用户关卡。
 没有此配置时仍检查资产编辑器预览；两类报告分开保存。已有用户 PIE 时不接管。
 
 `UE_ENGINE_ROOT` 环境变量也可指定引擎。多个 UE 实例用 `--project` 和 `--node-id` 精确定位。`run --offline` 用于普通 Python 拟合脚本；先把本次原始采样放入对应任务的 `Current/Temp/`。NumPy / SciPy 等拟合依赖需要另外安装。
+
+Python 远程发现不可用、但项目安装了 `UE_MCP_Bridge` 时，读取目标项目 `Saved/UE_MCP_Bridge/port.json`，核对 `pid` 与当前编辑器，再为在线命令显式增加 `--bridge-port <port>`。客户端 Python 需安装 `websockets`；执行前仍校验 UE 项目路径。大图构建使用 `--timeout 1200`。端口是本次进程的发现结果，不写成通用固定值；连接断开不等于 UE 已停止，先读本任务报告及编辑器状态，不能直接重发构建。
+
+Bridge 长调用禁用 WebSocket 短心跳，执行仍受显式超时约束；超时或断线不提供取消保证。报告确认构建完成后继续验证，不再次导入整图。PIE 崩溃的停止与恢复规则见[验证规范](Docs/Workflow/Validation.md#pie-启动崩溃时的处理)。
 
 例如生成本任务的采样骨名单：`python Tools/FaceMigration/migrate.py run fit_cheek_controls.py --offline --job seven-local --script-arg=--prepare`。
 

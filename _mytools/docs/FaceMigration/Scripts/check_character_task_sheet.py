@@ -26,6 +26,15 @@ E.mkdir(parents=True, exist_ok=True)
 # 采样脚本里除了 getNodeByName 还会用这些数组变量名列出控制器。
 NAME_LISTS = ('names', 'TARGETS', 'targets', 'CTRLS', 'ctrls', 'CONTROLS', 'controls')
 
+# TASK.md 不预填资产路径；括号占位（如「（对话中指定）」）表示该值由用户在开始任务的对话里给出。
+PLACEHOLDER = re.compile(r'^[（(][^）)]*[）)]$')
+
+
+def specified(value):
+    """字段的可用值；空值或括号占位视为「对话中给出」，返回 None。"""
+    value = (value or '').strip()
+    return None if not value or PLACEHOLDER.match(value) else value
+
 
 def parse_section(text, start, end):
     return text[text.index(start):text.index(end)]
@@ -100,21 +109,39 @@ def main():
     table_path = PACKAGE_ROOT / 'Characters' / character / 'face-controls.json'
     problems = []
     warnings = []
+    character_field = fields.get('角色名')
+    reference_field = specified(fields.get('示例 ControlRig'))
+    target_field = specified(fields.get('目标 ControlRig'))
+    catalog = json.loads(table_path.read_text(encoding='utf-8')) if table_path.is_file() else None
+    reference = reference_field or (catalog or {}).get('reference', {}).get('control_rig')
+    target = target_field or (catalog or {}).get('target', {}).get('control_rig')
+    reference = reference or context().asset_overrides.get('/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation')
+    target = target or context().asset_overrides.get('/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset')
     report = {
-        'task_sheet': {'character': fields.get('角色名'), 'reference': fields.get('示例 ControlRig'),
+        'task_sheet': {'character': character_field, 'reference': fields.get('示例 ControlRig'),
                        'target': fields.get('目标 ControlRig'), 'mesh': fields.get('目标网格'),
                        'max_scene': fields.get('Max 场景'), 'sample_frame': fields.get('采样帧'),
+                       'control_rig_source': 'task_sheet' if reference_field and target_field else 'conversation',
                        'rows': len(rows), 'optional_fields': optional},
         'job': {'job_id': context().job_id, 'character': character,
                 'asset_overrides': context().asset_overrides},
     }
-    for label, value in (('角色名', fields.get('角色名')), ('目标 ControlRig', fields.get('目标 ControlRig'))):
-        if not value:
-            problems.append({'field': label, 'problem': 'TASK.md 未填写'})
-    if fields.get('角色名') and fields['角色名'] != character:
-        problems.append({'field': '角色名', 'task': fields['角色名'], 'job': character})
-    if fields.get('目标 ControlRig'):
-        target = fields['目标 ControlRig']
+    if not character_field:
+        problems.append({'field': '角色名', 'problem': 'TASK.md 未填写'})
+    if character_field and character_field != character:
+        problems.append({'field': '角色名', 'task': character_field, 'job': character})
+    report['resolved_assets'] = {'reference': reference, 'target': target}
+    for label, value, legacy in (
+            ('示例 ControlRig', reference, '/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation'),
+            ('目标 ControlRig', target, '/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset')):
+        if not value or not value.startswith('/Game/'):
+            problems.append({'field': label, 'problem': '角色表或 job 缺少有效资产包路径'})
+        elif _fm_asset(legacy) != _fm_asset(value):
+            problems.append({'field': label, 'problem': '共用脚本路径映射与角色表不一致',
+                             'table': value, 'script': _fm_asset(legacy)})
+    if reference and target and _fm_asset(reference) == _fm_asset(target):
+        problems.append({'problem': '示例与目标不能相同'})
+    if target:
         mapped = _fm_asset(target)
         report['target_mapped'] = mapped
         if mapped == target and target not in context().asset_overrides:
@@ -128,8 +155,7 @@ def main():
         if exists is False:
             problems.append({'field': '目标 ControlRig', 'problem': '映射后的资产加载不到', 'path': mapped})
 
-    if table_path.is_file():
-        catalog = json.loads(table_path.read_text(encoding='utf-8'))
+    if catalog is not None:
         bindings = catalog['bindings']
         by_role = {b['role_id']: b for b in bindings}
         for row in rows:
@@ -143,11 +169,11 @@ def main():
                     problems.append({'role_id': row['role_id'], 'field': field, 'task': value, 'table': ref.get(field)})
         for role in sorted(set(by_role) - {r['role_id'] for r in rows}):
             problems.append({'role_id': role, 'problem': '表里有、任务单里没有'})
-        if catalog.get('reference', {}).get('control_rig') != fields.get('示例 ControlRig'):
-            problems.append({'field': '示例 ControlRig', 'task': fields.get('示例 ControlRig'),
+        if reference_field and catalog.get('reference', {}).get('control_rig') != reference_field:
+            problems.append({'field': '示例 ControlRig', 'task': reference_field,
                              'table': catalog.get('reference', {}).get('control_rig')})
-        if catalog.get('target', {}).get('control_rig') != fields.get('目标 ControlRig'):
-            problems.append({'field': '目标 ControlRig', 'task': fields.get('目标 ControlRig'),
+        if target_field and catalog.get('target', {}).get('control_rig') != target_field:
+            problems.append({'field': '目标 ControlRig', 'task': target_field,
                              'table': catalog.get('target', {}).get('control_rig')})
         if catalog.get('source', {}).get('max_scene') != fields.get('Max 场景'):
             problems.append({'field': 'Max 场景', 'task': fields.get('Max 场景'),
@@ -162,9 +188,9 @@ def main():
         draft = {'schema_version': 1, 'character': character,
                  'source': {'max_scene': fields.get('Max 场景'), 'sample_frame': int(fields.get('采样帧') or 0),
                             'units': 'discover_from_scene'},
-                 'target': {'skeletal_mesh': fields.get('目标网格'), 'control_rig': fields.get('目标 ControlRig'),
-                            'base_control_rig': fields.get('示例 ControlRig')},
-                 'reference': {'character': character, 'control_rig': fields.get('示例 ControlRig'),
+                 'target': {'skeletal_mesh': fields.get('目标网格'), 'control_rig': target,
+                            'base_control_rig': reference},
+                 'reference': {'character': character, 'control_rig': reference,
                                'implementation_reuse_allowed': True, 'reuse_numeric_parameters': False},
                  'bindings': [{'role_id': r['role_id'], 'group': r['group'], 'label': r['label'],
                                'side': 'L' if '_L' in r['role_id'] else ('R' if '_R' in r['role_id'] else 'C'),

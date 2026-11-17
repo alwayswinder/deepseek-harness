@@ -12,8 +12,8 @@
     "base_control_rig": null
   },
   "reference": {
-    "character": "Seven",
-    "control_rig": "/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression",
+    "character": "",
+    "control_rig": "",
     "implementation_reuse_allowed": true,
     "guide": "Docs/Workflow/Build.md",
     "name_catalog": "Docs/Reference/ControllerNames.md",

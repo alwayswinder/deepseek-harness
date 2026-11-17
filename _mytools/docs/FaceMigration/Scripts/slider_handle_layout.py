@@ -104,7 +104,7 @@ def spec_hash(model):
 
 
 def reference_shape_y(hierarchy, model):
-    """Seven 的 XZ 面板：参考图在轨道后 1 cm，保留辅助控制的原 offset。"""
+    """在实体轨道的初始空间计算参考图深度，允许整个面板随头部旋转。"""
     key = unreal.RigElementKey(type=unreal.RigElementType.CONTROL, name=PHONEME_REFERENCE_CONTROL)
     phonemes = [r for r in rail_spec(model) if r['name'].startswith('PHON_')]
     if not hierarchy.contains(key) or not phonemes:
@@ -112,7 +112,12 @@ def reference_shape_y(hierarchy, model):
     depths = {round(point[1], 6) for row in phonemes for point in row['points']}
     assert len(depths) == 1, '口型轨道不共面，需要单独适配参考图'
     control = hierarchy.get_global_transform(key, True)
-    assert abs(control.rotation.x) + abs(control.rotation.y) + abs(control.rotation.z) < 1e-5
+    rail_key = unreal.RigElementKey(type=unreal.RigElementType.CONTROL, name=RAIL_CONTROL)
+    if hierarchy.contains(rail_key):
+        control = unreal.MathLibrary.make_relative_transform(
+            control, hierarchy.get_global_transform(rail_key, True))
+    assert abs(control.rotation.x) + abs(control.rotation.y) + abs(control.rotation.z) < 1e-5, \
+        '参考图与轨道朝向不同，需要单独适配参考图'
     assert (control.scale3d - unreal.Vector(1, 1, 1)).length() < 1e-5
     return depths.pop() - REFERENCE_BEHIND_RAIL_CM - control.translation.y
 

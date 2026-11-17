@@ -1,0 +1,331 @@
+{
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation.CR_Seven_LidWorldRotation",
+  "samples": [
+    {
+      "s": 0.0,
+      "bone": "Bone027",
+      "position_error_cm": 0.00027485586227778597,
+      "rotation_error_deg": 0.019142809860477023
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone028",
+      "position_error_cm": 0.00027351841677406984,
+      "rotation_error_deg": 0.02504000866367882
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone029",
+      "position_error_cm": 0.0002791745807305163,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone036",
+      "position_error_cm": 0.0002700183913652258,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone037",
+      "position_error_cm": 0.00027166999290267224,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone038",
+      "position_error_cm": 0.0002724652573426881,
+      "rotation_error_deg": 0.01002397586154979
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone027",
+      "position_error_cm": 0.009242729875747627,
+      "rotation_error_deg": 0.17396668811059057
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone028",
+      "position_error_cm": 0.001369914794718777,
+      "rotation_error_deg": 0.02503998176547851
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone029",
+      "position_error_cm": 0.014676116634816104,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone036",
+      "position_error_cm": 0.008775119941244806,
+      "rotation_error_deg": 0.17216843099908424
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone037",
+      "position_error_cm": 0.001865485818909656,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone038",
+      "position_error_cm": 0.015051617171980142,
+      "rotation_error_deg": 0.010023437584057859
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone027",
+      "position_error_cm": 0.01566043670113033,
+      "rotation_error_deg": 0.2966286807923339
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone028",
+      "position_error_cm": 0.002541926813080382,
+      "rotation_error_deg": 0.025040203296332216
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone029",
+      "position_error_cm": 0.0252548098346389,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone036",
+      "position_error_cm": 0.015195242453574839,
+      "rotation_error_deg": 0.29554744629874563
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone037",
+      "position_error_cm": 0.003032740344761202,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone038",
+      "position_error_cm": 0.025645051784422418,
+      "rotation_error_deg": 0.010023198615074141
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone027",
+      "position_error_cm": 0.01952713835978724,
+      "rotation_error_deg": 0.3699479247316633
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone028",
+      "position_error_cm": 0.003239021533526116,
+      "rotation_error_deg": 0.025040453760655643
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone029",
+      "position_error_cm": 0.03153902292227242,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone036",
+      "position_error_cm": 0.019065300506042077,
+      "rotation_error_deg": 0.36905753210064957
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone037",
+      "position_error_cm": 0.003731210929078241,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone038",
+      "position_error_cm": 0.03194386641561213,
+      "rotation_error_deg": 0.0100235370679442
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone027",
+      "position_error_cm": 0.020838237703827363,
+      "rotation_error_deg": 0.3938815129930797
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone028",
+      "position_error_cm": 0.0034637162475390686,
+      "rotation_error_deg": 0.025041101975378174
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone029",
+      "position_error_cm": 0.03356061893173884,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone036",
+      "position_error_cm": 0.02037623428193534,
+      "rotation_error_deg": 0.3930331249164774
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone037",
+      "position_error_cm": 0.00395608581456471,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone038",
+      "position_error_cm": 0.03398018224802319,
+      "rotation_error_deg": 0.01002386998271644
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone027",
+      "position_error_cm": 0.01958295658578818,
+      "rotation_error_deg": 0.36863795905419494
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone028",
+      "position_error_cm": 0.0032192069996279087,
+      "rotation_error_deg": 0.025041467527547684
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone029",
+      "position_error_cm": 0.03134195736612287,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone036",
+      "position_error_cm": 0.01912267415830206,
+      "rotation_error_deg": 0.367748969103834
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone037",
+      "position_error_cm": 0.0037111469319252768,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone038",
+      "position_error_cm": 0.03177705119887646,
+      "rotation_error_deg": 0.01002470025801743
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone027",
+      "position_error_cm": 0.01575196359167468,
+      "rotation_error_deg": 0.2945599896060052
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone028",
+      "position_error_cm": 0.0025044203268496054,
+      "rotation_error_deg": 0.025042364938695258
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone029",
+      "position_error_cm": 0.024934478313178545,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone036",
+      "position_error_cm": 0.015293537149574049,
+      "rotation_error_deg": 0.2934381148227237
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone037",
+      "position_error_cm": 0.0029907825942849567,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone038",
+      "position_error_cm": 0.025377745698800174,
+      "rotation_error_deg": 0.010025976005108026
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone027",
+      "position_error_cm": 0.009326063844484882,
+      "rotation_error_deg": 0.17217403549149946
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone028",
+      "position_error_cm": 0.0013324397867542266,
+      "rotation_error_deg": 0.025043105489708433
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone029",
+      "position_error_cm": 0.014369832890862792,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone036",
+      "position_error_cm": 0.008873132230543047,
+      "rotation_error_deg": 0.17034582670714135
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone037",
+      "position_error_cm": 0.0018147255095235758,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone038",
+      "position_error_cm": 0.014822931711760079,
+      "rotation_error_deg": 0.010027413116519151
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone027",
+      "position_error_cm": 0.0003656891709057096,
+      "rotation_error_deg": 0.01914636476741784
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone028",
+      "position_error_cm": 0.0004966718659087652,
+      "rotation_error_deg": 0.02504412101203245
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone029",
+      "position_error_cm": 0.00031604191801446125,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone036",
+      "position_error_cm": 0.0002698383834807963,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone037",
+      "position_error_cm": 0.0003789232629797268,
+      "rotation_error_deg": 0.0
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone038",
+      "position_error_cm": 0.0003362050116330593,
+      "rotation_error_deg": 0.010029520575267044
+    }
+  ],
+  "max_rotation_error_degrees": 0.3938815129930797,
+  "max_position_error_cm": 0.03398018224802319
+}

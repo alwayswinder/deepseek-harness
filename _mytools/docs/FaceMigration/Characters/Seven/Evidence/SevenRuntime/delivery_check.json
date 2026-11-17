@@ -1,0 +1,457 @@
+{
+  "captured_at": "2026-11-09T16:59:05.025182+08:00",
+  "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "passed": true,
+  "reports": {
+    "before_reload/summary.json": true,
+    "after_reload/summary.json": true,
+    "reload_report.json": true,
+    "preview_morph_check.json": true,
+    "preview_controls_validation.json": true
+  },
+  "shape_actors": [
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_72",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_71",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_70",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_69",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_68",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_67",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_66",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_65",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_64",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_63",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_62",
+      "visible": true,
+      "mesh": "/Game/_MyTest/Mouth/LidDiagnostic/PhonemeReference/SM_PhonemeReference.SM_PhonemeReference",
+      "material": "/Game/_MyTest/Mouth/LidDiagnostic/PhonemeReference/M_PhonemeReference.M_PhonemeReference"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_61",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_60",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_59",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_58",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_57",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_56",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_55",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_54",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_53",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_52",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_51",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_50",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_49",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_48",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_47",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_46",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Sphere_solid.ControlRig_Sphere_solid",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_45",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_44",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_43",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_42",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_41",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_40",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_39",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_38",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_37",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_36",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_35",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_34",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_33",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_32",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_31",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_30",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_29",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_28",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_27",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_26",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_25",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_24",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_23",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_22",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_21",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_20",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_19",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_18",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_17",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_16",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_15",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_14",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_13",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_12",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_11",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_10",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_9",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_8",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_7",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_6",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_5",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_4",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_3",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_2",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_1",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    },
+    {
+      "actor": "/Engine/Transient.World_12:PersistentLevel.ControlRigShapeActor_0",
+      "visible": true,
+      "mesh": "/ControlRig/Controls/ControlRig_Box_3mm.ControlRig_Box_3mm",
+      "material": "/ControlRig/Controls/ControlRigGizmoMaterial.ControlRigGizmoMaterial"
+    }
+  ],
+  "visible_shape_actors": 73,
+  "source_disk_unchanged": true,
+  "target_disk_sha256": "017646d89051d3d8c90ebe421afa16d2d1030f74b18646070078726327021d09",
+  "target_saved": true,
+  "visual_approval": "pending_user"
+}

@@ -1,0 +1,444 @@
+{
+  "character": "Seven",
+  "kind": "name_coverage_only",
+  "source_scene": "D:/Download/Seven_Skin_New.max",
+  "total_scene_nodes": 1096,
+  "expected": 72,
+  "matched": [
+    {
+      "role_id": "EYE_LID_R",
+      "expected_name": "SYP_R001",
+      "actual_name": "SYP_R001",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_LID_L",
+      "expected_name": "SYP_L001",
+      "actual_name": "SYP_L001",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_LOWER_LID_R",
+      "expected_name": "XYP_R001",
+      "actual_name": "XYP_R001",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_LOWER_LID_L",
+      "expected_name": "XYP_L001",
+      "actual_name": "XYP_L001",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "LIP_UP_L",
+      "expected_name": "Animcraft_Left_up_Lip_Ctrl",
+      "actual_name": "Animcraft_Left_up_Lip_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "LIP_UP_C",
+      "expected_name": "Animcraft_up_Lip_Ctrl",
+      "actual_name": "Animcraft_up_Lip_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "LIP_UP_R",
+      "expected_name": "Animcraft_Right_up_Lip_Ctrl",
+      "actual_name": "Animcraft_Right_up_Lip_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "LIP_LOW_R",
+      "expected_name": "Animcraft_Right_low_Lip_Ctrl",
+      "actual_name": "Animcraft_Right_low_Lip_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "LIP_LOW_C",
+      "expected_name": "Animcraft_dn_Lip_Ctrl",
+      "actual_name": "Animcraft_dn_Lip_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "LIP_LOW_L",
+      "expected_name": "Animcraft_Left_low_Lip_Ctrl",
+      "actual_name": "Animcraft_Left_low_Lip_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "CHEEK_R",
+      "expected_name": "Animcraft_Right_Cheek_Ctrl",
+      "actual_name": "Animcraft_Right_Cheek_Ctrl",
+      "class": "点辅助对象"
+    },
+    {
+      "role_id": "CHEEK_L",
+      "expected_name": "Animcraft_Left_Cheek_Ctrl",
+      "actual_name": "Animcraft_Left_Cheek_Ctrl",
+      "class": "点辅助对象"
+    },
+    {
+      "role_id": "NOSE",
+      "expected_name": "Animcraft_Nose_Ctrl",
+      "actual_name": "Animcraft_Nose_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "NOSE_SIDE_R",
+      "expected_name": "Animcraft_Right_Nose_Ctrl",
+      "actual_name": "Animcraft_Right_Nose_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "NOSE_SIDE_L",
+      "expected_name": "Animcraft_Left_Nose_Ctrl",
+      "actual_name": "Animcraft_Left_Nose_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "MOUTH_L",
+      "expected_name": "Animcraft_Left_Mouth_Ctrl",
+      "actual_name": "Animcraft_Left_Mouth_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "MOUTH_R",
+      "expected_name": "Animcraft_Right_Mouth_Ctrl",
+      "actual_name": "Animcraft_Right_Mouth_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "MOUTH",
+      "expected_name": "Animcraft_Mouth_Ctrl",
+      "actual_name": "Animcraft_Mouth_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYEBALL_L",
+      "expected_name": "YanJing_L001",
+      "actual_name": "YanJing_L001",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYEBALL_R",
+      "expected_name": "YanJing_R001",
+      "actual_name": "YanJing_R001",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYEBALL_MASTER",
+      "expected_name": "YanJing_Zong001",
+      "actual_name": "YanJing_Zong001",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "CHIN",
+      "expected_name": "Line010",
+      "actual_name": "Line010",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EXPR_HUANGZHANG",
+      "expected_name": "Circle117",
+      "actual_name": "Circle117",
+      "class": "圆"
+    },
+    {
+      "role_id": "EXPR_WUYU",
+      "expected_name": "Circle118",
+      "actual_name": "Circle118",
+      "class": "圆"
+    },
+    {
+      "role_id": "EXPR_SIKAO",
+      "expected_name": "Circle119",
+      "actual_name": "Circle119",
+      "class": "圆"
+    },
+    {
+      "role_id": "EXPR_GANGA",
+      "expected_name": "Circle120",
+      "actual_name": "Circle120",
+      "class": "圆"
+    },
+    {
+      "role_id": "PHONEME_A_FV_01",
+      "expected_name": "a_FV_ctrl01",
+      "actual_name": "a_FV_ctrl01",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_B_FV_002",
+      "expected_name": "b_FV_ctrl002",
+      "actual_name": "b_FV_ctrl002",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_C_FV_003",
+      "expected_name": "c_FV_ctrl003",
+      "actual_name": "c_FV_ctrl003",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_A",
+      "expected_name": "A_ctrl",
+      "actual_name": "A_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_EE",
+      "expected_name": "EE_ctrl",
+      "actual_name": "EE_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_FV",
+      "expected_name": "FV_ctrl",
+      "actual_name": "FV_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_GNK",
+      "expected_name": "GNK_ctrl",
+      "actual_name": "GNK_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_MBP",
+      "expected_name": "MBP_ctrl",
+      "actual_name": "MBP_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_SH",
+      "expected_name": "SH_ctrl",
+      "actual_name": "SH_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_W",
+      "expected_name": "W_ctrl",
+      "actual_name": "W_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_OTHER",
+      "expected_name": "Other_ctrl",
+      "actual_name": "Other_ctrl",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "PHONEME_A_A_02",
+      "expected_name": "a_A_ctrl02",
+      "actual_name": "a_A_ctrl02",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_EXPR_QI_R",
+      "expected_name": "R_mouthUpCircleCtrl01",
+      "actual_name": "R_mouthUpCircleCtrl01",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_NU_R",
+      "expected_name": "R_mouthUpCircleCtrl008",
+      "actual_name": "R_mouthUpCircleCtrl008",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_YOU_R",
+      "expected_name": "R_mouthUpCircleCtrl03",
+      "actual_name": "R_mouthUpCircleCtrl03",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_HAPPY_R",
+      "expected_name": "R_mouthUpCircleCtrl00",
+      "actual_name": "R_mouthUpCircleCtrl00",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_QI_L",
+      "expected_name": "L_mouthUpCircleCtrl00",
+      "actual_name": "L_mouthUpCircleCtrl00",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_NU_L",
+      "expected_name": "L_mouthUpCircleCtrl008",
+      "actual_name": "L_mouthUpCircleCtrl008",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_YOU_L",
+      "expected_name": "L_mouthUpCircleCtrl02",
+      "actual_name": "L_mouthUpCircleCtrl02",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_EXPR_HAPPY_L",
+      "expected_name": "L_mouthUpCircleCtrl04",
+      "actual_name": "L_mouthUpCircleCtrl04",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "BROW_L",
+      "expected_name": "Animcraft_Left_Brow_Z_Ctrl",
+      "actual_name": "Animcraft_Left_Brow_Z_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "BROW_R",
+      "expected_name": "Animcraft_Right_Brow_Z_Ctrl",
+      "actual_name": "Animcraft_Right_Brow_Z_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "BROW_L_IN",
+      "expected_name": "zCircle049",
+      "actual_name": "zCircle049",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "BROW_L_MID",
+      "expected_name": "zCircle050",
+      "actual_name": "zCircle050",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "BROW_L_OUT",
+      "expected_name": "zCircle048",
+      "actual_name": "zCircle048",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "BROW_R_IN",
+      "expected_name": "zCircle051",
+      "actual_name": "zCircle051",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "BROW_R_MID",
+      "expected_name": "zCircle052",
+      "actual_name": "zCircle052",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "BROW_R_OUT",
+      "expected_name": "zCircle053",
+      "actual_name": "zCircle053",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "BROW_L_BEND",
+      "expected_name": "Animcraft_Left_Brow_Ctrl",
+      "actual_name": "Animcraft_Left_Brow_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "BROW_R_BEND",
+      "expected_name": "Animcraft_Right_Brow_Ctrl",
+      "actual_name": "Animcraft_Right_Brow_Ctrl",
+      "class": "CV 曲线"
+    },
+    {
+      "role_id": "EYE_R_CORNER_IN",
+      "expected_name": "zCircle083",
+      "actual_name": "zCircle083",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_UP_IN",
+      "expected_name": "zCircle074",
+      "actual_name": "zCircle074",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_UP_MID",
+      "expected_name": "zCircle075",
+      "actual_name": "zCircle075",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_UP_OUT",
+      "expected_name": "zCircle076",
+      "actual_name": "zCircle076",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_CORNER_OUT",
+      "expected_name": "zCircle082",
+      "actual_name": "zCircle082",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_DOWN_OUT",
+      "expected_name": "zCircle077",
+      "actual_name": "zCircle077",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_DOWN_MID",
+      "expected_name": "zCircle078",
+      "actual_name": "zCircle078",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_R_DOWN_IN",
+      "expected_name": "zCircle079",
+      "actual_name": "zCircle079",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_CORNER_IN",
+      "expected_name": "zCircle084",
+      "actual_name": "zCircle084",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_UP_IN",
+      "expected_name": "zCircle068",
+      "actual_name": "zCircle068",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_UP_MID",
+      "expected_name": "zCircle069",
+      "actual_name": "zCircle069",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_UP_OUT",
+      "expected_name": "zCircle070",
+      "actual_name": "zCircle070",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_CORNER_OUT",
+      "expected_name": "zCircle085",
+      "actual_name": "zCircle085",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_DOWN_OUT",
+      "expected_name": "zCircle071",
+      "actual_name": "zCircle071",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_DOWN_MID",
+      "expected_name": "zCircle072",
+      "actual_name": "zCircle072",
+      "class": "样条线图形"
+    },
+    {
+      "role_id": "EYE_L_DOWN_IN",
+      "expected_name": "zCircle073",
+      "actual_name": "zCircle073",
+      "class": "样条线图形"
+    }
+  ],
+  "missing": [],
+  "ambiguous": [],
+  "passed": true
+}

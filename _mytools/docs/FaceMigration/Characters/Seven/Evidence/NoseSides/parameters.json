@@ -1,0 +1,66 @@
+{
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "source_scene": "D:/Download/Seven_Skin_New.max",
+  "source_layer": 3,
+  "source_axis": "Y",
+  "source_range": [
+    -1,
+    1
+  ],
+  "source_to_ui": "UE.Z = Max.Y * 10",
+  "axis_rig_global": [
+    0,
+    1,
+    0
+  ],
+  "radians_per_ui_unit": 0.02,
+  "bone": "bijian",
+  "rotation_target": "NOSE_MAKE_bijian.Rotation",
+  "minimum": [
+    0,
+    0,
+    -10
+  ],
+  "maximum": [
+    0,
+    0,
+    10
+  ],
+  "shape_diameter_cm": 0.8,
+  "controls": [
+    {
+      "source": "Animcraft_Right_Nose_Ctrl",
+      "control": "CTRL_NOSE_SIDE_R",
+      "display_name": "右鼻侧",
+      "sign": 1,
+      "origin": [
+        -1.2499815207648,
+        11.4000168,
+        156.814014
+      ],
+      "color": [
+        0.15,
+        0.85,
+        1,
+        1
+      ]
+    },
+    {
+      "source": "Animcraft_Left_Nose_Ctrl",
+      "control": "CTRL_NOSE_SIDE_L",
+      "display_name": "左鼻侧",
+      "sign": -1,
+      "origin": [
+        1.2500184792352,
+        11.4000168,
+        156.814014
+      ],
+      "color": [
+        0.3,
+        1,
+        0.55,
+        1
+      ]
+    }
+  ]
+}

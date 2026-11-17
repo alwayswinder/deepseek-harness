@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-complete-20261111",
+  "character": "Seven",
+  "legacy_runtime_adapter": false,
+  "asset_overrides": {
+    "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset"
+  },
+  "retention": {
+    "keep_backups_per_group": 3
+  },
+  "source": {
+    "max_scene": "D:/Download/Seven_Skin_New.max"
+  },
+  "crosscheck": {
+    "name": "lid",
+    "control": "CTRL_EYE_LID_R",
+    "max_node": "SYP_R001",
+    "morph_node": "Seven_Head",
+    "max_channel": "position",
+    "max_controller_index": 2,
+    "max_axis": 1,
+    "ui_axis": 2,
+    "ui_scale": 5.714285714285714,
+    "max_values": [
+      0.0,
+      -0.4375,
+      -0.875,
+      -1.3125,
+      -1.75
+    ],
+    "bones": [
+      "Bone028",
+      "Bone027",
+      "Eye_R"
+    ],
+    "primary_bone": "Bone028",
+    "tolerance": {
+      "primary_position_cm": 0.05,
+      "primary_rotation_deg": 0.15
+    },
+    "note": "right upper lid: Max SYP_R001 Position_List slot 2 axis Y (-1.75..0) maps to UE CTRL_EYE_LID_R Z (0..-10), factor 10/1.75. Bone028 is the driven lid bone, Bone027 a linked secondary bone."
+  },
+  "notes": "2026-11-11 user requested completion of NewControlRigRuntimeAsset. Fresh inventory and current Max verification; preserve existing target content and read-only reference; no historical reports counted as current validation.",
+  "preview": {
+    "prepare": true,
+    "host": "pie"
+  }
+}

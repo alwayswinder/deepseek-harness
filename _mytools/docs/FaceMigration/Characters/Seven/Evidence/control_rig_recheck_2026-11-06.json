@@ -1,0 +1,587 @@
+{
+  "captured_at": "2026-11-06T12:24:20.861695+08:00",
+  "asset": "/Game/_MyTest/Mouth/Rig/CR_Seven_MorphSliders",
+  "scope": "In-memory editor asset; isolated instance. No save/reload or visual validation.",
+  "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+  "bones": 149,
+  "controls": 28,
+  "nodes": 330,
+  "prefix_counts": {
+    "BROW_": 38,
+    "BPT_": 18,
+    "BB_": 43,
+    "BBL_": 43,
+    "EYE_": 96,
+    "LID_": 86
+  },
+  "break_link_doc": "x.break_link(output_pin_path, input_pin_path, setup_undo_redo=True, print_python_command=False) -> bool\r\nRemoves a link from the graph.\nThis causes a LinkRemoved modified event.\r\n\r\nArgs:\r\n    output_pin_path (str): \r\n    input_pin_path (str): \r\n    setup_undo_redo (bool): \r\n    print_python_command (bool): \r\n\r\nReturns:\r\n    bool:",
+  "break_all_links_doc": "x.break_all_links(pin_path, as_input=True, setup_undo_redo=True, print_python_command=False) -> bool\r\nRemoves all links on a given pin from the graph.\nThis might cause multiple LinkRemoved modified event.\r\n\r\nArgs:\r\n    pin_path (str): \r\n    as_input (bool): \r\n    setup_undo_redo (bool): \r\n    print_python_command (bool): \r\n\r\nReturns:\r\n    bool:",
+  "execution": {
+    "edges": [
+      [
+        "EYE_SET_Bone043",
+        "EYE_SET_Bone027"
+      ],
+      [
+        "EYE_SET_Bone027",
+        "EYE_SET_Bone028"
+      ],
+      [
+        "EYE_SET_Bone028",
+        "EYE_SET_Bone029"
+      ],
+      [
+        "EYE_SET_Bone029",
+        "EYE_SET_Bone042"
+      ],
+      [
+        "EYE_SET_Bone042",
+        "EYE_SET_Bone030"
+      ],
+      [
+        "EYE_SET_Bone030",
+        "EYE_SET_Bone031"
+      ],
+      [
+        "EYE_SET_Bone031",
+        "EYE_SET_Bone032"
+      ],
+      [
+        "EYE_SET_Bone032",
+        "EYE_SET_Bone044"
+      ],
+      [
+        "EYE_SET_Bone044",
+        "EYE_SET_Bone036"
+      ],
+      [
+        "EYE_SET_Bone036",
+        "EYE_SET_Bone037"
+      ],
+      [
+        "EYE_SET_Bone037",
+        "EYE_SET_Bone038"
+      ],
+      [
+        "EYE_SET_Bone038",
+        "EYE_SET_Bone045"
+      ],
+      [
+        "EYE_SET_Bone045",
+        "EYE_SET_Bone039"
+      ],
+      [
+        "EYE_SET_Bone039",
+        "EYE_SET_Bone040"
+      ],
+      [
+        "EYE_SET_Bone040",
+        "EYE_SET_Bone041"
+      ],
+      [
+        "Begin",
+        "BROW_SET_meibu_L"
+      ],
+      [
+        "BROW_SET_meibu_L",
+        "BROW_SET_Bone007"
+      ],
+      [
+        "BROW_SET_Bone007",
+        "BROW_SET_Bone008"
+      ],
+      [
+        "BROW_SET_Bone008",
+        "BROW_SET_Bone009"
+      ],
+      [
+        "BROW_SET_Bone009",
+        "BROW_SET_meibu_R"
+      ],
+      [
+        "BROW_SET_meibu_R",
+        "BROW_SET_Bone010"
+      ],
+      [
+        "BROW_SET_Bone010",
+        "BROW_SET_Bone011"
+      ],
+      [
+        "BROW_SET_Bone011",
+        "BROW_SET_Bone012"
+      ],
+      [
+        "BROW_SET_Bone012",
+        "EYE_SET_Bone043"
+      ]
+    ],
+    "set_count": 24,
+    "unreachable_sets": []
+  },
+  "lid_parameters": {
+    "Bone027": {
+      "SQUAT": "(X=-0.474289,Y=-0.879164,Z=0.046048)",
+      "SANG": "0.109674"
+    },
+    "Bone028": {
+      "SQUAT": "(X=-0.969233,Y=-0.239952,Z=0.054870)",
+      "SANG": "0.207962"
+    },
+    "Bone029": {
+      "SQUAT": "(X=-0.969233,Y=-0.239952,Z=0.054870)",
+      "SANG": "0.207962"
+    },
+    "Bone036": {
+      "SQUAT": "(X=-0.474284,Y=0.879166,Z=-0.046066)",
+      "SANG": "0.109674"
+    },
+    "Bone037": {
+      "SQUAT": "(X=-0.969232,Y=0.239957,Z=-0.054870)",
+      "SANG": "0.207962"
+    },
+    "Bone038": {
+      "SQUAT": "(X=-0.969232,Y=0.239957,Z=-0.054870)",
+      "SANG": "0.207962"
+    }
+  },
+  "instance_keys": 177,
+  "brow_samples": [
+    {
+      "side": "L",
+      "input": [
+        -10,
+        0,
+        0
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "L",
+      "input": [
+        10,
+        0,
+        0
+      ],
+      "max_position_error_cm": 8.881784197001252e-16
+    },
+    {
+      "side": "L",
+      "input": [
+        0,
+        -10,
+        0
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "L",
+      "input": [
+        0,
+        10,
+        0
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "L",
+      "input": [
+        0,
+        0,
+        -10
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "L",
+      "input": [
+        0,
+        0,
+        10
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "R",
+      "input": [
+        -10,
+        0,
+        0
+      ],
+      "max_position_error_cm": 8.881784197001252e-16
+    },
+    {
+      "side": "R",
+      "input": [
+        10,
+        0,
+        0
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "R",
+      "input": [
+        0,
+        -10,
+        0
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "R",
+      "input": [
+        0,
+        10,
+        0
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "R",
+      "input": [
+        0,
+        0,
+        -10
+      ],
+      "max_position_error_cm": 0.0
+    },
+    {
+      "side": "R",
+      "input": [
+        0,
+        0,
+        10
+      ],
+      "max_position_error_cm": 0.0
+    }
+  ],
+  "lid_samples": [
+    {
+      "s": 0.0,
+      "bone": "Bone027",
+      "position_error_cm": 0.0002754132181493375,
+      "rotation_error_deg": 0.00022272858348872947
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone028",
+      "position_error_cm": 0.0002744908976563887,
+      "rotation_error_deg": 0.0003069218292420153
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone029",
+      "position_error_cm": 0.0002784537723527361,
+      "rotation_error_deg": 0.00020453537191653578
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone036",
+      "position_error_cm": 0.0002701096472236185,
+      "rotation_error_deg": 0.00022678902358411795
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone037",
+      "position_error_cm": 0.00027171747961939903,
+      "rotation_error_deg": 0.00032221557668822017
+    },
+    {
+      "s": 0.0,
+      "bone": "Bone038",
+      "position_error_cm": 0.0002725582924924567,
+      "rotation_error_deg": 0.0002568255576832509
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone027",
+      "position_error_cm": 0.009242423403544048,
+      "rotation_error_deg": 0.17291056129935406
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone028",
+      "position_error_cm": 0.0013707739579516768,
+      "rotation_error_deg": 0.00030578925494415904
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone029",
+      "position_error_cm": 0.014674417732273855,
+      "rotation_error_deg": 0.00020754954620318922
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone036",
+      "position_error_cm": 0.008774567155236326,
+      "rotation_error_deg": 0.1728429606308125
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone037",
+      "position_error_cm": 0.0018655335008398572,
+      "rotation_error_deg": 0.00030382828071015235
+    },
+    {
+      "s": 0.125,
+      "bone": "Bone038",
+      "position_error_cm": 0.01505325946248927,
+      "rotation_error_deg": 0.00023188718562839862
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone027",
+      "position_error_cm": 0.015660107448510287,
+      "rotation_error_deg": 0.29601054159320506
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone028",
+      "position_error_cm": 0.002542735027732379,
+      "rotation_error_deg": 0.000327751237330384
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone029",
+      "position_error_cm": 0.02525310978944035,
+      "rotation_error_deg": 0.00023402743926996737
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone036",
+      "position_error_cm": 0.015194667652003046,
+      "rotation_error_deg": 0.2959414031426713
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone037",
+      "position_error_cm": 0.003032788949378591,
+      "rotation_error_deg": 0.00029097026735550925
+    },
+    {
+      "s": 0.25,
+      "bone": "Bone038",
+      "position_error_cm": 0.025646714262965015,
+      "rotation_error_deg": 0.00022259108659157282
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone027",
+      "position_error_cm": 0.019526786813794276,
+      "rotation_error_deg": 0.36945235703413565
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone028",
+      "position_error_cm": 0.003239788734119982,
+      "rotation_error_deg": 0.000353107403498848
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone029",
+      "position_error_cm": 0.03153731125396955,
+      "rotation_error_deg": 0.0002669896396904193
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone036",
+      "position_error_cm": 0.019064691706159216,
+      "rotation_error_deg": 0.3693734180691746
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone037",
+      "position_error_cm": 0.0037312702838710205,
+      "rotation_error_deg": 0.000301032403340117
+    },
+    {
+      "s": 0.375,
+      "bone": "Bone038",
+      "position_error_cm": 0.031945544389604306,
+      "rotation_error_deg": 0.00024109697050425196
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone027",
+      "position_error_cm": 0.02083786507415261,
+      "rotation_error_deg": 0.3934159426975608
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone028",
+      "position_error_cm": 0.0034645405291333477,
+      "rotation_error_deg": 0.0004059080917693647
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone029",
+      "position_error_cm": 0.033558891838100756,
+      "rotation_error_deg": 0.00031323604232552627
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone036",
+      "position_error_cm": 0.020375597397406086,
+      "rotation_error_deg": 0.3933298106788049
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone037",
+      "position_error_cm": 0.0039561604904354425,
+      "rotation_error_deg": 0.0003204279717262581
+    },
+    {
+      "s": 0.5,
+      "bone": "Bone038",
+      "position_error_cm": 0.03398187557742632,
+      "rotation_error_deg": 0.00026182886754954113
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone027",
+      "position_error_cm": 0.019582568648914413,
+      "rotation_error_deg": 0.3681401874874308
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone028",
+      "position_error_cm": 0.003220181755628977,
+      "rotation_error_deg": 0.00043493880951033073
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone029",
+      "position_error_cm": 0.031340213960825515,
+      "rotation_error_deg": 0.0003673886312436947
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone036",
+      "position_error_cm": 0.01912200925629965,
+      "rotation_error_deg": 0.3680657866720314
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone037",
+      "position_error_cm": 0.003711251275284105,
+      "rotation_error_deg": 0.00036295724218949016
+    },
+    {
+      "s": 0.625,
+      "bone": "Bone038",
+      "position_error_cm": 0.03177875934604845,
+      "rotation_error_deg": 0.00030007198427212676
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone027",
+      "position_error_cm": 0.015751566293707858,
+      "rotation_error_deg": 0.29393654631700816
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone028",
+      "position_error_cm": 0.0025056732816254794,
+      "rotation_error_deg": 0.0004977375877946786
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone029",
+      "position_error_cm": 0.024932715409074897,
+      "rotation_error_deg": 0.0004340395784483458
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone036",
+      "position_error_cm": 0.01529284657984748,
+      "rotation_error_deg": 0.293834884189399
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone037",
+      "position_error_cm": 0.0029909217490693926,
+      "rotation_error_deg": 0.0003982137941926622
+    },
+    {
+      "s": 0.75,
+      "bone": "Bone038",
+      "position_error_cm": 0.02537946951024936,
+      "rotation_error_deg": 0.000351572335541593
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone027",
+      "position_error_cm": 0.009325687566837168,
+      "rotation_error_deg": 0.17110538942322817
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone028",
+      "position_error_cm": 0.0013345301999607099,
+      "rotation_error_deg": 0.0005432335683817126
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone029",
+      "position_error_cm": 0.01436804444470835,
+      "rotation_error_deg": 0.0004909131648427735
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone036",
+      "position_error_cm": 0.008872430586070526,
+      "rotation_error_deg": 0.1710275307134802
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone037",
+      "position_error_cm": 0.001814987993914119,
+      "rotation_error_deg": 0.00045088302787864694
+    },
+    {
+      "s": 0.875,
+      "bone": "Bone038",
+      "position_error_cm": 0.014824674166864792,
+      "rotation_error_deg": 0.0004013099428873891
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone027",
+      "position_error_cm": 0.0003677336938933646,
+      "rotation_error_deg": 0.00041097651779337395
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone028",
+      "position_error_cm": 0.0005013405746116959,
+      "rotation_error_deg": 0.000601776587306744
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone029",
+      "position_error_cm": 0.0003167586156785607,
+      "rotation_error_deg": 0.0005513183410758544
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone036",
+      "position_error_cm": 0.0002721790464603492,
+      "rotation_error_deg": 3.482726785942526e-05
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone037",
+      "position_error_cm": 0.00038031379348975233,
+      "rotation_error_deg": 0.0005001510663491987
+    },
+    {
+      "s": 1.0,
+      "bone": "Bone038",
+      "position_error_cm": 0.00033772688139377133,
+      "rotation_error_deg": 0.00046331519794030174
+    }
+  ],
+  "max_brow_position_error_cm": 8.881784197001252e-16,
+  "max_lid_position_error_cm": 0.03398187557742632,
+  "max_lid_rotation_error_deg": 0.3934159426975608
+}

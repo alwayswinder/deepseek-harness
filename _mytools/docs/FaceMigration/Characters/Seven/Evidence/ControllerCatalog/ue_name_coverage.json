@@ -1,0 +1,22 @@
+{
+  "captured_at": "2026-11-09T15:59:51.989310+08:00",
+  "kind": "name_coverage_from_last_saved_reports",
+  "live_checked": false,
+  "live_check_note": "UE remote execution node unavailable this turn; no editor restart requested",
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "source_reports": [
+    "Docs/Evidence/NoseSides/build_report.json",
+    "Docs/Evidence/NoseSides/parameters.json",
+    "Docs/Evidence/NoseSides/reload_report.json"
+  ],
+  "last_saved_report_time": "2026-11-09T15:27:12.543294+08:00",
+  "catalog_count": 72,
+  "recorded_animation_controls": 72,
+  "visual_cues": [
+    "VIS_PHONEME_REFERENCE"
+  ],
+  "missing": [],
+  "uncatalogued": [],
+  "saved_and_reloaded": true,
+  "passed": true
+}

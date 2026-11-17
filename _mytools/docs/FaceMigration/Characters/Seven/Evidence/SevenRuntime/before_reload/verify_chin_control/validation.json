@@ -1,0 +1,378 @@
+{
+  "captured_at": "2026-11-09T16:44:26.337920+08:00",
+  "asset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "status": "RuntimeAsset: fresh instance execution validated; no BlueprintStatus",
+  "nodes": 1926,
+  "controls": 73,
+  "bones": 149,
+  "driven_bones": 57,
+  "worst": {
+    "source_all_position_cm": "Bone016",
+    "source_all_rotation_deg": "xiabake_L",
+    "source_all_scale": "Root",
+    "non_target_position_cm": "Root",
+    "non_target_rotation_deg": "Eye_L",
+    "non_target_scale": "Root",
+    "repeat_position_cm": "Root",
+    "repeat_rotation_deg": "Bone014",
+    "repeat_scale": "Root",
+    "source_mixed_all_position_cm": "Bone041",
+    "source_mixed_all_rotation_deg": "xiabake_R",
+    "source_mixed_all_scale": "Root",
+    "source_mixed_upper_position_cm": "Bone038",
+    "source_mixed_upper_rotation_deg": "Bone027",
+    "source_mixed_upper_scale": "Bone029",
+    "regression_position_cm": "Eye_R01",
+    "regression_rotation_deg": "Eye_L01",
+    "regression_scale": "Root",
+    "mixed_position_cm": "xiazuichun",
+    "mixed_rotation_deg": "xiabake_R",
+    "mixed_scale": "Root",
+    "reset_position_cm": "Root",
+    "reset_rotation_deg": "xiazuichun",
+    "reset_scale": "Root"
+  },
+  "passed": true,
+  "initials": [
+    {
+      "hierarchy": "blueprint",
+      "value": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position": [
+        7.84841540735215e-06,
+        12.324395179748535,
+        149.29751586914062
+      ]
+    },
+    {
+      "hierarchy": "fresh",
+      "value": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "position": [
+        7.84841540735215e-06,
+        12.324395179748535,
+        149.29751586914062
+      ]
+    }
+  ],
+  "worst_source_all_": {
+    "bone": "Bone016",
+    "input": [
+      0.995462418,
+      -4.54511452,
+      0.945518553
+    ],
+    "expected": {
+      "p": [
+        0.8939714020269885,
+        8.139205498857704,
+        148.75853344189792
+      ],
+      "q": [
+        0.6554471792430505,
+        0.34180667136855025,
+        -0.4982282356994186,
+        -0.45312885894147137
+      ],
+      "scale": [
+        1.0000009536743164,
+        1.0,
+        1.0000009536743164
+      ]
+    },
+    "actual": {
+      "p": [
+        0.8939706159532613,
+        8.139211476531095,
+        148.758573886575
+      ],
+      "q": [
+        0.6554472406661872,
+        0.34180663816439777,
+        -0.4982281452141256,
+        -0.45312895749832754
+      ],
+      "scale": [
+        1.0000009536743164,
+        1.0,
+        1.0000009536743164
+      ]
+    }
+  },
+  "source_all_position_cm": 4.089159319799043e-05,
+  "source_all_rotation_deg": 4.292707329736469e-05,
+  "source_all_scale": 0.0,
+  "non_target_position_cm": 0.0,
+  "non_target_rotation_deg": 4.182619578303746e-06,
+  "non_target_scale": 0.0,
+  "repeat_position_cm": 0.0,
+  "repeat_rotation_deg": 5.399738656763832e-06,
+  "repeat_scale": 0.0,
+  "worst_source_mixed_all_": {
+    "bone": "Bone041",
+    "input": [
+      2.76132107,
+      -0.77056551,
+      -0.91354543
+    ],
+    "expected": {
+      "p": [
+        2.4495763177297762,
+        8.272165042024103,
+        158.87422790507674
+      ],
+      "q": [
+        0.4714484605666893,
+        0.5956246922351003,
+        -0.3109534973877932,
+        -0.5712053429215893
+      ],
+      "scale": [
+        1.0,
+        0.9999989867210388,
+        1.0
+      ]
+    },
+    "actual": {
+      "p": [
+        2.449560711767033,
+        8.272162635824369,
+        158.8743300451095
+      ],
+      "q": [
+        0.47144845328502066,
+        0.5956246728027147,
+        -0.3109534959577435,
+        -0.5712053294536042
+      ],
+      "scale": [
+        1.0,
+        0.9999989867210388,
+        1.0
+      ]
+    }
+  },
+  "source_mixed_all_position_cm": 0.00010335338486823267,
+  "source_mixed_all_rotation_deg": 4.360100889887781e-05,
+  "source_mixed_all_scale": 0.0,
+  "worst_source_mixed_upper_": {
+    "bone": "Bone038",
+    "input": [
+      4.99657345,
+      -1.92489612,
+      0.838670552
+    ],
+    "expected": {
+      "p": [
+        5.973055533070148,
+        7.104523905132903,
+        158.88193108472205
+      ],
+      "q": [
+        0.733907705029156,
+        0.27437732596099135,
+        -0.3228704285756279,
+        -0.5308965936395239
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "actual": {
+      "p": [
+        5.998366241855882,
+        7.091967480896876,
+        158.90048023498412
+      ],
+      "q": [
+        0.7339068282192597,
+        0.2743784202448884,
+        -0.3228697051708336,
+        -0.5308977335418138
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "source_mixed_upper_position_cm": 0.03379891631806937,
+  "source_mixed_upper_rotation_deg": 0.3933785834371917,
+  "source_mixed_upper_scale": 0.0,
+  "regression_position_cm": 3.6178778619554834e-10,
+  "regression_rotation_deg": 5.122641877509564e-06,
+  "regression_scale": 0.0,
+  "worst_mixed": {
+    "bone": "xiazuichun",
+    "values": {
+      "CTRL_MOUTH_L": [
+        -9.97564077,
+        7.19339788,
+        -9.945219159999999
+      ],
+      "CTRL_MOUTH_R": [
+        9.87688363,
+        -8.91006529,
+        -9.9862951
+      ],
+      "CTRL_MOUTH": [
+        -9.70295727,
+        9.8480773,
+        -9.78147626
+      ],
+      "CTRL_NOSE": [
+        -1.04528464,
+        3.0000001199999997,
+        -2.07911685
+      ],
+      "CTRL_CHEEK_R": [
+        7.4314481,
+        0,
+        -9.78147626
+      ],
+      "CTRL_CHEEK_L": [
+        8.09017003,
+        0,
+        7.4314481
+      ],
+      "CTRL_LIP_UP_L": [
+        0,
+        0,
+        8.94005418
+      ],
+      "CTRL_LIP_UP_C": [
+        0,
+        0,
+        9.667901989999999
+      ],
+      "CTRL_LIP_UP_R": [
+        0,
+        0,
+        9.98782039
+      ],
+      "CTRL_LIP_LOW_R": [
+        0,
+        0,
+        -9.87185001
+      ],
+      "CTRL_LIP_LOW_C": [
+        0,
+        0,
+        -9.33012724
+      ],
+      "CTRL_LIP_LOW_L": [
+        0,
+        0,
+        -8.40999186
+      ],
+      "CTRL_EYEBALL_L": [
+        -3.2505871708831586,
+        -5.5407153280815225,
+        1.4902228380090405
+      ],
+      "CTRL_EYEBALL_R": [
+        -2.6753950963256887,
+        -5.888232858819708,
+        2.606706790289933
+      ],
+      "CTRL_EYEBALL_MASTER": [
+        -1.4105551815090267,
+        -3.881206930982481,
+        2.4818495870971677
+      ],
+      "CTRL_EYE_LID_L": [
+        0,
+        0,
+        -2.886908737142857
+      ],
+      "CTRL_EYE_LID_R": [
+        0,
+        0,
+        -1.6543468399999999
+      ],
+      "CTRL_EYE_LOWER_LID_L": [
+        0,
+        0,
+        3.538141761627907
+      ],
+      "CTRL_EYE_LOWER_LID_R": [
+        0,
+        0,
+        2.6526421627906975
+      ]
+    },
+    "chin": [
+      -2.0,
+      10.0,
+      -11.666666666666668
+    ],
+    "expected": {
+      "p": [
+        -1.7226810193975,
+        9.732076240794584,
+        145.73681138123413
+      ],
+      "q": [
+        0.5551103503354614,
+        0.16341522870485503,
+        -0.8112347659652048,
+        -0.08394017474965679
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "actual": {
+      "p": [
+        -1.7226810174309408,
+        9.732076088726963,
+        145.7368111592931
+      ],
+      "q": [
+        0.5551103956877504,
+        0.1634152374407396,
+        -0.8112348337232806,
+        -0.08394017707026223
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  },
+  "mixed_position_cm": 2.6904693304737946e-07,
+  "mixed_rotation_deg": 8.706816964856284e-06,
+  "mixed_scale": 0.0,
+  "limits": [
+    [
+      -3.3333333333333335,
+      0,
+      -20
+    ],
+    [
+      3.3333333333333335,
+      16.666666666666668,
+      0
+    ]
+  ],
+  "handle_axis_error_cm": 1.3241713739756959e-07,
+  "reset_position_cm": 0.0,
+  "reset_rotation_deg": 4.829673078902933e-06,
+  "reset_scale": 0.0,
+  "source_cases": 55,
+  "source_mixed_cases": 20,
+  "regression_cases": 238,
+  "mixed_cases": 476
+}

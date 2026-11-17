@@ -1,0 +1,1815 @@
+{
+  "created_at": "2026-11-09T16:10:21.987152+08:00",
+  "scope": "Documentation organization only; no asset rebuild or runtime visual validation.",
+  "backup": "Saved/Codex/Backup/FaceDocs_20261109_161020/before.zip",
+  "files_before": {
+    "Docs/Characters/Seven.face-controls.json": {
+      "sha256": "d0ece5fd4d48f38f3232a4b622f46cec9f0a837332a2802a3391413203882f14",
+      "bytes": 30827
+    },
+    "Docs/CheekControls.md": {
+      "sha256": "89423aef8b8458542710228a4b1aaf972b12e867cc6969471e0548025d46aa38",
+      "bytes": 6684
+    },
+    "Docs/ChinControl.md": {
+      "sha256": "2476f3562f6167d1382464b54d90bec00c68f6f8e6826a518902e56535181cf9",
+      "bytes": 5174
+    },
+    "Docs/ControlRigValidation.md": {
+      "sha256": "8f4978c6c9e100dbc3d01b662e6d2a6744fe3c4145b89ecbf4b302d26ca7c87e",
+      "bytes": 6617
+    },
+    "Docs/Evidence/Cheeks/axis_adjustment.json": {
+      "sha256": "9296d53e4d79392557c268a54e589cb0423a8ff9f5bf6996002e31d038042afb",
+      "bytes": 633
+    },
+    "Docs/Evidence/Cheeks/build_report.json": {
+      "sha256": "e0d9a00079d340ebca0bf29b025a8fb0b844568d91b45a34c319d137db98ee09",
+      "bytes": 3940
+    },
+    "Docs/Evidence/Cheeks/max_expressions.txt": {
+      "sha256": "00f8797a5f91e515ffa53ea2e41b186177e2cd89c72ae3896b85cc7cb231b499",
+      "bytes": 13731
+    },
+    "Docs/Evidence/Cheeks/max_samples.json": {
+      "sha256": "29c4dc99f3b1ef3042301cf0d915edd88edb677827be32fce87daedec9a24656",
+      "bytes": 269941
+    },
+    "Docs/Evidence/Cheeks/parameters.json": {
+      "sha256": "49c10c31c041fb6bfb4a16715fab454be4018a12a296c0ec37d90d399fa43577",
+      "bytes": 7833
+    },
+    "Docs/Evidence/Cheeks/previous_controls.json": {
+      "sha256": "80836fe36cbb070c550a0989f5734532cf8a8a447a97fd87ac2da58113d58f61",
+      "bytes": 161202
+    },
+    "Docs/Evidence/Cheeks/README.md": {
+      "sha256": "af8540eda84b622fe3c46bc5daa798122bfcf2df0f053d0338cd2ab8e1db1e81",
+      "bytes": 2459
+    },
+    "Docs/Evidence/Cheeks/reload_report.json": {
+      "sha256": "364acfebfc58d9dd6006373cf821d0917c9209b21e4cf077228103ae54eda27b",
+      "bytes": 1636
+    },
+    "Docs/Evidence/Cheeks/validation.json": {
+      "sha256": "3beaba099581fb73fbb5265a50dd2558efabb745545e3da398c26d3558a953a1",
+      "bytes": 3964
+    },
+    "Docs/Evidence/Chin/build_report.json": {
+      "sha256": "6df858a6a89a18b3db4c6bd26d63dfaeb60e6efa5f94067ec21abaa6e4f39952",
+      "bytes": 16653
+    },
+    "Docs/Evidence/Chin/max_samples.json": {
+      "sha256": "dcde30b6a33957cc06be2de0f66e0614dc356bc34364033c0e657854db69c42f",
+      "bytes": 7026834
+    },
+    "Docs/Evidence/Chin/parameters.json": {
+      "sha256": "0a9b10a042ad01b8814c363f63c22c73ee8dbfe264d99f962a18a75a9d00c41e",
+      "bytes": 18143
+    },
+    "Docs/Evidence/Chin/previous_controls.json": {
+      "sha256": "38600945c1a24a730fa2a945f4c1e6852d12200568586a376328c0d467e524ca",
+      "bytes": 15088029
+    },
+    "Docs/Evidence/Chin/README.md": {
+      "sha256": "48517934785ccf5f343f64dc86f0dfb87a367f099e8d667d766c03cd1f037430",
+      "bytes": 1606
+    },
+    "Docs/Evidence/Chin/reload_report.json": {
+      "sha256": "c92b89667fdb68c20acb8a93fb05fd1a49c90c7ee35f1d4cc10da60eb484f529",
+      "bytes": 5114
+    },
+    "Docs/Evidence/Chin/travel_adjustment.json": {
+      "sha256": "5b1b8ce6957dae29a94951105775e99fcba6da44893aa76f4c8c96ee33a8d11f",
+      "bytes": 7396
+    },
+    "Docs/Evidence/Chin/validation.json": {
+      "sha256": "6e77d3be22a7320b3f7bf31c264a85c81a3a0a32835f501d99cdba24b2a9bb57",
+      "bytes": 8295
+    },
+    "Docs/Evidence/control_rig_recheck_2026-11-06.json": {
+      "sha256": "85b05d18b55af2b5d2145289440a1db21febc8cc6de6ed6aea68a75ac585fd26",
+      "bytes": 14311
+    },
+    "Docs/Evidence/ControllerCatalog/file_validation.json": {
+      "sha256": "7aad749dbcd0f56b386b02b280de2b1a42af02956181089221e3949f751218d9",
+      "bytes": 289
+    },
+    "Docs/Evidence/ControllerCatalog/max_name_coverage.json": {
+      "sha256": "e274662500d0343961f89efd4ca16f841e3a855f5306d49d71977c6034ff0688",
+      "bytes": 11471
+    },
+    "Docs/Evidence/ControllerCatalog/README.md": {
+      "sha256": "dce66885f97dc82e577c806807680bf6abb34df5c19f4ebe58ac68b60ecb7069",
+      "bytes": 1458
+    },
+    "Docs/Evidence/ControllerCatalog/ue_name_coverage.json": {
+      "sha256": "34b0126fce12b69164fb90cf226953573d381e8251e81ef2e21c56f0c4cbc7b3",
+      "bytes": 761
+    },
+    "Docs/Evidence/docs_audit_2026-11-06.json": {
+      "sha256": "a867112b1e05ef73f935496a97d4cc5bc6aaf870fa79312aaf6e14511359e38e",
+      "bytes": 1242
+    },
+    "Docs/Evidence/ExpressionSliders/build_report.json": {
+      "sha256": "0561d4bbe1ea3f2f7d1717ba7b1fc7b695d68506b95d333d7f7d664cfbd0078b",
+      "bytes": 14935
+    },
+    "Docs/Evidence/ExpressionSliders/layout_adjustment.json": {
+      "sha256": "4dafbd5c17bed1c821649b9e36e06ff6bd45e79187b73fc4c48a35194b3ecff0",
+      "bytes": 6908
+    },
+    "Docs/Evidence/ExpressionSliders/max_samples.json": {
+      "sha256": "29c9fcc35ddb19f04102ef586e267a9180887d261754f96832c52d53cb941b0e",
+      "bytes": 1696279
+    },
+    "Docs/Evidence/ExpressionSliders/parameters.json": {
+      "sha256": "0bba677e2dba642e55dbc6b65385776af671b0dc08ad2144419fa596de1bf68f",
+      "bytes": 3438
+    },
+    "Docs/Evidence/ExpressionSliders/pose_adapter_disabled_probe.json": {
+      "sha256": "71276b93fb9e0d09e5f4cd0594bbce7382dd50bcc03bf85af8233eecccd429c6",
+      "bytes": 2003
+    },
+    "Docs/Evidence/ExpressionSliders/preview_morph_check.json": {
+      "sha256": "1b9716d451de24529b26ed1efa873cc4b65af11811159262a906d0202076580d",
+      "bytes": 2057
+    },
+    "Docs/Evidence/ExpressionSliders/previous_controls.json": {
+      "sha256": "87f9623f32156c6721f4fbadb8e317f8a66c55714cb3f031c1e1a17243b6bddb",
+      "bytes": 15467021
+    },
+    "Docs/Evidence/ExpressionSliders/README.md": {
+      "sha256": "8338eabf17ea9a99ecd16c12836d6de1d235392b49851e59b18df6235d140798",
+      "bytes": 1763
+    },
+    "Docs/Evidence/ExpressionSliders/reload_report.json": {
+      "sha256": "d7710922fbb76a736393777228d414323567e14c9466598bfa57a4a4c1eb502b",
+      "bytes": 2145
+    },
+    "Docs/Evidence/ExpressionSliders/validation.json": {
+      "sha256": "24bbe7488aec6f20e7a09a508e39ff863d5431993f7c9a8493f4d3fdfd0ff556",
+      "bytes": 797
+    },
+    "Docs/Evidence/Eyeballs/build_report.json": {
+      "sha256": "0ebfd2951a56516e626799cd64650aa47f235d85de44da23157b2ccefb0f1992",
+      "bytes": 14258
+    },
+    "Docs/Evidence/Eyeballs/max_samples.json": {
+      "sha256": "33fa340bb213bce6f4c6e074e5059bc11243c3510551eda540b265d57d840cba",
+      "bytes": 6499797
+    },
+    "Docs/Evidence/Eyeballs/parameters.json": {
+      "sha256": "d9178f755a6a6cc5484a5ca4f8347535ac8a87ee7318b6055521c054257b5e56",
+      "bytes": 12313
+    },
+    "Docs/Evidence/Eyeballs/previous_controls.json": {
+      "sha256": "6c325c4c99429e96c83c3489d2fc71ce1e5ef04c81578c2b0bea8201abd147ad",
+      "bytes": 1809743
+    },
+    "Docs/Evidence/Eyeballs/README.md": {
+      "sha256": "388c12bb3d3515d8513e38ca74cba84e9f3ca2b98805a6af9ee9e45843cfa748",
+      "bytes": 1842
+    },
+    "Docs/Evidence/Eyeballs/reload_report.json": {
+      "sha256": "827b9ad534d1bc3d811471b9fa85447a81f6dccf1179e45d759e6356e92314d7",
+      "bytes": 1710
+    },
+    "Docs/Evidence/Eyeballs/validation.json": {
+      "sha256": "cbccccda14c6481a1ffd4f410de17ed0d0a04f17d6f8f7f1ff297b46e8326014",
+      "bytes": 5003
+    },
+    "Docs/Evidence/EyeExpressions/build_report.json": {
+      "sha256": "0acf1a504aa77b0c6e02188440356abc016b23366947b2b1658c552cfc59537e",
+      "bytes": 17868
+    },
+    "Docs/Evidence/EyeExpressions/layout_adjustment.json": {
+      "sha256": "ca46f9a37a653ef2bda7fb3164ad21db53ec59a929a9b2b702c8f93c94fe82ca",
+      "bytes": 1669
+    },
+    "Docs/Evidence/EyeExpressions/max_samples.json": {
+      "sha256": "bc8e04cc5cb23c4bbce643316b9902b9e0deab9add51174623d91b56eace53e4",
+      "bytes": 3674727
+    },
+    "Docs/Evidence/EyeExpressions/parameters.json": {
+      "sha256": "a67d8b1bd543f50737062b0f58e208b4b67edc44591cc07c0092b98ea3dbb5db",
+      "bytes": 4284
+    },
+    "Docs/Evidence/EyeExpressions/preview_before_refresh.json": {
+      "sha256": "d49d8e86da6f55c63855e460e50a673edea7f1d631df464376d79f997fab62b0",
+      "bytes": 2270
+    },
+    "Docs/Evidence/EyeExpressions/preview_morph_check.json": {
+      "sha256": "a72439788d7056c7cbb3e72298cdf0853d08c1fd3c176d0f963ee53b4d1b91f2",
+      "bytes": 2270
+    },
+    "Docs/Evidence/EyeExpressions/preview_restored.json": {
+      "sha256": "d266d25669448ec0fd64739d2afc8e4b3f6ae2b607a3feb80169d1191cbd50d6",
+      "bytes": 313
+    },
+    "Docs/Evidence/EyeExpressions/previous_controls.json": {
+      "sha256": "b61d14af947120ab8a1e929cfafda5ed2ceb6c69551ac571212de43d95e752f3",
+      "bytes": 7100725
+    },
+    "Docs/Evidence/EyeExpressions/README.md": {
+      "sha256": "f1c7a5cdc6572bf4ec9751b18eec5dd0168d898d03c69a909856ec94343d827b",
+      "bytes": 1925
+    },
+    "Docs/Evidence/EyeExpressions/reload_report.json": {
+      "sha256": "3c5cb3e8ed70f018b22e5df468f682cce450d8a4262686d68c8b95bbc89c9db0",
+      "bytes": 2963
+    },
+    "Docs/Evidence/EyeExpressions/source_validation.json": {
+      "sha256": "b4a063106e051eb84ecaf333e0da7ed928801592bd725acf314ace2e7c34e49b",
+      "bytes": 194
+    },
+    "Docs/Evidence/EyeExpressions/validation.json": {
+      "sha256": "30f96016ac3756d3e538252881c30b65eb1e034ed6e19d17dcbb692992f24918",
+      "bytes": 760
+    },
+    "Docs/Evidence/GazeMaster/build_report.json": {
+      "sha256": "9ee9cfe8dc19e729e79e827531582ebf9961d29c32f037e5ce1be5a978ebe9e4",
+      "bytes": 9401
+    },
+    "Docs/Evidence/GazeMaster/initial_position_fix.json": {
+      "sha256": "fcc69d4c0a7bde23e1be37c5be853890880a68a9fa615c82fe18c28289c27b2c",
+      "bytes": 5781
+    },
+    "Docs/Evidence/GazeMaster/max_samples.json": {
+      "sha256": "d4620dff6ffdfe695a450aca1e9461ac3db533c739805bee72a8dd34c38ccb35",
+      "bytes": 4289359
+    },
+    "Docs/Evidence/GazeMaster/parameters.json": {
+      "sha256": "55e3da79480feeac758777ff93f90bf2ecd6383f014a453dea38e69ab0e5e920",
+      "bytes": 8436
+    },
+    "Docs/Evidence/GazeMaster/previous_controls.json": {
+      "sha256": "d17e28c6c27ac3ca28c3b1c9d28f9b9afaaf741bdb8bf87a26dde6935fda7e58",
+      "bytes": 13280803
+    },
+    "Docs/Evidence/GazeMaster/README.md": {
+      "sha256": "7624137887fbfee03ce57563ea7d019cb1eefe18a8e868cf68cdbdb64a6e8d0f",
+      "bytes": 1943
+    },
+    "Docs/Evidence/GazeMaster/reload_report.json": {
+      "sha256": "39e535435fe3c19a09c0cbc70cd614d14ab29d09b15f14ca14540bb136920133",
+      "bytes": 1744
+    },
+    "Docs/Evidence/GazeMaster/validation.json": {
+      "sha256": "d5a7cc7a2afcfc194e56e58e917c4565bc0490954df4369b318921daffcaf5b7",
+      "bytes": 6321
+    },
+    "Docs/Evidence/LipControls/build_report.json": {
+      "sha256": "e367873515b9f3ef07cf767a53466895c54cad8f5e4bb5e77e3c62d6c51a266b",
+      "bytes": 700
+    },
+    "Docs/Evidence/LipControls/max_expressions.txt": {
+      "sha256": "f87ee5f1c095c05df797d5d47c1d54cdd3f1bf5098a31e34be041ff09cbfcaa2",
+      "bytes": 14801
+    },
+    "Docs/Evidence/LipControls/max_samples.json": {
+      "sha256": "93129b4e3759b8e0acd232a0a1efdaa2c274697690bfcb99fbfd7e73d157b2c2",
+      "bytes": 381702
+    },
+    "Docs/Evidence/LipControls/parameters.json": {
+      "sha256": "771469679bfc437bb5c4b216e0118503a0308eebfa121e5921f77d0435d8d980",
+      "bytes": 5220
+    },
+    "Docs/Evidence/LipControls/previous_controls.json": {
+      "sha256": "650e05f42d1dd051f11434703d17071ef05eb825db119e55216db1daaa893482",
+      "bytes": 124858
+    },
+    "Docs/Evidence/LipControls/README.md": {
+      "sha256": "7ca88ede923032e220562c2a563b27002dfba6867a76e24b3ae45b89bfb6ca0d",
+      "bytes": 1727
+    },
+    "Docs/Evidence/LipControls/reload_report.json": {
+      "sha256": "c6038b2aaa63bf13725f5ab1a1f651deb4ca5ac19cce704a631ef3c9038ed1d6",
+      "bytes": 1360
+    },
+    "Docs/Evidence/LipControls/validation.json": {
+      "sha256": "ff9351519a5e39af2b563c3a1051109a44d34738d6e2474c451e21b53a872812",
+      "bytes": 3150
+    },
+    "Docs/Evidence/MouthControls/build_report.json": {
+      "sha256": "bdf6e0f98c88568d6abcbe3ce9811a7a67690234b1badd48b74a552c3fdda24c",
+      "bytes": 10998
+    },
+    "Docs/Evidence/MouthControls/max_expressions.txt": {
+      "sha256": "595130ebdfc5ec9806d2e767790d674424e5ac62e67474e3a6049c62f49627c9",
+      "bytes": 20978
+    },
+    "Docs/Evidence/MouthControls/max_samples.json": {
+      "sha256": "2750f4dd9b14be7450710c932c68a507e07e1087df7d32cc454ecbefd0276e78",
+      "bytes": 8878752
+    },
+    "Docs/Evidence/MouthControls/parameters.json": {
+      "sha256": "278af71d352e672c4a401d9472d699c0c3f1760fdfc8dff30c225796d19f54f1",
+      "bytes": 62006
+    },
+    "Docs/Evidence/MouthControls/previous_controls.json": {
+      "sha256": "5efd3f8d41d39ba0b8fe74de5e39efe94a4707ff29256e186cae5b8992706d7e",
+      "bytes": 205479
+    },
+    "Docs/Evidence/MouthControls/README.md": {
+      "sha256": "b7cdccaebd4f46ae2e75dfe63494c6b32b4968c8ca9e9cde6da0d6dd0e123f01",
+      "bytes": 1890
+    },
+    "Docs/Evidence/MouthControls/reload_report.json": {
+      "sha256": "bf942fca182eb676a750ae0e1b66e93f73c5e318aa2435a7ac4a99c867379d18",
+      "bytes": 1529
+    },
+    "Docs/Evidence/MouthControls/validation.json": {
+      "sha256": "ca6a78b2b35e5ba4f7c3d6e3d64b99e94bf989ca505dabdde51f6a87cbd2cfca",
+      "bytes": 20160
+    },
+    "Docs/Evidence/Nose/build_report.json": {
+      "sha256": "45aee7e6c96ed71bfad36c3232df1e6da83b0708a01d1c23903460859cc869b3",
+      "bytes": 4597
+    },
+    "Docs/Evidence/Nose/max_samples.json": {
+      "sha256": "2bf21de7fab8fdded204da567b4c4295560d6faa26c74b2f46d67b6ba899cb7c",
+      "bytes": 39095
+    },
+    "Docs/Evidence/Nose/max_wires.txt": {
+      "sha256": "7313beff3b615901ac49804caacffc31088c7acc20536b5915e3d69f3d137d12",
+      "bytes": 450
+    },
+    "Docs/Evidence/Nose/parameters.json": {
+      "sha256": "cd35b985369059089f2fd044828d9213b9c8569423c9e0575304f5d6bce02fbf",
+      "bytes": 601
+    },
+    "Docs/Evidence/Nose/previous_controls.json": {
+      "sha256": "c8955ebc02c65a214e14f417f4b1f997c9fddabb5c7f704c9e5251e8b3c71f96",
+      "bytes": 201528
+    },
+    "Docs/Evidence/Nose/README.md": {
+      "sha256": "a64d5bdbab08a55d082d44ace0241f7111481aef1cf02871151fc71ce73ca0f6",
+      "bytes": 1588
+    },
+    "Docs/Evidence/Nose/reload_report.json": {
+      "sha256": "01651a19ce514235c26ffe7b1c09b8671e411e8d48d33f0480579404b41b79d6",
+      "bytes": 1706
+    },
+    "Docs/Evidence/Nose/validation.json": {
+      "sha256": "3ac2f7c9efd6280e1a2f969a57dd38989274b637909073122b3ec15a13464012",
+      "bytes": 1328
+    },
+    "Docs/Evidence/NoseSides/build_report.json": {
+      "sha256": "e2c9f43939e41f10259705509d91cf451e12497924ca94b78b9630d47919b126",
+      "bytes": 14929
+    },
+    "Docs/Evidence/NoseSides/max_samples.json": {
+      "sha256": "8b619de9e62b1c5f74bc824b53a905d3cae8d083d3075e31b70a2b15c3386286",
+      "bytes": 7124894
+    },
+    "Docs/Evidence/NoseSides/parameters.json": {
+      "sha256": "fa92634e2cc90cd92edc90031809e2d2eae37ee08ad2bbb17c7a9ab0cb771fab",
+      "bytes": 1218
+    },
+    "Docs/Evidence/NoseSides/previous_controls.json": {
+      "sha256": "1e77d0c678d373e2a8167acfe6d0c07ad9092630a5b3ac1f653f098b7614882c",
+      "bytes": 7966197
+    },
+    "Docs/Evidence/NoseSides/README.md": {
+      "sha256": "c916f95cc1e1aaec594a78db8cfe8436c7b90151e7c523585bf2817e2f4c462f",
+      "bytes": 1178
+    },
+    "Docs/Evidence/NoseSides/reload_report.json": {
+      "sha256": "5b19d632a9fd1b4a530cf74e8c604e9a2f3d7e8f14e8f5c848d460ca78aca726",
+      "bytes": 262
+    },
+    "Docs/Evidence/NoseSides/source_validation.json": {
+      "sha256": "20d2b2f72a46738ac9185740e6ad5e7972c91fffe2c5760d808063f2f85c653e",
+      "bytes": 398
+    },
+    "Docs/Evidence/NoseSides/validation.json": {
+      "sha256": "fb34a8ba2040a13ba7a1dafe05e87908f0d35b3d003d9e7765ed47838bd54fdc",
+      "bytes": 1236
+    },
+    "Docs/Evidence/PhonemeReference/before_outputs.json": {
+      "sha256": "8c25e512218d1dff2ed922876abb993ec641f82cfde0def06024dc420694226e",
+      "bytes": 817420
+    },
+    "Docs/Evidence/PhonemeReference/build_report.json": {
+      "sha256": "fa84b7f93d975698a589896dbc14e56fa41cd549c5b2d9b8b9178b69e07f083a",
+      "bytes": 69933
+    },
+    "Docs/Evidence/PhonemeReference/depth_update.json": {
+      "sha256": "fc5869ebefeb739fa469a608548a56d2698aa5bc2a7b43247b7d75a58108e239",
+      "bytes": 512
+    },
+    "Docs/Evidence/PhonemeReference/parameters.json": {
+      "sha256": "896c1799d3aaaedb464a61924f55ac6ee030851d90b5fe9549d39a2cf71148a4",
+      "bytes": 2589
+    },
+    "Docs/Evidence/PhonemeReference/preview_binding.json": {
+      "sha256": "ff23f6c9795e11d4c570d25424d0c97c6f39d9faf9cd3584e2cd17fc9fffd988",
+      "bytes": 391
+    },
+    "Docs/Evidence/PhonemeReference/README.md": {
+      "sha256": "222e6134c95c5d0fbac8cb2f005b9f6240fad3250a2a4f4a0f77e02bb62b338b",
+      "bytes": 1317
+    },
+    "Docs/Evidence/PhonemeReference/validation.json": {
+      "sha256": "0ffc160592f92c771a4e6af19e3799ce5af439690bc6d7bc0194470baed32803",
+      "bytes": 366
+    },
+    "Docs/Evidence/PhonemeSliders/build_report.json": {
+      "sha256": "b5de2382195361c8e8592956c8c083f8340fa411f15c93f3a99b8461eba875dc",
+      "bytes": 18104
+    },
+    "Docs/Evidence/PhonemeSliders/max_samples.json": {
+      "sha256": "ab0bc0165fa681f4f9ce7c7767b77af3240d7a7785588e27affd8e865374d552",
+      "bytes": 5041895
+    },
+    "Docs/Evidence/PhonemeSliders/parameters.json": {
+      "sha256": "313f3554de18563e48d56f6ca26674a660722d28034ceebd95d8113ce8809e69",
+      "bytes": 6027
+    },
+    "Docs/Evidence/PhonemeSliders/preview_before_refresh.json": {
+      "sha256": "16a54af6c367b844a213a28b4d97f4f507b8d04adf6342916471c7e4ec0a7130",
+      "bytes": 2522
+    },
+    "Docs/Evidence/PhonemeSliders/preview_morph_check.json": {
+      "sha256": "7d888c4ed125f56f713151b094a13bfd65c2c5e982640cf9fa01898e640d3ff2",
+      "bytes": 2521
+    },
+    "Docs/Evidence/PhonemeSliders/previous_controls.json": {
+      "sha256": "2f4df381d5b159b7830ae1920b6653169907633cad9915908f295e087afbd730",
+      "bytes": 16369056
+    },
+    "Docs/Evidence/PhonemeSliders/README.md": {
+      "sha256": "9d9d6f955419beed544bcbb21efec382a9bbc0369e3d4e42bb235db7a4d45542",
+      "bytes": 1620
+    },
+    "Docs/Evidence/PhonemeSliders/reload_report.json": {
+      "sha256": "b9fede569f34a7abbeb00d7f6198a7d9df91348190e16f51471037feae04e2f0",
+      "bytes": 2629
+    },
+    "Docs/Evidence/PhonemeSliders/validation.json": {
+      "sha256": "b2cccc97bb2d6b8f6d74a7cf19a9f16cf76b7f649ce825439b6f1ef9a268ea25",
+      "bytes": 785
+    },
+    "Docs/Evidence/README.md": {
+      "sha256": "679897993fe83705ce5980fe5732ea37b923df057cae098e1cb53e9e75782098",
+      "bytes": 3712
+    },
+    "Docs/Evidence/recheck_control_rig.py": {
+      "sha256": "cfd9793528e7cb704792fd09b5c6ae0524685afa5ff00b2c6266b1e1a9ad9ea7",
+      "bytes": 5451
+    },
+    "Docs/Evidence/SYP_R001/lid_import_weights.json": {
+      "sha256": "9b3f8313cd56a7858766dd2443284dcf690ec39b0714ccd06e36373abf45427e",
+      "bytes": 78686
+    },
+    "Docs/Evidence/SYP_R001/lid_live_poses.json": {
+      "sha256": "6b2112bb7850d1d12f9775bcbbbf3a822477b1b0b8961c02b0cb0743745c8b54",
+      "bytes": 9759
+    },
+    "Docs/Evidence/SYP_R001/lid_max_samples.json": {
+      "sha256": "ef36aed59285f96ae5a5d1685cc95b5446fdcbe6420dcbf3ba0b355dbba9fcdf",
+      "bytes": 7106
+    },
+    "Docs/Evidence/SYP_R001/lid_max_weights.json": {
+      "sha256": "089955f9e60e6ed387b43ccc3cf8b30bac3df844bb39ab904e958cf1d004a7f3",
+      "bytes": 56367
+    },
+    "Docs/Evidence/SYP_R001/lid_rotation_analysis.json": {
+      "sha256": "fd11dc2e1e94a41c6c7bd5ff39a22eb174acb013fded8956391d515b25bb482b",
+      "bytes": 5940
+    },
+    "Docs/Evidence/SYP_R001/lid_spin_fix_validation.json": {
+      "sha256": "7bd1fd6c0a8fa0b656705b2ed646b8038193d70e3bece88d76135dad0ad0b24a",
+      "bytes": 8456
+    },
+    "Docs/Evidence/SYP_R001/lid_weight_comparison.json": {
+      "sha256": "982d4401331ea5ffcbe7a08e17b77e3fbc4923365f3c83df369f7c5fb9672ad2",
+      "bytes": 3994
+    },
+    "Docs/Evidence/SYP_R001/README.md": {
+      "sha256": "fe48d1a200780983e183b97a6b36d1552e587e59583e422d87e8ba850eae9f03",
+      "bytes": 2790
+    },
+    "Docs/Evidence/XYP/build_report.json": {
+      "sha256": "2f0e3445b610f62c01dc2e7d37b03433fe14e3b69815e18392f062a2c08aa829",
+      "bytes": 562
+    },
+    "Docs/Evidence/XYP/max_samples.json": {
+      "sha256": "60db4bc975a6357b4cb507eaedd8aab24c1a112b27a379665779871ce9a21ac4",
+      "bytes": 147207
+    },
+    "Docs/Evidence/XYP/parameters.json": {
+      "sha256": "6e47ebcfd5bc998618fb3447f3400259c012f3473de005e8711a2378447a6c31",
+      "bytes": 6055
+    },
+    "Docs/Evidence/XYP/README.md": {
+      "sha256": "23ab65bd85a79a7bd141ba5959454afd9a18469da3f8ec56630cd098770e28f5",
+      "bytes": 1804
+    },
+    "Docs/Evidence/XYP/reload.json": {
+      "sha256": "6c80aadc227f6cb55046c66e01798da418a69a0b2214e9ec4b564bf655e4a20b",
+      "bytes": 141
+    },
+    "Docs/Evidence/XYP/validation.json": {
+      "sha256": "75b3f4db2037b74d63bc0482757e2d72ab91f521aedd5c57645f37b1568f1826",
+      "bytes": 48072
+    },
+    "Docs/ExpressionSliders.md": {
+      "sha256": "5078ea5301d30ee7f568c72db4d081a992cc24f5a41a96fcc4a55c7b7d110bc2",
+      "bytes": 5706
+    },
+    "Docs/EyeballControls.md": {
+      "sha256": "92dbcad229d885235cfb6688f85e8a55295a561a9fb1e356229e29cc9e8957e3",
+      "bytes": 5564
+    },
+    "Docs/EyeExpressionSliders.md": {
+      "sha256": "f427c376602c6609d6bd3058edfd5db936a9ade0bd3eee3a884a95547a643a7d",
+      "bytes": 6259
+    },
+    "Docs/FaceControlRigBuildWorkflow.md": {
+      "sha256": "ef2327918d177e28391772554e24657e513b63faea7474ab7f8e3ead4968f69e",
+      "bytes": 9166
+    },
+    "Docs/GazeMasterControl.md": {
+      "sha256": "a7e18e048a9cbb0eec66c5b3999a3d0e4731579e809b19d855e5393b3b605905",
+      "bytes": 6510
+    },
+    "Docs/Images/lipsync_after_fullframe.png": {
+      "sha256": "6a6c04d6a2ea70792afdefd45ea333514158d60c1539b1930c820b41d1ee1fe3",
+      "bytes": 709446
+    },
+    "Docs/Images/lipsync_mouth_before_after.png": {
+      "sha256": "9a59ef27fa3ec5d65b7870d082c3351a9201e1094a6d4bc4c384b8bb25575236",
+      "bytes": 459472
+    },
+    "Docs/Images/lipsync_old_open_frames.png": {
+      "sha256": "2d9d533c5fbb2b2410898a82f1cf05c0e1407b09d0a2238e25334b4334330deb",
+      "bytes": 342460
+    },
+    "Docs/Images/lipsync_open_close_frames.png": {
+      "sha256": "ea9010ecbe1c7e000ed77c4cd5782eb6f911549d316138dfdc511d71ae0456df",
+      "bytes": 337631
+    },
+    "Docs/LipControls.md": {
+      "sha256": "a5adf76f4741bb785ccd5b777d405a99839da81b44d2926aa8d949d860a84ecc",
+      "bytes": 5857
+    },
+    "Docs/LipSync.md": {
+      "sha256": "c703fdd62f689dc4b4d9ed4afdfcb9e6534ac8986aa6482ce1ef77a61525a1b8",
+      "bytes": 17038
+    },
+    "Docs/MaxControllerMigrationGuide.md": {
+      "sha256": "808ce3426c8cc78eb73a4f5480ef7228a1b1c6ed21bce38a6862d9ba8e88b987",
+      "bytes": 47984
+    },
+    "Docs/MaxFaceControllerNames.md": {
+      "sha256": "dbc0db2731a3d49cb7953be44b7d6d90351609e5b55df0ca2fb05494c1eddfca",
+      "bytes": 10623
+    },
+    "Docs/MouthControls.md": {
+      "sha256": "262ee06842627fb871f80769c3b81f5c060e9e81464e934698e27da92b2a7ed9",
+      "bytes": 6413
+    },
+    "Docs/NoseControl.md": {
+      "sha256": "f6ea90f46464caeae30de63d77894e0cf750f3c1d681f6b044864849ad9a777a",
+      "bytes": 4993
+    },
+    "Docs/NoseSideControls.md": {
+      "sha256": "971d2f2222f0c84913a065b8a23503b9c8396e5457be3e4d1cd2ad71b588d340",
+      "bytes": 4442
+    },
+    "Docs/PhonemeSliders.md": {
+      "sha256": "6c181ed718c7ac0b93f374c2fafe37b397c3e7296645d99219cba08b22147b14",
+      "bytes": 7114
+    },
+    "Docs/README.md": {
+      "sha256": "ce9d4ea9b11dcc17b5faf4145712e33d7bffb98fe08619b5b1bc43a70e99adc1",
+      "bytes": 9103
+    },
+    "Docs/SevenFaceControllerRecipes.md": {
+      "sha256": "882e2df3c55664c010174b6b60596a5f85bdaaf384c4e2694d64cd4ddcd9410d",
+      "bytes": 25333
+    },
+    "Docs/SevenFaceMorphRig.md": {
+      "sha256": "a729d3bad5e4650f512644fa884032c80167f2d19f5ef2b9ab6881edac8ce8ff",
+      "bytes": 2861
+    },
+    "Docs/SevenMetaHumanControlRig.md": {
+      "sha256": "8c9620eda4dddec29e67da0a7b882b9087b9fe057dec52d73e3122a0d90de120",
+      "bytes": 2520
+    },
+    "Docs/SevGame_AssetMigration.md": {
+      "sha256": "5e8908b5ce7f2d522054318ac4b5729fa7d5b6a18b9923fd0c9ecc70e671070b",
+      "bytes": 12240
+    },
+    "Docs/SYP_R001Diagnosis.md": {
+      "sha256": "1377efc91066e2d9d19594c8bbbd423a57e160557527e3a50525695772f9a1f2",
+      "bytes": 7935
+    },
+    "Docs/Templates/CharacterFaceControllers.json": {
+      "sha256": "efd786b3295fb1c4a0beeae5211ecd09c94534adc5dc37f5d2e5efbb93d7ae61",
+      "bytes": 27973
+    },
+    "Docs/Templates/CharacterFaceControllers.md": {
+      "sha256": "2266fc63e321f59f12f26523941359de87469802908c3b0fb40271f14bddf843",
+      "bytes": 8802
+    },
+    "Docs/XYP_LowerLids.md": {
+      "sha256": "a900f9803aa0afb8f4cf2c2ef18ba47e4ef84ce6232f12d1a033eed33a738030",
+      "bytes": 4992
+    },
+    "Scripts/BROW_PANEL.md": {
+      "sha256": "b0e7fb3c24e112f746b1c46956116f140c6c610eebb8d33605ace2b22963a73a",
+      "bytes": 3591
+    }
+  },
+  "moves": {
+    "Docs/README.md": "Docs/Characters/Seven/README.md",
+    "Docs/FaceControlRigBuildWorkflow.md": "Docs/Workflow/Build.md",
+    "Docs/MaxControllerMigrationGuide.md": "Docs/Workflow/MigrationGuide.md",
+    "Docs/ControlRigValidation.md": "Docs/Workflow/Validation.md",
+    "Docs/MaxFaceControllerNames.md": "Docs/Reference/ControllerNames.md",
+    "Docs/SevenFaceControllerRecipes.md": "Docs/Recipes/SevenBrowsAndEyes.md",
+    "Docs/SYP_R001Diagnosis.md": "Docs/Troubleshooting/UpperEyelid.md",
+    "Docs/LipSync.md": "ProjectNotes/LipSync/README.md",
+    "Docs/SevenMetaHumanControlRig.md": "ProjectNotes/BodyRig/SevenMetaHumanControlRig.md",
+    "Docs/SevenFaceMorphRig.md": "ProjectNotes/Experiments/SevenFaceMorphRig.md",
+    "Docs/SevGame_AssetMigration.md": "ProjectNotes/AssetCompatibility/SevGame_AssetMigration.md",
+    "Docs/Evidence/docs_audit_2026-11-06.json": "ProjectNotes/Evidence/docs_audit_2026-11-06.json",
+    "Docs/Images/lipsync_mouth_before_after.png": "ProjectNotes/LipSync/Images/lipsync_mouth_before_after.png",
+    "Docs/Images/lipsync_open_close_frames.png": "ProjectNotes/LipSync/Images/lipsync_open_close_frames.png",
+    "Docs/CheekControls.md": "Docs/Recipes/CheekControls.md",
+    "Docs/ChinControl.md": "Docs/Recipes/ChinControl.md",
+    "Docs/ExpressionSliders.md": "Docs/Recipes/ExpressionSliders.md",
+    "Docs/EyeballControls.md": "Docs/Recipes/EyeballControls.md",
+    "Docs/EyeExpressionSliders.md": "Docs/Recipes/EyeExpressionSliders.md",
+    "Docs/GazeMasterControl.md": "Docs/Recipes/GazeMasterControl.md",
+    "Docs/LipControls.md": "Docs/Recipes/LipControls.md",
+    "Docs/MouthControls.md": "Docs/Recipes/MouthControls.md",
+    "Docs/NoseControl.md": "Docs/Recipes/NoseControl.md",
+    "Docs/NoseSideControls.md": "Docs/Recipes/NoseSideControls.md",
+    "Docs/PhonemeSliders.md": "Docs/Recipes/PhonemeSliders.md",
+    "Docs/XYP_LowerLids.md": "Docs/Recipes/XYP_LowerLids.md"
+  },
+  "removed": {
+    "Docs/Images/lipsync_old_open_frames.png": "未被任何文档引用的旧口型截图；当前前后对照图已保留在独立口型资料中。",
+    "Docs/Images/lipsync_after_fullframe.png": "未被任何文档引用的中间口型截图。",
+    "Scripts/BROW_PANEL.md": "早期四眉毛面板方案，引用不存在的 build_brow_panel.py，并与当前 72 控制和 Circle117 含义冲突；当前映射及配方完整保留。"
+  },
+  "protected_files": {
+    "Scripts/add_slider_rails.py": "6c27c31b9ce2140e58a788295be23223a5e0bd1d57de6eae1da9bba91795bfe7",
+    "Scripts/analyze_lid_orbit.py": "a1b45927d1115bc7a24c60d87b67322593aabeb962fe4c9c69e870ca6356f34c",
+    "Scripts/analyze_lid_orbit2.py": "8872a989cfc32db10fede8b75c6ee16ce18915e275c85fc919cb81960a971c8f",
+    "Scripts/audit_engver.py": "f1038253670927878d25fb545748060beded84f3c53e01a4108c4d74e7916d8e",
+    "Scripts/build_brow_bend.py": "118f25b7fa3e2872fb0296844631961f9610a2bc38ce6d626b76913a17487399",
+    "Scripts/build_brow_bend_left.py": "529802f39d320be84111da4df77c88258d92813c0b95be06ca9d96eeb5eb835f",
+    "Scripts/build_brow_localxyz.py": "bc136cab2b0f5987b96761f09d488a4f21063162c5d9bae2b4e2d2f7e975c772",
+    "Scripts/build_brow_points.py": "f9cb0a43971885bb42b40480e91abf8982a97884d73c8139fd5e5b399a4b2851",
+    "Scripts/build_brow_point_v3.py": "f61d3907ce6082e9882c2cd44abfd3952f192c372464ad442da2375b70709d8c",
+    "Scripts/build_brow_position_ctrl.py": "902f72ff65c5898803ff02e09c5381328808bbe25ba3418bb50085c7081afac3",
+    "Scripts/build_brow_right.py": "c35e84372cc0f86cb2f2b96cb139693be35537834c69ce32c35f46685af079fe",
+    "Scripts/build_brow_two.py": "a5dee1d4248fee2a820551987b01aa3e186774760ab56f2d51c17573352f27b9",
+    "Scripts/build_brow_vector2d.py": "b22e8c910122d4a2fe5514ee6574f835368df63252e705651c7890687434c0a9",
+    "Scripts/build_cheek_controls.py": "0491c938ac452dc37d4424fbe8d4a562e5e72131f2f59a48aaa9a7b20dc7adc9",
+    "Scripts/build_chin_control.py": "b7927fe1e059c6036c56089c60ced3395bf83506a6a6f4c2b47c9ffe3d320990",
+    "Scripts/build_expression_sliders.py": "0561f9fd026900a441a449495ebdc09f3dd2d7877627c7b1d9c7e9a916c17130",
+    "Scripts/build_eyeball_controls.py": "3ed91e942655a0ebd015fec510e675c50bdd86737973c5bad7cc5009dd54f29e",
+    "Scripts/build_eye_expression_sliders.py": "3a19d2104fdcd419a9faaf9f9d91605c42dafe7c0fc504bef68889a39eb896d3",
+    "Scripts/build_eye_lid.py": "a559f54d6e33d585e100e5747fdfeacc0254bb87bb57cf761156c176ee991f2d",
+    "Scripts/build_eye_lid_arc.py": "ef471df087425ef9b82055e823f832a3d9214a0ef01d83ae3a5dcf0fa1b02cfc",
+    "Scripts/build_eye_points.py": "76664de3256cefa3618d89ade5d77623ab97d7996764b015d6adf593b71e0799",
+    "Scripts/build_gaze_master.py": "64775b1589fbe1040ac49941bb8dcab59f959f76bf523a29698ca9fc50292523",
+    "Scripts/build_lip_controls.py": "30957b23e4e8b0df7aa901c2c46fd1e7499789ac88ed1834bb129fe220edcd9b",
+    "Scripts/build_lower_lids.py": "1163477a90971216085a9e6818a77fc8cb3513080842b88468f81d3b1048122e",
+    "Scripts/build_morph_curve_nodes.py": "4cd563fb50772880631e432b335622befd24cd088f4c104c68a195296f151a45",
+    "Scripts/build_mouth_controls.py": "3f270230706bf5387f4cb221c9bccbde719ac82793405af149f6280738905892",
+    "Scripts/build_nose_controls.py": "5519dc153e5bf015a554107a5559a4e0259db759eeb7e6770e78a30a7bcb5552",
+    "Scripts/build_nose_side_controls.py": "6c7cee6939794143551a343e2c8a0560f76272377d844d32fea5542fa15fb360",
+    "Scripts/build_phoneme_reference.py": "d1ceaccd00993eeb8d20e3517dc39cd238890924008d5683fbd4ec593304d78b",
+    "Scripts/build_phoneme_sliders.py": "1dc2e855981b92af8d34efa378a6043b757af7652002055659d6505d19a1be3a",
+    "Scripts/calc_lid_arc_params.py": "11fc7e93ca42fb9ef2a92fe25839e5e5efd9d90e87679877147fe0f79ad04a01",
+    "Scripts/check_ctrl_axes.py": "1299789fd76c5ab086bfd7050aff7876f43dcfe0e3180c62cc5afd7c3347feb1",
+    "Scripts/check_ctrl_size.py": "35aac17e46a0f186a9ef210adaa7a0a813b896bcd9e7641da6c884a4f53693ad",
+    "Scripts/check_face_controller_catalog.py": "b839bce50021e9f72ec67305bc7815360d43346814a75f5d74563b33f3c1d291",
+    "Scripts/check_referencers.py": "d53d25547209f9c1cf0834283dcbfd6cd5ef1001cdec676fb151f0b50ea9cc51",
+    "Scripts/cleanup_extra_bones.py": "8a9942c4fe96663626b8cde9edb250c9b91dd3b7f60e1c025f5159a56c8e52bf",
+    "Scripts/cleanup_probe_nodes.py": "fe8baab63235eb8a9362c14d66126add1aa671fc5a38ae386c47399657f7c9b0",
+    "Scripts/clean_all_sliders.py": "f7b745e82d63f34647f7d2d4bf78dc46ca90a10e5b5c1dc506f811fbe38ded63",
+    "Scripts/clear_rig.py": "8d8f618b05126aaca48974ef0694b2470dc672c4a5924f922c5602c16d387f32",
+    "Scripts/close_cr.py": "f011c1b7e36567562992ecf6a7197ca662b94e9ea24be23962f200d895dadcdd",
+    "Scripts/create_my_morph_rig.py": "d9f403248153647e76f5784689ec2bde8c994e6ee860908035bb2e5a26bf3296",
+    "Scripts/create_seven_face_rig.py": "da1fd6abd48be3ed29ee38168f6a777825c303ead15b64252159fbc83422c416",
+    "Scripts/dedupe_rig.py": "4b2fddcac48104da0ebf32e7a4a480eb8a0a6ffb54bd6e161d3a9bbed97de280",
+    "Scripts/dump_brw_graph.py": "116610b27fab7838219405ac975c928008be0065d37edc83ef0de8103d7b820d",
+    "Scripts/ensure_brow_curve_meta.py": "f772e3defc1a3184899d9acded1d7cacf155c53b0b4d7bcf79827b55e9091fe8",
+    "Scripts/export_seven_fbx.ms": "8291561082d34b6f95c67d2813bad12d13cdffcf41aedba3aee06a770e13c710",
+    "Scripts/finalize_phoneme_reference.py": "74fcde987dea48e64a5a78a20eef39755dddd56588aa18fa8afa4cf2f6d5759a",
+    "Scripts/final_check_brow.py": "497e05f6addefcd06bc73b923009d0699086212da5a1e207aeb55d8826a73b20",
+    "Scripts/find_cr_actors.py": "53ae767c854881666e2877f5e5c09da48aee142c61703d561ab802b2c7bd5f8b",
+    "Scripts/finish_eye_expression_preview.py": "516160b372e3ee17fbdbb5bd343328cbdf10b4f217a43b7f6f57019464fc94b7",
+    "Scripts/finish_morph_rig.py": "85c311219633dfd7295f09232d0c86b072f767cc81263032aac0c971e738226d",
+    "Scripts/fit_cheek_controls.py": "f05abe1c6b5a4b0d571b6f9496f63b9ff9ae8403f548d0fd135f987d1272c144",
+    "Scripts/fit_chin_control.py": "e0b749e180ed3d91903f8b061573f5b10003a67cbb26fcb8895905898f0a816b",
+    "Scripts/fit_eyeball_controls.py": "0533dec178a156548befa5989e9f551b58291456a839f9cc00233c0dab576643",
+    "Scripts/fit_gaze_master.py": "21f356fb4fbd5c4eebb9e4547024c08f1317e66ceb7d3951e8db7ad5c9bef488",
+    "Scripts/fit_lip_controls.py": "93f00169850f027e2cae690b3b464135f4525b1976429e4f72d2d1c5b8b82685",
+    "Scripts/fit_mouth_controls.py": "ea46b9641e394696ef597d925d197b837b679a957e25bda7efc657cd153160ce",
+    "Scripts/fit_nose_controls.py": "2556501517499a1698f824168611c540786bffb8f24a45e8c46800b8aa19ed34",
+    "Scripts/fit_nose_side_controls.py": "50626205dbff2ae897491a7ac6686d7c5835d6a2eeee89b2f5f1802b793f5054",
+    "Scripts/fix_brow_axis.py": "a6b299f69da93fdf0381edf499092a1c8ab7f7ccdb1902280cc6255bd9c638f2",
+    "Scripts/fix_brow_exec.py": "e8abc5246170a0104e1d625aa686690cc88ef98d84ea9874ed7fb0625283bd3a",
+    "Scripts/fix_brr_parent.py": "1a5812e7b6f96ded752c39530bd5f4ff5b61ef669ff0266d3b1c7927b78ec698",
+    "Scripts/fix_cheek_handle_axes.py": "9a8fbe3b67717b0dbaa48abc5a4dc03555b6812c0ea4ecd47f8d384bc8c9a756",
+    "Scripts/fix_gaze_master_initials.py": "4663d09c3fff907b2e817564cc0eb3b3304429d71e2d5a69a4f38000015f824f",
+    "Scripts/fix_slider_scale.py": "b977354a286d7c3988fe340a09ddf67413b2f66e6de45c7177ab611d6252106f",
+    "Scripts/import_seven_check.py": "3c62a589315ec12baf4b9f3f4a8d3306f1f4b6df1956b6f3a11658794bf22941",
+    "Scripts/import_seven_replace.py": "4df202f362f5e3fbf557e1895e0b052cc993d27b3e67bcfaa31fbd92512d1ba5",
+    "Scripts/inspect_cr7_now.py": "7816003492253cf5b8c595f608702213a046fcccebfbdc53d37a1e5c5830a313",
+    "Scripts/inspect_cr7_state.py": "1d0c480e6b71508da16c6df2efb7eb62f98ebeae0f1463d94bd8f9f2ecaccd87",
+    "Scripts/inspect_cr_actor.py": "def66703429d0d7c20e5cf1c3453e5bd16e649e43e4084a7059023ba2fcdb887",
+    "Scripts/inspect_eye_expression_api.py": "31f8139de0525ece24c3612425483616a18eaef370135d92f796ad993c5ded6e",
+    "Scripts/inspect_eye_expression_preview.py": "22542eea39b8dc82a9f822afcad8f4c10e0c5d4a573278d3809d0f24f7a7196b",
+    "Scripts/inspect_lower_lid_target.py": "776342d8e6817eeff57b3a3409ad6e79aeb9c9b360a09ef89d4cf1c53ce74581",
+    "Scripts/inspect_morph_rig.py": "b608adcdde7f09306299d5d0ebe472b119ac3b919581491d8d182985ab87d4d0",
+    "Scripts/inspect_nose_sides_target.py": "ba7f7ab9dc574ee01b798d3cca6814c1a0bc5a339de8b526956d375ef58ba997",
+    "Scripts/inspect_phoneme_reference.py": "fe94f9c99afc32af6d972b40c07a1d72d24e6a7121bbf44c43022f2a3635e47a",
+    "Scripts/inspect_seven.py": "ca7273e5fed23b09074fd2e269a35446ead815b89f6a259f30708cd5ce7431e2",
+    "Scripts/inspect_seven_bones.py": "9dbc421ded0d72076bb4ec18676ba6f7302e063c288134944f6a5b59a6d4bfdc",
+    "Scripts/inspect_seven_browbones.py": "a1c3d7d9ed89d3d8724e50b39e10db506ff4eeff2c7d1d122e662a919d02215c",
+    "Scripts/introspect_rig_api.py": "ffe03f1895f732fd65828cd61bbe5700df417ef2c7c75a6420c5ad76bd3e26ba",
+    "Scripts/list_seven_bones.py": "0d67bbef8a2ea06982bf8403663e98000749a78df44e3c71fcdfe151c77e422b",
+    "Scripts/max_probe_license.ms": "ce29e637a280466ff59ff750c8c57c29fe8a9566596f4a017f0109f211fe46b2",
+    "Scripts/max_run.ps1": "c8bb14828b1a4eebfb0852e51834c8181548da53b1b24787e9bb776a11d4a150",
+    "Scripts/max_scene_inventory.ms": "0cff819b434fa65142f986c5cdfba055e4ae75c0c3d45c6e06b5f1e05c4d2c8b",
+    "Scripts/open_cr.py": "1f6b9711088fa1ed20345b5b1a54641746fd3623257adb3edfcdcfde599e77f1",
+    "Scripts/probe_all_controls.py": "a82d58d816e4754c11cfc038442e1cf2b71b1924d9546446cfdad45c388366a9",
+    "Scripts/probe_all_controls2.py": "1f39f1675d857527c10bef9835eef90e1693dc5cc5bf6e09b1a8cf813f34ff24",
+    "Scripts/probe_all_shapelibs.py": "a45cdb611e2591301c2c0d6d739aa95f9a0d2c613f74071c7dccf86a4a83a1c4",
+    "Scripts/probe_animcraft_brow.ms": "648caea089f8c7185e8b2594d1e02ab90e90615f762d5949f616b39d3a76d303",
+    "Scripts/probe_animcraft_brow2.ms": "bc434ad6b90da207cde4a3fab6be3eafa1df9b37fc5955da107589f754bb7a7a",
+    "Scripts/probe_animcraft_brow3.ms": "9cb4a1ef52c4a62992575a0aaf164aba8df0dbf9381bd941ddd92b5fd49a6936",
+    "Scripts/probe_animcraft_expr.ms": "f7344f5f8569e9405e9921c043e1f230d653b488cff0a27a8ed5aa377a06846b",
+    "Scripts/probe_animcraft_lb.ms": "56767b39b412b306055cbc677ff1dc9a6109654ade1818d1c88356df91f969b5",
+    "Scripts/probe_animcraft_lb2.ms": "4676dd563a146a9e934bc4960df3836519e7221f0093cd6d43ef4c539e363c66",
+    "Scripts/probe_animcraft_rb.ms": "06afd4ae5c2d14b8d5a5afb0ef48bd211585b2b6fd4ca7efdd54c9128b31ece1",
+    "Scripts/probe_animcraft_rb10.ms": "d2cc7be2b7ebac01aec6fa1fe1e5d9ff5c07cd6f4ef0f548774fdd1a8e89de2c",
+    "Scripts/probe_animcraft_rb11.ms": "49e4931696e0951071138a19ac212703d2fe8b20415a0462d0da1f4d0750336d",
+    "Scripts/probe_animcraft_rb2.ms": "f625d1536bc67370177cb82351ae7a06f81b896772848843b8fe754155d9a526",
+    "Scripts/probe_animcraft_rb3.ms": "3127b3f101a50cd0efd3d487502f1dd2c46570f2aebd014bcccf9d9a961ea41b",
+    "Scripts/probe_animcraft_rb3a.ms": "0aec5933f499ee24c6c9de6da390175fa5f450d82f0ed4cb9a5489c402c01576",
+    "Scripts/probe_animcraft_rb4.ms": "016e22ea28f57c942af1f352786de97b3dea61547a1e2876c4395593537ec930",
+    "Scripts/probe_animcraft_rb5.ms": "4dd18f8806db51586ebd2b11a3a9b0ae939a2d86418529acb46190fb2d0d69ae",
+    "Scripts/probe_animcraft_rb6.ms": "ed5e385b6543a4e705fab9dbfa769886d25a0e2b9da245d44e5835b3041871ec",
+    "Scripts/probe_animcraft_rb7.ms": "b55b79a76579714bba8222debab42fbdfb1fd0635756d159c73959df222e6bbd",
+    "Scripts/probe_animcraft_rb8.ms": "5c5bb6b8479ef9480c4266247a4a656a364d7852026fa1bf083c1a4c3606addb",
+    "Scripts/probe_animcraft_rb9.ms": "e8b6630bd85fcdf22c42b5872d48be7f9d48349365a1d60afac48daa3db91fa5",
+    "Scripts/probe_animcraft_vars.ms": "1daf4a339404161e5f5f4eed92cb2d29fba588e0c62d08b0a1e2edb7737318b3",
+    "Scripts/probe_animcraft_vars2.ms": "1c11183bbec4aed82d890ff021c7ca4fb198faa821355fa046a05537de418c3b",
+    "Scripts/probe_animcraft_world.ms": "ee9ebb8eb8e6a562ef921c563f0af27593ce4b7564f4f8fd51a27a29b0869a4e",
+    "Scripts/probe_api_doc.py": "258d81ae15ec4c50817af407dcb6e144d56c7e959d8a78ec78606ad2e00f6b1c",
+    "Scripts/probe_axes.py": "114c851fc5553e13b5efefa25ddd8edababf4f4d31053e4b44d040782af9b8b6",
+    "Scripts/probe_bindpose.ms": "a4b3f810eaf8906b35446d2b84103686bd657f55de984e748947934aad7ecd72",
+    "Scripts/probe_bindpose2.ms": "a53425f5aafa5f2e77c0bc32f10a1f44a2876234296536cdf85a93f29f1b27cb",
+    "Scripts/probe_bones_max.ms": "3d7522e29c5aee8ebd5b9c653dd0bc9f73d9abf13e81f5260a7b01048f21ff5c",
+    "Scripts/probe_bone_diff2.py": "86497787629e1bc691a062e5d307d51fdcaa7144246b7801d2fb6e946aa1f09c",
+    "Scripts/probe_bone_import.py": "9433252e0ea35f71153136552e13af432eefe904d73083e682957bfe79cc24c6",
+    "Scripts/probe_bone_pivot.ms": "a0228b08804643afc30b23ca29706588496e84630209358d3e5ef09ada2e8854",
+    "Scripts/probe_bone_pivot_rot.ms": "dbc6052dd41a3f3581806e04b784d4e6a3ea2583353c3d7d8165b78b5cfaeffa",
+    "Scripts/probe_box_thick_size.py": "b2e800ce1f17f1c9810a6cdba9f1a3adebe75c30c6f8277f4a26dfd906f17f8f",
+    "Scripts/probe_brow_bend_nodes.py": "55f4da8af886dcec3b3a888d152cf8cbbeedc74dde67d7bbde7eca2ba2cbbed4",
+    "Scripts/probe_brow_bend_state.py": "48b791ff131c44ed5b245ff71f241dcff7ed20e1cbff3a56c72ed47151734389",
+    "Scripts/probe_brow_bone.py": "fdce1413dad9c28a8b8bf2e6079bd713cd9d5b5b6515acb9ce2f0a873af85770",
+    "Scripts/probe_brow_pins.py": "a8d86c8864a8c5096fd47237d06c8b437e1a2782f2be3f21f01ea5c31d4b1d6c",
+    "Scripts/probe_brow_points_final.py": "68ec6978a66e1e7400f1b9de4862efe45ff972fca79522cc02320bc86d1cf7c6",
+    "Scripts/probe_brow_state.py": "c428fddc0ded77cb91b32864607796870348dd1fa078f8e2786ab0d0ada835cd",
+    "Scripts/probe_cheek_samples.ms": "f1e6b12835e9c0ecbbb2b611ad122fa448abe0c944533f27f049ba9cb98137ce",
+    "Scripts/probe_child_ctrl.ms": "dd67ab7f0b887c6ddadba92aa49e5f509f1f49edfb7aa9f676f4a3a158935337",
+    "Scripts/probe_chin_samples.ms": "195854c660fa93b3fdd46780c797190f29d8fd1e739c6fefcd1994f2c00b4432",
+    "Scripts/probe_codex_params.py": "a010c47fab92f0689d68d02fc9e3b92c64ff97d8860c6b2e47f30a900addef79",
+    "Scripts/probe_cr_shapes.py": "db9f4319689a3e264c034872150ce1241a8065102e2637ce8ff97ccd8a0dd2e1",
+    "Scripts/probe_ctrl_api.py": "83c777665cae87220d2ac342601b4d027aa950c026236fe285192bd9cd7d5357",
+    "Scripts/probe_ctrl_place.py": "3d80360c50f97a06d034f590d52a4f9a71e01b992198502ae1da87be87109128",
+    "Scripts/probe_curve_meta.py": "26f8e807c1b8aa1faee27914a842189a0569fd45dfb6a123f75906d8b6ad44ee",
+    "Scripts/probe_editor_settings.py": "80dc0882708b9b06fbdf60ec71b649c610e201ad83ebd992cf0550932bd65a96",
+    "Scripts/probe_exec_chain.py": "0fa5cc57c1120fff11b908c6b30631abd0c2fe3e253c0d436caf56c76120147c",
+    "Scripts/probe_exec_links.py": "e5eb219001678cce18eb83b7ddeec490d77b9b8bbce14f79433b71565bef80d1",
+    "Scripts/probe_exec_links2.py": "7f8c4eddfdb589c9c4ab6d65fe2293dc991f72f4a58f651ae1a8fdb1244f535e",
+    "Scripts/probe_expression_preview.py": "844de4f56c01a59b4027f47e9fe364cc99f6b6d7140617f3b14d3b9e49d58ded",
+    "Scripts/probe_expression_sliders.ms": "01d5bc0d77d2fd512e773c59158386427e9f93c45e72a5e856ca7fdedc52c524",
+    "Scripts/probe_eyeball_back.py": "5d29dffe9d204815135fc8fc0e5cc0a342af6ae196a158b1b94b88bf8925ee32",
+    "Scripts/probe_eyeball_samples.ms": "4ba944c010b385d1b829f30419b25b3d2d406fbffd6b143dbdc9346b75e2e75f",
+    "Scripts/probe_eye_bones_max.ms": "d50f770fe20fc5aa2d5d3a51a19bc5bfe9462a1663ef432fe4c011d776217991",
+    "Scripts/probe_eye_bones_ue.py": "dc4849569f52afcaf19ed0ad81af1bef57df566de1459975b28240d6deb4adbc",
+    "Scripts/probe_eye_bone_tree.py": "7e94d1c02751dc019117ac3921f9939b6464fd9d409e92d83433413e086e9a70",
+    "Scripts/probe_eye_expression_preview.py": "fad41ef0aa9ce5e8a35f990b053f87b1e98824ab68a676d82a3bdcceb0070922",
+    "Scripts/probe_eye_expression_sliders.ms": "9b264ccae676cd9a042d836cedada73df977cfa65739c7c7f299b12fa10a93a7",
+    "Scripts/probe_eye_final.py": "0728923b959d38594006eb20da6b21957dd6b375557f15ebaeab028279091301",
+    "Scripts/probe_eye_l.ms": "84caa7186a0883e5cc45e15b33067d20acf221de73850c39f9c6bd65a164dcae",
+    "Scripts/probe_eye_r.ms": "efcf08037652a777c9eb0e0160373ca9f478faa8d4c29487e7c354d845ac62f3",
+    "Scripts/probe_fbx_ui.py": "48061d676f7f8b2d017f6f9e0bd04da8a4c95d0a04c5bd8de7eb1ad7e19b66b2",
+    "Scripts/probe_gaze_master_samples.ms": "19dd18fd8a458da56f9f009840fb8cbda1f148726c7d153e2db9d12c79242d32",
+    "Scripts/probe_gizmo_lib.py": "a0b9a8b954f4ee62819f8bd3d870113bcf13b813ab1e84922a633a87cd1f756c",
+    "Scripts/probe_import_bones.py": "4e4ae2ee9d67e8eff9e6c550cdec5ab76b23e7ec28fa27ab495a21e521fcf438",
+    "Scripts/probe_import_data.py": "693fd12d38541d77de5adcc2027a190927708be5597fb69f52c64d51d0a75d68",
+    "Scripts/probe_import_src.py": "e3d90f40c8f6d260fe39bd7f83170784ea4183be9eba25d148d95c9c325b9be9",
+    "Scripts/probe_left_lid_weights.ms": "f81bc62ce10fa87fcb3bd4a953b5224c42623d31ed52352464c2b39f0af637ba",
+    "Scripts/probe_lid_debugged.py": "8827efcb60ddbdf47c48f70e136b3734f040eddc58f185408678e2fb99ded29d",
+    "Scripts/probe_lid_dq.ms": "514a5bc6bd2700b23b18c068924483076e27002f8f2384498e87d9cb0da264a7",
+    "Scripts/probe_lid_dq_diff.ms": "4065d994e6616b99959a563f5ecfee3149d27ed0caf12adf91fa272aadf3a891",
+    "Scripts/probe_lid_dummy.ms": "35d2d847a710fa5796ce30b198222bd04ecf922fa861d0c87ea9cc829708a131",
+    "Scripts/probe_lid_limits.py": "89f0e248ad1a435513a7056b83cf3f864af7f49e60e1f14a7b0c039bcb2c57a8",
+    "Scripts/probe_lid_matrix.py": "72053b2ffd462d7ae7fffe2963504b6bb81d70cd145030f3946f967ea286f0bb",
+    "Scripts/probe_lid_matrix2.py": "6f2ba6dc0fc437540818fc1aa68e4419f5695c78510a022adfc5a0db31b0ffb3",
+    "Scripts/probe_lid_pose.ms": "449fe2ebef32ea5d48b6d0c6b2281f7f6ae8ccd4da35d59f02096e6241fb6eb5",
+    "Scripts/probe_lid_pose_ue.py": "9db210606ccb71cb75a0ca1992e560a7b86ac514b9664e3affefc9836d6fa8b7",
+    "Scripts/probe_lid_quat.ms": "1f33f28910402e027bed62abd64d27d1614cb92c7167d2a32d3622e7e91ed334",
+    "Scripts/probe_lid_quat_ue.py": "c7a6da8a131812f6f45c97a1c87713af4e51f1a2e7df7f79d94b9af78b0ef9e4",
+    "Scripts/probe_lid_rot.py": "10335c3727d4cab7fa9ada0b4c9b2e6a0d0b1394fd7459f877169db2d9964736",
+    "Scripts/probe_lid_rot2.py": "d75e6b8f54c883315c4080778464dc77b9f688a5ce7f1439477479aa3772eaf3",
+    "Scripts/probe_lid_state.py": "31c8fcadddb4681733e6c17eab6de03a59085e1d6ff2e523a47936826f77cf5b",
+    "Scripts/probe_lid_trajectory.ms": "36fbad37c5e23803685393a376657edf6a4534ac5b18eac614ec7a7b07e2f702",
+    "Scripts/probe_lid_trajectory2.ms": "9767f954266be56075d20513cf6c991887cb1fd3e5072aa7755c52e57206b83a",
+    "Scripts/probe_lid_visual.py": "c92aff86e0ce60e6a1610cb5af19581517794d8f15d2df71870570b779ee3626",
+    "Scripts/probe_lid_weight.py": "2845d973a190808630ffd554f2fa75182442760f12060d66f20390d92660d4a9",
+    "Scripts/probe_lid_weight_rot.py": "cc67ce2851b77c2c947df85b7b8e699fb95bd80df8da17c366f5a990dcdf9911",
+    "Scripts/probe_lid_world_ms.ms": "8b1440edc18e823a4267f3b150e1529d701e3110899ee5b1d36b7b80804f6024",
+    "Scripts/probe_lid_world_rig.py": "ff59f0c88c912b35f1568dbf1f1fe895a12b920808c582f4e7725630fdf19c25",
+    "Scripts/probe_lip_samples.ms": "14f08070aba6a8a1c29f7fbda52b6963025c224e2840ec5789f012c3845bf388",
+    "Scripts/probe_math_nodes.py": "4cacc1e18eb913b504507a141dc9f9d6a65c34ba05e48f603aeef36c2aacdfaa",
+    "Scripts/probe_max_export_env.ms": "5685f59b5f8cd1c58e5e6b694860db6e28dc926bee1991aba5d89894fa00137f",
+    "Scripts/probe_max_file.ms": "0a16da9506ae0297d10fb12ab7b1899aabd8e67b587ff3c5f47f0a8daadad24d",
+    "Scripts/probe_max_skin.ms": "865bfb1364bbd9b13df3a6172f33a6102c0ba1183407268a3cba3942aef82cc0",
+    "Scripts/probe_max_viewport.ms": "47da818a3888ba25ff95508a210506bcaa0d6d01e106a1239c503813fde30708",
+    "Scripts/probe_max_viewport2.ms": "2d3413063c8d85ded4214fc57e60093cf4b448fcb04de4c1573b928c220ec77e",
+    "Scripts/probe_mesh_api.py": "e0c01970f29b2cf92af0010b31e859faf1720af7504c0321fbd7fc2ba20efdcd",
+    "Scripts/probe_mesh_verts.py": "33c5e29d4b519b8baa4056197fe23b94c215853cab231bff3c2a7ccb1a32aca5",
+    "Scripts/probe_mesh_weights.py": "ff7f902a409c5c6341945868c72b63508140d7a21cff372980f8f79b24eb9677",
+    "Scripts/probe_modifiers.ms": "ff0a1e1d0c26b2e2c7cca83f07f20c26a481e17883b00dd0eb1d4294ad9af49d",
+    "Scripts/probe_morph.ms": "a455ee9360d3852a638627fbec752d9065c6ec2d5254f75b6ec149c466593bfb",
+    "Scripts/probe_morph2.ms": "3ae8ba6d411d5bc4cb894b37e4e137df89f9ed9da41516e365ec7683e4476954",
+    "Scripts/probe_morpher_vals.ms": "6ae06f7ad4ef6db2ec7d67b61a4113c76c444cdf8b698232b14779242005c21f",
+    "Scripts/probe_mouth_samples.ms": "27ee4299f51bdc5befb6fa130e8ecd4aca3fceb6c6a4add559df51b2d24d4ec8",
+    "Scripts/probe_new_rig.py": "012e585a711e8113984fc134f12306d894ddd197ad54b6935b2532a804d50d8a",
+    "Scripts/probe_new_rig2.py": "fe6c80dae4a910c23b26d4f3890e9e19cd32c14d81f4202fe3b82f97183a683a",
+    "Scripts/probe_new_rig3.py": "81ea490b34352560e23b67bcee651ba1a45848a330b754e0de548439fa8c89d6",
+    "Scripts/probe_new_rig_params.py": "a04d3be39565f8171bb46097309b5832b048d23c52de1cf9c29dd7ce90f4d843",
+    "Scripts/probe_node_names.py": "8a8bd8799b6b3c5d52267d6b671c295516a7775f75e8fd03e4f65817c0ae884f",
+    "Scripts/probe_node_types.py": "8a937b9ed8e164b9199d5bddf00e9839c68e4ee234346c8896d5e237751e0326",
+    "Scripts/probe_nose_samples.ms": "12f3b3b09fb43dba79ffe76ef0b21abef4b659e3d6f443e9937b2387d260c271",
+    "Scripts/probe_nose_side_samples.ms": "68df783ac08fd959e7e885bcbd7a43360fea8564cedf4aacd03e3a7d2e29ce32",
+    "Scripts/probe_official_params.py": "42d346d333bdc2a2fdbf753642a59490f92c5309e89cae6177bdefc1a583d11f",
+    "Scripts/probe_phoneme_preview.py": "36d73d85ad2a78828507b54de12bb226a29b6e8d6732d4e95cbde0854dd3da25",
+    "Scripts/probe_phoneme_reference_api.py": "1e92e9767d2c51ddc17eca5671ca22cea5315e675f205d9f40bd935ad1ba7397",
+    "Scripts/probe_phoneme_sliders.ms": "49951ef5ffdb7232526f3a1f70637dc24f76b7ab59ac83bd6f406a537efce48e",
+    "Scripts/probe_pins.py": "e803e7d168f2d2d128e909c23ef927deb93c771dd3532df9c199c92b538b5cd6",
+    "Scripts/probe_pins2.py": "6dd35d2c678c351fba415034b3265d8e16ab777af3f85db11813d325ed921561",
+    "Scripts/probe_pivot_and_link.ms": "79b73127e0aa2a39951341eddc6c6bb484f4c4e912d99448b83e4e97776b1979",
+    "Scripts/probe_preview.py": "a9a5c3d2be1b1709926c9761d0e41fae0734025eb2192c3d8cd5c5345951ec34",
+    "Scripts/probe_preview_api.py": "2b7081496df299c7e3f4ca149ec6d096ab656bfb050918eece79458c9e4575c2",
+    "Scripts/probe_preview_mode.py": "7813725769b0cc370ccdef1aefe78989c7abdfcf4affd39bfe5cffd70d52d6bb",
+    "Scripts/probe_qrot_links.py": "fb10b8a0e14c8c5d0ef5aac703478dc483c6115ea01cea3ef416dd1083c5f427",
+    "Scripts/probe_quat_order.py": "ee9d7cb7eaab5b9ed38c94eb4f47949b663fbcc331f9f147e4275d4410b6639e",
+    "Scripts/probe_quat_order_max.ms": "40f81fedf2bd05599b4edde9597cb48c57905e18b58b79c032b99cf2f17b218d",
+    "Scripts/probe_quat_order_max2.ms": "9d44311e55aac5ed8c762c6c70b1445ff8c9b67801020bb4e5f0d959067a3d98",
+    "Scripts/probe_quat_world.ms": "1f2db6c4d374e33cca631a194ed40cf2d85b4adad3cc90d4f71071802aed18b4",
+    "Scripts/probe_rigvm_funcs.py": "75145e6e7815f805d39f425505d3970acb65959cd0c1360aec2abe67454b795c",
+    "Scripts/probe_rig_api2.py": "bc69b5857a20b5c5ae17d6356f7321d6ccb79b44953dc8ccd51e54a693034b51",
+    "Scripts/probe_rig_state.py": "852a1ee27735ef95a1e8689ade11cd5b71dba9b81ec786d1313a85196eda6052",
+    "Scripts/probe_rot.py": "5c54c0fac4535ac69658b714bfce73603ca0114056326b9d13eadeb5ed4dffb5",
+    "Scripts/probe_rotv_pins.py": "c380f63cf3076984e4498d195c44be8b49e3d9ca45e3daf28f5abaa3b8589dbc",
+    "Scripts/probe_shapelib.py": "a9aa2b96d5ce764171b4ba57068a8fa2f9e747e5e9aa8e7b6665b351889b1a73",
+    "Scripts/probe_shapes.py": "17a0b0b22976db6224fb32d244ce3b0a94118d3df7ba55fa85e2ef6e0b957cfa",
+    "Scripts/probe_shape_assets.py": "11a4b440aedc4e14c418449c0cd2606c704e84c8f7b302820660b9f90818d339",
+    "Scripts/probe_shape_mesh_size.py": "7e1dbb6ab20e6dce881df4186b18062544010be5dfdd878002b86017b0d45195",
+    "Scripts/probe_shape_settings.py": "f98a1cda8a1d2a00e0f7bd48e15553cfb4d5ae13c0a5606733d872f863c8f65b",
+    "Scripts/probe_shape_size.py": "0f983442b036c5bb270a9cb21d5202f1f86b4b11a2b5bd041c8f5432e03d81b1",
+    "Scripts/probe_shape_thick.py": "c38db3290ee2b96edfa305383fd91d94212a7d36a880104f10f08ea95bd076d6",
+    "Scripts/probe_skel_api.py": "905e246fee82f875fc9e4f25057f667a6a2de3703a7d1c6be924f52092b948d0",
+    "Scripts/probe_skel_diff.py": "8cccd9734def4431618e0e5db2042d25db94cd2c584d1bec8bd1f853ac5680e8",
+    "Scripts/probe_skin.ms": "2bf3c553a1239268765ff07093a3382495a8bda0cb6a0f7a94e8e2882a49b054",
+    "Scripts/probe_skin2.ms": "cd83e8adeb7046394605e58f23bb4191f4f523186730808e7de3f4316a7c2d65",
+    "Scripts/probe_skin_api.py": "8c319c6009824db509dce24a46de50929278a33674f5eb0d4df4be4fb9fdef7a",
+    "Scripts/probe_skin_api2.py": "630ccaa2c541e9ea424654060d19344a9b4c3c9821a4967239f3032424847e61",
+    "Scripts/probe_state.py": "2d567551c4103fd3a354b22a5cf3ff193c61d24f05adf8916d0d0ad6e7fa4ce4",
+    "Scripts/probe_syp.ms": "f29e2c3d33d86b1d90c701e7a1c08e334dff586f0916b2ec4ff9e10e7d44d068",
+    "Scripts/probe_syp2.ms": "50aa9d6621a6f05e4ee99ead41b317b15ac6722eebfd009c4497635874fb18e3",
+    "Scripts/probe_syp3.ms": "9f63ffc57a61719dd2d9d7c9d3fdd6f514cd07be1636aca0210036ecca12a8cf",
+    "Scripts/probe_syp4.ms": "fa83e18233b6e312145511be57346cdf6296d49f56b175fa4c2977be37824f0d",
+    "Scripts/probe_syp_full.ms": "b2794e63d10229197e2d1bbbfc986353ff623a740a0bde2f82e4c991e8b61e6f",
+    "Scripts/probe_syp_morph.ms": "bc760da97ecee1a28c0ff95a829503a4ffa1fc998f6ddb42d872ee2f5abf0822",
+    "Scripts/probe_syp_values.ms": "592d65d1585fcedb3d9625d5147c4833166d4d6a19c06a6d190313446fb563de",
+    "Scripts/probe_syp_weights.ms": "6520eac7513c24ff5a078b3919d50b21aafe2c7d557e192c7ee96569fbda2be7",
+    "Scripts/probe_template_a.ms": "ccb39d0920e16c1827794e7731d883fd49fec96a8f77d74f197203ce483c1d35",
+    "Scripts/probe_transform_pins.py": "607757b2b5301bfd6ca71b3840a1ad2eaf995456cf19fa308eec7207fa1ad4a5",
+    "Scripts/probe_translation_space.py": "a5391ad175182086303a1f4bc8d01d38d44c318a99cf0cb37c98a3bfe7cb6e9e",
+    "Scripts/probe_ue_brow_bones.py": "5bbf210f363c4c6ed29dd211f9e38c263c4cec1781ec23401aed8d6b0b928b13",
+    "Scripts/probe_ue_eye_bones.py": "b28fef3fbfaa401daaf7d46c563532b7a9b28e56d0f859cc2f6848d6f1946e5f",
+    "Scripts/probe_ue_mesh2.py": "16594f3c4c647ade4c7d299536c4fb45de3fbc25516624b17fc516940c8bd016",
+    "Scripts/probe_ue_mesh_stats.py": "f8d41958aaad1b93e0c1af96722e37666389eb0e59a143a1d0f4ff42c37400c2",
+    "Scripts/probe_ue_remote.py": "4a8639196829a33a4bdd9139da05534fceaea37c0126a1b75ce947fe4ad6d9e0",
+    "Scripts/probe_vadd.py": "158739e4d07e21fa5321446488085f07361dd91f9d4b787beb6a8096bba89a8f",
+    "Scripts/probe_vec2d.py": "002e09172f6b20d1c24d2fcf9ba76981971c2c9ca0dcb32aeb3caaf189502447",
+    "Scripts/probe_vec2d_split.py": "d764d8dfee74ac09d94d2f7ef2de8d7abff7dda7fd8b7f8c1180cb13132597d5",
+    "Scripts/probe_vert_counts.py": "00f659e9fa06ff82b4e1cde7bf3438170bb673cc205dd2375f6900f308637531",
+    "Scripts/probe_vert_counts2.py": "9e5bd1f49e20422aa7dc5f9ad8d35f51e3f0020055eab42add62bac2b2ea18bc",
+    "Scripts/probe_weights.py": "27b3eae22d8c30189048f3aa92299ca4824c749742faa2295913d57c3b489f46",
+    "Scripts/probe_xyp_samples.ms": "169e46609e7e0a6a37a4700ccf926d49c48f7edf0e428a8c2c66d8fb61b6a997",
+    "Scripts/probe_zcircle.ms": "b643ff26b67dcac12e42f57bc606c998c22720cb72324d7a2208d4760f9595e6",
+    "Scripts/probe_zcircle_axes.ms": "a52a641ac2d86519ada675b420e77e8e6fdfcabf28182e7c224f91754f40a7e2",
+    "Scripts/probe_zcircle_bind.ms": "b4800607062e629d941f0338ae66cf536e665eb479ef93b0493c3d8be673dcdd",
+    "Scripts/probe_zcircle_drive.ms": "bf6b82bcc277b3f4eda6c37cb4ec6e3a9a3cac51ff9958867985aa63ba3bb85c",
+    "Scripts/probe_zcircle_move.ms": "c073144a4dcd0579d94aaff142e72ddf04bff3eccaa3eb7dabf6a88cdfe441b0",
+    "Scripts/probe_zcircle_size.ms": "721e7d3978b7f4300c810468d61fa140414bea2a5e2688ad0b3d4b6e8bc3275a",
+    "Scripts/probe_zcircle_struct.ms": "f7ba01ef9a52e9f188f77ddb0089dfd846d299f59469ed5e2733d82f9fef76ca",
+    "Scripts/read_slider_size.py": "3088866d442e8b53547798ffdbddeb0ef55009e49ef5a8d2d93e0841164487d1",
+    "Scripts/refresh_expression_preview.py": "1e0d10ebf6cd7a5fd308a31ff3664b19c58f16dd258da54d9c55a860df721b8b",
+    "Scripts/refresh_eye_expression_preview.py": "4f09b8ae9d96c5f9870f3bfe30e1c2163b9a95c9ba1f5e72212037d99d5f4d4e",
+    "Scripts/refresh_phoneme_preview.py": "bec0159c762b328ce050c480133d71aa067fe06a8630282ae90df4dcba24aa33",
+    "Scripts/reload_cheek_target.py": "e884ffb90857dc6cc12d6a77bfd196bed261b5adb69c38ff915a46ebb751ab8b",
+    "Scripts/reload_chin_control.py": "9c2be743165af81cc9653044f2168251ccd7adfd09b387a566c8e1d6158cb495",
+    "Scripts/reload_expression_sliders.py": "d8cf58cb1948fbd358cc8658f2ceab02e163edb50a8eb9d6d5b38e7ff885566a",
+    "Scripts/reload_eyeball_target.py": "ab27986b66307e6707c78bb050a0bccad648a92ca72896da42b9bbb5aa00e918",
+    "Scripts/reload_eye_expression_sliders.py": "1b67eddfc62c25f37f2e52628a1904f3cc7c567d79663f9477e680948b6c770d",
+    "Scripts/reload_gaze_master.py": "d53034e44f302dc5198344b35ea40c92fc61ae2688a46c5fa343ab85ab4b45a0",
+    "Scripts/reload_lip_target.py": "e7ddc9e49ee211e9f4eac85def0eeb48db032ac3c8af72af428bdc7c8e7d2b8f",
+    "Scripts/reload_lower_lid_target.py": "e06a7d7fa8668d77d114b4eff0a0d21707d0eeaebebd496a45e2b52ccf3e523c",
+    "Scripts/reload_mouth_target.py": "3654fee7acf25ebcc7fd6d6529f2826417bf0508b58d99d0de38cf7ecc7342c5",
+    "Scripts/reload_nose_side_controls.py": "2f10e597a2196b4fd757e8696b48d70c3d8001018f7475e34235b82e8347b64e",
+    "Scripts/reload_nose_target.py": "70b9c9ab9c38c3b4f1f1c03296696db3af976168ff0cde0ca58f0fd84ff1627f",
+    "Scripts/reload_phoneme_sliders.py": "92a29388508fbaf787453334d7b1f24f141095bb87c29d58033fe7eceb76b420",
+    "Scripts/resave_sevgame.py": "79cc225f2eebd14bb3352fe479a87cea93247716421cbabb99450ec2f0117b20",
+    "Scripts/resize_chin_travel.py": "e721cb74e2fef193dba28c6568cfa028a9cbe6566b9471fdc426bef31a40c07f",
+    "Scripts/restore_lid_gain.py": "e73863704f8ce22c53e930ca7bbe4b3c4dacd146ca0c0456126cc42d683f7705",
+    "Scripts/select_brow_bend.py": "273f0f4cbe209c267ebc98c485bec544e49ffbdb6fb82c8deb80017ad9b6a600",
+    "Scripts/select_brow_bends.py": "e2595d9fd7e8402b6e16201a539737d60a8c1b7790f85f2414ed3c2d544b4a14",
+    "Scripts/select_brow_points.py": "632a0b44082d15008efbdb7be2ca8cb2e562f029d8326b64e244448efdbe73b8",
+    "Scripts/select_eye_lid.py": "8c6dbc9ed3a714ab70aa8f4288a00cf42d3313cb1974a0efd833000584136d14",
+    "Scripts/select_eye_points.py": "7b3b0ad179c5f1045464a467ff20a6ef7c8c73a447e258f065728fd0aeb26d34",
+    "Scripts/set_brow_points_preview.py": "a1fb1c7c1cd2edf7225e99c596b91d663f0f3b2180614c801111beafba752c4b",
+    "Scripts/set_brr_x10.py": "b410deef12a3160d74fb3a0db08ce4d5827e64986636549653618af9f1270db4",
+    "Scripts/set_brr_zero.py": "b4b0f91d31b48adb824b4e77f4d27e3afcbc915c15d13a7ea2b36effef9241fb",
+    "Scripts/set_eye_lid_closed.py": "35ec2ef3cd38701344709e197d8670354be6754c1ea801631315610646c63f77",
+    "Scripts/set_lid_m10.py": "6b58997e68124959d5d6022c361bd42e255ae2b3bc98ef8939b55460011d75d9",
+    "Scripts/set_lid_p10.py": "50e0b6e98e14ecce38d63d9ff4c3bc7e17a69b45c3806508caaa21d6847e08d5",
+    "Scripts/set_lid_single_side.py": "2541440b2c26d6976b6dc9cc9e3e3a0c0c0a56fe321fae110147d5645f3a2113",
+    "Scripts/set_lid_value.py": "a84989bfa845fe14e8eca3860d1cfb864606838e1d4dd27fd0a508c8692b095d",
+    "Scripts/set_new_lid_left.py": "597627cdc83c2c43465f29d94902c94f4b1571a7bfe79842fcb39532df781102",
+    "Scripts/set_preview_brow.py": "26ff987f15267c108fc1fea0c07016ec551e610197fef95413cbfd8d1190f09d",
+    "Scripts/set_preview_brow2.py": "3de43ce235c0b45cbe21b82df3a0aee3d80a3957fd11c588be3242bfcd5a9ecd",
+    "Scripts/uasset_engver.py": "3bfa48da28a3e1f2a8831311abec6e7daa8219a6378c97dc88b4377e1df19a2c",
+    "Scripts/ue-mcp.ps1": "2211a94004aa06f5d315069ea3e176dbca5ba64431c0523eab7e5f4123b5d319",
+    "Scripts/ue_run.py": "534d4caf35be085772bc4c0120f94366dc300351352603e98ecabb3f33648d08",
+    "Scripts/update_expression_slider_layout.py": "4f8f15612155a117c378419f3a93dedfafc8dda271fd6657420d495bdcc59aee",
+    "Scripts/update_eye_expression_layout.py": "255ff10a176035b6208b9cdcfa3510f1fbd7104a9c62124169883a6bf7433719",
+    "Scripts/update_mouth_parameters.py": "5fbd9e2b9fc3afafd2ee654b188ee4e21305a7e3b47771abf817362a5ce6eaf9",
+    "Scripts/update_phoneme_reference_depth.py": "11b0a6abcabf02170bbf3d06b712a750ad6f521fd4ef0e0d9ad17af55327a736",
+    "Scripts/update_seven_face_layout.py": "52dcf9cd07ee9a6e44264abf51c07c19861ed6c5e969fb175a0fb8462c083afb",
+    "Scripts/verify_brow_panel.py": "c80b00cc1de6a9ff0fb49e758891ff52bf48c27d1d546ebc404f2e23c9916dc1",
+    "Scripts/verify_brow_right.py": "d7bfb2ca1b28875d8f6102433853ba679b3894b6977ae674e8158f410fa8b365",
+    "Scripts/verify_cheek_controls.py": "bacc717fb6e3e4b9f521140355c05b7d4475373686e21f6dc5d576ca6f767b80",
+    "Scripts/verify_chin_control.py": "dd252fc701fad0ec38f359bd69a1c204bcd3db07f9b02790c634b05c509082ef",
+    "Scripts/verify_expression_sliders.py": "414a78124fa7d278606d6501c07c2cb338832b9cdc09080dc881ad9a2b9a1044",
+    "Scripts/verify_eyeball_controls.py": "9f169c034465d4a2afaabc8bcd267537dd6836b028355056fcd03f33d9267ecf",
+    "Scripts/verify_eye_expression_restoration.py": "cd57f4ed78727c2f7c756e1e590bfb0632d8a324b443e8e4d1d1c1663c7362c8",
+    "Scripts/verify_eye_expression_sliders.py": "01c43fbacacf5e85ea5f45a212a315b29302cd9be2a7fd55bbfaeb0ecce4dad5",
+    "Scripts/verify_gaze_master.py": "8f3536bc15665e88d42f29aea0ef199c2eceb651a0e5e4e7d7aaabb5005d250e",
+    "Scripts/verify_lip_controls.py": "c0a01412bedda5e9a230b364af1d6fc94b51642f0f5e1ef233e0510d208fb47c",
+    "Scripts/verify_lower_lids.py": "88ee63d314895916a6d716aa73171e7855fe07294f0439b8184d517712add6ce",
+    "Scripts/verify_mouth_controls.py": "870987bb2bdeadd23b5c222929b6a022cba9e9756f4046c05f25edc43b1147c1",
+    "Scripts/verify_nose_controls.py": "ad7f154f123669454033aee2754465bfba0de437f60fbc179c09b49249a06e9e",
+    "Scripts/verify_nose_side_controls.py": "8e51e191b72dea52d34bd85028325742044bb48d51e12767eaab1e6e40d953e1",
+    "Scripts/verify_phoneme_reference_preview.py": "80451099ee9bec9539164fe8c5fc48f0701ded4424e276e3b2436377239a2b6d",
+    "Scripts/verify_phoneme_sliders.py": "108e581e9e352840a5766732f7f45f571ce87550f3183322ddf354398d64524c",
+    "Scripts/verify_sevgame.py": "9a998dd14fb871aabe012b0db04d6abc8848fc50df3cafc6ed872e40af13763e",
+    "Scripts/_deprecated/build_brow_panel.py": "a9e029b5e0d1c58000edc99902cdba97ef3755fef53a18aa72989b28b302a193",
+    "Scripts/_deprecated/build_brow_point.py": "3553156bb8abd4e3e6d77495fbae5d7fd6876772a76a88ab343d7cf71d55e732",
+    "Scripts/_deprecated/build_brow_point_v2.py": "c79c9aed5a129ab74d8de3467bd7a6cdc112c22ef9ca86816d18929aa63019d2",
+    "Scripts/_tmp/axis_math.py": "cb20596794aa5f4fc94ef85225ef5612c4bdcd49da0dcee8e62f7fad9f430aee",
+    "Scripts/_tmp/cmp_a.png": "a864076ae7656dcdcd3f542172dfcc65b7eb91c0359f73c5aef577fbf7acd9bd",
+    "Scripts/_tmp/cmp_a_s.png": "9da3395a7236001c2a5e6d2d403705a8acff8fc31670c062e840c9a827b76cbb",
+    "Scripts/_tmp/cmp_b.png": "9bad23e7c9dd1adf42c8e5d1bf8f3646ed0f2220cfb34fd284c00c6f2c4d9fae",
+    "Scripts/_tmp/cmp_b_s.png": "d934a11ad73ccec95202143916856eae35308eba61e0791ab8f06acbc1f0b14c",
+    "Scripts/_tmp/dump_get.py": "11d3858934904c6ec9b802a5073dab253f2d7e08806f746b3a215ef921d75cef",
+    "Scripts/_tmp/dump_graph.py": "8115d6fdf1a9e4d44cff0d345d8b8334ed9e67e66316c86990d36f132182b879",
+    "Scripts/_tmp/dump_vec.py": "ae3338ee88bb2d26ab05448d9cddb2a9694123096fb5f84f2e2cc3e118955998",
+    "Scripts/_tmp/face_y10.png": "2d2bb54e95ea3f7b66e6068460d6409ef68fba784181d773eeef62d9ed2fd523",
+    "Scripts/_tmp/face_zero.png": "2d2bb54e95ea3f7b66e6068460d6409ef68fba784181d773eeef62d9ed2fd523",
+    "Scripts/_tmp/max_list.png": "f85f45ecb32173ed03323b6c65e6b471a5b38c747f7e7c671a030783aefa831d",
+    "Scripts/_tmp/ping.py": "2365417efb85585ebf9751974cb9a8a785068003461490953068e5c8de45b9bd",
+    "Scripts/_tmp/probe_after_restart.py": "1bab5ea8368bd3bb8c76a4d45ffb7c84bdb595e132b5a92ed2f9d076921f4ef7",
+    "Scripts/_tmp/probe_all_rigs.py": "1c1c32d3b2ad6b52d8a4e5bd35d7878d374bfb6bb114c15d0f9be8036245206e",
+    "Scripts/_tmp/probe_api2.py": "265235be53f35f0d5a816e7fe014935823538fb172be67dce2ffdae2a8e1bcb8",
+    "Scripts/_tmp/probe_assets.py": "93ff1ba1219bbc0a9f1c4b18e608ccedbe51ccf9e91b3188135effc122cb247a",
+    "Scripts/_tmp/probe_bones_live.py": "7858792ffc298093f21304abc78c5ba4b76fa5b99f2860fead530d4d7bd93d4f",
+    "Scripts/_tmp/probe_bonetree.py": "9f2e0b4a14d54fb6e79240af601700d27878c941db5abb87ccb64dda17d982ce",
+    "Scripts/_tmp/probe_controls.py": "6ca0bcfa227d92224e3b0e281b03e3f04a912de8b1a99be17487d2b769cf1b5c",
+    "Scripts/_tmp/probe_cr7.py": "419fb9cfacfa2ec4e05f7bfc5458fc4dcd9b8f2431a62d9cb491f1ac49986230",
+    "Scripts/_tmp/probe_cr7_h.py": "43d34493b0426597bbf7174e78f8ce1264b8d70a39648ec437431d196a43d6cb",
+    "Scripts/_tmp/probe_crc.py": "d62c0555d563250aa440a264aa9df9951dc4e709e9948fb04e9e1242cd03f815",
+    "Scripts/_tmp/probe_crc2.py": "0a77a34b4f1006ed57b3a22cfc5d82ece0f451e756b665e993cf8476b37211b5",
+    "Scripts/_tmp/probe_curseq.py": "90caf3c3b69763dd444492d9f3dc0badff6b7ff1d5f8096ede77d2ce983077f4",
+    "Scripts/_tmp/probe_default_drive.py": "92af2c7d1eb06f22ee3b49722afb9b14422c21431aa0b11d5fcb2535420789c7",
+    "Scripts/_tmp/probe_hier.py": "e8af00062b1fcb6090cc5cda23416ce24ed5c7c0a3411e2cd476a62a7c8b2a1b",
+    "Scripts/_tmp/probe_level.py": "2782ef3c6906b802510f2073b9e85106890c2646fefccaf9b69830b6d70a096b",
+    "Scripts/_tmp/probe_live2.py": "15e24ce87c0cdc150081a1731ad066d5c07d650b4d95e88652f7b5ed41c292c0",
+    "Scripts/_tmp/probe_local.py": "f4ca2898fa2ea3383576234961e8bbc05c4c7be0d4667059804d986e5645001e",
+    "Scripts/_tmp/probe_nodes.py": "8de2cd3f4ea8141ab6ceb73942453baaf3dfae64ffdda7d300fbf1f6d3c8ac36",
+    "Scripts/_tmp/probe_pins2.py": "efc3c740b3ed001a319c8f0a95bdd2d8b9d81a493b227da60f99b7f1793936e4",
+    "Scripts/_tmp/probe_pins3.py": "58527f6405a9675dc56f6f4024c76fce50ed8c420f81b4ed17d80cf6f9b59fbb",
+    "Scripts/_tmp/probe_pos_apply.py": "c61f6a62f88f23c2ab7118bfd6b7272ae6777fc8da7864f178ba967291ae8646",
+    "Scripts/_tmp/probe_preview.py": "c2e25add8c02f7c24e049e85d8b22eadb213c998fd76782bae088961392a21ba",
+    "Scripts/_tmp/probe_previewmesh.py": "97bfb5cdb84129ff308de21daf2919ab895e69cfb32040330d3044a957725e94",
+    "Scripts/_tmp/probe_rig.py": "e13a5a3a9a3830236e11d1018da37e4496848adee0ffd2a64f86cf75e56a0029",
+    "Scripts/_tmp/probe_seq.py": "d45945f783ed3ee6251995fa3cb0a14e05d23d56708b9052f1fdd2456cd9663f",
+    "Scripts/_tmp/probe_seq2.py": "ef7002214fe62cba1784d8c05da0a5dc7693f748291de63c7dc1704d0daaa458",
+    "Scripts/_tmp/probe_seq3.py": "0d0b15fca7ba04c346c867d5cf8ec0b20a25c60bf6ffa4e7edab3f7ef5846b08",
+    "Scripts/_tmp/probe_seq4.py": "cf4b890e911f4cc7185307ad85ea8273a4aa2dd0e61dcaaa7a0a8a1c635093ef",
+    "Scripts/_tmp/probe_seq5.py": "1f386793fa1974f3e7a5fc04bfdbfea9d08427c44d56d498803789f556865b9b",
+    "Scripts/_tmp/probe_seq6.py": "62f97cf215fade968ba629c1ec73e2273ed77fac9d95a0467a4e38da2b39ad14",
+    "Scripts/_tmp/probe_shape.py": "d50f1ff6c4620a4f23159149f27bc91430f189092ce203053d7f2e6f05ec30e5",
+    "Scripts/_tmp/probe_sk.py": "e6544a59e8b3e8bd42d78f22ea1bc096d477dd407e1a0e1d10aad5b679d98d45",
+    "Scripts/_tmp/probe_sk2.py": "91bc90265ba3bb689e03c65772658ae004b57e49faf3900e07a560c001624bfd",
+    "Scripts/_tmp/probe_sk3.py": "52131c61619cafe4dbb43b81eb346e0220a979f30ad0f21d08a50a3c6ee1b028",
+    "Scripts/_tmp/probe_state.py": "96a4c524d17ccd15074f52d0145c9a1262c53953c259734f267a2af63fa90e22",
+    "Scripts/_tmp/probe_val.py": "e50f657c07dc3b98e15d480de96e1225aa6b795989aba4763fbcf349146a9f72",
+    "Scripts/_tmp/probe_xyz.py": "4cee5a46bcffd19d17860b00dfea636f91faab4f46b809257cf784a7fcf99554",
+    "Scripts/_tmp/probe_xyz2.py": "d61b2d67821f062e53afc5fc41dcad94a3aa6dd1dfb69fcc75b537a24dbbbed5",
+    "Scripts/_tmp/reset0.py": "efc5b92f3fd5d600d521770fcaf55c95bcd77d5b933e4983f102cdc92a2ce83c",
+    "Scripts/_tmp/rig_right.png": "3ee37e4c8a53fb3ecb437dcf66ffff521ad4774236f53c9ce53c41a58902da09",
+    "Scripts/_tmp/rig_top.png": "e4d3ba3ef12ac47e0e5213c91511fecbb786d774a1fae462d1ea0c1522a46cfe",
+    "Scripts/_tmp/rot_check.py": "1fd65080c34ed8e94ec62702e45f7d9bf17c779d44741647418cf6c9fc3c2ce5",
+    "Scripts/_tmp/s0.py": "ac450f36d03d919a26f2b62df867a792774976f7ff5b2e2069f7c475f956e16e",
+    "Scripts/_tmp/s1.py": "8311d5df8636ba06942dcfbfd30975c17f622c0537d3c0c06da5ec98629aec7b",
+    "Scripts/_tmp/screen2_L.png": "efb7e11fa9b39bb4a18fb1754ea2755a43c2bb911b231974d5d6ad66b95093ae",
+    "Scripts/_tmp/screen3_L.png": "0d2d6ba13e3c7ade520b814e9346bf11bc70fe218a591834424bc52ec37baf48",
+    "Scripts/_tmp/screen4_L.png": "58d9525880b478bcbd60520e5b2447e3254f4ff276ef0f18c22953e8d22ac9d6",
+    "Scripts/_tmp/screen5_L.png": "a2e0da00a9dd2d207b671c3177d41bee2332f3e3dc3faecda8c64516f90b144d",
+    "Scripts/_tmp/screen_L.png": "96d5ef17256beee49c08d2411fed340d94498904b76090ee5c904b21c9a80423",
+    "Scripts/_tmp/screen_now.png": "8e6e78ff98264c7ad1101bb07130124f5c1d4741d59ff1b0b08046adc8e57d4c",
+    "Scripts/_tmp/screen_R.png": "75b97400905fef647cde1639da5d3620d2aa1e68ffd15957ab29327d637ac14d",
+    "Scripts/_tmp/set_y10.py": "8e641ee05fab5aa69548fccd22e9c5143f6b85d19d186a5828e82303396743e2",
+    "Scripts/_tmp/set_y10b.py": "752b2f123bd3171724077fccee7e5d1c89e99da578fd372200d9fdae442a6bde",
+    "Scripts/_tmp/set_zero.py": "ac450f36d03d919a26f2b62df867a792774976f7ff5b2e2069f7c475f956e16e",
+    "Scripts/_tmp/shot_y10.png": "05b960c18f6ef93a39b759e5e14a588e2e49baf744b84da210335a08b714cc64",
+    "Scripts/_tmp/shot_zero.png": "78eb9d5c03a7badd144bbbbab5b83df6d914bf08a689b10b6d8e445c08bfc19d",
+    "Scripts/_tmp/test_Y10.png": "6eec399e7acb9cf0d792f31e7522ccd6f61d7397a9f45a866f7c0cc2aff40bdb",
+    "Scripts/_tmp/ue_brow.png": "6532288528b45afdde8ec4888074bb1d45cc2cec480b6fa6fd7f8fc479e6e83c",
+    "Scripts/_tmp/ue_gizmo.png": "e710852f8d0b0755df11044bca193b717cbd1faa1e05815af49464e84380593c",
+    "Scripts/__pycache__/build_brow_two.cpython-314.pyc": "81f9ca6a8c766f6b0606731ffc9070a5456c0600756d0adf633becfe9ca1edb6",
+    "Scripts/__pycache__/build_eye_lid.cpython-314.pyc": "304ad2e812186c43d03b27745bc60e37bc36ed4cddfa5b6a397e28bc617980db",
+    "Scripts/__pycache__/fix_brow_exec.cpython-314.pyc": "50e01d3098d2e625734e022df24473a276fd17b4675a39ebde21da21a7eb1cc9",
+    "Scripts/__pycache__/probe_lid_limits.cpython-314.pyc": "a58b93cb9faaa27dcf94bcff1dcdab02e023e964ad55b4395c0cd889a767b80a",
+    "Scripts/__pycache__/set_lid_single_side.cpython-314.pyc": "70d4c88d5d39dddc3bf01d790fed2f5af1ef8707092ce5f4bea85ba4e97d9642",
+    "Scripts/__pycache__/uasset_engver.cpython-314.pyc": "344fbebad4d6339a3aad2028fe59656dc2193d7b18dfcc5029a1d5770e078910",
+    "Scripts/__pycache__/update_seven_face_layout.cpython-311.pyc": "0e4d21509883fccce89893b7422633bf61d1c1fb2224c1bb60c395afbb8c6b88",
+    "Content/_MyTest/Mouth/L_SevenLipSync.umap": "5ea4fe635c9360575bd4484faf56f30b102e668080f16a96e593449c34bf8648",
+    "Content/_MyTest/Mouth/Audio/aqi_alt_assassin.uasset": "0fb9d8d9429a34af75ccde039b0893e92c35d401a96e1844f474493a8e7f46b9",
+    "Content/_MyTest/Mouth/Audio/aqi_alt_memory.uasset": "127035184c8ddb446dcfc57e478ae14d827e054a232a576e29341d45960eb4d9",
+    "Content/_MyTest/Mouth/Audio/aqi_alt_shadow.uasset": "575b665f31274eaffbcee422fc050a4c6856fab63c4e7d35c621de78d1d4e411",
+    "Content/_MyTest/Mouth/Audio/SevenSpeech.uasset": "bf3b8a8fa28e34408850e1aeeec23c61852aebe7b0681d61510966e9a3b30f83",
+    "Content/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation.uasset": "ff8c776cc5f200d8aba074a325ea5e7a6281e51c96c37ca0256bda2887372b11",
+    "Content/_MyTest/Mouth/LidDiagnostic/口型单列竖排12个_去背景_1.uasset": "7a625c9b9cbee30c9179b94024edd44c6425ca331f00eef350ec5700e73e47a1",
+    "Content/_MyTest/Mouth/Mesh/5秒台词测试_不带口型_Anim.uasset": "a7ed59af30daab9c1449262d7b88854a3307bae82fefb432a93f418079b229bc",
+    "Content/_MyTest/Mouth/Mesh/5秒台词测试_带口型_Anim.uasset": "d39bfe5322ac17e62158130ba047d5a467cc120fd127f2cc6e60450b838e5a52",
+    "Content/_MyTest/Mouth/Mesh/CR_Seven.uasset": "16a7f0b5495e1c3e851f6549bcd087def6ca202723e9f38f4bed71c060e00bac",
+    "Content/_MyTest/Mouth/Mesh/Seven.uasset": "3e05e44c05778ace4945b6c6c063f3afc5eb14a76ff40d01c8562d4d3168a127",
+    "Content/_MyTest/Mouth/Mesh/Seven_Skeleton.uasset": "6ad7fb40d8de0eb8b82dfbff96152a2107a511507ad95ab179f09b1fe1dd6d95",
+    "Content/_MyTest/Mouth/Rig/CR_Seven_FaceMorphs.uasset": "0511a511cf044aa1b68ad5c42279d30dcd3a22a18c8380e1355de5899508e654",
+    "Content/_MyTest/Mouth/Rig/CR_Seven_MetaHuman.uasset": "15bf13efe583a65d190471f9f453014c5e19d3a74f867464e95254195c1a029e",
+    "Content/_MyTest/Mouth/Rig/CR_Seven_MorphSliders.uasset": "e880cbc747b40a83e486ead78a9d0b8cbed16dfec91b212f456dd7679019381f",
+    "Content/_MyTest/Mouth/TMp/CR_Seven_MorphSliders1.uasset": "68f6af7ccf1d12cdef5176e039d9fe68e6f66f24da3aa3e1dbcda348abdcae53",
+    "Content/_MyTest/Mouth/TMp/Seven_Skeletal_2026-11-06.uasset": "5b9157bdc05747da36e67c43b4d32fd303b3566313bda56c3408ce6a7e58a87c",
+    "Content/_MyTest/Mouth/TMp/Seven_Skeletal_2026-11-06_Skeleton.uasset": "dd8559cad062cfe6862b2eb3c4e295857552f1e3c614f7b93a3d49e692bcc2a8",
+    "Content/_MyTest/Mouth/LidDiagnostic/PhonemeReference/M_PhonemeReference.uasset": "d901d0d2d668f6632cfe5cbf22441aeef254722988ba68c340645a1d71e751e6",
+    "Content/_MyTest/Mouth/LidDiagnostic/PhonemeReference/SL_PhonemeReference.uasset": "c38268b1b29f5d7de38f5ab6744cad4f88d205b696557f624b421449de28b49c",
+    "Content/_MyTest/Mouth/LidDiagnostic/PhonemeReference/SM_PhonemeReference.uasset": "4d640bcc0ce8a58770db32d78709ec039a3095b7aee0ecfb57cf2bb67fec5599"
+  },
+  "reference_bindings_before": [
+    {
+      "role_id": "EYE_LID_R",
+      "group": "upper_lids",
+      "label": "右上眼皮",
+      "side": "R",
+      "max_name": "SYP_R001",
+      "ue_control": "CTRL_EYE_LID_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_LID_L",
+      "group": "upper_lids",
+      "label": "左上眼皮",
+      "side": "L",
+      "max_name": "SYP_L001",
+      "ue_control": "CTRL_EYE_LID_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_LOWER_LID_R",
+      "group": "lower_lids",
+      "label": "右下眼皮",
+      "side": "R",
+      "max_name": "XYP_R001",
+      "ue_control": "CTRL_EYE_LOWER_LID_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_LOWER_LID_L",
+      "group": "lower_lids",
+      "label": "左下眼皮",
+      "side": "L",
+      "max_name": "XYP_L001",
+      "ue_control": "CTRL_EYE_LOWER_LID_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "LIP_UP_L",
+      "group": "lips",
+      "label": "左上唇",
+      "side": "L",
+      "max_name": "Animcraft_Left_up_Lip_Ctrl",
+      "ue_control": "CTRL_LIP_UP_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "LIP_UP_C",
+      "group": "lips",
+      "label": "中央上唇",
+      "side": "C",
+      "max_name": "Animcraft_up_Lip_Ctrl",
+      "ue_control": "CTRL_LIP_UP_C",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "LIP_UP_R",
+      "group": "lips",
+      "label": "右上唇",
+      "side": "R",
+      "max_name": "Animcraft_Right_up_Lip_Ctrl",
+      "ue_control": "CTRL_LIP_UP_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "LIP_LOW_R",
+      "group": "lips",
+      "label": "右下唇",
+      "side": "R",
+      "max_name": "Animcraft_Right_low_Lip_Ctrl",
+      "ue_control": "CTRL_LIP_LOW_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "LIP_LOW_C",
+      "group": "lips",
+      "label": "中央下唇",
+      "side": "C",
+      "max_name": "Animcraft_dn_Lip_Ctrl",
+      "ue_control": "CTRL_LIP_LOW_C",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "LIP_LOW_L",
+      "group": "lips",
+      "label": "左下唇",
+      "side": "L",
+      "max_name": "Animcraft_Left_low_Lip_Ctrl",
+      "ue_control": "CTRL_LIP_LOW_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "CHEEK_R",
+      "group": "cheeks",
+      "label": "右脸颊",
+      "side": "R",
+      "max_name": "Animcraft_Right_Cheek_Ctrl",
+      "ue_control": "CTRL_CHEEK_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "CHEEK_L",
+      "group": "cheeks",
+      "label": "左脸颊",
+      "side": "L",
+      "max_name": "Animcraft_Left_Cheek_Ctrl",
+      "ue_control": "CTRL_CHEEK_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "NOSE",
+      "group": "nose",
+      "label": "鼻子整体",
+      "side": "C",
+      "max_name": "Animcraft_Nose_Ctrl",
+      "ue_control": "CTRL_NOSE",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "NOSE_SIDE_R",
+      "group": "nose_sides",
+      "label": "右鼻侧",
+      "side": "R",
+      "max_name": "Animcraft_Right_Nose_Ctrl",
+      "ue_control": "CTRL_NOSE_SIDE_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "NOSE_SIDE_L",
+      "group": "nose_sides",
+      "label": "左鼻侧",
+      "side": "L",
+      "max_name": "Animcraft_Left_Nose_Ctrl",
+      "ue_control": "CTRL_NOSE_SIDE_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "MOUTH_L",
+      "group": "mouth",
+      "label": "左嘴角",
+      "side": "L",
+      "max_name": "Animcraft_Left_Mouth_Ctrl",
+      "ue_control": "CTRL_MOUTH_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "MOUTH_R",
+      "group": "mouth",
+      "label": "右嘴角",
+      "side": "R",
+      "max_name": "Animcraft_Right_Mouth_Ctrl",
+      "ue_control": "CTRL_MOUTH_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "MOUTH",
+      "group": "mouth",
+      "label": "嘴部整体",
+      "side": "C",
+      "max_name": "Animcraft_Mouth_Ctrl",
+      "ue_control": "CTRL_MOUTH",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYEBALL_L",
+      "group": "eyeballs",
+      "label": "左眼球",
+      "side": "L",
+      "max_name": "YanJing_L001",
+      "ue_control": "CTRL_EYEBALL_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYEBALL_R",
+      "group": "eyeballs",
+      "label": "右眼球",
+      "side": "R",
+      "max_name": "YanJing_R001",
+      "ue_control": "CTRL_EYEBALL_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYEBALL_MASTER",
+      "group": "gaze_master",
+      "label": "双眼总控",
+      "side": "C",
+      "max_name": "YanJing_Zong001",
+      "ue_control": "CTRL_EYEBALL_MASTER",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "CHIN",
+      "group": "chin",
+      "label": "下巴整体",
+      "side": "C",
+      "max_name": "Line010",
+      "ue_control": "CTRL_CHIN",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EXPR_HUANGZHANG",
+      "group": "expressions",
+      "label": "慌张",
+      "side": "C",
+      "max_name": "Circle117",
+      "ue_control": "CTRL_EXPR_HUANGZHANG",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EXPR_WUYU",
+      "group": "expressions",
+      "label": "无语",
+      "side": "C",
+      "max_name": "Circle118",
+      "ue_control": "CTRL_EXPR_WUYU",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EXPR_SIKAO",
+      "group": "expressions",
+      "label": "思考",
+      "side": "C",
+      "max_name": "Circle119",
+      "ue_control": "CTRL_EXPR_SIKAO",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EXPR_GANGA",
+      "group": "expressions",
+      "label": "尴尬",
+      "side": "C",
+      "max_name": "Circle120",
+      "ue_control": "CTRL_EXPR_GANGA",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_A_FV_01",
+      "group": "phonemes",
+      "label": "口型 01（a_FV_ctrl01）",
+      "side": "C",
+      "max_name": "a_FV_ctrl01",
+      "ue_control": "CTRL_PHONEME_A_FV_01",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_B_FV_002",
+      "group": "phonemes",
+      "label": "口型 02（b_FV_ctrl002）",
+      "side": "C",
+      "max_name": "b_FV_ctrl002",
+      "ue_control": "CTRL_PHONEME_B_FV_002",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_C_FV_003",
+      "group": "phonemes",
+      "label": "口型 03（c_FV_ctrl003）",
+      "side": "C",
+      "max_name": "c_FV_ctrl003",
+      "ue_control": "CTRL_PHONEME_C_FV_003",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_A",
+      "group": "phonemes",
+      "label": "口型 04（A_ctrl）",
+      "side": "C",
+      "max_name": "A_ctrl",
+      "ue_control": "CTRL_PHONEME_A",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_EE",
+      "group": "phonemes",
+      "label": "口型 05（EE_ctrl）",
+      "side": "C",
+      "max_name": "EE_ctrl",
+      "ue_control": "CTRL_PHONEME_EE",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_FV",
+      "group": "phonemes",
+      "label": "口型 06（FV_ctrl）",
+      "side": "C",
+      "max_name": "FV_ctrl",
+      "ue_control": "CTRL_PHONEME_FV",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_GNK",
+      "group": "phonemes",
+      "label": "口型 07（GNK_ctrl）",
+      "side": "C",
+      "max_name": "GNK_ctrl",
+      "ue_control": "CTRL_PHONEME_GNK",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_MBP",
+      "group": "phonemes",
+      "label": "口型 08（MBP_ctrl）",
+      "side": "C",
+      "max_name": "MBP_ctrl",
+      "ue_control": "CTRL_PHONEME_MBP",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_SH",
+      "group": "phonemes",
+      "label": "口型 09（SH_ctrl）",
+      "side": "C",
+      "max_name": "SH_ctrl",
+      "ue_control": "CTRL_PHONEME_SH",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_W",
+      "group": "phonemes",
+      "label": "口型 10（W_ctrl）",
+      "side": "C",
+      "max_name": "W_ctrl",
+      "ue_control": "CTRL_PHONEME_W",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_OTHER",
+      "group": "phonemes",
+      "label": "口型 11（Other_ctrl）",
+      "side": "C",
+      "max_name": "Other_ctrl",
+      "ue_control": "CTRL_PHONEME_OTHER",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "PHONEME_A_A_02",
+      "group": "phonemes",
+      "label": "口型 12（a_A_ctrl02）",
+      "side": "C",
+      "max_name": "a_A_ctrl02",
+      "ue_control": "CTRL_PHONEME_A_A_02",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_QI_R",
+      "group": "eye_expressions",
+      "label": "右眼_气",
+      "side": "R",
+      "max_name": "R_mouthUpCircleCtrl01",
+      "ue_control": "CTRL_EYE_EXPR_QI_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_NU_R",
+      "group": "eye_expressions",
+      "label": "右眼_怒",
+      "side": "R",
+      "max_name": "R_mouthUpCircleCtrl008",
+      "ue_control": "CTRL_EYE_EXPR_NU_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_YOU_R",
+      "group": "eye_expressions",
+      "label": "右眼_忧",
+      "side": "R",
+      "max_name": "R_mouthUpCircleCtrl03",
+      "ue_control": "CTRL_EYE_EXPR_YOU_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_HAPPY_R",
+      "group": "eye_expressions",
+      "label": "右眼_笑",
+      "side": "R",
+      "max_name": "R_mouthUpCircleCtrl00",
+      "ue_control": "CTRL_EYE_EXPR_HAPPY_R",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_QI_L",
+      "group": "eye_expressions",
+      "label": "左眼_气",
+      "side": "L",
+      "max_name": "L_mouthUpCircleCtrl00",
+      "ue_control": "CTRL_EYE_EXPR_QI_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_NU_L",
+      "group": "eye_expressions",
+      "label": "左眼_怒",
+      "side": "L",
+      "max_name": "L_mouthUpCircleCtrl008",
+      "ue_control": "CTRL_EYE_EXPR_NU_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_YOU_L",
+      "group": "eye_expressions",
+      "label": "左眼_忧",
+      "side": "L",
+      "max_name": "L_mouthUpCircleCtrl02",
+      "ue_control": "CTRL_EYE_EXPR_YOU_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "EYE_EXPR_HAPPY_L",
+      "group": "eye_expressions",
+      "label": "左眼_笑",
+      "side": "L",
+      "max_name": "L_mouthUpCircleCtrl04",
+      "ue_control": "CTRL_EYE_EXPR_HAPPY_L",
+      "enabled": true,
+      "scope": "requested_or_mirrored"
+    },
+    {
+      "role_id": "BROW_L",
+      "group": "brows",
+      "label": "左眉整体",
+      "side": "L",
+      "max_name": "Animcraft_Left_Brow_Z_Ctrl",
+      "ue_control": "CTRL_BROW_L",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_R",
+      "group": "brows",
+      "label": "右眉整体",
+      "side": "R",
+      "max_name": "Animcraft_Right_Brow_Z_Ctrl",
+      "ue_control": "CTRL_BROW_R",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_L_IN",
+      "group": "brows",
+      "label": "左眉内点",
+      "side": "L",
+      "max_name": "zCircle049",
+      "ue_control": "CTRL_BROW_L_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_L_MID",
+      "group": "brows",
+      "label": "左眉中点",
+      "side": "L",
+      "max_name": "zCircle050",
+      "ue_control": "CTRL_BROW_L_MID",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_L_OUT",
+      "group": "brows",
+      "label": "左眉外点",
+      "side": "L",
+      "max_name": "zCircle048",
+      "ue_control": "CTRL_BROW_L_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_R_IN",
+      "group": "brows",
+      "label": "右眉内点",
+      "side": "R",
+      "max_name": "zCircle051",
+      "ue_control": "CTRL_BROW_R_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_R_MID",
+      "group": "brows",
+      "label": "右眉中点",
+      "side": "R",
+      "max_name": "zCircle052",
+      "ue_control": "CTRL_BROW_R_MID",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_R_OUT",
+      "group": "brows",
+      "label": "右眉外点",
+      "side": "R",
+      "max_name": "zCircle053",
+      "ue_control": "CTRL_BROW_R_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_L_BEND",
+      "group": "brows",
+      "label": "左眉弯曲",
+      "side": "L",
+      "max_name": "Animcraft_Left_Brow_Ctrl",
+      "ue_control": "CTRL_BROW_L_BEND",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "BROW_R_BEND",
+      "group": "brows",
+      "label": "右眉弯曲",
+      "side": "R",
+      "max_name": "Animcraft_Right_Brow_Ctrl",
+      "ue_control": "CTRL_BROW_R_BEND",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_CORNER_IN",
+      "group": "eye_points",
+      "label": "右内眼角",
+      "side": "R",
+      "max_name": "zCircle083",
+      "ue_control": "CTRL_EYE_R_CORNER_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_UP_IN",
+      "group": "eye_points",
+      "label": "右眼上内",
+      "side": "R",
+      "max_name": "zCircle074",
+      "ue_control": "CTRL_EYE_R_UP_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_UP_MID",
+      "group": "eye_points",
+      "label": "右眼上中",
+      "side": "R",
+      "max_name": "zCircle075",
+      "ue_control": "CTRL_EYE_R_UP_MID",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_UP_OUT",
+      "group": "eye_points",
+      "label": "右眼上外",
+      "side": "R",
+      "max_name": "zCircle076",
+      "ue_control": "CTRL_EYE_R_UP_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_CORNER_OUT",
+      "group": "eye_points",
+      "label": "右外眼角",
+      "side": "R",
+      "max_name": "zCircle082",
+      "ue_control": "CTRL_EYE_R_CORNER_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_DOWN_OUT",
+      "group": "eye_points",
+      "label": "右眼下外",
+      "side": "R",
+      "max_name": "zCircle077",
+      "ue_control": "CTRL_EYE_R_DOWN_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_DOWN_MID",
+      "group": "eye_points",
+      "label": "右眼下中",
+      "side": "R",
+      "max_name": "zCircle078",
+      "ue_control": "CTRL_EYE_R_DOWN_MID",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_R_DOWN_IN",
+      "group": "eye_points",
+      "label": "右眼下内",
+      "side": "R",
+      "max_name": "zCircle079",
+      "ue_control": "CTRL_EYE_R_DOWN_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_CORNER_IN",
+      "group": "eye_points",
+      "label": "左内眼角",
+      "side": "L",
+      "max_name": "zCircle084",
+      "ue_control": "CTRL_EYE_L_CORNER_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_UP_IN",
+      "group": "eye_points",
+      "label": "左眼上内",
+      "side": "L",
+      "max_name": "zCircle068",
+      "ue_control": "CTRL_EYE_L_UP_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_UP_MID",
+      "group": "eye_points",
+      "label": "左眼上中",
+      "side": "L",
+      "max_name": "zCircle069",
+      "ue_control": "CTRL_EYE_L_UP_MID",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_UP_OUT",
+      "group": "eye_points",
+      "label": "左眼上外",
+      "side": "L",
+      "max_name": "zCircle070",
+      "ue_control": "CTRL_EYE_L_UP_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_CORNER_OUT",
+      "group": "eye_points",
+      "label": "左外眼角",
+      "side": "L",
+      "max_name": "zCircle085",
+      "ue_control": "CTRL_EYE_L_CORNER_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_DOWN_OUT",
+      "group": "eye_points",
+      "label": "左眼下外",
+      "side": "L",
+      "max_name": "zCircle071",
+      "ue_control": "CTRL_EYE_L_DOWN_OUT",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_DOWN_MID",
+      "group": "eye_points",
+      "label": "左眼下中",
+      "side": "L",
+      "max_name": "zCircle072",
+      "ue_control": "CTRL_EYE_L_DOWN_MID",
+      "enabled": true,
+      "scope": "existing_base"
+    },
+    {
+      "role_id": "EYE_L_DOWN_IN",
+      "group": "eye_points",
+      "label": "左眼下内",
+      "side": "L",
+      "max_name": "zCircle073",
+      "ue_control": "CTRL_EYE_L_DOWN_IN",
+      "enabled": true,
+      "scope": "existing_base"
+    }
+  ],
+  "reference_target_before": {
+    "skeletal_mesh": "/Game/_MyTest/Mouth/Mesh/Seven",
+    "control_rig": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+    "base_control_rig": null
+  }
+}

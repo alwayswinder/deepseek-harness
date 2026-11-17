@@ -1,0 +1,2079 @@
+{
+  "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset.NewControlRigRuntimeAsset",
+  "started_at": "2026-11-09T16:56:34.235166+08:00",
+  "pending": false,
+  "tolerance": {
+    "position_cm": 0.001,
+    "rotation_deg": 0.01,
+    "scale": 0.0001,
+    "curve": 1e-05
+  },
+  "rows": [
+    {
+      "case": "neutral",
+      "inputs": {},
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_L",
+      "inputs": {
+        "CTRL_BROW_L": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_R",
+      "inputs": {
+        "CTRL_BROW_R": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.517745487845101e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_L_IN",
+      "inputs": {
+        "CTRL_BROW_L_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_L_MID",
+      "inputs": {
+        "CTRL_BROW_L_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_L_OUT",
+      "inputs": {
+        "CTRL_BROW_L_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_R_IN",
+      "inputs": {
+        "CTRL_BROW_R_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_R_MID",
+      "inputs": {
+        "CTRL_BROW_R_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_R_OUT",
+      "inputs": {
+        "CTRL_BROW_R_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_L_BEND",
+      "inputs": {
+        "CTRL_BROW_L_BEND": [
+          0.48,
+          0.48,
+          0.48
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_BROW_R_BEND",
+      "inputs": {
+        "CTRL_BROW_R_BEND": [
+          0.48,
+          0.48,
+          0.48
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.517745487845101e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_CORNER_IN",
+      "inputs": {
+        "CTRL_EYE_R_CORNER_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_UP_IN",
+      "inputs": {
+        "CTRL_EYE_R_UP_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_UP_MID",
+      "inputs": {
+        "CTRL_EYE_R_UP_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_UP_OUT",
+      "inputs": {
+        "CTRL_EYE_R_UP_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_CORNER_OUT",
+      "inputs": {
+        "CTRL_EYE_R_CORNER_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_DOWN_OUT",
+      "inputs": {
+        "CTRL_EYE_R_DOWN_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_DOWN_MID",
+      "inputs": {
+        "CTRL_EYE_R_DOWN_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_R_DOWN_IN",
+      "inputs": {
+        "CTRL_EYE_R_DOWN_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_CORNER_IN",
+      "inputs": {
+        "CTRL_EYE_L_CORNER_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_UP_IN",
+      "inputs": {
+        "CTRL_EYE_L_UP_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_UP_MID",
+      "inputs": {
+        "CTRL_EYE_L_UP_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_UP_OUT",
+      "inputs": {
+        "CTRL_EYE_L_UP_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_CORNER_OUT",
+      "inputs": {
+        "CTRL_EYE_L_CORNER_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_DOWN_OUT",
+      "inputs": {
+        "CTRL_EYE_L_DOWN_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_DOWN_MID",
+      "inputs": {
+        "CTRL_EYE_L_DOWN_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_L_DOWN_IN",
+      "inputs": {
+        "CTRL_EYE_L_DOWN_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_LID_R",
+      "inputs": {
+        "CTRL_EYE_LID_R": [
+          0.0,
+          0.0,
+          -1.3
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_LID_L",
+      "inputs": {
+        "CTRL_EYE_LID_L": [
+          0.0,
+          0.0,
+          -1.3
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_LOWER_LID_R",
+      "inputs": {
+        "CTRL_EYE_LOWER_LID_R": [
+          0.0,
+          0.0,
+          3.7
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_LOWER_LID_L",
+      "inputs": {
+        "CTRL_EYE_LOWER_LID_L": [
+          0.0,
+          0.0,
+          3.7
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_LIP_UP_L",
+      "inputs": {
+        "CTRL_LIP_UP_L": [
+          0.0,
+          0.0,
+          3.7
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_LIP_UP_C",
+      "inputs": {
+        "CTRL_LIP_UP_C": [
+          0.0,
+          0.0,
+          3.7
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_LIP_UP_R",
+      "inputs": {
+        "CTRL_LIP_UP_R": [
+          0.0,
+          0.0,
+          3.7
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_LIP_LOW_R",
+      "inputs": {
+        "CTRL_LIP_LOW_R": [
+          0.0,
+          0.0,
+          -1.3
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_LIP_LOW_C",
+      "inputs": {
+        "CTRL_LIP_LOW_C": [
+          0.0,
+          0.0,
+          -1.3
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_LIP_LOW_L",
+      "inputs": {
+        "CTRL_LIP_LOW_L": [
+          0.0,
+          0.0,
+          -1.3
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_CHEEK_R",
+      "inputs": {
+        "CTRL_CHEEK_R": [
+          2.4000000000000004,
+          0.0,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_CHEEK_L",
+      "inputs": {
+        "CTRL_CHEEK_L": [
+          2.4000000000000004,
+          0.0,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_NOSE",
+      "inputs": {
+        "CTRL_NOSE": [
+          2.4000000000000004,
+          3.7,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_MOUTH_L",
+      "inputs": {
+        "CTRL_MOUTH_L": [
+          2.4000000000000004,
+          8.5,
+          4.71
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_MOUTH_R",
+      "inputs": {
+        "CTRL_MOUTH_R": [
+          2.4000000000000004,
+          3.5,
+          4.71
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_MOUTH",
+      "inputs": {
+        "CTRL_MOUTH": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYEBALL_MASTER",
+      "inputs": {
+        "CTRL_EYEBALL_MASTER": [
+          0.7199999999999999,
+          0.7199999999999999,
+          0.7199999999999999
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYEBALL_L",
+      "inputs": {
+        "CTRL_EYEBALL_L": [
+          0.7199999999999999,
+          0.7199999999999999,
+          0.7199999999999999
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYEBALL_R",
+      "inputs": {
+        "CTRL_EYEBALL_R": [
+          0.7199999999999999,
+          0.7199999999999999,
+          0.7199999999999999
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_CHIN",
+      "inputs": {
+        "CTRL_CHIN": [
+          0.7999999809265135,
+          6.166666431427002,
+          -2.6
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EXPR_HUANGZHANG",
+      "inputs": {
+        "CTRL_EXPR_HUANGZHANG": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EXPR_WUYU",
+      "inputs": {
+        "CTRL_EXPR_WUYU": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EXPR_SIKAO",
+      "inputs": {
+        "CTRL_EXPR_SIKAO": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EXPR_GANGA",
+      "inputs": {
+        "CTRL_EXPR_GANGA": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_A_FV_01",
+      "inputs": {
+        "CTRL_PHONEME_A_FV_01": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_B_FV_002",
+      "inputs": {
+        "CTRL_PHONEME_B_FV_002": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_C_FV_003",
+      "inputs": {
+        "CTRL_PHONEME_C_FV_003": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_A",
+      "inputs": {
+        "CTRL_PHONEME_A": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_EE",
+      "inputs": {
+        "CTRL_PHONEME_EE": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_FV",
+      "inputs": {
+        "CTRL_PHONEME_FV": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_GNK",
+      "inputs": {
+        "CTRL_PHONEME_GNK": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_MBP",
+      "inputs": {
+        "CTRL_PHONEME_MBP": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_SH",
+      "inputs": {
+        "CTRL_PHONEME_SH": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_W",
+      "inputs": {
+        "CTRL_PHONEME_W": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_OTHER",
+      "inputs": {
+        "CTRL_PHONEME_OTHER": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_PHONEME_A_A_02",
+      "inputs": {
+        "CTRL_PHONEME_A_A_02": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_QI_R",
+      "inputs": {
+        "CTRL_EYE_EXPR_QI_R": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_NU_R",
+      "inputs": {
+        "CTRL_EYE_EXPR_NU_R": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_YOU_R",
+      "inputs": {
+        "CTRL_EYE_EXPR_YOU_R": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_HAPPY_R",
+      "inputs": {
+        "CTRL_EYE_EXPR_HAPPY_R": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_QI_L",
+      "inputs": {
+        "CTRL_EYE_EXPR_QI_L": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_NU_L",
+      "inputs": {
+        "CTRL_EYE_EXPR_NU_L": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_YOU_L",
+      "inputs": {
+        "CTRL_EYE_EXPR_YOU_L": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_EYE_EXPR_HAPPY_L",
+      "inputs": {
+        "CTRL_EYE_EXPR_HAPPY_L": [
+          2.96,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_NOSE_SIDE_R",
+      "inputs": {
+        "CTRL_NOSE_SIDE_R": [
+          0.0,
+          0.0,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "CTRL_NOSE_SIDE_L",
+      "inputs": {
+        "CTRL_NOSE_SIDE_L": [
+          0.0,
+          0.0,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "combined",
+      "inputs": {
+        "CTRL_BROW_L": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_R": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_L_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_L_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_L_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_R_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_R_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_R_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_BROW_L_BEND": [
+          0.48,
+          0.48,
+          0.48
+        ],
+        "CTRL_BROW_R_BEND": [
+          0.48,
+          0.48,
+          0.48
+        ],
+        "CTRL_EYE_R_CORNER_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_UP_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_UP_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_UP_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_CORNER_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_DOWN_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_DOWN_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_R_DOWN_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_CORNER_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_UP_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_UP_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_UP_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_CORNER_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_DOWN_OUT": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_DOWN_MID": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_L_DOWN_IN": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYE_LID_R": [
+          0.0,
+          0.0,
+          -1.3
+        ],
+        "CTRL_EYE_LID_L": [
+          0.0,
+          0.0,
+          -1.3
+        ],
+        "CTRL_EYE_LOWER_LID_R": [
+          0.0,
+          0.0,
+          3.7
+        ],
+        "CTRL_EYE_LOWER_LID_L": [
+          0.0,
+          0.0,
+          3.7
+        ],
+        "CTRL_LIP_UP_L": [
+          0.0,
+          0.0,
+          3.7
+        ],
+        "CTRL_LIP_UP_C": [
+          0.0,
+          0.0,
+          3.7
+        ],
+        "CTRL_LIP_UP_R": [
+          0.0,
+          0.0,
+          3.7
+        ],
+        "CTRL_LIP_LOW_R": [
+          0.0,
+          0.0,
+          -1.3
+        ],
+        "CTRL_LIP_LOW_C": [
+          0.0,
+          0.0,
+          -1.3
+        ],
+        "CTRL_LIP_LOW_L": [
+          0.0,
+          0.0,
+          -1.3
+        ],
+        "CTRL_CHEEK_R": [
+          2.4000000000000004,
+          0.0,
+          2.4000000000000004
+        ],
+        "CTRL_CHEEK_L": [
+          2.4000000000000004,
+          0.0,
+          2.4000000000000004
+        ],
+        "CTRL_NOSE": [
+          2.4000000000000004,
+          3.7,
+          2.4000000000000004
+        ],
+        "CTRL_MOUTH_L": [
+          2.4000000000000004,
+          8.5,
+          4.71
+        ],
+        "CTRL_MOUTH_R": [
+          2.4000000000000004,
+          3.5,
+          4.71
+        ],
+        "CTRL_MOUTH": [
+          2.4000000000000004,
+          2.4000000000000004,
+          2.4000000000000004
+        ],
+        "CTRL_EYEBALL_MASTER": [
+          0.7199999999999999,
+          0.7199999999999999,
+          0.7199999999999999
+        ],
+        "CTRL_EYEBALL_L": [
+          0.7199999999999999,
+          0.7199999999999999,
+          0.7199999999999999
+        ],
+        "CTRL_EYEBALL_R": [
+          0.7199999999999999,
+          0.7199999999999999,
+          0.7199999999999999
+        ],
+        "CTRL_CHIN": [
+          0.7999999809265135,
+          6.166666431427002,
+          -2.6
+        ],
+        "CTRL_EXPR_HUANGZHANG": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_WUYU": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_SIKAO": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_GANGA": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_A_FV_01": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_B_FV_002": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_C_FV_003": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_A": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_EE": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_FV": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_GNK": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_MBP": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_SH": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_W": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_OTHER": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_A_A_02": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_QI_R": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_NU_R": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_YOU_R": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_HAPPY_R": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_QI_L": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_NU_L": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_YOU_L": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_HAPPY_L": [
+          2.96,
+          0.0,
+          0.0
+        ],
+        "CTRL_NOSE_SIDE_R": [
+          0.0,
+          0.0,
+          2.4000000000000004
+        ],
+        "CTRL_NOSE_SIDE_L": [
+          0.0,
+          0.0,
+          2.4000000000000004
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.517745487845101e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.517745487845101e-06,
+      "time_advanced": true,
+      "passed": true
+    },
+    {
+      "case": "restored",
+      "inputs": {
+        "CTRL_BROW_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_L_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_L_MID": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_L_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_R_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_R_MID": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_R_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_L_BEND": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_BROW_R_BEND": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_CORNER_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_UP_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_UP_MID": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_UP_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_CORNER_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_DOWN_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_DOWN_MID": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_R_DOWN_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_CORNER_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_UP_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_UP_MID": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_UP_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_CORNER_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_DOWN_OUT": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_DOWN_MID": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_L_DOWN_IN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_LID_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_LID_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_LOWER_LID_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_LOWER_LID_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_LIP_UP_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_LIP_UP_C": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_LIP_UP_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_LIP_LOW_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_LIP_LOW_C": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_LIP_LOW_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_CHEEK_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_CHEEK_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_NOSE": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_MOUTH_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_MOUTH_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_MOUTH": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYEBALL_MASTER": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYEBALL_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYEBALL_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_CHIN": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_HUANGZHANG": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_WUYU": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_SIKAO": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EXPR_GANGA": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_A_FV_01": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_B_FV_002": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_C_FV_003": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_A": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_EE": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_FV": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_GNK": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_MBP": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_SH": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_W": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_OTHER": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_PHONEME_A_A_02": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "VIS_PHONEME_REFERENCE": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_QI_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_NU_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_YOU_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_HAPPY_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_QI_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_NU_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_YOU_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_EYE_EXPR_HAPPY_L": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_NOSE_SIDE_R": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "CTRL_NOSE_SIDE_L": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "position_cm": 2.133971054842368e-06,
+      "rotation_deg": 4.829673078902933e-06,
+      "scale": 2.9692661099347513e-08,
+      "curve": 0.0,
+      "rig_position_cm": 2.1339710519639916e-06,
+      "rig_rotation_deg": 4.829673078902933e-06,
+      "time_advanced": true,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "controls": 72,
+  "cases": 75,
+  "bones_per_case": 149,
+  "curves_per_case": 28,
+  "restored_input_error": 0.0,
+  "captured_at": "2026-11-09T16:57:03.217759+08:00"
+}

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-local",
+  "character": "Seven",
+  "legacy_runtime_adapter": false,
+  "asset_overrides": {},
+  "retention": {"keep_backups_per_group": 3},
+  "notes": "当前项目 Seven 的参考入口。执行前核对脚本范围和角色状态；不是一键重建清单。"
+}

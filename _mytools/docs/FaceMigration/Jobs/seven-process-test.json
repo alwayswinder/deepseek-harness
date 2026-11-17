@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-process-test-20261110",
+  "character": "Seven",
+  "asset_overrides": {},
+  "notes": "Independent process test. Re-sample the live Max source; do not load reference rigs, previous implementations, or historical numeric parameters."
+}

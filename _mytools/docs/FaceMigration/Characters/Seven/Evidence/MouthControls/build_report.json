@@ -1,0 +1,495 @@
+{
+  "asset": "/Game/_MyTest/Mouth/Rig/NewControlRigRuntimeAsset",
+  "backup": "E:\\Unreal\\Projects\\_TEST\\MyProject_CR_5_8\\Saved\\Codex\\Backup\\MouthControls_20261109_180258",
+  "nodes_before": 654,
+  "old_execution_links": [
+    [
+      "BROW_SET_meibu_L.ExecutePin",
+      "BROW_SET_Bone007.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone007.ExecutePin",
+      "BROW_SET_Bone008.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone008.ExecutePin",
+      "BROW_SET_Bone009.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone009.ExecutePin",
+      "BROW_SET_meibu_R.ExecutePin"
+    ],
+    [
+      "BROW_SET_meibu_R.ExecutePin",
+      "BROW_SET_Bone010.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone010.ExecutePin",
+      "BROW_SET_Bone011.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone011.ExecutePin",
+      "BROW_SET_Bone012.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone043.ExecutePin",
+      "EYE_SET_Bone027.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone027.ExecutePin",
+      "EYE_SET_Bone028.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone028.ExecutePin",
+      "EYE_SET_Bone029.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone029.ExecutePin",
+      "EYE_SET_Bone042.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone042.ExecutePin",
+      "EYE_SET_Bone030.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone030.ExecutePin",
+      "EYE_SET_Bone031.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone031.ExecutePin",
+      "EYE_SET_Bone032.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone032.ExecutePin",
+      "EYE_SET_Bone044.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone044.ExecutePin",
+      "EYE_SET_Bone036.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone036.ExecutePin",
+      "EYE_SET_Bone037.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone037.ExecutePin",
+      "EYE_SET_Bone038.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone038.ExecutePin",
+      "EYE_SET_Bone045.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone045.ExecutePin",
+      "EYE_SET_Bone039.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone039.ExecutePin",
+      "EYE_SET_Bone040.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone040.ExecutePin",
+      "EYE_SET_Bone041.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone012.ExecutePin",
+      "EYE_SET_Bone043.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone041.ExecutePin",
+      "LIP_SET_Bone016.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone016.ExecutePin",
+      "LIP_SET_Bone017.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone017.ExecutePin",
+      "LIP_SET_Bone018.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone018.ExecutePin",
+      "LIP_SET_Bone019.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone019.ExecutePin",
+      "LIP_SET_Bone020.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone020.ExecutePin",
+      "LIP_SET_Bone021.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone021.ExecutePin",
+      "LIP_SET_Bone022.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone022.ExecutePin",
+      "LIP_SET_Bone023.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone023.ExecutePin",
+      "LIP_SET_shangzuichun.ExecutePin"
+    ],
+    [
+      "LIP_SET_shangzuichun.ExecutePin",
+      "LIP_SET_xiazuichun.ExecutePin"
+    ],
+    [
+      "LIP_SET_xiazuichun.ExecutePin",
+      "LIP_SET_renzhong_L.ExecutePin"
+    ],
+    [
+      "LIP_SET_renzhong_L.ExecutePin",
+      "LIP_SET_renzhong_R.ExecutePin"
+    ],
+    [
+      "LIP_SET_renzhong_R.ExecutePin",
+      "CHEEK_SET_pingguoji_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_pingguoji_R.ExecutePin",
+      "CHEEK_SET_yandai2_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_yandai2_R.ExecutePin",
+      "CHEEK_SET_xiabake_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_xiabake_L.ExecutePin",
+      "CHEEK_SET_xiabake_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_xiabake_R.ExecutePin",
+      "CHEEK_SET_Bone015.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_Bone015.ExecutePin",
+      "CHEEK_SET_Bone014.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_Bone014.ExecutePin",
+      "CHEEK_SET_yandai2_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_yandai2_L.ExecutePin",
+      "CHEEK_SET_pingguoji_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_pingguoji_L.ExecutePin",
+      "CHEEK_SET_lianjia_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_lianjia_R.ExecutePin",
+      "CHEEK_SET_lianjia_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_lianjia_L.ExecutePin",
+      "NOSE_SET_bijian.ExecutePin"
+    ]
+  ],
+  "preview_values": {
+    "CTRL_BROW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "regression_cases": 130,
+  "saved": false,
+  "rewired": {
+    "pingguoji_R": {
+      "target": "CHEEK_MAKE_pingguoji_R",
+      "position": "CHEEK_ADD_pingguoji_R_3.Result",
+      "rotation": "CHEEK_BT_pingguoji_R.Transform.Rotation"
+    },
+    "Bone021": {
+      "target": "LIP_MAKE_Bone021",
+      "position": "LIP_ADD_Bone021_4.Result",
+      "rotation": "LIP_BT_Bone021.Transform.Rotation"
+    },
+    "Bone022": {
+      "target": "LIP_MAKE_Bone022",
+      "position": "LIP_ADD_Bone022_4.Result",
+      "rotation": "LIP_BT_Bone022.Transform.Rotation"
+    },
+    "Bone023": {
+      "target": "LIP_MAKE_Bone023",
+      "position": "LIP_ADD_Bone023_2.Result",
+      "rotation": "LIP_BT_Bone023.Transform.Rotation"
+    },
+    "Bone020": {
+      "target": "LIP_MAKE_Bone020",
+      "position": "LIP_ADD_Bone020_2.Result",
+      "rotation": "LIP_BT_Bone020.Transform.Rotation"
+    },
+    "shangzuichun": {
+      "target": "LIP_MAKE_shangzuichun",
+      "position": "LIP_ADD_shangzuichun_2.Result",
+      "rotation": "LIP_BT_shangzuichun.Transform.Rotation"
+    },
+    "Bone019": {
+      "target": "LIP_MAKE_Bone019",
+      "position": "LIP_ADD_Bone019_1.Result",
+      "rotation": "LIP_BT_Bone019.Transform.Rotation"
+    },
+    "Bone017": {
+      "target": "LIP_MAKE_Bone017",
+      "position": "LIP_ADD_Bone017_1.Result",
+      "rotation": "LIP_BT_Bone017.Transform.Rotation"
+    },
+    "Bone016": {
+      "target": "LIP_MAKE_Bone016",
+      "position": "LIP_ADD_Bone016_5.Result",
+      "rotation": "LIP_BT_Bone016.Transform.Rotation"
+    },
+    "Bone018": {
+      "target": "LIP_MAKE_Bone018",
+      "position": "LIP_ADD_Bone018_5.Result",
+      "rotation": "LIP_BT_Bone018.Transform.Rotation"
+    },
+    "xiazuichun": {
+      "target": "LIP_MAKE_xiazuichun",
+      "position": "LIP_ADD_xiazuichun_5.Result",
+      "rotation": "LIP_BT_xiazuichun.Transform.Rotation"
+    },
+    "renzhong_R": {
+      "target": "LIP_MAKE_renzhong_R",
+      "position": "CHEEK_ADD_renzhong_R_3.Result",
+      "rotation": "LIP_BT_renzhong_R.Transform.Rotation"
+    },
+    "renzhong_L": {
+      "target": "LIP_MAKE_renzhong_L",
+      "position": "CHEEK_ADD_renzhong_L_3.Result",
+      "rotation": "LIP_BT_renzhong_L.Transform.Rotation"
+    },
+    "xiabake_L": {
+      "target": "CHEEK_MAKE_xiabake_L",
+      "position": "CHEEK_ADD_xiabake_L_1.Result",
+      "rotation": "CHEEK_BT_xiabake_L.Transform.Rotation"
+    },
+    "xiabake_R": {
+      "target": "CHEEK_MAKE_xiabake_R",
+      "position": "CHEEK_ADD_xiabake_R_1.Result",
+      "rotation": "CHEEK_BT_xiabake_R.Transform.Rotation"
+    },
+    "Bone015": {
+      "target": "CHEEK_MAKE_Bone015",
+      "position": "CHEEK_ADD_Bone015_3.Result",
+      "rotation": "CHEEK_BT_Bone015.Transform.Rotation"
+    },
+    "Bone014": {
+      "target": "CHEEK_MAKE_Bone014",
+      "position": "CHEEK_ADD_Bone014_3.Result",
+      "rotation": "CHEEK_BT_Bone014.Transform.Rotation"
+    },
+    "pingguoji_L": {
+      "target": "CHEEK_MAKE_pingguoji_L",
+      "position": "CHEEK_ADD_pingguoji_L_3.Result",
+      "rotation": "CHEEK_BT_pingguoji_L.Transform.Rotation"
+    },
+    "lianjia_R": {
+      "target": "CHEEK_MAKE_lianjia_R",
+      "position": "CHEEK_ADD_lianjia_R_3.Result",
+      "rotation": "CHEEK_BT_lianjia_R.Transform.Rotation"
+    },
+    "lianjia_L": {
+      "target": "CHEEK_MAKE_lianjia_L",
+      "position": "CHEEK_ADD_lianjia_L_3.Result",
+      "rotation": "CHEEK_BT_lianjia_L.Transform.Rotation"
+    }
+  },
+  "nodes_after": 1223,
+  "controls_after": 42,
+  "original_execution_links_preserved": true
+}

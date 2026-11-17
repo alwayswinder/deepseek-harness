@@ -1,0 +1,62 @@
+[
+  {
+    "script": "verify_lower_lids.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:05.726904+08:00"
+  },
+  {
+    "script": "verify_lip_controls.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:05.911499+08:00"
+  },
+  {
+    "script": "verify_cheek_controls.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:06.867956+08:00"
+  },
+  {
+    "script": "verify_nose_controls.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:08.590381+08:00"
+  },
+  {
+    "script": "verify_mouth_controls.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:10.195029+08:00"
+  },
+  {
+    "script": "verify_eyeball_controls.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:14.590559+08:00"
+  },
+  {
+    "script": "verify_gaze_master.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:21.194141+08:00"
+  },
+  {
+    "script": "verify_chin_control.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:26.132321+08:00"
+  },
+  {
+    "script": "verify_expression_sliders.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:32.271421+08:00"
+  },
+  {
+    "script": "verify_phoneme_sliders.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:34.485053+08:00"
+  },
+  {
+    "script": "verify_eye_expression_sliders.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:37.023802+08:00"
+  },
+  {
+    "script": "verify_nose_side_controls.py",
+    "passed": true,
+    "started_at": "2026-11-09T16:44:38.169608+08:00"
+  }
+]

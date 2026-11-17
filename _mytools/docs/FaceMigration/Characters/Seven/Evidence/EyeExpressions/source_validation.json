@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "samples": 53,
+  "bones": 149,
+  "morph_channels": 98,
+  "max_curve_error": 3.5999999994373866e-08,
+  "max_bone_component_error": 0,
+  "restored_by_sampler": true
+}

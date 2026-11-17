@@ -1,0 +1,156 @@
+{
+  "scene": "D:/Download/Seven_Skin_New.max",
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "source_limit": 6.8,
+  "travel_cm": 8,
+  "side": "character_left_player_view_right",
+  "rows": [
+    {
+      "source": "Circle117",
+      "control": "CTRL_EXPR_HUANGZHANG",
+      "display_name": "慌张",
+      "morphs": [
+        {
+          "name": "Seven_Pupil_huangzhang",
+          "source_object": "Seven_Pupil",
+          "source_channel": 12,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        },
+        {
+          "name": "Seven_Head_huangzhang",
+          "source_object": "Seven_Head",
+          "source_channel": 58,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        }
+      ],
+      "origin": [
+        22,
+        18,
+        164
+      ],
+      "color": [
+        1,
+        0.62,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "Circle118",
+      "control": "CTRL_EXPR_WUYU",
+      "display_name": "无语",
+      "morphs": [
+        {
+          "name": "Seven_Pupil_wuyu",
+          "source_object": "Seven_Pupil",
+          "source_channel": 11,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        },
+        {
+          "name": "Seven_Head_wuyu",
+          "source_object": "Seven_Head",
+          "source_channel": 57,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        }
+      ],
+      "origin": [
+        22,
+        18,
+        160
+      ],
+      "color": [
+        0.3,
+        0.75,
+        1,
+        1
+      ]
+    },
+    {
+      "source": "Circle119",
+      "control": "CTRL_EXPR_SIKAO",
+      "display_name": "思考",
+      "morphs": [
+        {
+          "name": "Seven_Pupil_sikao",
+          "source_object": "Seven_Pupil",
+          "source_channel": 10,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        },
+        {
+          "name": "Seven_Head_sikao",
+          "source_object": "Seven_Head",
+          "source_channel": 56,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        }
+      ],
+      "origin": [
+        22,
+        18,
+        156
+      ],
+      "color": [
+        0.7,
+        0.4,
+        1,
+        1
+      ]
+    },
+    {
+      "source": "Circle120",
+      "control": "CTRL_EXPR_GANGA",
+      "display_name": "尴尬",
+      "morphs": [
+        {
+          "name": "Seven_Pupil_ganga",
+          "source_object": "Seven_Pupil",
+          "source_channel": 9,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        },
+        {
+          "name": "Seven_Head_ganga",
+          "source_object": "Seven_Head",
+          "source_channel": 55,
+          "gain": 1.00028,
+          "baseline": 0,
+          "fit_error": 2.301680002148032e-08
+        }
+      ],
+      "origin": [
+        22,
+        18,
+        152
+      ],
+      "color": [
+        1,
+        0.35,
+        0.55,
+        1
+      ]
+    }
+  ],
+  "control_offset_rotation": [
+    0,
+    0,
+    0,
+    1
+  ],
+  "travel_direction_global": [
+    1,
+    0,
+    0
+  ]
+}

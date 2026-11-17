@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "saved": true,
+  "reloaded": true,
+  "backup": "E:\\Unreal\\Projects\\MyProject_5_8\\Saved\\Codex\\Backup\\PhonemeReferenceDepth_20261109_145127",
+  "before": [
+    47.0,
+    18.0,
+    164.0
+  ],
+  "after": [
+    47,
+    12,
+    164
+  ],
+  "slider_y": 18,
+  "depth_behind_sliders_cm": 6,
+  "other_offsets_unchanged": true,
+  "graph_unchanged": true,
+  "preview_restored": true,
+  "captured_at": "2026-11-09T14:51:36.021683+08:00",
+  "visual_approval": "pending_user"
+}

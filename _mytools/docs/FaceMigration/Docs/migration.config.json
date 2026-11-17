@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "purpose": "3ds Max facial controllers to Unreal Control Rig",
+  "execution_mode": "reference_rig_and_max_adaptation",
+  "universal_builder_available": false,
+  "path_base": "package_root",
+  "entrypoints": {
+    "workflow": "Docs/Workflow/Build.md",
+    "methods": "Docs/Workflow/MigrationGuide.md",
+    "tools": "Docs/Workflow/Tools.md",
+    "validation": "Docs/Workflow/Validation.md",
+    "catalog": "Docs/Reference/ControllerNames.md",
+    "markdown_template": "Docs/Templates/CharacterFaceControllers.md",
+    "json_template": "Docs/Templates/CharacterFaceControllers.json"
+  },
+  "reference_character": {
+    "name": "Seven",
+    "bindings": "Characters/Seven/face-controls.json",
+    "status": "Characters/Seven/README.md",
+    "control_rig": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+    "baseline_control_rig": "/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression",
+    "skeletal_mesh": "/Game/_MyTest/Mouth/Mesh/Seven",
+    "expected_animation_controls": 72,
+    "expected_visual_cues": 1,
+    "numeric_parameters_reusable_for_other_characters": false,
+    "status_basis": "2026-11-10 task-sheet run seven-taskflow-20261110 (TASK.md section 5 protocol): target /Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset was an empty shell (149 bones, 0 controls, 87 curves, 1 node) and was treated as a different character from the reference. Binding probe: equivalent (same bone names/order, same mesh, 87 morphs, 0.000003 cm max bone drift). Empty-target build: 149 bones, 72 animation controls, 1 Visual Cue, 28 curves, 1926 nodes, 2639 links, 448 s. Reference transfer 1175 cases worst 0 before and after reload, display contract 0 differences, upper-lid Max spot-check primary bone 0.00344 cm / 0.0808 deg, save-reload passed (reference package unchanged, target not dirty). Normal-frame preview FAILED (rig clock stuck at 0.4 s, two refreshes did not recover; manual Forwards Solve yields rig curves but the mesh anim curves stay 0). Legacy per-part regression baselines do not apply to this lineage (2/12 verifiers pass). Reports: target project Saved/FaceMigration/Jobs/seven-taskflow-20261110/Current/Evidence. The earlier .../TMp/NewControlRigRuntimeAsset1 target no longer exists on disk; its job seven-newchar-20261110 stays as history. Final user visual and picking acceptance pending.",
+    "current_visual_acceptance": "pending",
+    "structure_counts_basis": "Current flow-verification run seven-taskflow-20261110: 149 bones, 72 animation controls, 1 Visual Cue, 28 curves, 1926 nodes, 2639 links. The 2026-11-09 build of the same package path had 9804 nodes and kept the mesh's 87 hierarchy curves; that version was deleted and rebuilt."
+  },
+  "reference_policy": {
+    "control_rig": "/Game/_MyTest/Mouth/SevenECR/CR_Seven_Expression",
+    "implementation_reuse_allowed": true,
+    "source_asset_read_only": true,
+    "default_route": "derive_or_incrementally_adapt_reference_then_verify_against_max",
+    "preserve": [
+      "control_interface",
+      "shapes",
+      "colors",
+      "tracks",
+      "phoneme_reference",
+      "axes",
+      "ui_travel",
+      "reset_behavior"
+    ],
+    "same_character_parameters": "retain only after current Max verification",
+    "new_character_parameters": "rebind and recalibrate",
+    "workflow_fields_are_builder_automation": false
+  },
+  "required_input": [
+    "character",
+    "source.max_scene",
+    "source.sample_frame",
+    "reference.control_rig",
+    "target.skeletal_mesh",
+    "target.control_rig",
+    "bindings[].role_id",
+    "bindings[].max_name for enabled bindings"
+  ],
+  "build_order": [
+    "brows",
+    "eye_points",
+    "upper_lids",
+    "lower_lids",
+    "lips",
+    "cheeks",
+    "nose",
+    "mouth",
+    "eyeballs",
+    "gaze_master",
+    "chin",
+    "expressions",
+    "phonemes",
+    "eye_expressions",
+    "nose_sides"
+  ],
+  "recipes": {
+    "brows": "Docs/Recipes/SevenBrowsAndEyes.md",
+    "eye_points": "Docs/Recipes/SevenBrowsAndEyes.md",
+    "upper_lids": "Docs/Troubleshooting/UpperEyelid.md",
+    "lower_lids": "Docs/Recipes/XYP_LowerLids.md",
+    "lips": "Docs/Recipes/LipControls.md",
+    "cheeks": "Docs/Recipes/CheekControls.md",
+    "nose": "Docs/Recipes/NoseControl.md",
+    "mouth": "Docs/Recipes/MouthControls.md",
+    "eyeballs": "Docs/Recipes/EyeballControls.md",
+    "gaze_master": "Docs/Recipes/GazeMasterControl.md",
+    "chin": "Docs/Recipes/ChinControl.md",
+    "expressions": "Docs/Recipes/ExpressionSliders.md",
+    "phonemes": "Docs/Recipes/PhonemeSliders.md",
+    "eye_expressions": "Docs/Recipes/EyeExpressionSliders.md",
+    "nose_sides": "Docs/Recipes/NoseSideControls.md"
+  },
+  "evidence": {
+    "reference_root": "Characters/Seven/Evidence",
+    "new_character_directory_pattern": "Characters/{character}/Evidence",
+    "preserve_samples_parameters_and_regression_snapshots": true
+  },
+  "interaction": {
+    "computer_use": false,
+    "visual_acceptance": "user",
+    "eye_expression_panel": "player_front_view_screen_left_near_character",
+    "expression_and_phoneme_panel": "player_front_view_screen_right_near_character",
+    "slider_increase": "screen_left_to_right",
+    "slider_handle_forward_cm": 1.0,
+    "slider_handle_depth_rule": "Initial/Current shape local +Y=1 cm for the Seven board; preserve control offset/input/solver. See Scripts/slider_handle_layout.py; adapt forward axis for other boards.",
+    "slider_rail_rendering": "opaque_depth_tested_visual_cue; disable foreground debug rails; add VIS_SLIDER_RAILS without changing animation interfaces; dependencies at <target_rig_package>_UI/",
+    "slider_rail_width_cm": 0.12,
+    "phoneme_reference": "aligned_by_row_behind_slider_plane",
+    "phoneme_reference_behind_rail_cm": 1.0,
+    "nose_sides": "below_overall_nose_control"
+  },
+  "checks": {
+    "documentation": "python Tools/FaceMigration/migrate.py check",
+    "seven_live_name_coverage": "python Tools/FaceMigration/migrate.py run check_face_controller_catalog.py --job seven-local",
+    "runtime_policy": "compare reference design and interaction, Max motion, target normal-frame output and save-reload separately; prior numerical success does not imply visual acceptance",
+    "current_job": "seven-taskflow-20261110"
+  },
+  "output_policy": {
+    "root": "<target_project>/Saved/FaceMigration/Jobs/{job_id}",
+    "current": "Current",
+    "archive": "History",
+    "keep_backups_per_group": 3,
+    "keep_archives": 3,
+    "historical_evidence_read_only": true,
+    "generate_replay_scripts": false
+  }
+}

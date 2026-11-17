@@ -1,0 +1,17 @@
+{
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "backup": "..\\..\\..\\..\\Projects\\MyProject_5_8\\Saved\\Codex\\Backup\\LowerLids_20261106_141252",
+  "nodes_before": 328,
+  "nodes_after": 394,
+  "controls_after": 30,
+  "new_controls": [
+    "CTRL_EYE_LOWER_LID_R",
+    "CTRL_EYE_LOWER_LID_L"
+  ],
+  "regression_cases": 83,
+  "regression_max_position_error_cm": 0.0,
+  "regression_max_rotation_error_deg": 0.0,
+  "execution_links_preserved": true,
+  "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+  "saved": true
+}

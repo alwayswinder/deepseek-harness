@@ -1,0 +1,71 @@
+{
+  "captured_at": "2026-11-09T11:42:26.028605+08:00",
+  "preview_component": "/Engine/Transient.World_39:PersistentLevel.AnimationEditorPreviewActor_0.ControlRigSkeletalMeshComponent_0",
+  "animation_class": "ControlRigLayerInstance",
+  "input_x": 4,
+  "current_inputs": {
+    "CTRL_EXPR_HUANGZHANG": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_WUYU": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_SIKAO": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_GANGA": [
+      4.0,
+      0.0,
+      0.0
+    ]
+  },
+  "rig_curves": {
+    "Seven_Pupil_huangzhang": 0.5001400113105774,
+    "Seven_Head_huangzhang": 0.5001400113105774,
+    "Seven_Pupil_wuyu": 0.5001400113105774,
+    "Seven_Head_wuyu": 0.5001400113105774,
+    "Seven_Pupil_sikao": 0.5001400113105774,
+    "Seven_Head_sikao": 0.5001400113105774,
+    "Seven_Pupil_ganga": 0.5001400113105774,
+    "Seven_Head_ganga": 0.5001400113105774
+  },
+  "curves": {
+    "Seven_Pupil_huangzhang": 0.5001400113105774,
+    "Seven_Head_huangzhang": 0.5001400113105774,
+    "Seven_Pupil_wuyu": 0.5001400113105774,
+    "Seven_Head_wuyu": 0.5001400113105774,
+    "Seven_Pupil_sikao": 0.5001400113105774,
+    "Seven_Head_sikao": 0.5001400113105774,
+    "Seven_Pupil_ganga": 0.5001400113105774,
+    "Seven_Head_ganga": 0.5001400113105774
+  },
+  "component_override_curves": {
+    "Seven_Pupil_huangzhang": 0.0,
+    "Seven_Head_huangzhang": 0.0,
+    "Seven_Pupil_wuyu": 0.0,
+    "Seven_Head_wuyu": 0.0,
+    "Seven_Pupil_sikao": 0.0,
+    "Seven_Head_sikao": 0.0,
+    "Seven_Pupil_ganga": 0.0,
+    "Seven_Head_ganga": 0.0
+  },
+  "component_override_note": "GetMorphTarget reads explicit component overrides, not evaluated animation morph weights",
+  "active_morph_curves": [
+    "Seven_Pupil_ganga",
+    "Seven_Pupil_huangzhang",
+    "Seven_Pupil_sikao",
+    "Seven_Pupil_wuyu",
+    "Seven_Head_ganga",
+    "Seven_Head_huangzhang",
+    "Seven_Head_sikao",
+    "Seven_Head_wuyu"
+  ],
+  "optimization_cvar": 1,
+  "passed": true
+}

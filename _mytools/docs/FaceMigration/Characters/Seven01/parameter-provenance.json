@@ -1,0 +1,22 @@
+{
+  "character": "Seven01",
+  "job_id": "seven01-taskflow-20261117",
+  "basis": "Fresh independent binding probe equivalent; inherit reference curve definitions for preview expectations. No historical source samples or validation outcomes copied. Max actions verified separately this run.",
+  "files": [
+    {
+      "source": "Tools/FaceMigration/Characters/Seven/Evidence/ExpressionSliders/parameters.json",
+      "target": "Tools/FaceMigration/Characters/Seven01/Evidence/ExpressionSliders/parameters.json",
+      "sha256": "0bba677e2dba642e55dbc6b65385776af671b0dc08ad2144419fa596de1bf68f"
+    },
+    {
+      "source": "Tools/FaceMigration/Characters/Seven/Evidence/PhonemeSliders/parameters.json",
+      "target": "Tools/FaceMigration/Characters/Seven01/Evidence/PhonemeSliders/parameters.json",
+      "sha256": "313f3554de18563e48d56f6ca26674a660722d28034ceebd95d8113ce8809e69"
+    },
+    {
+      "source": "Tools/FaceMigration/Characters/Seven/Evidence/EyeExpressions/parameters.json",
+      "target": "Tools/FaceMigration/Characters/Seven01/Evidence/EyeExpressions/parameters.json",
+      "sha256": "a67d8b1bd543f50737062b0f58e208b4b67edc44591cc07c0092b98ea3dbb5db"
+    }
+  ]
+}

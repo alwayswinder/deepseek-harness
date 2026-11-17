@@ -2541,29 +2541,6 @@ function Update-MusicMenu {
     $syncing = $null -ne $SCRIPT:MusicSync -and [bool]$SCRIPT:MusicSync.running
     $canPlay = $SCRIPT:MusicTracks.Count -gt 0
     if ($canPlay) {
-        # The mode is a surface of the page rather than a window of this process:
-        # the menu only names it, and the page - which owns the DSH window -
-        # draws it. DSH has to be on screen first, because a mode in a hidden
-        # window is a mode nobody sees.
-        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicStage 'stage' $true {
-            try {
-                Show-DshWindow
-                Send-MenuCommand 'listening-mode'
-            } catch {
-                Write-Log "opening the listening mode failed: $($_.Exception.Message)"
-                try { Show-PetNotice $SCRIPT:Labels.Music $SCRIPT:Labels.MusicStageFailed } catch { }
-            }
-        })
-        # The picture behind that mode: chosen here because a file dialog is this
-        # process's to show, and stored by the host, which is what serves it to the page.
-        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.StageImage 'image' $true {
-            try { Invoke-AfterMenu { Select-StageBackground } } catch { Write-Log $_.Exception.Message }
-        })
-        if (-not [string]::IsNullOrWhiteSpace([string]$SCRIPT:StageImage)) {
-            [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.StageImageClear 'stage' $true {
-                try { Clear-StageBackground } catch { Write-Log $_.Exception.Message }
-            })
-        }
         [void](Add-MusicItem $SCRIPT:MusicMenu ($(if ($SCRIPT:MusicPlaying) { $SCRIPT:Labels.MusicPause } else { $SCRIPT:Labels.MusicPlay })) `
             $(if ($SCRIPT:MusicPlaying) { 'pause' } else { 'play' }) $true {
                 try { Toggle-MusicPlay } catch { Write-Log $_.Exception.Message }
@@ -2616,6 +2593,35 @@ function Update-MusicMenu {
     [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicOpenDir 'folder' $true {
         try { Send-MenuCommand 'music-open-dir' } catch { Write-Log $_.Exception.Message }
     })
+    # The mode's entries come after the transport and the library rows: while
+    # listening, the rows a person reaches for are play, next, and the volume, so
+    # the surface that swaps the whole window for a picture sits under them.
+    if ($canPlay) {
+        [void]$SCRIPT:MusicMenu.DropDownItems.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+        # The mode is a surface of the page rather than a window of this process:
+        # the menu only names it, and the page - which owns the DSH window -
+        # draws it. DSH has to be on screen first, because a mode in a hidden
+        # window is a mode nobody sees.
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicStage 'stage' $true {
+            try {
+                Show-DshWindow
+                Send-MenuCommand 'listening-mode'
+            } catch {
+                Write-Log "opening the listening mode failed: $($_.Exception.Message)"
+                try { Show-PetNotice $SCRIPT:Labels.Music $SCRIPT:Labels.MusicStageFailed } catch { }
+            }
+        })
+        # The picture behind that mode: chosen here because a file dialog is this
+        # process's to show, and stored by the host, which is what serves it to the page.
+        [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.StageImage 'image' $true {
+            try { Invoke-AfterMenu { Select-StageBackground } } catch { Write-Log $_.Exception.Message }
+        })
+        if (-not [string]::IsNullOrWhiteSpace([string]$SCRIPT:StageImage)) {
+            [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.StageImageClear 'stage' $true {
+                try { Clear-StageBackground } catch { Write-Log $_.Exception.Message }
+            })
+        }
+    }
     # The volume, the links, and the music directory belong to the settings card, so
     # the way to them is the same page entry the main menu's own Settings opens.
     [void](Add-MusicItem $SCRIPT:MusicMenu $SCRIPT:Labels.MusicSettings 'gear' $true {

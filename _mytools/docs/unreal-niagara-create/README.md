@@ -1,102 +1,120 @@
-# Unreal Niagara 创建指南
+# Unreal Niagara creation guide
 
-## 概要
+English | [中文](README.zh.md)
 
-本指南以 UE 5.9 测试项目为例，通过 Unreal 编辑器和 MCP 创建两种 Actor 交互特效：一次触发、逐跳飞行的闪电链，以及参考巫妖“连环霜冻”表现的无限弹跳冰球。先在关卡中验证效果，再按对应教程创建 Niagara 和控制蓝图。
+## Summary
 
-## 目录
+Use the Unreal Editor and MCP to create chain lightning, a continuously bouncing frost orb, a sky lightning strike, and a blue spiral magic circle in the UE 5.9 test project. Observe each effect in the level, then follow its tutorial to build Niagara systems, materials, and any required controller Blueprints.
 
-- [准备环境](#准备环境)
-- [在关卡中播放](#在关卡中播放)
-- [创建新特效](#创建新特效)
-- [验收结果](#验收结果)
-- [继续查阅](#继续查阅)
+## Contents
 
-## 准备环境
+- [Prepare the environment](#prepare-the-environment)
+- [Play effects in the level](#play-effects-in-the-level)
+- [Create a new effect](#create-a-new-effect)
+- [Verification results](#verification-results)
+- [Further reading](#further-reading)
 
-读者需要了解 Content Browser、Actor、Component 和蓝图函数。Niagara 的 System 管理完整特效，Emitter 管理一组粒子，Module 计算粒子属性，Renderer 绘制结果。
+<a id="准备环境"></a>
 
-| 项目 | 本机示例 |
+## Prepare the environment
+
+Readers need familiarity with the Content Browser, Actors, Components, and Blueprint functions. A Niagara System manages the complete effect, an Emitter manages a group of particles, a Module computes particle attributes, and a Renderer draws the result.
+
+| Item | Local example |
 |---|---|
-| 引擎 | 当前机器安装的 UE 5.9 构建 |
-| 项目 | `E:\Unreal\Projects\_TEST\MyProject5_9` |
-| 关卡 | `/Game/_MyTest/M_Test` |
+| Engine | UE 5.9 build installed on this machine |
+| Project | `E:\Unreal\Projects\_TEST\MyProject5_9` |
+| Level | `/Game/_MyTest/M_Test` |
 | MCP | `http://127.0.0.1:8001/mcp` |
-| 工具插件 | `EditorToolset`、`ConsoleToolset`、`SceneCaptureToolset`、`NiagaraToolsets` |
+| Tool plugins | `EditorToolset`, `ConsoleToolset`, `SceneCaptureToolset`, `NiagaraToolsets` |
 
-连接其他编辑器时，从运行日志确认 MCP 端口，并重新发现工具和 API。资产路径、模板内容和 Python 可用能力以对应构建为准，见 [MCP 参考](mcp-reference.md)。
+When connecting to another editor, confirm the MCP port in its logs and rediscover tools and APIs. Asset paths, template contents, and Python capabilities depend on that build; see the [MCP reference](mcp-reference.md).
 
-## 在关卡中播放
+<a id="在关卡中播放"></a>
 
-当前场景用 Cube、Cube2、Cube3 作为三个不同目标。两个控制 Actor 的位置决定各自的发射位置；目标连接点由目标世界位置加 `TargetOffset` 得到。
+## Play effects in the level
 
-### 冰球无限弹跳
+The current scene uses Cube, Cube2, and Cube3 as three distinct targets. Each of the two controller Actors determines its own launch position; target attachment points use the target world position plus `TargetOffset`.
 
-1. 打开示例关卡，选中 `FrostChain_MCP`。
-2. 确认 `Target1 / Target2 / Target3` 分别引用三个 Cube。
-3. 点击 Play 或 Simulate。当前实例开启 `AutoTriggerOnBeginPlay`，会发射一颗冰球。
-4. 观察冰球先飞到 Cube，然后从另外两个目标中随机选择下一个，持续弹跳。
-5. 在运行世界中调用 `StopFrostChain` 停止，调用 `TriggerFrostChain` 从发射位置重新开始。
+### Continuously bouncing frost orb
 
-接到技能或交互事件时，关闭 `AutoTriggerOnBeginPlay`，持有控制 Actor 引用并调用触发函数。参数、材质和无限弹跳的创建步骤见 [冰球教程](frost-chain.md)。
+1. Open the example level and select `FrostChain_MCP`.
+2. Confirm that `Target1 / Target2 / Target3` reference the three Cubes respectively.
+3. Click Play or Simulate. The current instance enables `AutoTriggerOnBeginPlay` and launches one frost orb.
+4. Observe the orb reach Cube, then repeatedly choose its next destination at random from the other two targets.
+5. In the runtime world, call `StopFrostChain` to stop or `TriggerFrostChain` to restart from the launch position.
 
-![冰球在三个 Cube 之间弹跳](images/frost-chain-preview.gif)
+For skill or interaction events, disable `AutoTriggerOnBeginPlay`, retain a reference to the controller Actor, and call its trigger function. Parameters, materials, and creation steps are in the [frost orb tutorial](frost-chain.md).
 
-此预览由运行世界的离屏渲染帧合成；GIF 本身会重复播放。
+![Frost orb bouncing between three Cubes](images/frost-chain-preview.gif)
 
-### 触发式闪电链
+This preview combines offscreen frames rendered from the runtime world; the GIF itself loops.
 
-1. 选中 `ChainLightning_MCP`，确认 `SourceActor = Cube`、`MiddleActor = Cube2`、`EndActor = Cube3`。
-2. 当前关卡实例关闭了闪电的 `AutoTriggerOnBeginPlay`，便于单独观察冰球。要独立演示闪电，开启它，并关闭冰球的自动触发。
-3. 点击 Play 或 Simulate，观察“特效位置 → Cube → Cube2 → Cube3 → 结束”。
-4. 运行中调用 `TriggerChain` 重播，调用 `StopChain` 立即停止。
+### Triggered chain lightning
 
-闪电不会按固定周期自动重播。编辑器静止状态下，构造脚本将其隐藏；Call In Editor 按钮需要配合运行中的模拟实例观察动画。创建步骤和时间计算见 [闪电链教程](chain-lightning.md)。
+1. Select `ChainLightning_MCP` and confirm `SourceActor = Cube`, `MiddleActor = Cube2`, and `EndActor = Cube3`.
+2. The current level instance disables lightning's `AutoTriggerOnBeginPlay` to make the frost orb easier to observe. For a separate lightning demonstration, enable it and disable automatic triggering on the frost orb.
+3. Click Play or Simulate and observe “effect position → Cube → Cube2 → Cube3 → finish”.
+4. During runtime, call `TriggerChain` to replay or `StopChain` to stop immediately.
 
-### 天降闪电（宙斯大招）
+The lightning does not replay at a fixed interval. Its construction script hides it while the editor is idle; observe Call In Editor buttons on a running simulation instance. Creation steps and timing calculations are in the [chain lightning tutorial](chain-lightning.md).
 
-1. 选中 `ZeusStrike_MCP`（位于 `(150, -460, 50)`，即 Cube2 顶面），确认两个 Niagara 组件指向 `NS_ZeusStrike_MCP` 与 `NS_ZeusImpact_MCP`。
-2. 点击 Play 或 Simulate：主闪电从 3000 cm 高空竖直劈下直接命中 Cube2，同时 Cube 顶部炸开冲击环、火花与一次四段衰减的白光闪烁，约 1.2 秒后全部收尾。
-3. 效果只在 `BeginPlay` 播一次；要看第二遍，重新进入 PIE 或再摆一个实例。
+### Sky lightning strike (Zeus ultimate)
 
-不用改蓝图就能调的参数在 Niagara 用户参数里：`User.Length`（3000，闪电长度）、`User.Width`（26）、`User.Jitter`（150，锯齿幅度）、`User.Intensity`（6，亮度）。分叉长度按 `User.Length` 的比例给出，改长度不需要逐条改分叉。资产、时间轴、复用方法和踩坑记录见 [天降闪电教程](zeus-strike.md)。
+1. Select `ZeusStrike_MCP` at `(150, -460, 50)`, on top of Cube2, and confirm its Niagara components reference `NS_ZeusStrike_MCP` and `NS_ZeusImpact_MCP`.
+2. Click Play or Simulate: the main bolt strikes Cube2 vertically from 3000 cm above, while an impact ring, sparks, and a white flash with four stages of attenuation appear on the Cube's top surface. Everything ends after about 1.2 seconds.
+3. The effect plays once at `BeginPlay`; re-enter PIE or place another instance to see it again.
 
-![天降闪电](images/zeus-strike-preview.png)
+Niagara user parameters allow adjustment without editing the Blueprint: `User.Length` (3000, bolt length), `User.Width` (26), `User.Jitter` (150, zigzag amplitude), and `User.Intensity` (6, brightness). Branch lengths scale with `User.Length`, so changing the length does not require editing each branch. Assets, timeline, reuse, and troubleshooting are in the [sky lightning tutorial](zeus-strike.md).
 
-## 创建新特效
+![Sky lightning strike](images/zeus-strike-preview.png)
 
-按下面的顺序搭建，每一步先确认可见结果，再进入下一步。
+### Blue spiral magic circle
 
-1. 创建材质，接好发光、透明度和粒子颜色，启用对应的 Niagara 渲染用途。
-2. 创建单个 Emitter，确认生成方式、坐标空间、寿命和 Renderer。
-3. 组合 System，检查各层的尺寸、数量、透明排序和生命周期。
-4. 创建控制蓝图，管理目标、触发、运动、命中和停止。
-5. 放入关卡，指定目标，检查编译、保存、运行表现和取消行为。
+Open `/Game/VFX/MagicCircle/NS_MagicCircle` in the Content Browser, or inspect the level's `MagicCircle_FX` instance that references it. The effect combines a ground rune circle, a continuous spiral light band, floating crystals, and rising sparks; the ground circle keeps a fixed orientation and its emission pulses slowly. Source generation, material curves, and camera orientation settings are in the [magic circle tutorial](magic-circle.md).
 
-Niagara 负责外观，控制蓝图负责 Actor 目标与播放状态。直接拖入单个 System 不会得到完整的追踪与弹跳逻辑。
+<a id="创建新特效"></a>
 
-## 验收结果
+## Create a new effect
 
-记录日期为 2026-11-16。下列结果来自当前项目的模拟运行和编译检查，原始数据由 [验证索引](verification.json) 指向本目录的 `evidence/` 文件。
+Build in the following order, confirming a visible result before each next step.
 
-| 对象 | 实测结果 |
+1. Create materials, connect emission, opacity, and particle color, and enable the appropriate Niagara rendering usage.
+2. Create one Emitter and confirm spawning, coordinate space, lifetime, and Renderer.
+3. Assemble the System and check layer sizes, counts, transparency sorting, and lifecycles.
+4. For target interactions, create a controller Blueprint to manage targets, triggering, movement, hits, and stopping; a continuous display effect can use the System directly.
+5. Place it in the level, assign targets, and check compilation, saving, runtime behavior, and cancellation.
+
+Niagara controls appearance; controller Blueprints manage Actor targets and playback state. Dragging in a single System does not provide complete tracking and bouncing logic.
+
+<a id="验收结果"></a>
+
+## Verification results
+
+Chain lightning and frost orb records date from 2026-11-16; magic circle asset checks date from 2026-11-18. The [verification index](verification.json) links the scope and raw data in this directory's `evidence/` files.
+
+| Subject | Observed result |
 |---|---|
-| 闪电链 | 初始隐藏、发射起点误差 0 cm、三跳依次出现、播放后不循环、再次触发重启、主动取消和无效目标取消 |
-| 冰球 | 连续 14 次命中后继续弹跳，每次换一个目标，移动目标命中误差 0 cm，停止与重新触发生效 |
-| 冰球粒子 | 第 14 次命中时：球核 1、光晕 1、旋转冰屑 34、拖尾 51；最老拖尾约 0.458 秒 |
-| 冰球资产 | 两个 Niagara System 为 UpToDate，无编译错误或警告；Blueprint 无错误，资产与关卡已保存 |
-| 天降闪电 | 3000 cm 竖直劈落劈中 Cube2，落点地面冲击环、56 颗火花与四段白光闪烁按 0.07 / 0.19 / 0.35 秒衰减，1.2 秒后两个组件归零；三个冲击发射器均为 `Once`，冲击环改 `CustomFacingVector` 后贴地（俯视可见完整圆环）；两个 System 编译 UpToDate 且无错误警告，蓝图与关卡已保存 |
+| Chain lightning | Initially hidden; launch position error 0 cm; three jumps appear in order; no loop after playback; retrigger restarts; explicit cancellation and invalid-target cancellation work |
+| Frost orb | Continues bouncing after 14 consecutive hits, switches targets each time, reaches moving targets with 0 cm error, and supports stopping and retriggering |
+| Frost orb particles | At hit 14: core 1, halo 1, rotating shards 34, trail 51; oldest trail about 0.458 seconds |
+| Frost orb assets | Both Niagara Systems are UpToDate with no compile errors or warnings; Blueprint has no errors; assets and level saved |
+| Magic circle | System and ground material saved, compilation has no errors or warnings; fixed orientation and breathing curve read back and checked; see the tutorial for dynamic visual acceptance |
+| Sky lightning | Vertical 3000 cm bolt hits Cube2; impact ring, 56 sparks, and white flash attenuate at 0.07 / 0.19 / 0.35 seconds; both components empty after 1.2 seconds; all three impact Emitters use `Once`; the ring lies flat after switching to `CustomFacingVector` (complete circle visible from above); both Systems compile UpToDate without errors or warnings; Blueprint and level saved |
 
-这些记录不代表无限时长压力测试。当前示例固定三个目标，尚未覆盖打包、多玩家、伤害、敌我筛选、碰撞和不同平台；冰球也没有弹跳距离限制。
+These records do not constitute indefinite stress tests. The current examples use three fixed targets and do not cover packaging, multiplayer, damage, team filtering, collision, or different platforms; the frost orb also has no maximum bounce distance.
 
-## 继续查阅
+<a id="继续查阅"></a>
 
-- [触发式闪电链](chain-lightning.md)：Ribbon 外观、短电弧飞行、三跳和参数。
-- [天降闪电](zeus-strike.md)：Sky-strike 闪电、地面冲击环、点光闪烁时间轴与复用方法。
-- [冰球无限弹跳](frost-chain.md)：球核、冰屑、拖尾、命中和目标选择。
-- [MCP 参考](mcp-reference.md)：工具发现、参数编码、蓝图生成、强制编译、粒子采样和截图。
-- [常见问题](troubleshooting.md)：坐标、触发状态、生命周期、编译与 Python API。
+## Further reading
 
-## 维护说明
+- [Triggered chain lightning](chain-lightning.md): Ribbon appearance, short arc flight, three jumps, and parameters.
+- [Sky lightning strike](zeus-strike.md): sky bolt, ground impact ring, point light flash timeline, and reuse.
+- [Continuously bouncing frost orb](frost-chain.md): core, shards, trail, hits, and target selection.
+- [Blue spiral magic circle](magic-circle.md): source generation, fixed ground orientation, continuous light bands, and pronounced brightness pulsing.
+- [MCP reference](mcp-reference.md): tool discovery, parameter encoding, Blueprint generation, forced compilation, particle sampling, and capture.
+- [Troubleshooting](troubleshooting.md): coordinates, trigger state, lifecycles, compilation, and Python APIs.
 
-本目录是个人工具文档。项目 `Saved/CodexLightning/` 中的脚本是创建和验证过程的辅助文件，部分脚本依赖已有资产或模拟状态，不构成可按文件名顺序执行的一键安装器。引擎或插件升级后，重新发现 API 并验证示例。
+## Maintenance
+
+This directory contains personal tool documentation. Scripts in the project's `Saved/CodexLightning/` directory assist creation and verification; some depend on existing assets or simulation state and do not form an installer that can be run in filename order. Rediscover APIs and verify the examples after engine or plugin upgrades.

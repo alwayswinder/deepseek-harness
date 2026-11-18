@@ -1,12 +1,14 @@
 {
   "recordedDate": "2026-11-16",
+  "lastUpdatedDate": "2026-11-18",
   "engine": "UE 5.9 current local build",
   "project": "E:\\Unreal\\Projects\\_TEST\\MyProject5_9",
   "map": "/Game/_MyTest/M_Test",
   "records": {
     "triggeredLightning": "evidence/triggered-lightning.json",
     "frostChain": "evidence/frost-chain.json",
-    "frostFinalStatus": "evidence/frost-final-status.json"
+    "frostFinalStatus": "evidence/frost-final-status.json",
+    "magicCircle": "evidence/magic-circle.json"
   },
   "media": {
     "frostAnimation": "images/frost-chain-preview.gif",
@@ -16,6 +18,7 @@
   "limitations": [
     "14 hits sampled; no infinite-duration stress test",
     "Three distinct targets",
-    "No packaging, multiplayer, combat damage, collision or platform validation"
+    "No packaging, multiplayer, combat damage, collision or platform validation",
+    "Magic circle record verifies asset settings, compilation and saved state; camera motion, full breathing cycles and long-duration particle counts still require visual/runtime acceptance"
   ]
 }

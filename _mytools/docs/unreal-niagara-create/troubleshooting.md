@@ -1,6 +1,6 @@
 # Niagara 常见问题与 API 注意事项
 
-本页供闪电链和冰球创建过程中的故障查询。完整操作分别见 [闪电链教程](chain-lightning.md) 与 [冰球教程](frost-chain.md)，参数编码见 [MCP 参考](mcp-reference.md)。
+本页供闪电链、冰球和魔法阵创建过程中的故障查询。完整操作见 [闪电链教程](chain-lightning.md)、[冰球教程](frost-chain.md) 与 [魔法阵教程](magic-circle.md)，参数编码见 [MCP 参考](mcp-reference.md)。
 
 ## 场景中看不到特效
 
@@ -53,6 +53,18 @@ Particle Update 先恢复束上基准位置，再叠加抖动。抖动在两端�
 在 Play/Simulate 中确认 Tick 启用，更新函数每帧重新读取运行世界的目标。控制 Actor 保留独立 Scene Root，运动组件不会拖动发射位置。
 
 静止编辑器中，移动另一个 Actor 不保证触发控制蓝图的 Construction Script。两种示例的构造函数都会停止特效；运行时追踪应在模拟中检查。
+
+## 贴地法阵随相机旋转
+
+固定法线只保证贴地，还需要固定平面内方向。使用 `CustomFacingVector` 与 `CustomAlignment`，并实际写入 `Particles.SpriteFacing` 和 `Particles.SpriteAlignment`。如果贴图自身带时间旋转，还要单独移除该旋转。完整设置见 [固定底盘朝向](magic-circle.md#3-固定底盘朝向)。
+
+## 法阵呼吸不明显或边角出现重复图案
+
+呼吸需在目标曝光和背景下观察完整周期；高亮发光接近饱和时，小幅正弦变化可能被色调映射压缩。曲线和当前倍率见 [配置发光与呼吸](magic-circle.md#4-配置发光与呼吸)。UV 变换后的重复边角先检查 Texture2D 的 Address X/Y，本例使用 Clamp；调整寻址不会固定 Sprite 朝向。
+
+## 螺旋光带乱连
+
+检查出生位置是否有序，以及 Ribbon ID 和连接顺序。随机圆柱位置加旋转速度不能保证得到参考图那样的连续螺旋。本例采用预制螺旋网格和 Mesh Renderer，结构见 [组合螺旋与漂浮层](magic-circle.md#5-组合螺旋与漂浮层)。
 
 ## 蓝图与 Python API
 

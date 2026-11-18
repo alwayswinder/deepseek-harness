@@ -1,6 +1,6 @@
 # Niagara MCP 调用参考
 
-本页供已有 MCP 调用能力的开发者查询 UE 5.9 当前构建中的工具入口，覆盖闪电链和冰球。JSON 示例是 JSON-RPC 请求体；通过现有 MCP 客户端发送，HTTP 会话初始化、会话标识和通知由客户端管理。主教程见 [创建指南](README.md)。
+本页供已有 MCP 调用能力的开发者查询 UE 5.9 当前构建中的工具入口，覆盖闪电链、冰球和魔法阵。JSON 示例是 JSON-RPC 请求体；通过现有 MCP 客户端发送，HTTP 会话初始化、会话标识和通知由客户端管理。主教程见 [创建指南](README.md)。
 
 ## 发现入口
 
@@ -55,6 +55,8 @@
 ```
 
 本构建的对象引用通常以 `{"refPath":"..."}` 表示；具体字段以 Schema 为准。`/Game/` 是项目 Content 的虚拟根，不是磁盘路径。
+
+资产引用使用包含对象名的完整对象路径，例如 `/Game/VFX/MagicCircle/M_MC_Runes.M_MC_Runes`。`unreal.load_asset` 可先加载包路径，再把返回的对象交给编辑器内 `call_tool`；不要假定每个工具的 `refPath` 都接受省略 `.对象名` 的路径。关卡 Actor 可通过 `EditorActorSubsystem.get_all_level_actors()` 按标签筛选，得到实际对象后继续操作。
 
 `search_symbols` 使用正则表达式 `pattern` 和数量上限 `max_results`，不接受 `query`、`limit`，也不把 `*Name*` 当作通配符。例如传入 `{"pattern":"Niagara.*[Cc]ompile","max_results":30}`，可在本构建中发现编译相关工具和项目辅助函数。
 
@@ -190,6 +192,8 @@ summary
 | `Particles.SpriteSize` | `/Script/CoreUObject.Vector2f` |
 | `Particles.Velocity` | `/Script/CoreUObject.Vector3f` |
 | `Particles.Position` | `/Script/Niagara.NiagaraPosition` |
+| `Particles.SpriteFacing / Particles.SpriteAlignment / Particles.Scale` | `/Script/CoreUObject.Vector3f` |
+| `Particles.MeshOrientation` | `/Script/CoreUObject.Quat4f` |
 
 下面是添加一个颜色赋值模块的内部工具参数，调用 `AddSetParametersModule` 后再设置其颜色输入：
 
@@ -210,6 +214,30 @@ summary
 ```
 
 已有系统重跑创建步骤时，先检查组件、Emitter 和模块是否存在。只更新自己创建的对象；不要用删除全部 Set Parameters 模块的方式修改含有其他作者逻辑的系统。
+
+### 属性依赖与 Mesh Renderer
+
+部分属性受 EditCondition 控制。先在一次调用中启用条件，再在下一次调用中设置依赖属性；不能依赖同一个 JSON 对象中字段的排列顺序。工具报失败时，部分其他字段可能已经写入，重试前重新读取 Data。
+
+| 首次设置 | 后续设置 |
+|---|---|
+| Mesh Renderer 的 `bOverrideMaterials = true` | `OverrideMaterials` 中的 `ExplicitMat` |
+| System 的 `bFixedBounds = true` | `FixedBounds` |
+| System 的 `WarmupTime > 0` | `WarmupTickDelta` 等预热属性 |
+
+Mesh Renderer 的创建入口为 `AddRenderer`，类型引用可用 `{"refPath":"/Script/Niagara.NiagaraMeshRendererProperties"}`。本构建注册了该 Renderer，但没有暴露 `unreal.NiagaraMeshRendererProperties` Python 类；不要把类常量不存在理解为 Renderer 不可用。
+
+`SetRendererData.rendererData.propertyValues` 仍是 JSON 字符串。下列两个属性对象需分别序列化并按顺序提交：
+
+```json
+{"bOverrideMaterials": true}
+```
+
+```json
+{"OverrideMaterials": [{"ExplicitMat": {"refPath": "/Game/VFX/MagicCircle/M_MC_Helix.M_MC_Helix"}}]}
+```
+
+网格导入返回值中的路径才是后续 `Meshes[].Mesh` 的依据。导入器可能增加 `StaticMeshes` 子目录；具体例子见 [生成与导入素材](magic-circle.md#2-生成与导入素材)。
 
 ## 强制编译与运行数据核对
 
@@ -262,6 +290,8 @@ ages = list(cache.read_float_attribute('Age', 'ColdTrail'))
 视口窗口在后台、隐藏或最小化时，该工具可能拒绝捕获。需要场景画面且不依赖编辑器界面时，可以使用 `Capture(world, camera, mode, options)` 离屏渲染；它不含编辑器覆盖层、视口的时间历史或相机独有的后处理，不能将结果称为编辑器截图。
 
 `Capture` 使用 `mode = Lit`，`options` 中设置 `width`、`height` 和 `screenPercentage`，`camera` 提供世界坐标 `location`、角度 `rotation` 与 `fOV`。本例传入实际模拟世界 `/Game/_MyTest/UEDPIE_0_M_Test.M_Test`；模拟重启后需重新取得世界引用。
+
+编辑器世界是否显示 Niagara 取决于实例是否在该世界中模拟与绘制。魔法阵持续实例已在 `/Game/_MyTest/M_Test.M_Test` 的离屏 Capture 中显示；由 BeginPlay 触发的效果仍需进入 PIE。先确认当前世界和播放状态，不要把某个编辑器帧没有粒子推广为“编辑器世界不支持 Niagara”。
 
 本目录冰球 GIF 由 42 张运行世界离屏帧合成。每帧先让游戏时间前进约 0.10 秒，再暂停并捕获；结束后取消暂停并停止模拟。预览的游戏时间与截图调用耗时分别计算，不能用截图速度评估游戏性能。
 

@@ -11,7 +11,8 @@
         "@local/dsh-little-icon": "link:_mytools/Plugins/dsh-littleIcon",
         "@local/dsh-temp-space": "link:_mytools/Plugins/dsh-temp-space",
         "dsh-qq-plugin": "^1.0.5",
-        "dshmarket": "^1.73.17"
+        "dshmarket": "^1.73.17",
+        "@deepseek-ai/dsh-cua-bundle": "link:packages/experimental/cua-bundle"
       },
       "bundles": [
         "@local/dsh-appearance-plus",
@@ -21,19 +22,22 @@
         "@local/dsh-fish-tank",
         "dsh-qq-plugin",
         "@local/dsh-little-icon",
-        "dshmarket"
+        "dshmarket",
+        "@deepseek-ai/dsh-cua-bundle"
       ]
     },
     "web": {
       "packages": {
         "@local/dsh-mode-3dsmax": "link:_mytools/Mode/dsh-3dsmax",
         "@local/dsh-mode-unreal": "link:_mytools/Mode/dsh-unreal",
-        "@local/dsh-web-search-opencode": "file:_mytools/Plugins/web-search-opencode"
+        "@local/dsh-web-search-opencode": "file:_mytools/Plugins/web-search-opencode",
+        "@deepseek-ai/dsh-cua-bundle": "link:packages/experimental/cua-bundle"
       },
       "bundles": [
         "@local/dsh-mode-3dsmax",
         "@local/dsh-mode-unreal",
-        "@local/dsh-web-search-opencode"
+        "@local/dsh-web-search-opencode",
+        "@deepseek-ai/dsh-cua-bundle"
       ]
     }
   }

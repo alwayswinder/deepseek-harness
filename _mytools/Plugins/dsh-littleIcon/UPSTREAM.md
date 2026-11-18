@@ -19,6 +19,8 @@
 | `apps/desktop/src/preload-app.ts` | `createProductApi()` 里加 `window: { setFullscreen: (...) => ipcRenderer.invoke(DESKTOP_IPC.windowSetFullscreen, fullscreen) }` |
 | `apps/desktop/tests/preload-app.spec.ts` | 新增 1 条断言：`dshDesktop.window.setFullscreen(true)` 恰好以 `windowSetFullscreen, true` 调一次 IPC，并回传主进程的答案 |
 | `apps/desktop/README.md`、`apps/desktop/README.zh.md` | preload 暴露面那一段补一句 `dshDesktop.window.setFullscreen(boolean)` 的用途；改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write apps/desktop/README.md` 重新记录摘要 |
+| `packages/experimental/cua-windows/native/entry/ShellBroker.cs` | `Launch` 不再硬编码 `ShellWindows` 的 CLSID `{9BA05972-F6A8-11CF-A442-00A0C90A8F39}`（它的 LocalServer 是 `rundll32.exe shell32.dll,SHCreateLocalServerRunDll`，激活返回 `0x80070005`），改用 `Type.GetTypeFromProgID("Shell.Application")`（CLSID `{13709620-C279-11CE-A49E-444553540000}`）+ 反射 `InvokeMember("ShellExecute", ...)`；`dynamic` 对 `__ComObject` 会抛 RuntimeBinderException，必须走反射 |
+| `packages/experimental/cua-windows/native/entry/WindowCapture.cs` | 截图的尺寸基准从 WGC 的 `item.Size` 改成 DWM geometry：`item.Size` 比 `DWMWA_EXTENDED_FRAME_BOUNDS` 大 16x8（125% 缩放下的边框环），`frame.ContentSize` 才等于 DWM bounds。`:84` 改成与 `geometry.Pixels` 比较；编码前若 surface 比 geometry 大，用 `encoder.BitmapTransform.Bounds` 裁掉多出的边框环，`pixelWidth/pixelHeight` 回报裁剪后的尺寸 |
 
 核心就是这一段（合并后若被上游改回 `randomUUID`，把它换回来）：
 
@@ -90,3 +92,22 @@ pnpm --filter @deepseek-ai/dsh-desktop run build
 - **不是自动登录。** DSH 手里的凭据属于 `platform.deepseek.com`，chat.deepseek.com 是另一套 Web 会话；做到的只是「登录一次，之后跨重启、跨工作区保留」。
 - **共享是双向的。** 各工作区共用一个 Cookie 库，意味着在 A 项目里登录的站点在 B 项目里也带着同一份登录态（这正是用户要的效果，但它不再是隔离边界）。
 - **如果登录仍然不保留**，说明 chat 把会话放在 `sessionStorage` 或按设备指纹绑定——那要换方案，例如把菜单项改成开一个新的 DSH 会话（用的是已登录的 DSH 账号，不碰网页登录）。
+
+### CUA helper 的两处 Windows 补丁
+
+启用 `@deepseek-ai/dsh-cua-bundle` 后，Windows 上的 helper（`packages/experimental/cua-windows`）有两个上游 bug，不修就用不了；两处都只在原生 helper 里，TypeScript 侧没有改。
+
+第一处是启动阶段必然失败：`SharedRuntime.Connect` 连不上共享服务时会调用 `ShellBroker.Launch`，让 Explorer 起一个脱离 Host Job 的服务。它原来直接激活 `ShellWindows` 的 CLSID，而这类本地服务器在本机（高完整性、非交互式父进程）上返回 `0x80070005`。换成 `Shell.Application` 的 ProgID 走 `ShellExecute` 即可。
+
+第二处是截图永远失败：helper 把 `frame.ContentSize` 与 `item.Size` 比较，但 WGC 的 item 尺寸包含窗口边框环，比 `DWMWA_EXTENDED_FRAME_BOUNDS` 大（实测 1507x1011 的窗口 `item.Size=1523x1019`）。改法见上表；诊断工具留在 `D:\AI\Tmp\2026-11-17\wgcprobe`（临时产物，不用保留）。
+
+重建（改的是原生 exe，**不用重启 DSH**，provider 每次调用都会 spawn 新的 helper）：
+
+```powershell
+cd packages\experimental\cua-windows
+dotnet publish native\entry\CuaWindows.csproj -c Release -r win-x64 --self-contained true -o native\bin\win-x64 -p:EnableWindowsTargeting=true
+```
+
+publish 前先 `Get-Process dsh-cua-windows | Stop-Process -Force`，否则旧 helper 锁着 `dsh-cua-windows.dll`，MSB3026 重试十次后失败。
+
+另有一处**不是上游问题**、但同样决定 helper 能否工作：从工作区构建出来的 exe 会继承仓库根的 Low 完整性标签（DSH 的 Windows 沙箱打的），进程也就以 Low 运行，UIPI 让它读不了任何正常窗口。`_mytools\build\fix-cua-integrity.ps1` 给 `native\bin` 设显式 High 标签，`start-desktop.bat` 与 `start-dsh.bat` 每次启动都跑一遍（幂等）。换机器或重新 clone 后第一次构建 helper 之前，这个脚本要先跑过。

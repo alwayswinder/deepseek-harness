@@ -1,0 +1,13 @@
+import { launch, gameUrl, shotPath } from './harness.mjs';
+import { writeFileSync } from 'node:fs';
+const browser = await launch({ headless: true, args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-gpu-sandbox'] });
+const page = await browser.newPage({ viewport:{width:800,height:480} });
+page.on('console', m => { if(m.type()==='error') console.log('[err]', m.text()); });
+await page.goto(gameUrl('?fixed=1&autostart=1'));
+await page.waitForFunction(() => window.__dusk && __dusk.Game.state === 'title', null, {timeout:60000});
+await page.waitForTimeout(1500);
+await page.evaluate(() => { __dusk.startGame(); __dusk.debug = 4; });
+await page.waitForTimeout(800);
+writeFileSync(shotPath('dbg-height.png'), await page.screenshot());
+console.log(await page.evaluate(() => ({err: __dusk.World && __dusk.World.heights ? 'ok' : 'no', h: __dusk.World.heights[4758*1024+3318]})));
+await browser.close();

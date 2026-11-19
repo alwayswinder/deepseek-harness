@@ -1,0 +1,16 @@
+import { launch, gameUrl, shotPath } from './harness.mjs';
+import { writeFileSync } from 'node:fs';
+const browser = await launch({ headless: true, args: ['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-gpu-sandbox'] });
+const page = await browser.newPage({ viewport:{width:1280,height:720} });
+page.on('console', m => { if(m.type()==='error') console.log('[err]', m.text()); });
+await page.goto(gameUrl('?fixed=1&autostart=1'));
+await page.waitForFunction(() => window.__dusk && __dusk.Game.state === 'title', null, {timeout:60000});
+await page.waitForTimeout(1600);
+await page.evaluate(() => { __dusk.startGame(); __dusk.setView(0); __dusk.debug = 1; });
+await page.waitForTimeout(1500);
+writeFileSync(shotPath('dbg-top.png'), await page.screenshot());
+await page.evaluate(() => { __dusk.setView(1); __dusk.debug = 1; });
+await page.waitForTimeout(1500);
+writeFileSync(shotPath('dbg-chase.png'), await page.screenshot());
+console.log(await page.evaluate(() => ({spawn:__dusk.World.spawn, p:__dusk.Player.pos, gh:(function(){const s=__dusk.World.spawn; return 0;})()})));
+await browser.close();

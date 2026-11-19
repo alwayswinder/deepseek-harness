@@ -39,6 +39,7 @@
 ## 工作产物
 
 - **产物不进仓库，统一放 `D:\AI`**：`D:\AI\work`（3ds Max / Unreal 验证取证：场景副本、日志、截图、报告）、`D:\AI\Projects`（个人项目：`remotion\` 视频工程、`ai-game\` 战斗 demo）。桌宠的截图与音乐本来就指向 `D:\AI\Tmp`、`D:\AI\Music`。
+- **例外：`_mytools/game/` 留在仓库里**（2026-11 决定，与上一行相反）：像素小游戏的源码要随仓库同步到两台机器，所以不进 `D:\AI`；目前只有 `dusk-patrol`（纯 HTML/CSS/JS，`shots\` 只提交 README 引用的几张，其余由游戏目录自己的 `.gitignore` 排除）。新增游戏同样放 `_mytools/game/<名称>/`。
 - **`D:\AI\Note` 弃用**（2026-11-01）：不再往这里写新东西。重要信息进**个人隐私库**，临时产物进 `D:\AI\Tmp\<YYYY-MM-DD>\`（按日期子目录存放；清理时整目录删掉 30 天以前的即可）；已有内容保持不动，需要时再逐个迁走。
 - `D:\AI\Tmp` 根目录只放当天的散落文件；桌宠截图固定写 `D:\AI\Tmp\shots\`，需要归档时按文件修改时间把根目录条目移进对应的日期子目录。
 - **个人隐私库的路径按机器查，不要写死**：两台机器上它的位置不同，以 **temp-space 插件的当前数据目录**为准——先看 `$DSH_HOME/temp-space.location.json`（插件页「路径」选过的值），没有就看所用 profile 的 `cordis.patch.yml` 里 `dsh-temp-space` 的 `dataDir`。`D:\AI` 下的 `Tmp`、`work`、`Projects` 两台机器一致，可以直接写。

@@ -1,0 +1,57 @@
+<div id="app">
+  <canvas id="gl" width="604" height="340" aria-label="Dusk Patrol flight view"></canvas>
+  <canvas id="hud" width="604" height="340" aria-label="Flight instruments"></canvas>
+  <div id="grain"></div>
+
+  <div id="loading" class="screen">
+    <div class="load-inner">
+      <div class="load-brand">DUSK PATROL</div>
+      <div class="load-sub" id="loadstage">INITIALISING</div>
+      <div class="load-track"><div id="loadfill"></div></div>
+      <div class="load-meta"><span id="loadpct">0%</span><span>AUTUMN LAKE / SORTIE 07</span></div>
+      <div class="load-note">SEED 0741 &middot; 1024&sup2; HEIGHTFIELD &middot; 12 KM TILE</div>
+    </div>
+  </div>
+
+  <div id="title" class="screen">
+    <div class="title-inner">
+      <div class="kicker">AUTUMN LAKE &middot; 18:42 &middot; LAST LIGHT</div>
+      <h1>DUSK<br><span>PATROL</span></h1>
+      <p class="tagline">A LOW-LEVEL FLIGHT THROUGH THE LAST HOUR OF SUN</p>
+      <div class="start-prompt"><span class="key">CLICK</span> OR PRESS <span class="key">ENTER</span> TO FLY</div>
+    </div>
+  </div>
+
+  <div id="hudbar" class="hudbar">
+    <div class="hints">
+      <span><b>SPACE</b> VIEW</span>
+      <span><b>MOUSE</b> FLY</span>
+      <span><b>HOLD LMB</b> AFTERBURNER</span>
+      <span><b>CLICK</b> ROLL</span>
+      <span><b>RMB / F</b> MISSILE</span>
+      <span><b>M</b> SOUND</span>
+    </div>
+    <div class="right">
+      <span class="viewname" id="viewname">VIEW &middot; CHASE</span>
+      <span class="missiles" id="missilepips"><span class="lbl">MSL</span></span>
+      <button id="soundbtn" class="sound" type="button" aria-label="Toggle sound">SOUND OFF</button>
+    </div>
+  </div>
+
+  <div id="touch" class="touch">
+    <div id="stick" class="stick"><span></span></div>
+    <div class="tbtns">
+      <button data-act="view" type="button">VIEW</button>
+      <button data-act="roll" type="button">ROLL</button>
+      <button data-act="missile" type="button">MSL</button>
+      <button data-act="ab" type="button">AB</button>
+    </div>
+  </div>
+
+  <div id="fatal" class="screen hidden">
+    <div class="fbox">
+      <h2>WEBGL2 REQUIRED</h2>
+      <p id="fatalmsg">Dusk Patrol renders its world in a WebGL2 fragment shader. This browser or device did not provide a WebGL2 context.</p>
+    </div>
+  </div>
+</div>

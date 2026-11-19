@@ -1393,23 +1393,17 @@ async function readGitCommit(root, hash) {
 /**
  * Answer one Git read as JSON.
  *
- * Every Git route here is a read a page asked for, so they share one frame: the
- * same-origin guard the harness's other routes use, GET only, and a JSON body
- * that is always 200 — a directory outside every repository is an answer the
- * page renders, not a transport failure.
- * @param ctx - host context, for the connection guard and the logger.
+ * Every Git route here is a read a page asked for, so they share one frame: GET
+ * only, and a JSON body that is always 200 — a directory outside every
+ * repository is an answer the page renders, not a transport failure. The
+ * WebServer admits the request before this runs, so the route adds no guard of
+ * its own.
+ * @param ctx - host context, for the logger.
  * @param req - the request.
  * @param res - the response.
  * @param read - produces the payload for one request's query parameters.
  */
 function serveGitRead(ctx, req, res, read) {
-  const connection = ctx.get('connection')
-  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-  if (rejection !== undefined) {
-    res.writeHead(rejection)
-    res.end()
-    return
-  }
   if (req.method !== 'GET') {
     res.writeHead(405)
     res.end()
@@ -1428,19 +1422,12 @@ function serveGitRead(ctx, req, res, read) {
 
 /**
  * Run the Git page's explicit mutation and answer with its refreshed listing.
- * @param ctx - host context providing connection authorization and logging.
+ * @param ctx - host context providing the logger.
  * @param req - the request; only POST is accepted.
  * @param res - the response.
  * @param run - performs the mutation for the request's query parameters.
  */
 function serveGitMutation(ctx, req, res, run) {
-  const connection = ctx.get('connection')
-  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-  if (rejection !== undefined) {
-    res.writeHead(rejection)
-    res.end()
-    return
-  }
   if (req.method !== 'POST') {
     res.writeHead(405)
     res.end()
@@ -1501,20 +1488,13 @@ function readJsonBody(req, limit) {
  * result. The list routes use it because a selection is a list: it is the same
  * POST-only frame as {@link serveGitMutation}, with the body in place of the
  * query.
- * @param ctx - host context providing connection authorization and logging.
+ * @param ctx - host context providing the logger.
  * @param req - the request; only POST is accepted.
  * @param res - the response.
  * @param run - performs the mutation for the parsed body, which is undefined
  *   when the request carried none.
  */
 function serveGitBody(ctx, req, res, run) {
-  const connection = ctx.get('connection')
-  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-  if (rejection !== undefined) {
-    res.writeHead(rejection)
-    res.end()
-    return
-  }
   if (req.method !== 'POST') {
     res.writeHead(405)
     res.end()
@@ -2325,25 +2305,19 @@ export function apply(ctx, config) {
 
   // The editable page, and the route it saves through. The pet's menu opens this
   // one in DSH's own Browser tab rather than the system browser because only a
-  // page DSH served carries the connection cookie these routes check; the file
-  // beside the library stays the read-only copy for everything else.
+  // page DSH served reaches these routes with the credential their WebServer
+  // entry requires; the file beside the library stays the read-only copy for
+  // everything else.
   ctx.inject(['webServer'], (webCtx) => {
     /**
-     * Whether a request may be answered: the connection's own same-origin and
-     * authentication check, then the method this route takes.
+     * Whether a request may be answered: the WebServer admits the caller before
+     * this runs, so only the method this route takes is left to check.
      * @param req - the request.
      * @param res - the response.
      * @param method - the method this route accepts.
      * @returns whether the handler should continue.
      */
     const allowed = (req, res, method) => {
-      const connection = ctx.get('connection')
-      const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-      if (rejection !== undefined) {
-        res.writeHead(rejection)
-        res.end()
-        return false
-      }
       if (req.method !== method) {
         res.writeHead(405)
         res.end()
@@ -2720,13 +2694,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: ACTIVITY_PATH,
       handler: (req, res) => {
-        const connection = ctx.get('connection')
-        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-        if (rejection !== undefined) {
-          res.writeHead(rejection)
-          res.end()
-          return
-        }
         if (req.method !== 'POST') {
           res.writeHead(405)
           res.end()
@@ -2749,13 +2716,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: COMMANDS_PATH,
       handler: (req, res) => {
-        const connection = ctx.get('connection')
-        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-        if (rejection !== undefined) {
-          res.writeHead(rejection)
-          res.end()
-          return
-        }
         if (req.method !== 'GET') {
           res.writeHead(405)
           res.end()
@@ -2879,21 +2839,15 @@ export function apply(ctx, config) {
   // command file, which works with no page listening.
   ctx.inject(['webServer'], (webCtx) => {
     /**
-     * Whether a request may be answered: the connection's own check, then the
-     * method. A refusal is written here rather than left to the caller.
+     * Whether a request may be answered: the WebServer admits the caller before
+     * this runs, so only the method is left to check. A refusal is written here
+     * rather than left to the caller.
      * @param req - the request.
      * @param res - the response.
      * @param method - the method this route accepts.
      * @returns whether the handler should continue.
      */
     const allowed = (req, res, method) => {
-      const connection = ctx.get('connection')
-      const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-      if (rejection !== undefined) {
-        res.writeHead(rejection)
-        res.end()
-        return false
-      }
       if (req.method !== method) {
         res.writeHead(405)
         res.end()
@@ -3251,13 +3205,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: WALLPAPER_PATH,
       handler: (req, res) => {
-        const connection = ctx.get('connection')
-        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-        if (rejection !== undefined) {
-          res.writeHead(rejection)
-          res.end()
-          return
-        }
         if (req.method !== 'GET') {
           res.writeHead(405)
           res.end()
@@ -3295,13 +3242,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: LEVEL_PATH,
       handler: (req, res) => {
-        const connection = ctx.get('connection')
-        const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-        if (rejection !== undefined) {
-          res.writeHead(rejection)
-          res.end()
-          return
-        }
         if (req.method !== 'GET') {
           res.writeHead(405)
           res.end()

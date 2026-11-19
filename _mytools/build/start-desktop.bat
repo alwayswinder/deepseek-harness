@@ -81,22 +81,14 @@ rem A slow or offline machine keeps the plugin set it had and still launches.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-profile-plugins.ps1" -Profile desktop
 if errorlevel 1 echo [desktop] WARNING: profile plugins not reconciled - see _mytools\build\profile-plugins.json
 
-rem Register the local 3ds Max agent-mode bundle into this machine's profile.
-rem The install record lives under DSH_HOME and never syncs with the repository,
-rem so a fresh clone needs this once per machine; the script is idempotent, and a
-rem missing PowerShell or a failed registration is reported without blocking.
-if exist "%~dp0..\Mode\dsh-3dsmax\install.ps1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Mode\dsh-3dsmax\install.ps1" -SkipCheck >nul 2>&1
-    if errorlevel 1 echo [desktop] 3ds Max mode registration reported a problem - see _mytools\Mode\dsh-3dsmax\README.md
-)
-
-rem Unreal Engine mode needs the same per-machine registration: the package ships
-rem in the repository, but the profile install record is machine-local, so without
-rem this the mode never reaches the picker. Idempotent; failures are reported only.
-if exist "%~dp0..\Mode\dsh-unreal\install.ps1" (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Mode\dsh-unreal\install.ps1" -SkipCheck >nul 2>&1
-    if errorlevel 1 echo [desktop] Unreal mode registration reported a problem - see _mytools\Mode\dsh-unreal\README.md
-)
+rem The 3ds Max and Unreal Engine modes were uninstalled from this machine's
+rem desktop profile on 2026-11-19, and each install.ps1 writes the package back
+rem into the profile's dependencies and dsh.profile.bundles - the exact thing an
+rem uninstall must survive. Neither runs here anymore; profile-plugins.json lost
+rem both entries for the same reason. Bring a mode back by running its script
+rem once by hand:
+rem   powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-3dsmax\install.ps1
+rem   powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-unreal\install.ps1
 
 rem Merge the checked-in portable settings into this machine before the app reads
 rem them, so a pulled change is in effect on this launch: the pet's profile

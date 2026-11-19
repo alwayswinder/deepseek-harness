@@ -1,51 +1,40 @@
 {
   "version": 1,
   "comment": "Profile plugin baseline shared by every machine of this checkout. ensure-profile-plugins.ps1 reconciles each profile against it at launch. A spec starting with link: or file: is resolved against the repository root, so the absolute path is recomputed per machine; any other value is an npm spec and is installed only when the package is absent.",
+  "note": "2026-11-19: @local/dsh-mode-3dsmax, @local/dsh-mode-unreal, @local/dsh-web-search-opencode, dsh-remotion and ds-harness-remote were uninstalled from the desktop profile at the owner's request, so they left this baseline too (a baseline entry is what a launch reinstalls). start-desktop.bat no longer calls either Mode install.ps1. The local ones keep their source directories in the tree; reinstall with `dsh plugin --profile desktop add <spec>` when wanted. The web profile keeps both Mode entries because it still mounts them; web-search-opencode is gone from both profiles.",
   "profiles": {
     "desktop": {
       "packages": {
-        "@local/dsh-mode-3dsmax": "link:_mytools/Mode/dsh-3dsmax",
-        "@local/dsh-mode-unreal": "link:_mytools/Mode/dsh-unreal",
-        "@local/dsh-web-search-opencode": "link:_mytools/Plugins/web-search-opencode",
         "@local/dsh-appearance-plus": "link:_mytools/Plugins/appearance-plus",
         "@local/dsh-aquarium3d": "link:_mytools/Plugins/dsh-aquarium3d",
         "@local/dsh-deepseek-usage": "link:_mytools/Plugins/deepseek-usage",
         "@local/dsh-fish-tank": "link:_mytools/Plugins/dsh-fish-tank",
         "@local/dsh-little-icon": "link:_mytools/Plugins/dsh-littleIcon",
         "@local/dsh-temp-space": "link:_mytools/Plugins/dsh-temp-space",
-        "dsh-remotion": "link:_mytools/Plugins/dsh-remotion-master",
         "dsh-ths-holdings": "link:_mytools/Plugins/dsh-ths-holdings",
         "dsh-qq-plugin": "^1.0.5",
-        "dshmarket": "^1.73.17",
-        "ds-harness-remote": "^0.6.4"
+        "dshmarket": "^1.73.17"
       },
       "bundles": [
-        "@local/dsh-web-search-opencode",
         "@local/dsh-appearance-plus",
         "@local/dsh-aquarium3d",
         "@local/dsh-deepseek-usage",
-        "dsh-remotion",
         "@local/dsh-temp-space",
-        "@local/dsh-mode-3dsmax",
         "@local/dsh-fish-tank",
-        "@local/dsh-mode-unreal",
         "dsh-ths-holdings",
         "dsh-qq-plugin",
         "@local/dsh-little-icon",
-        "dshmarket",
-        "ds-harness-remote"
+        "dshmarket"
       ]
     },
     "web": {
       "packages": {
         "@local/dsh-mode-3dsmax": "link:_mytools/Mode/dsh-3dsmax",
-        "@local/dsh-mode-unreal": "link:_mytools/Mode/dsh-unreal",
-        "@local/dsh-web-search-opencode": "file:_mytools/Plugins/web-search-opencode"
+        "@local/dsh-mode-unreal": "link:_mytools/Mode/dsh-unreal"
       },
       "bundles": [
         "@local/dsh-mode-3dsmax",
-        "@local/dsh-mode-unreal",
-        "@local/dsh-web-search-opencode"
+        "@local/dsh-mode-unreal"
       ]
     }
   }

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-reference-head-space-20261112",
+  "character": "Seven",
+  "layout": {
+    "target": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+    "readonly_asset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+    "head_bone": "head001"
+  },
+  "notes": "用户明确授权修改原始示例 CR：在完整正向解算首尾统一切换头部参考空间，保留既有控制、输入和内部连接。RuntimeAsset 仅作只读保护对象。"
+}

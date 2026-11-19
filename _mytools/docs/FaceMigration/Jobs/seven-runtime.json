@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-runtime",
+  "character": "Seven",
+  "legacy_runtime_adapter": true,
+  "asset_overrides": {
+    "/Game/_MyTest/Mouth/Rig/CR_Seven_MorphSliders": "/Game/_MyTest/Mouth/Rig/NewControlRigRuntimeAsset",
+    "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation": "/Game/_MyTest/Mouth/Rig/NewControlRigRuntimeAsset",
+    "/Game/_MyTest/Mouth/Rig/CR_Seven_FaceMorphs": "/Game/_MyTest/Mouth/Rig/NewControlRigRuntimeAsset",
+    "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset": "/Game/_MyTest/Mouth/Rig/NewControlRigRuntimeAsset"
+  },
+  "retention": {
+    "keep_backups_per_group": 3
+  },
+  "notes": "同一 Seven 网格的新项目旧配方适配配置；不是全量自动重建流程。已存在的 Rig 不重跑首次构建器。新角色必须重新采样和适配求解参数。"
+}

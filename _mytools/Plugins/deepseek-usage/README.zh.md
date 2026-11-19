@@ -76,11 +76,11 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
         credential: <credential ref name>
         currency: USD
         quota:
-          # The console endpoint that answers this subscription's meters.
-          baseUrl: 'https://<vendor>/console/api/go/status'
-          # The workspace the console scopes the answer to; the endpoint rejects
-          # a request without it. It is the id in the console page URL.
-          orgId: '<org-id>'
+          # The endpoint that answers this subscription's meters.
+          baseUrl: 'https://<vendor>/zen/go/v1/usage'
+          # Optional: only a console endpoint scoped to one workspace needs its
+          # id; a usage endpoint answers from the key alone.
+          # orgId: '<org-id>'
 ```
 
 每笔结算的路由取自该 `assistant/message` 事件自带的 `message.source`（provider 与 model），因此按模型的 `rates` 会作用于真正产生该消息的模型；事件没有 source 时回退到折叠出的 `request/header`。
@@ -90,9 +90,9 @@ Desktop 使用自己的配置（`$DSH_HOME/profiles/desktop`）并拒绝 `dsh pl
 | account | kind | providers | 数据来源 | credential |
 |---|---|---|---|---|
 | deepseek-official | `balance` | `deepseek-official`、`deepseek-account` | `https://api.deepseek.com`，否则用平台登录 | `DEEPSEEK_API_KEY` |
-| opencode-go | `quota` | `opencode-go` | `https://opencode.ai/console/api/go/status` | `OPENCODE_GO_API_KEY` |
+| opencode-go | `quota` | `opencode-go` | `https://opencode.ai/zen/go/v1/usage` | `OPENCODE_GO_API_KEY` |
 
-OpenCode Go 控制台的额度以金额计量：每档返回 `usedMicroCents` 与 `limitMicroCents`，卡片显示 `100 × 已用 / 上限` 以及这两个金额。5 小时、本周、本月分别是一个模型月额度的 20%、50%、100%，所以三行通常按这个比例分布。换了可用模型后，控制台在下一次刷新就返回新的上限，这里无需改动。
+OpenCode Go 的 usage 端点按窗口返回已用百分比——`rolling`（5 小时）、`weekly`、`monthly`——以及每档的重置时间，卡片显示这两项。订阅只公布已用占比，不公布对应金额。该端点只凭 API key 回答，因此不设 `orgId`；按工作区限定的控制台端点仍可使用 `orgId`。
 
 ## 计价说明
 

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-taskflow-20261110",
+  "character": "Seven",
+  "legacy_runtime_adapter": false,
+  "asset_overrides": {
+    "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset"
+  },
+  "retention": {"keep_backups_per_group": 3},
+  "source": {"max_scene": "D:/Download/Seven_Skin_New.max"},
+  "crosscheck": {
+    "name": "lid",
+    "control": "CTRL_EYE_LID_R",
+    "max_node": "SYP_R001",
+    "morph_node": "Seven_Head",
+    "max_channel": "position",
+    "max_controller_index": 2,
+    "max_axis": 1,
+    "ui_axis": 2,
+    "ui_scale": 5.714285714285714,
+    "max_values": [0.0, -0.4375, -0.875, -1.3125, -1.75],
+    "bones": ["Bone028", "Bone027", "Eye_R"],
+    "primary_bone": "Bone028",
+    "tolerance": {"primary_position_cm": 0.05, "primary_rotation_deg": 0.15},
+    "note": "right upper lid: Max SYP_R001 Position_List slot 2 axis Y (-1.75..0) maps to UE CTRL_EYE_LID_R Z (0..-10), factor 10/1.75. Bone028 is the driven lid bone, Bone027 a linked secondary bone."
+  },
+  "notes": "Generated from Tools/FaceMigration/TASK.md section 1 for the 2026-11-10 task-sheet flow run. Reference CR_Seven_LidWorldRotation, target NewControlRigRuntimeAsset (empty runtime shell, 149 bones / 0 controls / 1 node / 87 curves), mesh Seven, Max scene D:/Download/Seven_Skin_New.max at frame 0. Section 2 controller names equal the Seven defaults, so sampling-script renames should be a no-op; the run verifies that instead of assuming it."
+}

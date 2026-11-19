@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-reference-adapt-20261110",
+  "character": "Seven",
+  "asset_overrides": {},
+  "source": {"max_scene": "D:/Download/Seven_Skin_New.max"},
+  "notes": "Adapt existing TMp RuntimeAsset using the user-specified LidDiagnostic reference and live Max. Preserve the reference asset; back up target disk, memory and preview before changes."
+}

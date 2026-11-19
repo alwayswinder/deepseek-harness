@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-11-09T16:36:16.402314+08:00",
+  "source": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "engine": "5.8.4-58902052+++UE5+Release-5.8",
+  "backup": "E:\\Unreal\\Projects\\MyProject_5_8\\Saved\\Codex\\Backup\\SevenRuntime_20261109_163615",
+  "source_disk_sha256": "ff8c776cc5f200d8aba074a325ea5e7a6281e51c96c37ca0256bda2887372b11",
+  "graph_export_sha256": "75eb10a3bab319bdedc8e066a07151c6c36ae6a407929d7d7a32f916eb6723f4",
+  "source_nodes": 1926,
+  "source_links": 2639,
+  "passed": true,
+  "target_nodes": 1926,
+  "target_links": 2639,
+  "bones": 149,
+  "controls": 73,
+  "curves": 28,
+  "source_disk_unchanged": true,
+  "saved": true
+}

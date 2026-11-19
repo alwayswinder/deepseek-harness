@@ -184,10 +184,15 @@ window.__ModuleLoader__.load({
       for (const window of QUOTA_WINDOWS) {
         const meter = account.quota[window.key]
         if (meter === undefined) continue
+        // A usage endpoint reports the used share only; keep the amounts when a
+        // console meter happens to carry them.
+        const amounts = Number.isFinite(meter.used) && Number.isFinite(meter.limit)
+          ? h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
+              fmtMoney(account.symbol, meter.used) + ' / ' + fmtMoney(account.symbol, meter.limit))
+          : null
         rows.push(h(Row, { key: window.key, label: window.label }, h('span', null,
           h('span', { style: { fontWeight: 600 } }, fmtPercent(meter.percent)),
-          h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
-            fmtMoney(account.symbol, meter.used) + ' / ' + fmtMoney(account.symbol, meter.limit)),
+          amounts,
           meter.resetsAt
             ? h('span', { style: { color: 'var(--dsw-alias-label-secondary)', fontSize: '11px', marginLeft: '8px' } },
                 fmtReset(meter.resetsAt) + ' 重置')

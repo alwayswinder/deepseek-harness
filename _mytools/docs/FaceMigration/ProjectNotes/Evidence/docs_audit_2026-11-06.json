@@ -1,0 +1,48 @@
+{
+  "assets": {
+    "mesh": true,
+    "old_mesh": false,
+    "face_rig": true,
+    "bone_rig": true,
+    "body_rig": true,
+    "level": true
+  },
+  "face_rig": {
+    "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+    "bones": 0,
+    "controls": 7,
+    "nodes": 29
+  },
+  "bone_rig": {
+    "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+    "bones": 149,
+    "controls": 28,
+    "nodes": 328,
+    "prefix_counts": {
+      "BROW_": 36,
+      "BPT_": 18,
+      "BB_": 43,
+      "BBL_": 43,
+      "EYE_": 96,
+      "LID_": 86
+    }
+  },
+  "body_rig": {
+    "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+    "bones": 439,
+    "controls": 160,
+    "nodes": 302
+  },
+  "morphs": 87,
+  "level_loaded": "/Game/_MyTest/Mouth/L_SevenLipSync.L_SevenLipSync",
+  "actors": [
+    {
+      "label": "SevenLipSyncCamera",
+      "class": "SevenLipSyncActor",
+      "mesh": "<Object '/Game/_MyTest/Mouth/Mesh/Seven.Seven' (0x00000244DABC4600) Class 'SkeletalMesh'>",
+      "body_animation": "<Object '/Game/_MyTest/Mouth/Mesh/5秒台词测试_不带口型_Anim.5秒台词测试_不带口型_Anim' (0x00000245ADAE7000) Class 'AnimSequence'>",
+      "lip_sync_lookahead_ms": "0.0",
+      "gain": "1.0"
+    }
+  ]
+}

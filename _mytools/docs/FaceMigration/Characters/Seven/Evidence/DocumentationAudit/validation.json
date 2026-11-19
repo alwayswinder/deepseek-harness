@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-11-09T16:29:31.407192+08:00",
+  "scope": "Offline documentation and preservation audit only; no editor runtime or visual validation.",
+  "verify_reorganization": true,
+  "passed": true,
+  "counts": {
+    "docs_files": 151,
+    "json_parsed": 107,
+    "markdown_files": 44,
+    "local_links": 308,
+    "reference_controls": 72,
+    "recipe_groups": 15,
+    "python_scripts_parsed": 237,
+    "script_docs_paths": 38,
+    "evidence_data_byte_identical": 107,
+    "protected_scripts_and_assets_byte_identical": 426
+  },
+  "errors": [],
+  "pre_existing_script_parse_issues": [
+    {
+      "path": "Scripts/fix_brow_axis.py",
+      "issue": "(unicode error) 'unicodeescape' codec can't decode bytes in position 2302-2304: truncated \\uXXXX escape (<unknown>, line 1)",
+      "unchanged_from_before": true
+    }
+  ]
+}

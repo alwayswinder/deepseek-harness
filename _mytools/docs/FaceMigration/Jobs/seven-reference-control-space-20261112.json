@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "job_id": "seven-reference-control-space-20261112",
+  "character": "Seven",
+  "layout": {
+    "target": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+    "readonly_asset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+    "head_bone": "head001",
+    "animation": "/Game/_MyTest/Mouth/Mesh/5秒台词测试_不带口型_Anim"
+  },
+  "notes": "用户授权给示例 CR 增加统一头部控制空间；保留控制通道、眼球总控层级及原面部求解。"
+}

@@ -1,0 +1,327 @@
+KPoint062/P/Position Expression EXPR [  if(zuijiao_R.y<0,zuijiao_R.y*0.02,0)    ,   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,-zuijiao_R.z*0.9,-zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.22,zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.113)       ,   if(zuizong.x<0,zuizong.x*-0.02,zuizong.x*-0.268)     ,if(zuizong.x<0,0,zuizong.x*-0.199)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.86,zuizong.z*0.645)       ,   if(zuizong.z<0,-zuizong.z*0.19,zuizong.z*0.637)     ,if(zuizong.z<0,zuizong.z*1,zuizong.z*1.01)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)     ,0  ]
++
+[   zuixia*0.3 +zuixia_R*0.3   ,   zuixia*1+zuixia_R*0.9    ,    -zuixia_R*0.2]
+KPoint062/R/零 Euler XYZ/X Rotation EXPR if(zuijiao_R<0,-zuijiao_R*0.28,-zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.235      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.2      )
+KPoint062/R/零 Euler XYZ/Y Rotation EXPR if(zui_zongX<0,-zui_zongX*0.    ,-zui_zongX*0.5   )
++
+if(zui_zongZ<0,-zui_zongZ*0.09    ,-zui_zongZ*0.699   )
+
+KPoint062/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongX<0 ,-zui_zongX*0.88,-zui_zongX*1      )
+
+Sphere062/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+100/P/零位置 XYZ/X Position EXPR jaw_move
+100/P/零位置 XYZ/Y Position EXPR Line010*0.35-Line010X*0.2
+100/R/零 Euler XYZ/X Rotation EXPR Line010*-0.1
+100/R/零 Euler XYZ/Z Rotation EXPR Line010*-0.1
+KPoint063/P/Position Expression EXPR [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)         ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,-zuijiao_R.z*1.,-zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.5,zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,-zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.347,zuizong.z*0.25)       ,   if(zuizong.z<0,-zuizong.z*0.03,zuizong.z*0.76)     ,if(zuizong.z<0,zuizong.z*0.779,zuizong.z*0.58)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)     ,0  ]
++
+[   zuixia*0.2+zuixia_R*0.2   ,   zuixia*0.6+zuixia_R*0.6    ,   - zuixia_R*0.]
+KPoint063/R/零 Euler XYZ/X Rotation EXPR if(KZuiJiao_R<0,-KZuiJiao_R*0.63,-KZuiJiao_R*0.35)
++
+if(KZuiJiao_Rz<0,0,KZuiJiao_Rz*0.)  
+
+
++
+if(zui_zongX<0 ,0  ,   zui_zongX*0.05      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+KPoint063/R/零 Euler XYZ/Y Rotation EXPR if(KZuiJiao_R<0,-KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.525     )
++
+if(zui_zongZ<0,-zui_zongX*0.    ,-zui_zongZ*0.6   )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.      )
+KPoint063/R/零 Euler XYZ/Z Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,-zui_zongX*0.5,-zui_zongX*0.15     )
+Sphere063/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint064/P/Position Expression EXPR [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)         ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,-zuijiao_R.z*1.,-zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.5,zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,-zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.347,zuizong.z*0.25)       ,   if(zuizong.z<0,-zuizong.z*0,zuizong.z*0.76)     ,if(zuizong.z<0,zuizong.z*0.779,zuizong.z*0.58)   ]
++
+[zuishang_R*0.2      ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)+zuishang.y*0.5+zuishang_R*0.6     ,0  ]
+KPoint064/R/零 Euler XYZ/X Rotation EXPR if(KZuiJiao_R<0,-KZuiJiao_R*0.63,-KZuiJiao_R*0.35)
++
+if(KZuiJiao_Rz<0,0,KZuiJiao_Rz*0.)  
+
+
++
+if(zui_zongX<0 ,0  ,   -zui_zongX*0.04      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+KPoint064/R/零 Euler XYZ/Y Rotation EXPR if(KZuiJiao_R<0,-KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.22     )
++
+if(zui_zongZ<0,-zui_zongZ*0.   ,-zui_zongZ*0.6   )
+KPoint064/R/零 Euler XYZ/Z Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*0.44     )
+Sphere064/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint061/P/Position Expression EXPR [  if(zuijiao_R.y<0,zuijiao_R.y*0.02,0)    ,   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,-zuijiao_R.z*0.9,-zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.22,zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.24)       ,   if(zuizong.x<0,zuizong.x*0.02,zuizong.x*0.3)     ,if(zuizong.x<0,0,-zuizong.x*0.27)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.86,zuizong.z*0.645)       ,   if(zuizong.z<0,-zuizong.z*0.19,zuizong.z*0.637)     ,if(zuizong.z<0,zuizong.z*1,zuizong.z*1.01)   ]
++
+[zuishang.y*0.3 +zuishang_R*0.3     ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)+zuishang.y*1 +zuishang_R*1.1    ,+zuishang_R*0.25 ]
+KPoint061/R/零 Euler XYZ/X Rotation EXPR if(zuijiao_R<0,-zuijiao_R*0.28,-zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.08      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.2      )
+KPoint061/R/零 Euler XYZ/Y Rotation EXPR 
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.45      )
++
+if(zui_zongZ<0,-zui_zongZ*0.09    ,-zui_zongZ*0.699   )
+KPoint061/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*1.35      )
+Sphere061/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+0/P/Position XYZ/X Position EXPR jaw_move*1
+0/P/Position XYZ/Y Position EXPR jaw_move*0.04
+KPoint008/P/Position Expression EXPR [ if(zuijiao_L.z<0,0,zuijiao_L.z*0.025)+if(zuijiao_R.z<0,0,zuijiao_R.z*0.025)     , 0, 0 ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.455)       ,   if(zuizong.x<0,0,zuizong.x*0.475)     ,0   ]
++
+[if(zuizong.z<0,-zuizong.z*0.99,zuizong.z*0.99)       ,   if(zuizong.z<0,-zuizong.z*0.465,zuizong.z*0.465)     ,if(zuizong.z<0,zuizong.z*1.155,zuizong.z*1.155)   ]
++
+[zuishang.y*0.3 +zuishang_R*0.1  +zuishang_L*0.1   ,   if(zuizong.y<0,zuizong.y*1,zuizong.y*1)+zuishang.y*1+zuishang_R*0.5 +zuishang_L*0.5     ,0  ]
+
+KPoint008/R/零 Euler XYZ/X Rotation EXPR if(zui_zongZ<0,-zui_zongZ*0.06    ,-zui_zongZ*0.06   )
+KPoint008/R/零 Euler XYZ/Y Rotation EXPR if(zui_zongZ<0,-zui_zongZ*0.35    ,-zui_zongZ*0.35   )
+KPoint008/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*1.625      )
+Sphere008/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint058/P/Position Expression EXPR [ if(zuijiao_R.y<0,zuijiao_R.y*0.02,0),   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,zuijiao_R.z*0.9,zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,zuijiao_R.y*0.22,-zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.24)       ,   if(zuizong.x<0,zuizong.x*0.02,zuizong.x*0.3)     ,if(zuizong.x<0,0,zuizong.x*0.27)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.645,zuizong.z*0.86)       ,   if(zuizong.z<0,-zuizong.z*0.637,zuizong.z*0.19)     ,if(zuizong.z<0,zuizong.z*1.01,zuizong.z*1.0)   ]
++
+[zuishang.y*0.3 +zuishang_R*0.3       ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)+zuishang.y*1 +zuishang_R*1.1    ,-zuishang_R*0.25  ]
+KPoint058/R/零 Euler XYZ/X Rotation EXPR if(zuijiao_R<0,zuijiao_R*0.28,zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.08      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.2      )
+KPoint058/R/零 Euler XYZ/Y Rotation EXPR if(zui_zongZ<0,-zui_zongZ*0.699     ,-zui_zongZ*0.09   )
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.45      )
+KPoint058/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*1.35      )
+Sphere058/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint057/P/Position Expression EXPR [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)    ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,zuijiao_R.z*1.,zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,zuijiao_R.y*0.5,-zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.25,zuizong.z*0.347)       ,   if(zuizong.z<0,-zuizong.z*0.76,zuizong.z*0.0)     ,if(zuizong.z<0,zuizong.z*0.58,zuizong.z*0.779)   ]
++
+[+zuishang_R*0.2      ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)+ zuishang.y*0.5+zuishang_R*0.6     ,0  ]
+KPoint057/R/零 Euler XYZ/X Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.63,KZuiJiao_R*0.35)
+  
+
+
++
+if(zui_zongX<0 ,0  ,   zui_zongX*0.04      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.4      )
+KPoint057/R/零 Euler XYZ/Y Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.525     )
++
+if(zui_zongZ<0    ,-zui_zongZ*0.6 ,-zui_zongX*0.0  )
+KPoint057/R/零 Euler XYZ/Z Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*0.44     )
+Sphere057/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint060/P/Position Expression EXPR [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)    ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,zuijiao_R.z*1.,zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,zuijiao_R.y*0.5,-zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.25,zuizong.z*0.347)       ,   if(zuizong.z<0,-zuizong.z*0.76,zuizong.z*0.03)     ,if(zuizong.z<0,zuizong.z*0.58,zuizong.z*0.779)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)     ,0  ]
++
+[     zuixia*0.2+zuixia_R*0.2   ,   zuixia*0.6+zuixia_R*0.6    ,    zuixia_R*0.]
+KPoint060/R/零 Euler XYZ/X Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.63,KZuiJiao_R*0.35)
+  
+
+
++
+if(zui_zongX<0 ,-zui_zongX*0.   ,   -zui_zongX*0.05      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.4      )
+KPoint060/R/零 Euler XYZ/Y Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.525     )
++
+if(zui_zongZ<0    ,-zui_zongZ*0.6 ,-zui_zongX*0.0  )
+KPoint060/R/零 Euler XYZ/Z Rotation EXPR if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,-zui_zongX*0.5,-zui_zongX*0.15     )
+Sphere060/P/Position XYZ/Y Position EXPR mouth_move*0.4434
+KPoint059/P/Position Expression EXPR [ if(zuijiao_R.y<0,zuijiao_R.y*0.02,0),   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,zuijiao_R.z*0.9,zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,zuijiao_R.y*0.22,-zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.113)       ,   if(zuizong.x<0,zuizong.x*-0.02,zuizong.x*-0.268)     ,if(zuizong.x<0,0,zuizong.x*0.199)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.645,zuizong.z*0.86)       ,   if(zuizong.z<0,-zuizong.z*0.637,zuizong.z*0.19)     ,if(zuizong.z<0,zuizong.z*1.01,zuizong.z*1.0)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)     ,0  ]
++
+[   zuixia*0.3 +zuixia_R*0.3   ,   zuixia*1+zuixia_R*0.9    ,    zuixia_R*0.2]
+KPoint059/R/零 Euler XYZ/X Rotation EXPR if(zuijiao_R<0,zuijiao_R*0.28,zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.235      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.2      )
+KPoint059/R/零 Euler XYZ/Y Rotation EXPR if(zui_zongX<0,-zui_zongX*0.    ,zui_zongX*0.5   )
++
+if(zui_zongZ<0,-zui_zongZ*0.699     ,-zui_zongZ*0.09   )
+KPoint059/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongX<0 ,-zui_zongX*0.88,-zui_zongX*1      )
+
+Sphere059/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint009/P/Position Expression EXPR [ if(zuijiao_L.z<0,0,zuijiao_L.z*0.025)+if(zuijiao_R.z<0,0,zuijiao_R.z*0.025)     , 0, 0 ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.4185)       ,   if(zuizong.x<0,0,zuizong.x*-0.389)     ,0   ]
++
+[if(zuizong.z<0,-zuizong.z*0.99,zuizong.z*0.99)       ,   if(zuizong.z<0,-zuizong.z*0.465,zuizong.z*0.465)     ,if(zuizong.z<0,zuizong.z*1.155,zuizong.z*1.155)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*1,zuizong.y*1)     ,0  ]
++
+[   zuixia*0.3+zuixia_R*0.1 +zuixia_L*0.1 ,   zuixia*1+zuixia_R*0.4+zuixia_L*0.4    ,    0]
+KPoint009/R/零 Euler XYZ/X Rotation EXPR if(zui_zongZ<0,-zui_zongZ*0.06     ,-zui_zongZ*0.06   )
+KPoint009/R/零 Euler XYZ/Y Rotation EXPR if(zui_zongZ<0,-zui_zongZ*0.35    ,-zui_zongZ*0.35   )
+KPoint009/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongX<0 ,-zui_zongX*0.88,-zui_zongX*0.868      )
+Sphere009/P/零位置 XYZ/Y Position EXPR mouth_move*0.4434
+KPoint010/P/Position Expression EXPR [ if(zuijiaoR.z<0,0  ,zuijiaoR.z*0.117)   ,   0 ,   if(zuijiaoR.z<0,-zuijiaoR.z*0.99  ,-zuijiaoR.z*0.32) ]
++
+[ if(zuijiaoR.y<0,zuijiaoR.y*0.12   ,zuijiaoR.y*0.12  )  ,      if(zuijiaoR.y<0,   zuijiaoR.y*0.6   ,zuijiaoR.y*0.9  ),if(zuijiaoR.y<0,-zuijiaoR.y*0.71,zuijiaoR.y*0.435  )  ]
++
+[   if(zui_zong.x<0,-zui_zong.x*0.1, zui_zong.x*0.5)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.7)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.74, -zui_zong.z*0.)    ,   if(zui_zong.z<0,zui_zong.z*0.34, zui_zong.z*0.22)    ,   if(zui_zong.z<0,zui_zong.z*0.66, zui_zong.z*0.42)    ]
++
+[if(zui_zong.y<0,-zui_zong.y*0.05,-zui_zong.y*0.165)     ,   if(zui_zong.y<0,zui_zong.y*0.5,zui_zong.y*0.63)     ,if(zui_zong.y<0,zui_zong.y*0.19,zui_zong.y*.24)   ]
++
+[0  ,zuishang.y*0.3+zuishang_R*0.5,0]
++
+[if(liandan.x<0,liandan.x*0.16,liandan.x*0.2)+if(liandan.z<0,-liandan.z*0.,0),0,if(liandan.z<0,liandan.z*0.3,liandan.z*0.5)]
+KPoint010/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+KPoint011/P/Position Expression EXPR [ if(zuijiaoR.z<0,0  ,zuijiaoR.z*0.117)   ,   0 ,   if(zuijiaoR.z<0,zuijiaoR.z*0.99  ,zuijiaoR.z*0.32) ]
++
+[ if(zuijiaoR.y<0,zuijiaoR.y*0.12,zuijiaoR.y*0.12  )  ,      if(zuijiaoR.y<0,zuijiaoR.y*0.6,zuijiaoR.y*0.9  ),if(zuijiaoR.y<0,zuijiaoR.y*0.71,-zuijiaoR.y*0.435  )  ]
++
+[   if(zui_zong.x<0,-zui_zong.x*0.1, zui_zong.x*0.5)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, zui_zong.x*0.7)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0., zui_zong.z*0.74)    ,   if(zui_zong.z<0,-zui_zong.z*0.22, -zui_zong.z*0.34)    ,   if(zui_zong.z<0, zui_zong.z*0.42,zui_zong.z*0.66)    ]
++
+[if(zui_zong.y<0,-zui_zong.y*0.05,-zui_zong.y*0.165)     ,   if(zui_zong.y<0,zui_zong.y*0.5,zui_zong.y*0.63)     ,if(zui_zong.y<0,-zui_zong.y*0.19,-zui_zong.y*.24)  ]
++
+[0,zuishang.y*0.3+zuishang_R*0.5,0]
++
+[if(liandan.x<0,liandan.x*0.16,liandan.x*0.2)+if(liandan.z<0,liandan.z*0,liandan.z*0.),0,if(liandan.z<0,liandan.z*0.5,liandan.z*0.3)]
+KPoint011/R/零 Euler XYZ/Z Rotation EXPR if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+KPoint012/P/Position Expression EXPR [ if(zuijiaoR.z<0,-zuijiaoR.z*0.23  ,-zuijiaoR.z*0.05)   ,   0 ,   if(zuijiaoR.z<0,zuijiaoR.z*1.  ,zuijiaoR.z*0.36) ]
++
+[ if(zuijiaoR.y<0,zuijiaoR.y*0.435,zuijiaoR.y*0.35  )  ,      if(zuijiaoR.y<0,zuijiaoR.y*0.98,zuijiaoR.y*0.1  ),if(zuijiaoR.y<0,-zuijiaoR.y*0.378,-zuijiaoR.y*0.59  )  ]
++
+[   if(zui_zong.x<0, -zui_zong.x*0.3,0)    ,   if(zui_zong.x<0,0, zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, zui_zong.x*0.3)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.54, zui_zong.z*0.56)    ,   if(zui_zong.z<0, -zui_zong.z*0.32,zui_zong.z*0.1)    ,   if(zui_zong.z<0,-zui_zong.z*0., zui_zong.z*1.2)    ]
++
+[if(zui_zong.y<0,zui_zong.y*0.46,zui_zong.y*0.1)     ,   if(zui_zong.y<0,zui_zong.y*0.88,zui_zong.y*0.45)     ,if(zui_zong.y<0,-zui_zong.y*0.36,zui_zong.y*0.5)   ]
++
+[if(liandan.z<0,liandan.z*0,liandan.z*0.214),0,if(liandan.z<0,liandan.z*0.44,liandan.z*0.2)]
+KPoint012/R/零 Euler XYZ/X Rotation EXPR if(zuijiao_R<0,zuijiao_R*0.29,0)
+KPoint014/P/Position Expression EXPR [ if(zuijiaoR.z<0,-zuijiaoR.z*0.23  ,-zuijiaoR.z*0.05)   ,   0 ,   if(zuijiaoR.z<0,-zuijiaoR.z*1.  ,-zuijiaoR.z*0.36) ]
++
+[ if(zuijiaoR.y<0,zuijiaoR.y*0.435,zuijiaoR.y*0.35  )  ,      if(zuijiaoR.y<0,zuijiaoR.y*0.98,zuijiaoR.y*0.1  ),if(zuijiaoR.y<0,zuijiaoR.y*0.378,zuijiaoR.y*0.59  )  ]
++
+[   if(zui_zong.x<0, -zui_zong.x*0.3,0)  ,   if(zui_zong.x<0,0, zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.3)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.56, zui_zong.z*0.54)    ,   if(zui_zong.z<0,-zui_zong.z*0.1, zui_zong.z*0.32)    ,   if(zui_zong.z<0,zui_zong.z*1.2, -zui_zong.z*0.)    ]
++
+[if(zui_zong.y<0,zui_zong.y*0.46,zui_zong.y*0.1)     ,   if(zui_zong.y<0,zui_zong.y*0.88,zui_zong.y*0.45)     ,if(zui_zong.y<0,zui_zong.y*0.36,-zui_zong.y*0.5)   ]
++
+[if(liandan.z<0,-liandan.z*0.214,0),0,if(liandan.z<0,liandan.z*0.2,liandan.z*0.44)]
+KPoint014/R/冻结旋转/X Rotation EXPR if(zuijiao_R<0,zuijiao_R*-0.29,0)
+KPoint056/P/Position Expression EXPR [ -zuijiao_R.z*0.2+ if(zuijiao_R.y<0 ,zuijiao_R.y*0.184, zuijiao_R.y*0.76)         ,  
+ if(zuijiao_R.y<0 ,zuijiao_R.y*1.322, zuijiao_R.y*1)   ,   
+if(zuijiao_R.z<0,-zuijiao_R.z*1. ,-zuijiao_R.z*0.6)+if(zuijiao_R.y<0 ,-zuijiao_R.y*0.5,zuijiao_R.y*0.5 )]   
++
+[ Line010.y*0.02          ,         0          ,- Line010.y*0.02 ]
++
+[   if(zui_zong.x<0,-zui_zong.x*0.1, zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.6)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.4, zui_zong.z*0.4)    ,   if(zui_zong.z<0,0, zui_zong.z*0.8)    ,   if(zui_zong.z<0, zui_zong.z*0.5,0)    ]
++
+[if(liandan.x<0,liandan.x*0.2,liandan.x*0.63)+if(liandan.z<0,-liandan.z*0.5,0),0,if(liandan.z<0,liandan.z*0.4,liandan.z*0.5)]
+KPoint055/P/Position Expression EXPR [ -zuijiao_R.z*0.2+ if(zuijiao_R.y<0 ,zuijiao_R.y*0.4, zuijiao_R.y*0.76),  
+ if(zuijiao_R.y<0 ,zuijiao_R.y*1.322, zuijiao_R.y*1), 
+if(zuijiao_R.z<0,zuijiao_R.z*1. ,zuijiao_R.z*0.6)+if(zuijiao_R.y<0 ,zuijiao_R.y*0.5,-zuijiao_R.y*0.5 ) ]
++
+[ Line010.y*0.02          ,         0          , Line010.y*0.02 ]
++
+[   if(zui_zong.x<0,-zui_zong.x*0.1, zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.)    ,   if(zui_zong.x<0,0, zui_zong.x*0.6)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.4, zui_zong.z*0.4)    ,   if(zui_zong.z<0, -zui_zong.z*0.8,0)    ,   if(zui_zong.z<0,0, zui_zong.z*0.5)    ]
++
+[if(liandan.x<0,liandan.x*0.2,liandan.x*0.63)+if(liandan.z<0,liandan.z*0,liandan.z*0.5),0,if(liandan.z<0,liandan.z*0.5,liandan.z*0.4)]
+KPoint039/P/Position Expression EXPR [ if(zuijiaoR.z<0,-zuijiaoR.z*0.1  ,-zuijiaoR.z*0.05)   ,   0 ,   if(zuijiaoR.z<0,zuijiaoR.z*0.7  ,zuijiaoR.z*0.05) ]
++
+[ if(zuijiaoR.y<0,-zuijiaoR.y*0.09,zuijiaoR.y*0.11  )  ,      if(zuijiaoR.y<0,zuijiaoR.y*0.72,zuijiaoR.y*0.52  ),if(zuijiaoR.y<0,zuijiaoR.y*0.42,zuijiaoR.y*0.04  )  ]
++
+
+[0,          Line010*0.08+xiaba*0.5               ,0]
++
+[   if(zui_zong.x<0,0, -zui_zong.x*0.1)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, zui_zong.x*0.1)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.15, -zui_zong.z*0.25)    ,   if(zui_zong.z<0,-zui_zong.z*0.5, -zui_zong.z*0.)    ,   if(zui_zong.z<0,zui_zong.z*0., zui_zong.z*0.58)    ]
++
+[if(zui_zong.y<0,-zui_zong.y*0.22,-zui_zong.y*.22)     ,   if(zui_zong.y<0,zui_zong.y*0.25,zui_zong.y*0.64)     ,if(zui_zong.y<0,-zui_zong.y*0,-zui_zong.y*0.2)  ]
++
+[if(liandan.x<0,liandan.x*0.15,liandan.x*0.28)+if(liandan.z<0,liandan.z*0,liandan.z*0.3),0, if(liandan.z<0,liandan.z*0.38,liandan.z*0.22) ]
+KPoint033/P/Position Expression EXPR [ if(zuijiaoR.z<0,-zuijiaoR.z*0.1  ,-zuijiaoR.z*0.05)   ,   0 ,   if(zuijiaoR.z<0,-zuijiaoR.z*0.7  ,-zuijiaoR.z*0.05) ]
++
+[ if(zuijiaoR.y<0,-zuijiaoR.y*0.09,zuijiaoR.y*0.11  )  ,      if(zuijiaoR.y<0,zuijiaoR.y*0.72,zuijiaoR.y*0.52  ),if(zuijiaoR.y<0,-zuijiaoR.y*0.42,-zuijiaoR.y*0.04  )  ]
++
+[0,          Line010*0.08 +xiaba*0.5              ,0]
+
++
+[   if(zui_zong.x<0,0, -zui_zong.x*0.1)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.1)    ]
++
+[   if(zui_zong.z<0,zui_zong.z*0.25, zui_zong.z*0.15)    ,   if(zui_zong.z<0,zui_zong.z*0., zui_zong.z*0.5)    ,   if(zui_zong.z<0,zui_zong.z*0.58, zui_zong.z*0.)    ]
++
+[if(zui_zong.y<0,-zui_zong.y*0.22,-zui_zong.y*.22)     ,   if(zui_zong.y<0,zui_zong.y*.25,zui_zong.y*0.64)     ,if(zui_zong.y<0,zui_zong.y*0,zui_zong.y*0.2)  ]
++
+[if(liandan.x<0,liandan.x*0.15,liandan.x*0.28)+if(liandan.z<0,-liandan.z*0.3,0),0, if(liandan.z<0,liandan.z*0.22,liandan.z*0.38) ]
+KPoint024/P/Position Expression EXPR [ Line010.y*0.1                 ,                 Line009*0.1   +xiaba*-0.2          ,                        0 ]
++
+[ if(zuijiao_R.y<0,zuijiao_R.y*-0.,zuijiao_R.y*1.35    )  ,    zuijiao_R.y*0.8    ,    zuijiao_R.z*1+  if(zuijiao_R.y<0,-zuijiao_R.y*0.1,zuijiao_R.y*0.9    )  ]
++
+[   if(zui_zong.x<0,0, zui_zong.x*0.)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.)    ,   if(zui_zong.x<0,0, zui_zong.x*0.3)    ]
++
+[if(liandan.x<0,liandan.x*0.62,liandan.x*2.47)+if(liandan.z<0,liandan.z*0,liandan.z*2.05)  ,0   ,    if(liandan.z<0,liandan.z*1.03,liandan.z*0.83)     ]
+KPoint015/P/Position Expression EXPR [ Line010.y*0.1                 ,                 xiaba*-0.2           ,                        0 ]
++
+[ if(zuijiao_R.y<0,zuijiao_R.y*-0.,zuijiao_R.y*1.35    )      ,    zuijiao_R.y*0.8    ,    -zuijiao_R.z*1+ if(zuijiao_R.y<0,zuijiao_R.y*0.1,-zuijiao_R.y*0.9    )   ]
++
+[   if(zui_zong.x<0,0, zui_zong.x*0.)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.3)    ]
++
+[if(liandan.x<0,liandan.x*0.62,liandan.x*2.47)+if(liandan.z<0,-liandan.z*2.05,0)  ,0   ,    if(liandan.z<0,liandan.z*0.83,liandan.z*1.03)     ]

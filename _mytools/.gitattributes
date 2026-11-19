@@ -29,3 +29,7 @@ favorites/bookmarks.yml text eol=lf
 
 # The favicons beside it are PNG images, read byte for byte and never diffed.
 favorites/assets/** binary
+
+# Guide screenshots are PNG too: byte-addressed, and no checkout should ever
+# rewrite their line endings.
+docs/**/images/** binary

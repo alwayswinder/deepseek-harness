@@ -1,0 +1,10 @@
+# 本目录是可整体复制到 UE 项目 Tools/FaceMigration 的证据包，
+# preservation.manifest.json 对 175 个冻结文件按原始字节校验 sha256
+# （Scripts/validate_face_docs.py 用 read_bytes() 比对）。
+# 关闭换行规范化，否则 clone 时 CRLF 转 LF 会让冻结哈希不匹配。
+* -text
+**/* -text
+
+# 证据文本（Max 表达式导出）本身就带行尾空白，不交给 git 的 whitespace 关卡。
+* whitespace=-trailing-space,-blank-at-eof
+**/* whitespace=-trailing-space,-blank-at-eof

@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-11-09T16:44:37.142405+08:00",
+  "asset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "nodes": 1926,
+  "controls": 73,
+  "bones": 149,
+  "curve_count": 28,
+  "curves": [
+    "1_qi_l_es",
+    "1_nu_l_es",
+    "1_you_l_es",
+    "1_happy_l_es",
+    "1_qi_r_es",
+    "1_nu_r_es",
+    "1_you_r_es",
+    "1_happy_r_es"
+  ],
+  "source_cases": 53,
+  "regression_cases": 111,
+  "source_curve_error": 3.5555755562022284e-08,
+  "bone_position_error_cm": 3.6178778619554834e-10,
+  "bone_rotation_error_deg": 4.829673078902933e-06,
+  "bone_scale_error": 0,
+  "endpoint_error_cm": 0,
+  "repeat_curve_error": 0,
+  "passed": true,
+  "mixed_cases": 111,
+  "reset_passed": true,
+  "limits_passed": true
+}

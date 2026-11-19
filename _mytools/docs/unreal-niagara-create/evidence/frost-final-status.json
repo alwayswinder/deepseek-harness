@@ -1,0 +1,25 @@
+{
+  "blueprintErrors": [],
+  "systems": [
+    {
+      "asset": "NS_FrostOrb",
+      "status": "UpToDate",
+      "errors": false,
+      "warnings": false
+    },
+    {
+      "asset": "NS_FrostImpact",
+      "status": "UpToDate",
+      "errors": false,
+      "warnings": false
+    }
+  ],
+  "selectedActor": "FrostChain_MCP",
+  "idle": true,
+  "autoPlayOnceAtBeginPlay": true,
+  "targets": [
+    "Cube",
+    "Cube2",
+    "Cube3"
+  ]
+}

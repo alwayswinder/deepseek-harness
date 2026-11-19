@@ -1393,17 +1393,20 @@ async function readGitCommit(root, hash) {
 /**
  * Answer one Git read as JSON.
  *
- * Every Git route here is a read a page asked for, so they share one frame: GET
- * only, and a JSON body that is always 200 — a directory outside every
+ * Every Git route here is a read a page asked for, so they share one frame:
+ * GET only, and a JSON body that is always 200 — a directory outside every
  * repository is an answer the page renders, not a transport failure. The
- * WebServer admits the request before this runs, so the route adds no guard of
- * its own.
+ * webserver's `webserver/authorize` hook settles Host/Origin and browser
+ * authentication before any handler runs, so no route repeats that check.
  * @param ctx - host context, for the logger.
  * @param req - the request.
  * @param res - the response.
  * @param read - produces the payload for one request's query parameters.
  */
 function serveGitRead(ctx, req, res, read) {
+  // The trust fence runs in the webserver's `webserver/authorize` hook before
+  // any handler: Host/Origin checks and browser authentication are already
+  // settled here, so a route only has to pick the method it answers.
   if (req.method !== 'GET') {
     res.writeHead(405)
     res.end()
@@ -1422,7 +1425,7 @@ function serveGitRead(ctx, req, res, read) {
 
 /**
  * Run the Git page's explicit mutation and answer with its refreshed listing.
- * @param ctx - host context providing the logger.
+ * @param ctx - host context providing logging.
  * @param req - the request; only POST is accepted.
  * @param res - the response.
  * @param run - performs the mutation for the request's query parameters.
@@ -1488,7 +1491,7 @@ function readJsonBody(req, limit) {
  * result. The list routes use it because a selection is a list: it is the same
  * POST-only frame as {@link serveGitMutation}, with the body in place of the
  * query.
- * @param ctx - host context providing the logger.
+ * @param ctx - host context providing logging.
  * @param req - the request; only POST is accepted.
  * @param res - the response.
  * @param run - performs the mutation for the parsed body, which is undefined
@@ -2305,13 +2308,11 @@ export function apply(ctx, config) {
 
   // The editable page, and the route it saves through. The pet's menu opens this
   // one in DSH's own Browser tab rather than the system browser because only a
-  // page DSH served reaches these routes with the credential their WebServer
-  // entry requires; the file beside the library stays the read-only copy for
-  // everything else.
+  // page DSH served carries the browser credential these routes sit behind; the
+  // file beside the library stays the read-only copy for everything else.
   ctx.inject(['webServer'], (webCtx) => {
     /**
-     * Whether a request may be answered: the WebServer admits the caller before
-     * this runs, so only the method this route takes is left to check.
+     * Whether a request may be answered: the method this route takes.
      * @param req - the request.
      * @param res - the response.
      * @param method - the method this route accepts.
@@ -2839,8 +2840,7 @@ export function apply(ctx, config) {
   // command file, which works with no page listening.
   ctx.inject(['webServer'], (webCtx) => {
     /**
-     * Whether a request may be answered: the WebServer admits the caller before
-     * this runs, so only the method is left to check. A refusal is written here
+     * Whether a request may be answered: the method. A refusal is written here
      * rather than left to the caller.
      * @param req - the request.
      * @param res - the response.

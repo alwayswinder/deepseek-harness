@@ -1,0 +1,43 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write _mytools/docs/unreal-niagara-create/README.md
+/unreal-niagara-creation-guide:
+  en: a68e58166c615abf
+  zh: e0c11e9d65a6c9b2
+/unreal-niagara-creation-guide/summary:
+  en: de27f41cc077faf0
+  zh: f2838c30f7749405
+/unreal-niagara-creation-guide/contents:
+  en: 57d45dbe79a3cd11
+  zh: 334fbbaf88ed2997
+/unreal-niagara-creation-guide/prepare-the-environment:
+  en: 7d6eeb601c2113a1
+  zh: afeb43632e1ad6af
+/unreal-niagara-creation-guide/play-effects-in-the-level:
+  en: 4a432c5e5681cf87
+  zh: d4fe460963308105
+/unreal-niagara-creation-guide/play-effects-in-the-level/continuously-bouncing-frost-orb:
+  en: 84b63084cab4f7b7
+  zh: 094883ba17444afe
+/unreal-niagara-creation-guide/play-effects-in-the-level/triggered-chain-lightning:
+  en: 860c855956af4b62
+  zh: 2baa6b3aee3d38ce
+/unreal-niagara-creation-guide/play-effects-in-the-level/sky-lightning-strike-zeus-ultimate:
+  en: cffb2e335caccf60
+  zh: bb01d552865d5223
+/unreal-niagara-creation-guide/play-effects-in-the-level/blue-spiral-magic-circle:
+  en: e8f82278ee04bebd
+  zh: 3975130fc52be610
+/unreal-niagara-creation-guide/create-a-new-effect:
+  en: 744701133d1f81cc
+  zh: d575e056203bb5ef
+/unreal-niagara-creation-guide/verification-results:
+  en: 119256dc050b7909
+  zh: 757775ac79d9c13a
+/unreal-niagara-creation-guide/further-reading:
+  en: 10c9f9fd8c976119
+  zh: 2b768c1697e7cff2
+/unreal-niagara-creation-guide/maintenance:
+  en: 5abe6c0a5fe7e691
+  zh: c6f2cb822ce40cce

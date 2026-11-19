@@ -1,0 +1,17 @@
+{
+  "captured_at": "2026-11-06T15:11:44.324124+08:00",
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "backup": "E:\\Unreal\\Projects\\MyProject_5_8\\Saved\\Codex\\Backup\\CheekAxes_20261106_151136",
+  "source_cases": 54,
+  "bones_per_case": 149,
+  "bones_max_position_change_cm": 0.0,
+  "bones_max_rotation_change_deg": 0.0,
+  "handle_max_world_position_change_cm": 1.212517929616297e-06,
+  "nodes": 650,
+  "original_execution_links_preserved": true,
+  "blue_z_reversed": true,
+  "input_z_sign": -1,
+  "preview_restored": true,
+  "validation_after_reload_passed": true,
+  "saved": true
+}

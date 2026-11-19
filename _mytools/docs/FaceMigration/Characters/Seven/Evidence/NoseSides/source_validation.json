@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "samples": 103,
+  "bones": 149,
+  "morph_channels": 98,
+  "position_fit_error_cm": 2.209421695729471e-05,
+  "rotation_fit_error_deg": 3.423621675895667e-05,
+  "scale_error": 1.8000000009029313e-07,
+  "other_bone_error": 0,
+  "morphs_changed": false,
+  "raw_inputs_restored": true,
+  "formula": "AngleRadians=0.2*(MaxRight.Y-MaxLeft.Y); UE delta around global +Y"
+}

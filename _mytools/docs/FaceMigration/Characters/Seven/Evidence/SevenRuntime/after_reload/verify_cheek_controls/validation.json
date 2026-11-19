@@ -1,0 +1,147 @@
+{
+  "captured_at": "2026-11-09T16:45:07.896442+08:00",
+  "asset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "status": "RuntimeAsset: fresh instance execution validated; no BlueprintStatus",
+  "nodes": 1926,
+  "controls": 73,
+  "bones": 149,
+  "source_cases": 54,
+  "max_position_error_cm": 0.016659868272609908,
+  "max_rotation_error_deg": 0.41025693753586195,
+  "max_scale_error": 1.1236102527091977e-06,
+  "non_target_max_position_cm": 0.0,
+  "max_position_delta_error_cm": 0.0001001779666394113,
+  "max_rotation_delta_error_deg": 0.0,
+  "source_max_rotation_change_deg": 0.0,
+  "source_max_scale_change": 0.0,
+  "non_target_max_rotation_deg": 4.829673078902933e-06,
+  "non_target_max_scale_error": 0.0,
+  "regression_max_position_cm": 1.7763568394002505e-15,
+  "regression_max_rotation_deg": 4.829673078902933e-06,
+  "regression_max_scale_error": 0.0,
+  "mixed_max_position_cm": 8.391267138858378e-08,
+  "mixed_max_rotation_deg": 4.829673078902933e-06,
+  "mixed_max_scale_error": 0.0,
+  "control_basis_max_error": 1.861630971869045e-07,
+  "repeat_solve_max_position_cm": 0.0,
+  "limits": [
+    {
+      "control": "CTRL_CHEEK_R",
+      "input": [
+        -20,
+        5,
+        20
+      ],
+      "actual": [
+        -10.0,
+        0.0,
+        10.0
+      ]
+    },
+    {
+      "control": "CTRL_CHEEK_R",
+      "input": [
+        20,
+        -5,
+        -20
+      ],
+      "actual": [
+        10.0,
+        0.0,
+        -10.0
+      ]
+    },
+    {
+      "control": "CTRL_CHEEK_L",
+      "input": [
+        -20,
+        5,
+        20
+      ],
+      "actual": [
+        -10.0,
+        0.0,
+        10.0
+      ]
+    },
+    {
+      "control": "CTRL_CHEEK_L",
+      "input": [
+        20,
+        -5,
+        -20
+      ],
+      "actual": [
+        10.0,
+        0.0,
+        -10.0
+      ]
+    }
+  ],
+  "neutral_reference_differences": {
+    "pingguoji_R": {
+      "position_cm": 0.00025183682254463507,
+      "rotation_deg": 0.00022661539409056462,
+      "scale_error": 6.116870114574586e-07
+    },
+    "yandai2_R": {
+      "position_cm": 0.0002622039858191961,
+      "rotation_deg": 0.00024359944124090517,
+      "scale_error": 1.1236102527091977e-06
+    },
+    "renzhong_R": {
+      "position_cm": 0.0002486052462778322,
+      "rotation_deg": 0.00011952831047522856,
+      "scale_error": 6.11893373451106e-07
+    },
+    "renzhong_L": {
+      "position_cm": 0.0002478901782106604,
+      "rotation_deg": 0.0002407702232990964,
+      "scale_error": 6.11882341613892e-07
+    },
+    "xiabake_L": {
+      "position_cm": 0.00023538779591922415,
+      "rotation_deg": 0.00021809196169470362,
+      "scale_error": 5.838266136955423e-07
+    },
+    "xiabake_R": {
+      "position_cm": 0.00023680610329857715,
+      "rotation_deg": 0.00024302423514598712,
+      "scale_error": 4.800140628894891e-07
+    },
+    "Bone015": {
+      "position_cm": 0.000242822796165053,
+      "rotation_deg": 0.00023115675114291495,
+      "scale_error": 3.841874542518169e-07
+    },
+    "Bone014": {
+      "position_cm": 0.00024140383926835865,
+      "rotation_deg": 0.00022282020095018733,
+      "scale_error": 7.689573048373663e-07
+    },
+    "yandai2_L": {
+      "position_cm": 0.00025844469933395363,
+      "rotation_deg": 0.0002230425438233489,
+      "scale_error": 6.462197768870927e-07
+    },
+    "pingguoji_L": {
+      "position_cm": 0.00025104917203685675,
+      "rotation_deg": 0.00022306868723829227,
+      "scale_error": 5.99999999995049e-07
+    },
+    "lianjia_R": {
+      "position_cm": 0.016648936604233715,
+      "rotation_deg": 0.41025693753586195,
+      "scale_error": 7.61562994094065e-07
+    },
+    "lianjia_L": {
+      "position_cm": 0.0002650169968041111,
+      "rotation_deg": 0.0004076462953046126,
+      "scale_error": 5.077046385525337e-07
+    }
+  },
+  "return_neutral_max_position_cm": 0.0,
+  "regression_cases": 107,
+  "mixed_cases": 214,
+  "passed": true
+}

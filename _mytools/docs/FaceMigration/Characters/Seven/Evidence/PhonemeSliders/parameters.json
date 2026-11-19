@@ -1,0 +1,333 @@
+{
+  "scene": "D:/Download/Seven_Skin_New.max",
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "source_limit": 1,
+  "travel_cm": 8,
+  "side": "character_left_player_view_right_beside_expressions",
+  "control_offset_rotation": [
+    0,
+    0,
+    0,
+    1
+  ],
+  "travel_direction_global": [
+    1,
+    0,
+    0
+  ],
+  "rows": [
+    {
+      "source": "a_FV_ctrl01",
+      "control": "CTRL_PHONEME_A_FV_01",
+      "display_name": "a_FV_ctrl01",
+      "morphs": [
+        {
+          "name": "1_jian",
+          "source_object": "Seven_Head",
+          "source_channel": 59,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        164
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "b_FV_ctrl002",
+      "control": "CTRL_PHONEME_B_FV_002",
+      "display_name": "b_FV_ctrl002",
+      "morphs": [
+        {
+          "name": "1_xiaozhang",
+          "source_object": "Seven_Head",
+          "source_channel": 60,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        160
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "c_FV_ctrl003",
+      "control": "CTRL_PHONEME_C_FV_003",
+      "display_name": "c_FV_ctrl003",
+      "morphs": [
+        {
+          "name": "1_nu",
+          "source_object": "Seven_Head",
+          "source_channel": 61,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        156
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "A_ctrl",
+      "control": "CTRL_PHONEME_A",
+      "display_name": "A_ctrl",
+      "morphs": [
+        {
+          "name": "1_happy",
+          "source_object": "Seven_Head",
+          "source_channel": 62,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        152
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "EE_ctrl",
+      "control": "CTRL_PHONEME_EE",
+      "display_name": "EE_ctrl",
+      "morphs": [
+        {
+          "name": "1_you",
+          "source_object": "Seven_Head",
+          "source_channel": 63,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        148
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "FV_ctrl",
+      "control": "CTRL_PHONEME_FV",
+      "display_name": "FV_ctrl",
+      "morphs": [
+        {
+          "name": "1_qi",
+          "source_object": "Seven_Head",
+          "source_channel": 64,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        144
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "GNK_ctrl",
+      "control": "CTRL_PHONEME_GNK",
+      "display_name": "GNK_ctrl",
+      "morphs": [
+        {
+          "name": "1_hellow",
+          "source_object": "Seven_Head",
+          "source_channel": 65,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        140
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "MBP_ctrl",
+      "control": "CTRL_PHONEME_MBP",
+      "display_name": "MBP_ctrl",
+      "morphs": [
+        {
+          "name": "1_yi",
+          "source_object": "Seven_Head",
+          "source_channel": 66,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        136
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "SH_ctrl",
+      "control": "CTRL_PHONEME_SH",
+      "display_name": "SH_ctrl",
+      "morphs": [
+        {
+          "name": "1_xiu",
+          "source_object": "Seven_Head",
+          "source_channel": 67,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        132
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "W_ctrl",
+      "control": "CTRL_PHONEME_W",
+      "display_name": "W_ctrl",
+      "morphs": [
+        {
+          "name": "1_hou",
+          "source_object": "Seven_Head",
+          "source_channel": 68,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        128
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "Other_ctrl",
+      "control": "CTRL_PHONEME_OTHER",
+      "display_name": "Other_ctrl",
+      "morphs": [
+        {
+          "name": "1_jing",
+          "source_object": "Seven_Head",
+          "source_channel": 69,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        124
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    },
+    {
+      "source": "a_A_ctrl02",
+      "control": "CTRL_PHONEME_A_A_02",
+      "display_name": "a_A_ctrl02",
+      "morphs": [
+        {
+          "name": "1_pa",
+          "source_object": "Seven_Head",
+          "source_channel": 70,
+          "gain": 1,
+          "baseline": 0,
+          "fit_error": 0
+        }
+      ],
+      "origin": [
+        34,
+        18,
+        120
+      ],
+      "color": [
+        1,
+        0.8,
+        0.12,
+        1
+      ]
+    }
+  ],
+  "fit_error": 3.599999998105119e-8
+}

@@ -1,0 +1,12 @@
+import { launch, gameUrl } from './harness.mjs';
+const b = await launch({ headless:true, args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-gpu-sandbox']});
+const p = await b.newPage({ viewport:{width:1280,height:720} });
+p.on('pageerror', e=>console.log('ERR', e.message));
+await p.goto(gameUrl('?fixed=1'));
+await p.waitForFunction(()=>window.__dusk && __dusk.Game.state==='title', null, {timeout:60000});
+await p.waitForTimeout(2200);
+console.log('spawn', await p.evaluate(()=>__dusk.World.spawn));
+await p.evaluate(()=>__dusk.startGame());
+await p.waitForTimeout(800);
+console.log('after', await p.evaluate(()=>({t:__dusk.Game.time, mt:__dusk.Player.missionTime, pos:__dusk.Player.pos, spawn:__dusk.World.spawn, started:__dusk.Game.started, fps:__dusk.Game.fps})));
+await b.close();

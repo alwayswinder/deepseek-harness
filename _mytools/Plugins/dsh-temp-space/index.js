@@ -340,24 +340,6 @@ function sendJson(res, payload, status = 200) {
 }
 
 /**
- * Refuse one request the connection does not trust, exactly as the harness's own
- * routes do. The page is same-origin, so its cookie and Host pass; a request
- * from anywhere else is answered here and never reaches a handler.
- * @param ctx - host context, for the connection service.
- * @param req - the request.
- * @param res - the response.
- * @returns whether the request may proceed.
- */
-function admit(ctx, req, res) {
-  const connection = ctx.get('connection')
-  const rejection = connection === undefined ? undefined : connection.requestRejection(req)
-  if (rejection === undefined) return true
-  res.writeHead(rejection)
-  res.end()
-  return false
-}
-
-/**
  * Turn one name into something a directory on this machine can hold: no path
  * separators, no traversal, no control characters, no Windows device name, and
  * a bounded length. The extension is what the blob route serves the file as, so
@@ -954,7 +936,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: STATE_PATH,
       handler: (req, res) => {
-        if (!admit(ctx, req, res)) return
         const dir = activeDir
         const { filesDir, statePath } = pathsOf(dir)
         if (req.method === 'GET') {
@@ -1017,7 +998,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: SPACE_PATH,
       handler: (req, res) => {
-        if (!admit(ctx, req, res)) return
         if (req.method === 'GET') {
           void (async () => {
             // One snapshot per request: a path switch landing mid-read must not
@@ -1162,7 +1142,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: BLOB_PATH,
       handler: (req, res) => {
-        if (!admit(ctx, req, res)) return
         const dir = activeDir
         const { filesDir } = pathsOf(dir)
         const query = new URL(req.url ?? '', 'http://localhost').searchParams
@@ -1252,7 +1231,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: GIT_PATH,
       handler: (req, res) => {
-        if (!admit(ctx, req, res)) return
         const dir = activeDir
         const space = ensureSpace(dir)
         if (!space.ok) { sendJson(res, space, 409); return }
@@ -1283,7 +1261,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: REVEAL_PATH,
       handler: (req, res) => {
-        if (!admit(ctx, req, res)) return
         if (req.method !== 'POST') {
           res.writeHead(405, { allow: 'POST' })
           res.end()
@@ -1319,7 +1296,6 @@ export function apply(ctx, config) {
       kind: 'exact',
       path: CLIPBOARD_PATH,
       handler: (req, res) => {
-        if (!admit(ctx, req, res)) return
         if (req.method !== 'POST') {
           res.writeHead(405, { allow: 'POST' })
           res.end()

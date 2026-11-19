@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "reference_rows": 72,
+  "blank_template_rows": 72,
+  "requested_or_mirrored": 46,
+  "existing_base": 26,
+  "unique_roles": true,
+  "unique_max_names": true,
+  "recipe_files_exist": true,
+  "evidence_paths_exist": true,
+  "markdown_template_role_rows": 72
+}

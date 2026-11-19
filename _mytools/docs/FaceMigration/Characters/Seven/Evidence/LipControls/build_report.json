@@ -1,0 +1,20 @@
+{
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "backup": "E:\\Unreal\\Projects\\MyProject_5_8\\Saved\\Codex\\Backup\\LipControls_20261106_142901",
+  "nodes_before": 394,
+  "nodes_after": 506,
+  "controls_after": 36,
+  "new_controls": [
+    "CTRL_LIP_UP_L",
+    "CTRL_LIP_UP_C",
+    "CTRL_LIP_UP_R",
+    "CTRL_LIP_LOW_R",
+    "CTRL_LIP_LOW_C",
+    "CTRL_LIP_LOW_L"
+  ],
+  "original_execution_links_preserved": true,
+  "added_setters": 12,
+  "regression_cases": 89,
+  "saved": true,
+  "verification_note": "Initial verification found unsigned Max scalePart on mirrored renzhong_L; probe now records determinant and signed scale. Rig scale unchanged."
+}

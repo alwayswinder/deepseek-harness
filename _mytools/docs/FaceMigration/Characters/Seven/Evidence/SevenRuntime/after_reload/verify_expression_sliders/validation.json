@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-11-09T16:45:34.393009+08:00",
+  "asset": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "nodes": 1926,
+  "controls": 73,
+  "bones": 149,
+  "curves": [
+    "Seven_Pupil_huangzhang",
+    "Seven_Head_huangzhang",
+    "Seven_Pupil_wuyu",
+    "Seven_Head_wuyu",
+    "Seven_Pupil_sikao",
+    "Seven_Head_sikao",
+    "Seven_Pupil_ganga",
+    "Seven_Head_ganga"
+  ],
+  "source_cases": 24,
+  "regression_cases": 244,
+  "source_curve_error": 6.937283325569865e-08,
+  "bone_position_error_cm": 3.6178778619554834e-10,
+  "bone_rotation_error_deg": 5.122641877509564e-06,
+  "bone_scale_error": 0,
+  "endpoint_error_cm": 0,
+  "repeat_curve_error": 0,
+  "passed": true,
+  "mixed_cases": 244,
+  "reset_passed": true,
+  "limits_passed": true
+}

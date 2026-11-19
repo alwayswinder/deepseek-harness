@@ -1,0 +1,23 @@
+import fs from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+let p = join(root, 'src/js/30-gl.js'), s = fs.readFileSync(p, 'utf8');
+s = s.replace("c.fillStyle = '#7d5b72';", "c.fillStyle = '#9b7386';");
+s = s.replace("c.fillStyle = '#b07d80';", "c.fillStyle = '#c08e91';");
+s = s.replace("c.fillStyle = '#efc7a1';", "c.fillStyle = '#f2d2ae';");
+s = s.replace('mix(vec3(0.35, 0.30, 0.44), vec3(0.50, 0.42, 0.52), n.y)', 'mix(vec3(0.42, 0.36, 0.50), vec3(0.58, 0.49, 0.58), n.y)');
+fs.writeFileSync(p, s);
+p = join(root, 'src/js/40-mesh.js'); s = fs.readFileSync(p, 'utf8');
+s = s.replace('light: [0.70, 0.72, 0.76]', 'light: [0.76, 0.78, 0.82]');
+s = s.replace('mid: [0.46, 0.49, 0.56]', 'mid: [0.50, 0.53, 0.60]');
+fs.writeFileSync(p, s);
+p = join(root, 'src/js/50-flight.js'); s = fs.readFileSync(p, 'utf8');
+s = s.replace('qRot(Player.quat, { x: 0, y: 7.2, z: 32 })', 'qRot(Player.quat, { x: 0, y: 6.2, z: 27 })');
+fs.writeFileSync(p, s);
+p = join(root, 'src/js/70-hud.js'); s = fs.readFileSync(p, 'utf8');
+s = s.replace('pix(ctx, px, my + 1, 2, 5, live ? HC.bright : HC.faint);', 'pix(ctx, px, my + 1, 2, 5, live ? HC.amber : HC.faint);');
+s = s.replace('pix(ctx, px, my + 1, 1, 1, live ? HC.bright : HC.faint);', 'pix(ctx, px, my + 1, 1, 1, live ? HC.amber : HC.faint);');
+fs.writeFileSync(p, s);
+console.log('patched');

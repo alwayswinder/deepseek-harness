@@ -18,14 +18,20 @@ internal sealed class WindowCapture
     internal async Task<object> Capture(AppState app, WindowState window, RequestContext context)
     {
         var geometry = window.Geometry(app, context);
-        using var bitmap = await CaptureBitmap(window.Handle, context);
-        if (bitmap.PixelWidth != geometry.Pixels.Width || bitmap.PixelHeight != geometry.Pixels.Height)
-            throw new NativeFailure("WINDOW_CHANGED", "The captured size does not match the window bounds; capture the window again");
+        using var bitmap = await CaptureBitmap(window.Handle, geometry, context);
+        var cropWidth = (uint)geometry.Pixels.Width;
+        var cropHeight = (uint)geometry.Pixels.Height;
+        if (bitmap.PixelWidth < cropWidth || bitmap.PixelHeight < cropHeight)
+            throw new NativeFailure("WINDOW_CHANGED", "The captured size is smaller than the window bounds; capture the window again");
 
         using var stream = new InMemoryRandomAccessStream();
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
         context.Check();
         encoder.SetSoftwareBitmap(bitmap);
+        // The capture surface covers the whole capture item, which includes the frame ring that DWM excludes from the
+        // extended frame bounds; keep only the pixels the window geometry describes so image coordinates stay usable.
+        if (bitmap.PixelWidth != cropWidth || bitmap.PixelHeight != cropHeight)
+            encoder.BitmapTransform.Bounds = new BitmapBounds { X = 0, Y = 0, Width = cropWidth, Height = cropHeight };
         await encoder.FlushAsync();
         context.Check();
         if (4 * ((stream.Size + 2) / 3) > (ulong)context.Config.MaxResponseBytes)
@@ -46,14 +52,16 @@ internal sealed class WindowCapture
         return new
         {
             mimeType = "image/png", data = Convert.ToBase64String(bytes),
-            pixelWidth = bitmap.PixelWidth, pixelHeight = bitmap.PixelHeight,
+            pixelWidth = cropWidth, pixelHeight = cropHeight,
             windowId = window.Id.ToString(CultureInfo.InvariantCulture),
             bounds = current.Bounds, coordinateSpace = "window-pixels",
         };
     }
 
     // The caller owns the CPU bitmap. The frame wait has its own timeout; request cancellation also covers initialization and encoding.
-    private static async Task<SoftwareBitmap> CaptureBitmap(nint hwnd, RequestContext context)
+    // WGC reports a window item larger than its extended frame bounds (the item includes the frame borders at non-100% scale),
+    // so frames are compared against the DWM geometry the caller already accepted, never against item.Size.
+    private static async Task<SoftwareBitmap> CaptureBitmap(nint hwnd, WindowGeometry geometry, RequestContext context)
     {
         context.Check();
         if (!IsSupported)
@@ -80,7 +88,7 @@ internal sealed class WindowCapture
             if (frame is not null)
             {
                 var contentSize = frame.ContentSize;
-                if (contentSize.Width != size.Width || contentSize.Height != size.Height)
+                if (contentSize.Width != geometry.Pixels.Width || contentSize.Height != geometry.Pixels.Height)
                     throw new NativeFailure("WINDOW_CHANGED", "The window size changed during capture; capture the window again");
 
                 // Keep the frame alive until GPU readback settles, even when the request is cancelled.

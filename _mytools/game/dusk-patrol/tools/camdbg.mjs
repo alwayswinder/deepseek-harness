@@ -1,0 +1,13 @@
+import { launch, gameUrl } from './harness.mjs';
+const b = await launch({ headless: true, args: ["--use-angle=swiftshader","--enable-unsafe-swiftshader","--disable-gpu-sandbox"] });
+const p = await b.newPage({ viewport:{width:1280,height:720} });
+p.on("pageerror", e=>console.log("ERR",e.message));
+await p.goto(gameUrl('?fixed=1&noshadow=1&notrail=1&noeffects=1'));
+await p.waitForFunction(()=>window.__dusk&&__dusk.Game.state==="title",null,{timeout:60000});
+await p.evaluate(()=>{ __dusk.startGame(); document.getElementById("loading").style.display="none"; document.getElementById("title").style.display="none"; });
+await p.waitForTimeout(1200);
+console.log("before", await p.evaluate(()=>({cam:__dusk.Cam.pos, fov:__dusk.Cam.fov, view:__dusk.Cam.view, player:__dusk.Player.pos, started:__dusk.Game.started})));
+await p.evaluate(()=>{ const q=__dusk.Player.pos; window.__dusk.camOverride={pos:{x:q.x,y:q.y+40,z:q.z+5},q:__dusk.headingQuat(0,-1.45,0),fov:0.8}; });
+await p.waitForTimeout(1200);
+console.log("after", await p.evaluate(()=>({cam:__dusk.Cam.pos, fov:__dusk.Cam.fov, view:__dusk.Cam.view, override:window.__dusk.camOverride, player:__dusk.Player.pos})));
+await b.close();

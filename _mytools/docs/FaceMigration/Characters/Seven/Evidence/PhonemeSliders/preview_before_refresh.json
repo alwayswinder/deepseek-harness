@@ -1,0 +1,135 @@
+{
+  "captured_at": "2026-11-09T14:17:52.034119+08:00",
+  "preview_component": "/Engine/Transient.World_43:PersistentLevel.AnimationEditorPreviewActor_0.ControlRigSkeletalMeshComponent_0",
+  "animation_class": "ControlRigLayerInstance",
+  "input_x": 4,
+  "current_inputs": {
+    "CTRL_PHONEME_A_FV_01": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_B_FV_002": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_C_FV_003": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_EE": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_FV": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_GNK": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_MBP": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_SH": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_W": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_OTHER": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_A_02": [
+      4.0,
+      0.0,
+      0.0
+    ]
+  },
+  "rig_curves": {
+    "1_jian": 0.0,
+    "1_xiaozhang": 0.0,
+    "1_nu": 0.0,
+    "1_happy": 0.0,
+    "1_you": 0.0,
+    "1_qi": 0.0,
+    "1_hellow": 0.0,
+    "1_yi": 0.0,
+    "1_xiu": 0.0,
+    "1_hou": 0.0,
+    "1_jing": 0.0,
+    "1_pa": 0.0
+  },
+  "curves": {
+    "1_jian": 0.0,
+    "1_xiaozhang": 0.0,
+    "1_nu": 0.0,
+    "1_happy": 0.0,
+    "1_you": 0.0,
+    "1_qi": 0.0,
+    "1_hellow": 0.0,
+    "1_yi": 0.0,
+    "1_xiu": 0.0,
+    "1_hou": 0.0,
+    "1_jing": 0.0,
+    "1_pa": 0.0
+  },
+  "component_override_curves": {
+    "1_jian": 0.0,
+    "1_xiaozhang": 0.0,
+    "1_nu": 0.0,
+    "1_happy": 0.0,
+    "1_you": 0.0,
+    "1_qi": 0.0,
+    "1_hellow": 0.0,
+    "1_yi": 0.0,
+    "1_xiu": 0.0,
+    "1_hou": 0.0,
+    "1_jing": 0.0,
+    "1_pa": 0.0
+  },
+  "component_override_note": "GetMorphTarget reads explicit component overrides, not evaluated animation morph weights",
+  "active_morph_curves": [
+    "Seven_Pupil_ganga",
+    "Seven_Pupil_huangzhang",
+    "Seven_Pupil_sikao",
+    "Seven_Pupil_wuyu",
+    "1_happy",
+    "1_hellow",
+    "1_hou",
+    "1_jian",
+    "1_jing",
+    "1_nu",
+    "1_pa",
+    "1_qi",
+    "1_xiaozhang",
+    "1_xiu",
+    "1_yi",
+    "1_you",
+    "Seven_Head_ganga",
+    "Seven_Head_huangzhang",
+    "Seven_Head_sikao",
+    "Seven_Head_wuyu"
+  ],
+  "optimization_cvar": 1,
+  "passed": false
+}

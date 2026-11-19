@@ -1,0 +1,35 @@
+{
+  "control": "CTRL_NOSE",
+  "display_name": "鼻子",
+  "source": "Animcraft_Nose_Ctrl",
+  "bones": [
+    "bijian"
+  ],
+  "control_rest": [
+    1.84792352e-05,
+    11.4000168,
+    158.614014
+  ],
+  "control_rotation": [
+    0,
+    0,
+    0,
+    1
+  ],
+  "minimum": [
+    -10,
+    0,
+    -10
+  ],
+  "maximum": [
+    10,
+    10,
+    10
+  ],
+  "gain": 0.1,
+  "source_to_ue_input": "UE=( -Max.Z, Max.X, Max.Y ) * 10",
+  "max_fit_position_error_cm": 7.025621748216874e-06,
+  "max_source_rotation_change_deg": 0.0,
+  "max_source_scale_change": 0.0,
+  "sample_cases": 41
+}

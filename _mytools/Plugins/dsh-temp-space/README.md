@@ -35,7 +35,7 @@ files/           文件字节，按原文件名存（重名自动加 (2)）
 
 ## HTTP 路由
 
-页面没有文件系统，所有事实都由宿主半边在这六条同源路由上提供（都先过 `connection.requestRejection`：Host 围栏 + 同源 + 浏览器 Cookie）：
+页面没有文件系统，所有事实都由宿主半边在这六条同源路由上提供（都处在 webserver 的 `webserver/authorize` 栅栏之后：Host 围栏 + 同源 + 浏览器 Cookie 在进入 handler 之前统一结算，路由本身不再重复检查）：
 
 | 路由 | 方法 | 作用 |
 |---|---|---|

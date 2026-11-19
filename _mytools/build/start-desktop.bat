@@ -81,14 +81,19 @@ rem A slow or offline machine keeps the plugin set it had and still launches.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-profile-plugins.ps1" -Profile desktop
 if errorlevel 1 echo [desktop] WARNING: profile plugins not reconciled - see _mytools\build\profile-plugins.json
 
-rem The 3ds Max and Unreal Engine modes were uninstalled from this machine's
-rem desktop profile on 2026-11-19, and each install.ps1 writes the package back
-rem into the profile's dependencies and dsh.profile.bundles - the exact thing an
-rem uninstall must survive. Neither runs here anymore; profile-plugins.json lost
-rem both entries for the same reason. Bring a mode back by running its script
-rem once by hand:
-rem   powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-3dsmax\install.ps1
-rem   powershell -ExecutionPolicy Bypass -File _mytools\Mode\dsh-unreal\install.ps1
+rem The Windows sandbox labels this checkout Low, and an executable inherits the
+rem label of the directory it was built in. The CUA helper is built inside the
+rem checkout, so without this it starts Low and cannot read a normal target
+rem window (UIPI). Give its output directory an explicit High label; every
+rem rebuild inherits it. Idempotent, and silent when the helper was never built.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0fix-cua-integrity.ps1"
+if errorlevel 1 echo [desktop] WARNING: CUA helper integrity label could not be set.
+
+rem The 3ds Max and Unreal mode bundles stay out of the profile baseline so a
+rem plugin uninstalled or disabled in the plugin manager survives a restart.
+rem Register a mode by hand on the machine that wants it:
+rem   powershell -File _mytools\Mode\dsh-3dsmax\install.ps1
+rem   powershell -File _mytools\Mode\dsh-unreal\install.ps1
 
 rem Merge the checked-in portable settings into this machine before the app reads
 rem them, so a pulled change is in effect on this launch: the pet's profile

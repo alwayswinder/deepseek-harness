@@ -1,0 +1,14 @@
+import { launch, gameUrl, shotPath } from './harness.mjs';
+const browser = await launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+await page.goto(gameUrl('?fixed=1&autostart=1'));
+await page.waitForFunction(() => window.__dusk && __dusk.Game.state === 'title', null, { timeout: 60000 });
+await page.evaluate(() => { __dusk.startGame(); __dusk.setView(2); });
+await page.waitForTimeout(600);
+await page.evaluate(() => { document.getElementById('hud').style.display = 'none'; document.getElementById('grain').style.display = 'none'; __dusk.snapCamera(); });
+await page.waitForTimeout(200);
+await page.screenshot({ path: shotPath('seam-yaw0.png') });
+await page.evaluate(() => { __dusk.Player.yaw += 0.12; __dusk.Player.quat = __dusk.headingQuat(__dusk.Player.yaw, __dusk.Player.pitch, 0); __dusk.snapCamera(); });
+await page.waitForTimeout(200);
+await page.screenshot({ path: shotPath('seam-yaw12.png') });
+await browser.close();

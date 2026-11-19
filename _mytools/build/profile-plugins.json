@@ -1,7 +1,6 @@
 {
   "version": 1,
-  "comment": "Profile plugin baseline shared by every machine of this checkout. ensure-profile-plugins.ps1 reconciles each profile against it at launch. A spec starting with link: or file: is resolved against the repository root, so the absolute path is recomputed per machine; any other value is an npm spec and is installed only when the package is absent.",
-  "note": "2026-11-19: @local/dsh-mode-3dsmax, @local/dsh-mode-unreal, @local/dsh-web-search-opencode, dsh-remotion and ds-harness-remote were uninstalled from the desktop profile at the owner's request, so they left this baseline too (a baseline entry is what a launch reinstalls). start-desktop.bat no longer calls either Mode install.ps1. The local ones keep their source directories in the tree; reinstall with `dsh plugin --profile desktop add <spec>` when wanted. The web profile keeps both Mode entries because it still mounts them; web-search-opencode is gone from both profiles.",
+  "comment": "Profile plugin baseline shared by every machine of this checkout. ensure-profile-plugins.ps1 reconciles each profile against it at launch. A spec starting with link: or file: is resolved against the repository root, so the absolute path is recomputed per machine; any other value is an npm spec and is installed only when the package is absent. Removing an entry here stops the launcher from reinstalling it, so a plugin uninstalled or disabled from the plugin manager stays that way across restarts.",
   "profiles": {
     "desktop": {
       "packages": {
@@ -11,9 +10,9 @@
         "@local/dsh-fish-tank": "link:_mytools/Plugins/dsh-fish-tank",
         "@local/dsh-little-icon": "link:_mytools/Plugins/dsh-littleIcon",
         "@local/dsh-temp-space": "link:_mytools/Plugins/dsh-temp-space",
-        "dsh-ths-holdings": "link:_mytools/Plugins/dsh-ths-holdings",
         "dsh-qq-plugin": "^1.0.5",
-        "dshmarket": "^1.73.17"
+        "dshmarket": "^1.73.17",
+        "@deepseek-ai/dsh-cua-bundle": "link:packages/experimental/cua-bundle"
       },
       "bundles": [
         "@local/dsh-appearance-plus",
@@ -21,20 +20,24 @@
         "@local/dsh-deepseek-usage",
         "@local/dsh-temp-space",
         "@local/dsh-fish-tank",
-        "dsh-ths-holdings",
         "dsh-qq-plugin",
         "@local/dsh-little-icon",
-        "dshmarket"
+        "dshmarket",
+        "@deepseek-ai/dsh-cua-bundle"
       ]
     },
     "web": {
       "packages": {
         "@local/dsh-mode-3dsmax": "link:_mytools/Mode/dsh-3dsmax",
-        "@local/dsh-mode-unreal": "link:_mytools/Mode/dsh-unreal"
+        "@local/dsh-mode-unreal": "link:_mytools/Mode/dsh-unreal",
+        "@local/dsh-web-search-opencode": "file:_mytools/Plugins/web-search-opencode",
+        "@deepseek-ai/dsh-cua-bundle": "link:packages/experimental/cua-bundle"
       },
       "bundles": [
         "@local/dsh-mode-3dsmax",
-        "@local/dsh-mode-unreal"
+        "@local/dsh-mode-unreal",
+        "@local/dsh-web-search-opencode",
+        "@deepseek-ai/dsh-cua-bundle"
       ]
     }
   }

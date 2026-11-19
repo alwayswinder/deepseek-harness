@@ -1,0 +1,1308 @@
+{
+  "recordedDate": "2026-11-18",
+  "system": "/Game/VFX/MagicCircle/NS_MagicCircle.NS_MagicCircle",
+  "compile": {
+    "aggregateStatus": "UpToDate",
+    "hasErrors": false,
+    "hasWarnings": false
+  },
+  "stackIssues": {
+    "numErrors": 0,
+    "numWarnings": 0,
+    "numInfos": 10
+  },
+  "emitters": [
+    {
+      "name": "GroundCircle",
+      "inputs": [
+        {
+          "moduleName": "SpawnBurst_Instantaneous",
+          "inputs": [
+            {
+              "name": "Spawn Count",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            },
+            {
+              "name": "UseLoopCountLimit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraBool"
+                },
+                "value": {
+                  "value": -1
+                }
+              }
+            },
+            {
+              "name": "Loop Count Limit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "InitializeParticle",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 100000
+                }
+              }
+            },
+            {
+              "name": "Uniform Sprite Size",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 440
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_149D568F408A2479E12C468AFC545F84",
+          "inputs": [
+            {
+              "name": "Particles.Position",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraPosition"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "ParticleState",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/NiagaraEditor.NiagaraExt_StackInputData_Linked"
+                },
+                "value": {
+                  "linkedVariable": {
+                    "name": "Particles.Lifetime",
+                    "type": {
+                      "classStructOrEnum": {
+                        "refPath": "/Script/Niagara.NiagaraFloat"
+                      },
+                      "bIsStatic": false
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SolveForcesAndVelocity",
+          "inputs": [
+            {
+              "name": "Velocity",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_19543A294589AEE93ACF06A28CB22DC2",
+          "inputs": [
+            {
+              "name": "Particles.SpriteFacing",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_951662F4425C35DEB84050AE1FBB81F5",
+          "inputs": [
+            {
+              "name": "Particles.SpriteAlignment",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 1,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "renderers": [
+        {
+          "Material": {
+            "refPath": "/Game/VFX/MagicCircle/M_MC_Runes.M_MC_Runes"
+          },
+          "Alignment": "CustomAlignment",
+          "FacingMode": "CustomFacingVector",
+          "bCastShadows": false
+        }
+      ]
+    },
+    {
+      "name": "Spiral",
+      "inputs": [
+        {
+          "moduleName": "SpawnBurst_Instantaneous",
+          "inputs": [
+            {
+              "name": "Spawn Count",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 35
+                }
+              }
+            },
+            {
+              "name": "UseLoopCountLimit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraBool"
+                },
+                "value": {
+                  "value": -1
+                }
+              }
+            },
+            {
+              "name": "Loop Count Limit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SpawnRate",
+          "inputs": [
+            {
+              "name": "SpawnRate",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "InitializeParticle",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 4.5
+                }
+              }
+            },
+            {
+              "name": "Uniform Sprite Size",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 5
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "CylinderLocation",
+          "inputs": [
+            {
+              "name": "Cylinder Height",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 420
+                }
+              }
+            },
+            {
+              "name": "Cylinder Radius",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 112
+                }
+              }
+            },
+            {
+              "name": "Cylinder Height Midpoint",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 235
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "AddVelocity",
+          "inputs": [
+            {
+              "name": "Velocity",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 14
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "ParticleState",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/NiagaraEditor.NiagaraExt_StackInputData_Linked"
+                },
+                "value": {
+                  "linkedVariable": {
+                    "name": "Particles.Lifetime",
+                    "type": {
+                      "classStructOrEnum": {
+                        "refPath": "/Script/Niagara.NiagaraFloat"
+                      },
+                      "bIsStatic": false
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SolveForcesAndVelocity",
+          "inputs": [
+            {
+              "name": "Velocity",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/NiagaraEditor.NiagaraExt_StackInputData_Linked"
+                },
+                "value": {
+                  "linkedVariable": {
+                    "name": "Particles.Velocity",
+                    "type": {
+                      "classStructOrEnum": {
+                        "refPath": "/Script/CoreUObject.Vector3f"
+                      },
+                      "bIsStatic": false
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "renderers": [
+        {
+          "Material": {
+            "refPath": "/Game/VFX/MagicCircle/M_MC_Spark.M_MC_Spark"
+          },
+          "Alignment": "Unaligned",
+          "FacingMode": "FaceCamera",
+          "bCastShadows": false
+        }
+      ]
+    },
+    {
+      "name": "SilkHelix",
+      "inputs": [
+        {
+          "moduleName": "SpawnBurst_Instantaneous",
+          "inputs": [
+            {
+              "name": "Spawn Count",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            },
+            {
+              "name": "UseLoopCountLimit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraBool"
+                },
+                "value": {
+                  "value": -1
+                }
+              }
+            },
+            {
+              "name": "Loop Count Limit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "InitializeParticle",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 100000
+                }
+              }
+            },
+            {
+              "name": "Uniform Sprite Size",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 1200
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_619C1C0A412A50D7EF645387A78CF74A",
+          "inputs": [
+            {
+              "name": "Particles.Position",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraPosition"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "ParticleState",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/NiagaraEditor.NiagaraExt_StackInputData_Linked"
+                },
+                "value": {
+                  "linkedVariable": {
+                    "name": "Particles.Lifetime",
+                    "type": {
+                      "classStructOrEnum": {
+                        "refPath": "/Script/Niagara.NiagaraFloat"
+                      },
+                      "bIsStatic": false
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SolveForcesAndVelocity",
+          "inputs": [
+            {
+              "name": "Velocity",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_19543A294589AEE93ACF06A28CB22DC2",
+          "inputs": [
+            {
+              "name": "Particles.SpriteFacing",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 1
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "renderers": [
+        {
+          "Meshes": [
+            {
+              "meshParameterBinding": {
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/CoreUObject.Vector4f"
+                    },
+                    "bIsStatic": false
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/CoreUObject.Vector4f"
+                    },
+                    "bIsStatic": false
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [
+                  {
+                    "refPath": "/Script/Engine.StaticMesh"
+                  }
+                ],
+                "allowedInterfaces": [
+                  {
+                    "refPath": "/Script/Niagara.NiagaraRenderableMeshInterface"
+                  }
+                ]
+              },
+              "lODMode": "LODLevel",
+              "lODLevelBinding": {
+                "defaultValue": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [],
+                "allowedInterfaces": []
+              },
+              "lODBiasBinding": {
+                "defaultValue": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [],
+                "allowedInterfaces": []
+              },
+              "lODLevel": 0,
+              "lODBias": 0,
+              "lODDistanceFactor": 1,
+              "bUseLODRange": false,
+              "lODRange": {
+                "x": 0,
+                "y": 8
+              },
+              "mesh": {
+                "refPath": "/Game/VFX/MagicCircle/SM_MagicCircle_Helix/StaticMeshes/SM_MagicCircle_Helix.SM_MagicCircle_Helix"
+              },
+              "scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "rotation": {
+                "pitch": 0,
+                "yaw": 0,
+                "roll": 0
+              },
+              "pivotOffset": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "pivotOffsetSpace": "Mesh"
+            }
+          ],
+          "bOverrideMaterials": true,
+          "bCastShadows": false,
+          "OverrideMaterials": [
+            {
+              "explicitMat": {
+                "refPath": "/Game/VFX/MagicCircle/M_MC_Helix.M_MC_Helix"
+              },
+              "userParamBinding": {
+                "parameter": {
+                  "varData": [],
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Engine.MaterialInterface"
+                    },
+                    "bIsStatic": false
+                  }
+                }
+              }
+            }
+          ],
+          "FacingMode": "Default"
+        }
+      ]
+    },
+    {
+      "name": "FloatingCrystals",
+      "inputs": [
+        {
+          "moduleName": "SpawnBurst_Instantaneous",
+          "inputs": [
+            {
+              "name": "Spawn Count",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            },
+            {
+              "name": "UseLoopCountLimit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraBool"
+                },
+                "value": {
+                  "value": -1
+                }
+              }
+            },
+            {
+              "name": "Loop Count Limit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "InitializeParticle",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 100000
+                }
+              }
+            },
+            {
+              "name": "Uniform Sprite Size",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 440
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_149D568F408A2479E12C468AFC545F84",
+          "inputs": [
+            {
+              "name": "Particles.Position",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraPosition"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_9094763B4B579D0FCE48E7A6512348E0",
+          "inputs": [
+            {
+              "name": "Particles.Position",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraPosition"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "ParticleState",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/NiagaraEditor.NiagaraExt_StackInputData_Linked"
+                },
+                "value": {
+                  "linkedVariable": {
+                    "name": "Particles.Lifetime",
+                    "type": {
+                      "classStructOrEnum": {
+                        "refPath": "/Script/Niagara.NiagaraFloat"
+                      },
+                      "bIsStatic": false
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SolveForcesAndVelocity",
+          "inputs": [
+            {
+              "name": "Velocity",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_19543A294589AEE93ACF06A28CB22DC2",
+          "inputs": [
+            {
+              "name": "Particles.SpriteFacing",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 1
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "renderers": [
+        {
+          "Meshes": [
+            {
+              "meshParameterBinding": {
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/CoreUObject.Vector4f"
+                    },
+                    "bIsStatic": false
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/CoreUObject.Vector4f"
+                    },
+                    "bIsStatic": false
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [
+                  {
+                    "refPath": "/Script/Engine.StaticMesh"
+                  }
+                ],
+                "allowedInterfaces": [
+                  {
+                    "refPath": "/Script/Niagara.NiagaraRenderableMeshInterface"
+                  }
+                ]
+              },
+              "lODMode": "LODLevel",
+              "lODLevelBinding": {
+                "defaultValue": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [],
+                "allowedInterfaces": []
+              },
+              "lODBiasBinding": {
+                "defaultValue": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [],
+                "allowedInterfaces": []
+              },
+              "lODLevel": 0,
+              "lODBias": 0,
+              "lODDistanceFactor": 1,
+              "bUseLODRange": false,
+              "lODRange": {
+                "x": 0,
+                "y": 8
+              },
+              "mesh": {
+                "refPath": "/Game/VFX/MagicCircle/SM_MagicCircle_Crystals/StaticMeshes/SM_MagicCircle_Crystals.SM_MagicCircle_Crystals"
+              },
+              "scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "rotation": {
+                "pitch": 0,
+                "yaw": 0,
+                "roll": 0
+              },
+              "pivotOffset": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "pivotOffsetSpace": "Mesh"
+            }
+          ],
+          "bOverrideMaterials": true,
+          "bCastShadows": false,
+          "OverrideMaterials": [
+            {
+              "explicitMat": {
+                "refPath": "/Game/VFX/MagicCircle/M_MC_Crystals.M_MC_Crystals"
+              },
+              "userParamBinding": {
+                "parameter": {
+                  "varData": [],
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Engine.MaterialInterface"
+                    },
+                    "bIsStatic": false
+                  }
+                }
+              }
+            }
+          ],
+          "FacingMode": "Default"
+        }
+      ]
+    },
+    {
+      "name": "AscendingLight",
+      "inputs": [
+        {
+          "moduleName": "SpawnBurst_Instantaneous",
+          "inputs": [
+            {
+              "name": "Spawn Count",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            },
+            {
+              "name": "UseLoopCountLimit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraBool"
+                },
+                "value": {
+                  "value": -1
+                }
+              }
+            },
+            {
+              "name": "Loop Count Limit",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraInt32"
+                },
+                "value": {
+                  "value": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "InitializeParticle",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 100000
+                }
+              }
+            },
+            {
+              "name": "Uniform Sprite Size",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraFloat"
+                },
+                "value": {
+                  "value": 440
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_149D568F408A2479E12C468AFC545F84",
+          "inputs": [
+            {
+              "name": "Particles.Position",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/Niagara.NiagaraPosition"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 3
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "ParticleState",
+          "inputs": [
+            {
+              "name": "Lifetime",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/NiagaraEditor.NiagaraExt_StackInputData_Linked"
+                },
+                "value": {
+                  "linkedVariable": {
+                    "name": "Particles.Lifetime",
+                    "type": {
+                      "classStructOrEnum": {
+                        "refPath": "/Script/Niagara.NiagaraFloat"
+                      },
+                      "bIsStatic": false
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SolveForcesAndVelocity",
+          "inputs": [
+            {
+              "name": "Velocity",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "moduleName": "SetVariables_19543A294589AEE93ACF06A28CB22DC2",
+          "inputs": [
+            {
+              "name": "Particles.SpriteFacing",
+              "value": {
+                "struct": {
+                  "refPath": "/Script/CoreUObject.Vector3f"
+                },
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 1
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "renderers": [
+        {
+          "Meshes": [
+            {
+              "meshParameterBinding": {
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/CoreUObject.Vector4f"
+                    },
+                    "bIsStatic": false
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/CoreUObject.Vector4f"
+                    },
+                    "bIsStatic": false
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [
+                  {
+                    "refPath": "/Script/Engine.StaticMesh"
+                  }
+                ],
+                "allowedInterfaces": [
+                  {
+                    "refPath": "/Script/Niagara.NiagaraRenderableMeshInterface"
+                  }
+                ]
+              },
+              "lODMode": "LODLevel",
+              "lODLevelBinding": {
+                "defaultValue": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [],
+                "allowedInterfaces": []
+              },
+              "lODBiasBinding": {
+                "defaultValue": [
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                "resolvedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "aliasedParameter": {
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Niagara.NiagaraInt32"
+                    },
+                    "bIsStatic": true
+                  }
+                },
+                "allowedDataInterfaces": [],
+                "allowedObjects": [],
+                "allowedInterfaces": []
+              },
+              "lODLevel": 0,
+              "lODBias": 0,
+              "lODDistanceFactor": 1,
+              "bUseLODRange": false,
+              "lODRange": {
+                "x": 0,
+                "y": 8
+              },
+              "mesh": {
+                "refPath": "/Game/VFX/MagicCircle/SM_MagicCircle_Rays/StaticMeshes/SM_MagicCircle_Rays.SM_MagicCircle_Rays"
+              },
+              "scale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "rotation": {
+                "pitch": 0,
+                "yaw": 0,
+                "roll": 0
+              },
+              "pivotOffset": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "pivotOffsetSpace": "Mesh"
+            }
+          ],
+          "bOverrideMaterials": true,
+          "bCastShadows": false,
+          "OverrideMaterials": [
+            {
+              "explicitMat": {
+                "refPath": "/Game/VFX/MagicCircle/M_MC_Rays.M_MC_Rays"
+              },
+              "userParamBinding": {
+                "parameter": {
+                  "varData": [],
+                  "name": "None",
+                  "typeDefHandle": {
+                    "classStructOrEnum": {
+                      "refPath": "/Script/Engine.MaterialInterface"
+                    },
+                    "bIsStatic": false
+                  }
+                }
+              }
+            }
+          ],
+          "FacingMode": "Default"
+        }
+      ]
+    }
+  ],
+  "runeCustomCode": [
+    "return UV;",
+    "float wave = 0.5 + 0.5*sin(T*2.094395102); float breath = lerp(0.06,1.35,wave*wave); return Mask.r*float3(.12,.72,1.2)*I*breath;"
+  ],
+  "meshTriangles": {
+    "Helix": 898,
+    "Crystals": 72,
+    "Rays": 36
+  },
+  "saved": {
+    "system": true,
+    "runeMaterial": true
+  }
+}

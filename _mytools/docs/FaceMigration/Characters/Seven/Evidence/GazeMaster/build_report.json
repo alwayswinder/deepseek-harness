@@ -1,0 +1,456 @@
+{
+  "asset": "/Game/_MyTest/Mouth/Rig/NewControlRigRuntimeAsset",
+  "backup": "E:\\Unreal\\Projects\\_TEST\\MyProject_CR_5_8\\Saved\\Codex\\Backup\\GazeMaster_20261109_180531",
+  "preview_values": {
+    "CTRL_BROW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_R": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "nodes_before": 1457,
+  "old_execution_links": [
+    [
+      "BROW_SET_meibu_L.ExecutePin",
+      "BROW_SET_Bone007.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone007.ExecutePin",
+      "BROW_SET_Bone008.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone008.ExecutePin",
+      "BROW_SET_Bone009.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone009.ExecutePin",
+      "BROW_SET_meibu_R.ExecutePin"
+    ],
+    [
+      "BROW_SET_meibu_R.ExecutePin",
+      "BROW_SET_Bone010.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone010.ExecutePin",
+      "BROW_SET_Bone011.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone011.ExecutePin",
+      "BROW_SET_Bone012.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone043.ExecutePin",
+      "EYE_SET_Bone027.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone027.ExecutePin",
+      "EYE_SET_Bone028.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone028.ExecutePin",
+      "EYE_SET_Bone029.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone029.ExecutePin",
+      "EYE_SET_Bone042.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone042.ExecutePin",
+      "EYE_SET_Bone030.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone030.ExecutePin",
+      "EYE_SET_Bone031.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone031.ExecutePin",
+      "EYE_SET_Bone032.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone032.ExecutePin",
+      "EYE_SET_Bone044.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone044.ExecutePin",
+      "EYE_SET_Bone036.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone036.ExecutePin",
+      "EYE_SET_Bone037.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone037.ExecutePin",
+      "EYE_SET_Bone038.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone038.ExecutePin",
+      "EYE_SET_Bone045.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone045.ExecutePin",
+      "EYE_SET_Bone039.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone039.ExecutePin",
+      "EYE_SET_Bone040.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone040.ExecutePin",
+      "EYE_SET_Bone041.ExecutePin"
+    ],
+    [
+      "BROW_SET_Bone012.ExecutePin",
+      "EYE_SET_Bone043.ExecutePin"
+    ],
+    [
+      "EYE_SET_Bone041.ExecutePin",
+      "LIP_SET_Bone016.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone016.ExecutePin",
+      "LIP_SET_Bone017.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone017.ExecutePin",
+      "LIP_SET_Bone018.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone018.ExecutePin",
+      "LIP_SET_Bone019.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone019.ExecutePin",
+      "LIP_SET_Bone020.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone020.ExecutePin",
+      "LIP_SET_Bone021.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone021.ExecutePin",
+      "LIP_SET_Bone022.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone022.ExecutePin",
+      "LIP_SET_Bone023.ExecutePin"
+    ],
+    [
+      "LIP_SET_Bone023.ExecutePin",
+      "LIP_SET_shangzuichun.ExecutePin"
+    ],
+    [
+      "LIP_SET_shangzuichun.ExecutePin",
+      "LIP_SET_xiazuichun.ExecutePin"
+    ],
+    [
+      "LIP_SET_xiazuichun.ExecutePin",
+      "LIP_SET_renzhong_L.ExecutePin"
+    ],
+    [
+      "LIP_SET_renzhong_L.ExecutePin",
+      "LIP_SET_renzhong_R.ExecutePin"
+    ],
+    [
+      "LIP_SET_renzhong_R.ExecutePin",
+      "CHEEK_SET_pingguoji_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_pingguoji_R.ExecutePin",
+      "CHEEK_SET_yandai2_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_yandai2_R.ExecutePin",
+      "CHEEK_SET_xiabake_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_xiabake_L.ExecutePin",
+      "CHEEK_SET_xiabake_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_xiabake_R.ExecutePin",
+      "CHEEK_SET_Bone015.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_Bone015.ExecutePin",
+      "CHEEK_SET_Bone014.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_Bone014.ExecutePin",
+      "CHEEK_SET_yandai2_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_yandai2_L.ExecutePin",
+      "CHEEK_SET_pingguoji_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_pingguoji_L.ExecutePin",
+      "CHEEK_SET_lianjia_R.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_lianjia_R.ExecutePin",
+      "CHEEK_SET_lianjia_L.ExecutePin"
+    ],
+    [
+      "CHEEK_SET_lianjia_L.ExecutePin",
+      "NOSE_SET_bijian.ExecutePin"
+    ],
+    [
+      "NOSE_SET_bijian.ExecutePin",
+      "GAZE_SET_yanqiu_L.ExecutePin"
+    ],
+    [
+      "GAZE_SET_yanqiu_L.ExecutePin",
+      "GAZE_SET_Eye_L01.ExecutePin"
+    ],
+    [
+      "GAZE_SET_Eye_L01.ExecutePin",
+      "GAZE_SET_yanqiu_R.ExecutePin"
+    ],
+    [
+      "GAZE_SET_yanqiu_R.ExecutePin",
+      "GAZE_SET_Eye_R01.ExecutePin"
+    ]
+  ],
+  "regression_cases": 210,
+  "rewired": {
+    "GAZE_Target_L.A": "GAZE_GET_L.Vector",
+    "GAZE_EulerY_upperL.Factor": "GAZE_SRC_L1.Result",
+    "GAZE_EulerY_lowerL.Factor": "GAZE_SRC_L1.Result",
+    "GAZE_EulerXZ_upperL.Factor": "GAZE_SRC_L2.Result",
+    "GAZE_EulerXZ_lowerL.Factor": "GAZE_SRC_L2.Result",
+    "GAZE_LidPosition_Bone038.A": "GAZE_PreAdd_Bone038.Result",
+    "GAZE_LidPosition_Bone041.A": "GAZE_PreAdd_Bone041.Result",
+    "GAZE_LinearOut_yandai2_L.B": "GAZE_Linear_yandai2_LAdd3.Result",
+    "GAZE_LinearOut_Bone044.B": "GAZE_Linear_Bone044Add3.Result",
+    "GAZE_LinearOut_Bone045.B": "GAZE_Linear_Bone045Add3.Result",
+    "GAZE_Target_R.A": "GAZE_GET_R.Vector",
+    "GAZE_EulerY_upperR.Factor": "GAZE_SRC_R1.Result",
+    "GAZE_EulerY_lowerR.Factor": "GAZE_SRC_R1.Result",
+    "GAZE_EulerXZ_upperR.Factor": "GAZE_SRC_R2.Result",
+    "GAZE_EulerXZ_lowerR.Factor": "GAZE_SRC_R2.Result",
+    "GAZE_LidPosition_Bone029.A": "GAZE_PreAdd_Bone029.Result",
+    "GAZE_LidPosition_Bone032.A": "GAZE_PreAdd_Bone032.Result",
+    "GAZE_LinearOut_yandai2_R.B": "GAZE_Linear_yandai2_RAdd3.Result",
+    "GAZE_LinearOut_Bone042.B": "GAZE_Linear_Bone042Add3.Result",
+    "GAZE_LinearOut_Bone043.B": "GAZE_Linear_Bone043Add3.Result"
+  },
+  "saved": false,
+  "nodes_after": 1533,
+  "controls_after": 45,
+  "execution_links_preserved": true
+}

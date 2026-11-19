@@ -1,0 +1,9 @@
+{
+  "captured_at": "2026-11-09T16:44:40.698205+08:00",
+  "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "phase": "before_reload",
+  "passed": true,
+  "transfer_cases": 1175,
+  "source_verifiers_passed": 12,
+  "source_verifiers_total": 12
+}

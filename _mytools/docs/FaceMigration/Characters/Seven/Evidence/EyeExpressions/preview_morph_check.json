@@ -1,0 +1,111 @@
+{
+  "captured_at": "2026-11-09T15:03:55.130249+08:00",
+  "preview_component": "/Engine/Transient.World_10:PersistentLevel.AnimationEditorPreviewActor_0.ControlRigSkeletalMeshComponent_0",
+  "animation_class": "ControlRigLayerInstance",
+  "input_x": 4,
+  "current_inputs": {
+    "CTRL_EYE_EXPR_QI_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_L": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_L": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_L": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_L": [
+      4.0,
+      0.0,
+      0.0
+    ]
+  },
+  "rig_curves": {
+    "1_qi_l_es": 0.5,
+    "1_nu_l_es": 0.5,
+    "1_you_l_es": 0.5,
+    "1_happy_l_es": 0.5,
+    "1_qi_r_es": 0.5,
+    "1_nu_r_es": 0.5,
+    "1_you_r_es": 0.5,
+    "1_happy_r_es": 0.5
+  },
+  "curves": {
+    "1_qi_l_es": 0.5,
+    "1_nu_l_es": 0.5,
+    "1_you_l_es": 0.5,
+    "1_happy_l_es": 0.5,
+    "1_qi_r_es": 0.5,
+    "1_nu_r_es": 0.5,
+    "1_you_r_es": 0.5,
+    "1_happy_r_es": 0.5
+  },
+  "component_override_curves": {
+    "1_qi_l_es": 0.0,
+    "1_nu_l_es": 0.0,
+    "1_you_l_es": 0.0,
+    "1_happy_l_es": 0.0,
+    "1_qi_r_es": 0.0,
+    "1_nu_r_es": 0.0,
+    "1_you_r_es": 0.0,
+    "1_happy_r_es": 0.0
+  },
+  "component_override_note": "GetMorphTarget reads explicit component overrides, not evaluated animation morph weights",
+  "active_morph_curves": [
+    "1_happy",
+    "1_hellow",
+    "1_hou",
+    "1_jian",
+    "1_jing",
+    "1_nu",
+    "1_pa",
+    "1_qi",
+    "1_xiaozhang",
+    "1_xiu",
+    "1_yi",
+    "1_you",
+    "Seven_Head_ganga",
+    "Seven_Head_huangzhang",
+    "Seven_Head_sikao",
+    "Seven_Head_wuyu",
+    "Seven_Pupil_ganga",
+    "Seven_Pupil_huangzhang",
+    "Seven_Pupil_sikao",
+    "Seven_Pupil_wuyu",
+    "1_happy_l_es",
+    "1_happy_r_es",
+    "1_nu_l_es",
+    "1_nu_r_es",
+    "1_qi_l_es",
+    "1_qi_r_es",
+    "1_you_l_es",
+    "1_you_r_es"
+  ],
+  "optimization_cvar": 1,
+  "passed": true
+}

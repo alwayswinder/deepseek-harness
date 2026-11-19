@@ -1,0 +1,17 @@
+{
+  "controls": 63,
+  "animation_controls": 62,
+  "visual_cues": 1,
+  "bones": 149,
+  "nodes": 1878,
+  "curves": 20,
+  "output_cases": 14,
+  "triangles": 24,
+  "graph_unchanged": true,
+  "outputs_unchanged": true,
+  "saved": true,
+  "reloaded": true,
+  "preview_restored": true,
+  "passed": true,
+  "captured_at": "2026-11-09T14:44:39.805875+08:00"
+}

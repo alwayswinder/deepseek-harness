@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "actors": [
+    {
+      "actor": "/Engine/Transient.World_10:PersistentLevel.ControlRigShapeActor_62",
+      "position": [
+        47.0,
+        12.0,
+        164.0
+      ],
+      "material": "/Game/_MyTest/Mouth/LidDiagnostic/PhonemeReference/M_PhonemeReference.M_PhonemeReference",
+      "visible": true
+    }
+  ],
+  "visual_approval": "pending_user"
+}

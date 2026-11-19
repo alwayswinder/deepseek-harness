@@ -1,0 +1,235 @@
+NODE KPoint008 parent=Sphere008
+KPoint008/position/Position_Expression [Position_Expression] [ if(zuijiao_L.z<0,0,zuijiao_L.z*0.025)+if(zuijiao_R.z<0,0,zuijiao_R.z*0.025)     , 0, 0 ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.455)       ,   if(zuizong.x<0,0,zuizong.x*0.475)     ,0   ]
++
+[if(zuizong.z<0,-zuizong.z*0.99,zuizong.z*0.99)       ,   if(zuizong.z<0,-zuizong.z*0.465,zuizong.z*0.465)     ,if(zuizong.z<0,zuizong.z*1.155,zuizong.z*1.155)   ]
++
+[zuishang.y*0.3 +zuishang_R*0.1  +zuishang_L*0.1   ,   if(zuizong.y<0,zuizong.y*1,zuizong.y*1)+zuishang.y*1+zuishang_R*0.5 +zuishang_L*0.5     ,0  ]
+
+KPoint008/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(zui_zongZ<0,-zui_zongZ*0.06    ,-zui_zongZ*0.06   )
+KPoint008/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(zui_zongZ<0,-zui_zongZ*0.35    ,-zui_zongZ*0.35   )
+KPoint008/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*1.625      )
+NODE KPoint009 parent=Sphere009
+KPoint009/position/Position_Expression [Position_Expression] [ if(zuijiao_L.z<0,0,zuijiao_L.z*0.025)+if(zuijiao_R.z<0,0,zuijiao_R.z*0.025)     , 0, 0 ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.4185)       ,   if(zuizong.x<0,0,zuizong.x*-0.389)     ,0   ]
++
+[if(zuizong.z<0,-zuizong.z*0.99,zuizong.z*0.99)       ,   if(zuizong.z<0,-zuizong.z*0.465,zuizong.z*0.465)     ,if(zuizong.z<0,zuizong.z*1.155,zuizong.z*1.155)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*1,zuizong.y*1)     ,0  ]
++
+[   zuixia*0.3+zuixia_R*0.1 +zuixia_L*0.1 ,   zuixia*1+zuixia_R*0.4+zuixia_L*0.4    ,    0]
+KPoint009/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(zui_zongZ<0,-zui_zongZ*0.06     ,-zui_zongZ*0.06   )
+KPoint009/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(zui_zongZ<0,-zui_zongZ*0.35    ,-zui_zongZ*0.35   )
+KPoint009/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongX<0 ,-zui_zongX*0.88,-zui_zongX*0.868      )
+NODE KPoint010 parent=Sphere010
+KPoint010/position/Position_Expression [Position_Expression] [ if(zuijiaoR.z<0,0  ,zuijiaoR.z*0.117)   ,   0 ,   if(zuijiaoR.z<0,-zuijiaoR.z*0.99  ,-zuijiaoR.z*0.32) ]
++
+[ if(zuijiaoR.y<0,zuijiaoR.y*0.12   ,zuijiaoR.y*0.12  )  ,      if(zuijiaoR.y<0,   zuijiaoR.y*0.6   ,zuijiaoR.y*0.9  ),if(zuijiaoR.y<0,-zuijiaoR.y*0.71,zuijiaoR.y*0.435  )  ]
++
+[   if(zui_zong.x<0,-zui_zong.x*0.1, zui_zong.x*0.5)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.7)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0.74, -zui_zong.z*0.)    ,   if(zui_zong.z<0,zui_zong.z*0.34, zui_zong.z*0.22)    ,   if(zui_zong.z<0,zui_zong.z*0.66, zui_zong.z*0.42)    ]
++
+[if(zui_zong.y<0,-zui_zong.y*0.05,-zui_zong.y*0.165)     ,   if(zui_zong.y<0,zui_zong.y*0.5,zui_zong.y*0.63)     ,if(zui_zong.y<0,zui_zong.y*0.19,zui_zong.y*.24)   ]
++
+[0  ,zuishang.y*0.3+zuishang_R*0.5,0]
++
+[if(liandan.x<0,liandan.x*0.16,liandan.x*0.2)+if(liandan.z<0,-liandan.z*0.,0),0,if(liandan.z<0,liandan.z*0.3,liandan.z*0.5)]
+KPoint010/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+NODE KPoint011 parent=Sphere011
+KPoint011/position/Position_Expression [Position_Expression] [ if(zuijiaoR.z<0,0  ,zuijiaoR.z*0.117)   ,   0 ,   if(zuijiaoR.z<0,zuijiaoR.z*0.99  ,zuijiaoR.z*0.32) ]
++
+[ if(zuijiaoR.y<0,zuijiaoR.y*0.12,zuijiaoR.y*0.12  )  ,      if(zuijiaoR.y<0,zuijiaoR.y*0.6,zuijiaoR.y*0.9  ),if(zuijiaoR.y<0,zuijiaoR.y*0.71,-zuijiaoR.y*0.435  )  ]
++
+[   if(zui_zong.x<0,-zui_zong.x*0.1, zui_zong.x*0.5)    ,   if(zui_zong.x<0,0, -zui_zong.x*0.2)    ,   if(zui_zong.x<0,0, zui_zong.x*0.7)    ]
++
+[   if(zui_zong.z<0,-zui_zong.z*0., zui_zong.z*0.74)    ,   if(zui_zong.z<0,-zui_zong.z*0.22, -zui_zong.z*0.34)    ,   if(zui_zong.z<0, zui_zong.z*0.42,zui_zong.z*0.66)    ]
++
+[if(zui_zong.y<0,-zui_zong.y*0.05,-zui_zong.y*0.165)     ,   if(zui_zong.y<0,zui_zong.y*0.5,zui_zong.y*0.63)     ,if(zui_zong.y<0,-zui_zong.y*0.19,-zui_zong.y*.24)  ]
++
+[0,zuishang.y*0.3+zuishang_R*0.5,0]
++
+[if(liandan.x<0,liandan.x*0.16,liandan.x*0.2)+if(liandan.z<0,liandan.z*0,liandan.z*0.),0,if(liandan.z<0,liandan.z*0.5,liandan.z*0.3)]
+KPoint011/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+NODE KPoint057 parent=Sphere057
+KPoint057/position/Position_Expression [Position_Expression] [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)    ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,zuijiao_R.z*1.,zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,zuijiao_R.y*0.5,-zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.25,zuizong.z*0.347)       ,   if(zuizong.z<0,-zuizong.z*0.76,zuizong.z*0.0)     ,if(zuizong.z<0,zuizong.z*0.58,zuizong.z*0.779)   ]
++
+[+zuishang_R*0.2      ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)+ zuishang.y*0.5+zuishang_R*0.6     ,0  ]
+KPoint057/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.63,KZuiJiao_R*0.35)
+  
+
+
++
+if(zui_zongX<0 ,0  ,   zui_zongX*0.04      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.4      )
+KPoint057/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.525     )
++
+if(zui_zongZ<0    ,-zui_zongZ*0.6 ,-zui_zongX*0.0  )
+KPoint057/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*0.44     )
+NODE KPoint058 parent=Sphere058
+KPoint058/position/Position_Expression [Position_Expression] [ if(zuijiao_R.y<0,zuijiao_R.y*0.02,0),   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,zuijiao_R.z*0.9,zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,zuijiao_R.y*0.22,-zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.24)       ,   if(zuizong.x<0,zuizong.x*0.02,zuizong.x*0.3)     ,if(zuizong.x<0,0,zuizong.x*0.27)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.645,zuizong.z*0.86)       ,   if(zuizong.z<0,-zuizong.z*0.637,zuizong.z*0.19)     ,if(zuizong.z<0,zuizong.z*1.01,zuizong.z*1.0)   ]
++
+[zuishang.y*0.3 +zuishang_R*0.3       ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)+zuishang.y*1 +zuishang_R*1.1    ,-zuishang_R*0.25  ]
+KPoint058/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(zuijiao_R<0,zuijiao_R*0.28,zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.08      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.2      )
+KPoint058/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(zui_zongZ<0,-zui_zongZ*0.699     ,-zui_zongZ*0.09   )
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.45      )
+KPoint058/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*1.35      )
+NODE KPoint059 parent=Sphere059
+KPoint059/position/Position_Expression [Position_Expression] [ if(zuijiao_R.y<0,zuijiao_R.y*0.02,0),   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,zuijiao_R.z*0.9,zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,zuijiao_R.y*0.22,-zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.113)       ,   if(zuizong.x<0,zuizong.x*-0.02,zuizong.x*-0.268)     ,if(zuizong.x<0,0,zuizong.x*0.199)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.645,zuizong.z*0.86)       ,   if(zuizong.z<0,-zuizong.z*0.637,zuizong.z*0.19)     ,if(zuizong.z<0,zuizong.z*1.01,zuizong.z*1.0)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)     ,0  ]
++
+[   zuixia*0.3 +zuixia_R*0.3   ,   zuixia*1+zuixia_R*0.9    ,    zuixia_R*0.2]
+KPoint059/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(zuijiao_R<0,zuijiao_R*0.28,zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.235      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.2      )
+KPoint059/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(zui_zongX<0,-zui_zongX*0.    ,zui_zongX*0.5   )
++
+if(zui_zongZ<0,-zui_zongZ*0.699     ,-zui_zongZ*0.09   )
+KPoint059/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongX<0 ,-zui_zongX*0.88,-zui_zongX*1      )
+
+NODE KPoint060 parent=Sphere060
+KPoint060/position/Position_Expression [Position_Expression] [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)    ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,zuijiao_R.z*1.,zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,zuijiao_R.y*0.5,-zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.25,zuizong.z*0.347)       ,   if(zuizong.z<0,-zuizong.z*0.76,zuizong.z*0.03)     ,if(zuizong.z<0,zuizong.z*0.58,zuizong.z*0.779)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)     ,0  ]
++
+[     zuixia*0.2+zuixia_R*0.2   ,   zuixia*0.6+zuixia_R*0.6    ,    zuixia_R*0.]
+KPoint060/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.63,KZuiJiao_R*0.35)
+  
+
+
++
+if(zui_zongX<0 ,-zui_zongX*0.   ,   -zui_zongX*0.05      )
++
+if(zui_zongY<0 ,0  ,   -zui_zongY*0.4      )
+KPoint060/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.525     )
++
+if(zui_zongZ<0    ,-zui_zongZ*0.6 ,-zui_zongX*0.0  )
+KPoint060/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,-zui_zongX*0.5,-zui_zongX*0.15     )
+NODE KPoint061 parent=Sphere061
+KPoint061/position/Position_Expression [Position_Expression] [  if(zuijiao_R.y<0,zuijiao_R.y*0.02,0)    ,   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,-zuijiao_R.z*0.9,-zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.22,zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.24)       ,   if(zuizong.x<0,zuizong.x*0.02,zuizong.x*0.3)     ,if(zuizong.x<0,0,-zuizong.x*0.27)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.86,zuizong.z*0.645)       ,   if(zuizong.z<0,-zuizong.z*0.19,zuizong.z*0.637)     ,if(zuizong.z<0,zuizong.z*1,zuizong.z*1.01)   ]
++
+[zuishang.y*0.3 +zuishang_R*0.3     ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)+zuishang.y*1 +zuishang_R*1.1    ,+zuishang_R*0.25 ]
+KPoint061/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(zuijiao_R<0,-zuijiao_R*0.28,-zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.08      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.2      )
+KPoint061/rotation/零_Euler_XYZ/y_rotation [Float_Expression] 
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.45      )
++
+if(zui_zongZ<0,-zui_zongZ*0.09    ,-zui_zongZ*0.699   )
+KPoint061/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*1.35      )
+NODE KPoint062 parent=Sphere062
+KPoint062/position/Position_Expression [Position_Expression] [  if(zuijiao_R.y<0,zuijiao_R.y*0.02,0)    ,   if(zuijiao_R.y<0,zuijiao_R.y*0.15,zuijiao_R.y*0.2)     ,   if(zuijiao_R.z<0,-zuijiao_R.z*0.9,-zuijiao_R.z*0.3)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.22,zuijiao_R.y*0.45) ]
++
+[if(zuizong.x<0,zuizong.x*0.3,zuizong.x*1.113)       ,   if(zuizong.x<0,zuizong.x*-0.02,zuizong.x*-0.268)     ,if(zuizong.x<0,0,zuizong.x*-0.199)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.86,zuizong.z*0.645)       ,   if(zuizong.z<0,-zuizong.z*0.19,zuizong.z*0.637)     ,if(zuizong.z<0,zuizong.z*1,zuizong.z*1.01)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.9,zuizong.y*0.9)     ,0  ]
++
+[   zuixia*0.3 +zuixia_R*0.3   ,   zuixia*1+zuixia_R*0.9    ,    -zuixia_R*0.2]
+KPoint062/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(zuijiao_R<0,-zuijiao_R*0.28,-zuijiao_R*0.2)
++
+if(zui_zongX<0 ,zui_zongX*0.,zui_zongX*0.235      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.2      )
+KPoint062/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(zui_zongX<0,-zui_zongX*0.    ,-zui_zongX*0.5   )
++
+if(zui_zongZ<0,-zui_zongZ*0.09    ,-zui_zongZ*0.699   )
+
+KPoint062/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(zui_zongX<0 ,-zui_zongX*0.88,-zui_zongX*1      )
+
+NODE KPoint063 parent=Sphere063
+KPoint063/position/Position_Expression [Position_Expression] [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)         ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,-zuijiao_R.z*1.,-zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.5,zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,-zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.347,zuizong.z*0.25)       ,   if(zuizong.z<0,-zuizong.z*0.03,zuizong.z*0.76)     ,if(zuizong.z<0,zuizong.z*0.779,zuizong.z*0.58)   ]
++
+[0       ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)     ,0  ]
++
+[   zuixia*0.2+zuixia_R*0.2   ,   zuixia*0.6+zuixia_R*0.6    ,   - zuixia_R*0.]
+KPoint063/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(KZuiJiao_R<0,-KZuiJiao_R*0.63,-KZuiJiao_R*0.35)
++
+if(KZuiJiao_Rz<0,0,KZuiJiao_Rz*0.)  
+
+
++
+if(zui_zongX<0 ,0  ,   zui_zongX*0.05      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+KPoint063/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(KZuiJiao_R<0,-KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.525     )
++
+if(zui_zongZ<0,-zui_zongX*0.    ,-zui_zongZ*0.6   )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.      )
+KPoint063/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,-zui_zongX*0.5,-zui_zongX*0.15     )
+NODE KPoint064 parent=Sphere064
+KPoint064/position/Position_Expression [Position_Expression] [ if(zuijiao_R.y<0,zuijiao_R.y*0.2,0)         ,             if(zuijiao_R.y<0,zuijiao_R.y*0.62,zuijiao_R.y*1)                      , if(zuijiao_R.z<0,-zuijiao_R.z*1.,-zuijiao_R.z*0.5)+    if(zuijiao_R.y<0,-zuijiao_R.y*0.5,zuijiao_R.y*0.9)   ]
++
+[if(zuizong.x<0,zuizong.x*0.1,zuizong.x*0.37)       ,   if(zuizong.x<0,0,zuizong.x*0.0)     ,if(zuizong.x<0,0,-zuizong.x*0.754)   ]
++
+[if(zuizong.z<0,-zuizong.z*0.347,zuizong.z*0.25)       ,   if(zuizong.z<0,-zuizong.z*0,zuizong.z*0.76)     ,if(zuizong.z<0,zuizong.z*0.779,zuizong.z*0.58)   ]
++
+[zuishang_R*0.2      ,   if(zuizong.y<0,zuizong.y*0.2,zuizong.y*0.2)+zuishang.y*0.5+zuishang_R*0.6     ,0  ]
+KPoint064/rotation/零_Euler_XYZ/x_rotation [Float_Expression] if(KZuiJiao_R<0,-KZuiJiao_R*0.63,-KZuiJiao_R*0.35)
++
+if(KZuiJiao_Rz<0,0,KZuiJiao_Rz*0.)  
+
+
++
+if(zui_zongX<0 ,0  ,   -zui_zongX*0.04      )
++
+if(zui_zongY<0 ,0  ,   zui_zongY*0.4      )
+KPoint064/rotation/零_Euler_XYZ/y_rotation [Float_Expression] if(KZuiJiao_R<0,-KZuiJiao_R*0.08,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.,-zui_zongX*0.22     )
++
+if(zui_zongZ<0,-zui_zongZ*0.   ,-zui_zongZ*0.6   )
+KPoint064/rotation/零_Euler_XYZ/z_rotation [Float_Expression] if(KZuiJiao_R<0,KZuiJiao_R*0.09,-KZuiJiao_R*0.)
++
+if(zui_zongX<0 ,zui_zongX*0.5,zui_zongX*0.44     )

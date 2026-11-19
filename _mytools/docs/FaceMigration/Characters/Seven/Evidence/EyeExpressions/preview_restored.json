@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-11-09T15:07:34.944454+08:00",
+  "passed": true,
+  "input_error": 0,
+  "new_curves": {
+    "1_qi_l_es": 0.0,
+    "1_nu_l_es": 0.0,
+    "1_you_l_es": 0.0,
+    "1_happy_l_es": 0.0,
+    "1_qi_r_es": 0.0,
+    "1_nu_r_es": 0.0,
+    "1_you_r_es": 0.0,
+    "1_happy_r_es": 0.0
+  }
+}

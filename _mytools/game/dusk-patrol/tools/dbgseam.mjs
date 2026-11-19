@@ -1,0 +1,15 @@
+import { launch, gameUrl, shotPath } from './harness.mjs';
+const browser = await launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-gpu-sandbox'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+page.on('pageerror', (e) => console.log('ERR', e.message));
+await page.goto(gameUrl('?fixed=1&autostart=1'));
+await page.waitForFunction(() => window.__dusk && __dusk.Game.state === 'title', null, { timeout: 60000 });
+await page.evaluate(() => { __dusk.startGame(); __dusk.setView(2); });
+await page.waitForTimeout(700);
+await page.evaluate(() => { __dusk.snapCamera(); document.getElementById('hud').style.display = 'none'; });
+await page.waitForTimeout(300);
+await page.screenshot({ path: shotPath('seam-nohud.png') });
+await page.evaluate(() => { document.getElementById('hud').style.display = ''; });
+await page.waitForTimeout(200);
+await page.screenshot({ path: shotPath('seam-hud.png') });
+await browser.close();

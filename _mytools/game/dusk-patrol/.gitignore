@@ -1,0 +1,9 @@
+# Only the captures the README links ship; every other file here is a
+# throwaway shot from a debugging session and stays local.
+shots/*
+!shots/01-title.png
+!shots/02-chase.png
+!shots/03-top.png
+!shots/04-cockpit.png
+!shots/land-impact-1.png
+!shots/water-impact-1.png

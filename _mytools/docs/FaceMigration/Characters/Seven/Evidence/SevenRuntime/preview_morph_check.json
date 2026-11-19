@@ -1,0 +1,653 @@
+{
+  "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset.NewControlRigRuntimeAsset",
+  "pending": false,
+  "started_at": "2026-11-09T17:00:41.504551+08:00",
+  "preview_component": "/Engine/Transient.World_12:PersistentLevel.AnimationEditorPreviewActor_0.ControlRigSkeletalMeshComponent_0",
+  "preview_host": "/Engine/Transient.World_12:PersistentLevel.AnimationEditorPreviewActor_0.ControlRigSkeletalMeshComponent_0.ControlRig_0",
+  "expected_half": {
+    "Seven_Pupil_huangzhang": 0.50014,
+    "Seven_Head_huangzhang": 0.50014,
+    "Seven_Pupil_wuyu": 0.50014,
+    "Seven_Head_wuyu": 0.50014,
+    "Seven_Pupil_sikao": 0.50014,
+    "Seven_Head_sikao": 0.50014,
+    "Seven_Pupil_ganga": 0.50014,
+    "Seven_Head_ganga": 0.50014,
+    "1_jian": 0.5,
+    "1_xiaozhang": 0.5,
+    "1_nu": 0.5,
+    "1_happy": 0.5,
+    "1_you": 0.5,
+    "1_qi": 0.5,
+    "1_hellow": 0.5,
+    "1_yi": 0.5,
+    "1_xiu": 0.5,
+    "1_hou": 0.5,
+    "1_jing": 0.5,
+    "1_pa": 0.5,
+    "1_qi_l_es": 0.5,
+    "1_nu_l_es": 0.5,
+    "1_you_l_es": 0.5,
+    "1_happy_l_es": 0.5,
+    "1_qi_r_es": 0.5,
+    "1_nu_r_es": 0.5,
+    "1_you_r_es": 0.5,
+    "1_happy_r_es": 0.5
+  },
+  "actual_half": {
+    "Seven_Pupil_huangzhang": 0.5001400113105774,
+    "Seven_Head_huangzhang": 0.5001400113105774,
+    "Seven_Pupil_wuyu": 0.5001400113105774,
+    "Seven_Head_wuyu": 0.5001400113105774,
+    "Seven_Pupil_sikao": 0.5001400113105774,
+    "Seven_Head_sikao": 0.5001400113105774,
+    "Seven_Pupil_ganga": 0.5001400113105774,
+    "Seven_Head_ganga": 0.5001400113105774,
+    "1_jian": 0.5,
+    "1_xiaozhang": 0.5,
+    "1_nu": 0.5,
+    "1_happy": 0.5,
+    "1_you": 0.5,
+    "1_qi": 0.5,
+    "1_hellow": 0.5,
+    "1_yi": 0.5,
+    "1_xiu": 0.5,
+    "1_hou": 0.5,
+    "1_jing": 0.5,
+    "1_pa": 0.5,
+    "1_qi_l_es": 0.5,
+    "1_nu_l_es": 0.5,
+    "1_you_l_es": 0.5,
+    "1_happy_l_es": 0.5,
+    "1_qi_r_es": 0.5,
+    "1_nu_r_es": 0.5,
+    "1_you_r_es": 0.5,
+    "1_happy_r_es": 0.5
+  },
+  "half_error": 1.1310577363587981e-08,
+  "missing_morph_type": [],
+  "rig_half": {
+    "Seven_Pupil_huangzhang": 0.5001400113105774,
+    "Seven_Head_huangzhang": 0.5001400113105774,
+    "Seven_Pupil_wuyu": 0.5001400113105774,
+    "Seven_Head_wuyu": 0.5001400113105774,
+    "Seven_Pupil_sikao": 0.5001400113105774,
+    "Seven_Head_sikao": 0.5001400113105774,
+    "Seven_Pupil_ganga": 0.5001400113105774,
+    "Seven_Head_ganga": 0.5001400113105774,
+    "1_jian": 0.5,
+    "1_xiaozhang": 0.5,
+    "1_nu": 0.5,
+    "1_happy": 0.5,
+    "1_you": 0.5,
+    "1_qi": 0.5,
+    "1_hellow": 0.5,
+    "1_yi": 0.5,
+    "1_xiu": 0.5,
+    "1_hou": 0.5,
+    "1_jing": 0.5,
+    "1_pa": 0.5,
+    "1_qi_l_es": 0.5,
+    "1_nu_l_es": 0.5,
+    "1_you_l_es": 0.5,
+    "1_happy_l_es": 0.5,
+    "1_qi_r_es": 0.5,
+    "1_nu_r_es": 0.5,
+    "1_you_r_es": 0.5,
+    "1_happy_r_es": 0.5
+  },
+  "half_inputs": {
+    "CTRL_EXPR_HUANGZHANG": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_WUYU": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_SIKAO": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_GANGA": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_FV_01": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_B_FV_002": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_C_FV_003": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_EE": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_FV": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_GNK": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_MBP": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_SH": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_W": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_OTHER": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_A_02": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_R": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_L": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_L": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_L": [
+      4.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_L": [
+      4.0,
+      0.0,
+      0.0
+    ]
+  },
+  "rig_absolute_time": 371.7992248535156,
+  "actual_restored": {
+    "Seven_Pupil_huangzhang": 0.0,
+    "Seven_Head_huangzhang": 0.0,
+    "Seven_Pupil_wuyu": 0.0,
+    "Seven_Head_wuyu": 0.0,
+    "Seven_Pupil_sikao": 0.0,
+    "Seven_Head_sikao": 0.0,
+    "Seven_Pupil_ganga": 0.0,
+    "Seven_Head_ganga": 0.0,
+    "1_jian": 0.0,
+    "1_xiaozhang": 0.0,
+    "1_nu": 0.0,
+    "1_happy": 0.0,
+    "1_you": 0.0,
+    "1_qi": 0.0,
+    "1_hellow": 0.0,
+    "1_yi": 0.0,
+    "1_xiu": 0.0,
+    "1_hou": 0.0,
+    "1_jing": 0.0,
+    "1_pa": 0.0,
+    "1_qi_l_es": 0.0,
+    "1_nu_l_es": 0.0,
+    "1_you_l_es": 0.0,
+    "1_happy_l_es": 0.0,
+    "1_qi_r_es": 0.0,
+    "1_nu_r_es": 0.0,
+    "1_you_r_es": 0.0,
+    "1_happy_r_es": 0.0
+  },
+  "expected_restored": {
+    "Seven_Pupil_huangzhang": 0.0,
+    "Seven_Head_huangzhang": 0.0,
+    "Seven_Pupil_wuyu": 0.0,
+    "Seven_Head_wuyu": 0.0,
+    "Seven_Pupil_sikao": 0.0,
+    "Seven_Head_sikao": 0.0,
+    "Seven_Pupil_ganga": 0.0,
+    "Seven_Head_ganga": 0.0,
+    "1_jian": 0.0,
+    "1_xiaozhang": 0.0,
+    "1_nu": 0.0,
+    "1_happy": 0.0,
+    "1_you": 0.0,
+    "1_qi": 0.0,
+    "1_hellow": 0.0,
+    "1_yi": 0.0,
+    "1_xiu": 0.0,
+    "1_hou": 0.0,
+    "1_jing": 0.0,
+    "1_pa": 0.0,
+    "1_qi_l_es": 0.0,
+    "1_nu_l_es": 0.0,
+    "1_you_l_es": 0.0,
+    "1_happy_l_es": 0.0,
+    "1_qi_r_es": 0.0,
+    "1_nu_r_es": 0.0,
+    "1_you_r_es": 0.0,
+    "1_happy_r_es": 0.0
+  },
+  "restored_curve_error": 0.0,
+  "restored_input_error": 0.0,
+  "saved_inputs": {
+    "CTRL_BROW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_MASTER": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHIN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_HUANGZHANG": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_WUYU": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_SIKAO": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_GANGA": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_FV_01": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_B_FV_002": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_C_FV_003": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_EE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_FV": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_GNK": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_MBP": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_SH": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_W": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_OTHER": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_A_02": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "VIS_PHONEME_REFERENCE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE_SIDE_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE_SIDE_L": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "captured_at": "2026-11-09T17:00:44.162377+08:00",
+  "passed": true
+}

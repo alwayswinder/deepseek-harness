@@ -1,0 +1,14 @@
+Animcraft_Nose_Ctrl active Position List layer: 2
+Source X limit: [0,1]; Y/Z limits: [-1,1].
+Raw X beneath Float Limit was negative while effective X was 0.
+Probe restores raw Bezier values, including clipped values.
+
+Animcraft_Nose_Ctrl -> KPoint028.Position_Wire -> zCircle028 -> Link_Constraint -> bijian
+KPoint028 parent: Sphere028 -> ZPoint028 -> bizi
+
+Position_Wire
+expr=零位置_XYZ
+Float_Wire
+expr=Y_位置*-0.2
+Float_Wire
+expr=Y_位置*0.2

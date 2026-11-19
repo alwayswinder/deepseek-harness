@@ -1,0 +1,95 @@
+{
+  "captured_at": "2026-11-09T15:12:09.765074+08:00",
+  "asset": "/Game/_MyTest/Mouth/LidDiagnostic/CR_Seven_LidWorldRotation",
+  "backup": "E:\\Unreal\\Projects\\MyProject_5_8\\Saved\\Codex\\Backup\\EyeExpressionLayout_20261109_151201",
+  "before": {
+    "CTRL_EYE_EXPR_QI_R": [
+      54.0,
+      18.0,
+      164.0
+    ],
+    "CTRL_EYE_EXPR_NU_R": [
+      54.0,
+      18.0,
+      160.0
+    ],
+    "CTRL_EYE_EXPR_YOU_R": [
+      54.0,
+      18.0,
+      156.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_R": [
+      54.0,
+      18.0,
+      152.0
+    ],
+    "CTRL_EYE_EXPR_QI_L": [
+      66.0,
+      18.0,
+      164.0
+    ],
+    "CTRL_EYE_EXPR_NU_L": [
+      66.0,
+      18.0,
+      160.0
+    ],
+    "CTRL_EYE_EXPR_YOU_L": [
+      66.0,
+      18.0,
+      156.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_L": [
+      66.0,
+      18.0,
+      152.0
+    ]
+  },
+  "after": {
+    "CTRL_EYE_EXPR_QI_R": [
+      -34,
+      18,
+      164
+    ],
+    "CTRL_EYE_EXPR_NU_R": [
+      -34,
+      18,
+      160
+    ],
+    "CTRL_EYE_EXPR_YOU_R": [
+      -34,
+      18,
+      156
+    ],
+    "CTRL_EYE_EXPR_HAPPY_R": [
+      -34,
+      18,
+      152
+    ],
+    "CTRL_EYE_EXPR_QI_L": [
+      -22,
+      18,
+      164
+    ],
+    "CTRL_EYE_EXPR_NU_L": [
+      -22,
+      18,
+      160
+    ],
+    "CTRL_EYE_EXPR_YOU_L": [
+      -22,
+      18,
+      156
+    ],
+    "CTRL_EYE_EXPR_HAPPY_L": [
+      -22,
+      18,
+      152
+    ]
+  },
+  "graph_connections_unchanged": true,
+  "deformation_cases_unchanged": 3,
+  "saved_and_reloaded": true,
+  "preview_preserved": true,
+  "passed": true,
+  "visual_approval": "pending_user"
+}

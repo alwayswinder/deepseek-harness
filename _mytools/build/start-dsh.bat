@@ -103,6 +103,14 @@ rem The link keeps one copy of each skill: the repository source stays the only 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0ensure-skills.ps1"
 if errorlevel 1 echo [dsh] WARNING: personal skills could not be linked.
 
+rem The Windows sandbox labels this checkout Low, and an executable inherits the
+rem label of the directory it was built in. The CUA helper is built inside the
+rem checkout, so without this it starts Low and cannot read a normal target
+rem window (UIPI). Give its output directory an explicit High label; every
+rem rebuild inherits it. Idempotent, and silent when the helper was never built.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0fix-cua-integrity.ps1"
+if errorlevel 1 echo [dsh] WARNING: CUA helper integrity label could not be set.
+
 rem Prepare the official Blender MCP server the profile registers globally
 rem (mcp__blender__* tools in every session). Idempotent: exits at once when
 rem the entry already exists; a failed download only warns.

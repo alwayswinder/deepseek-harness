@@ -1,0 +1,386 @@
+{
+  "captured_at": "2026-11-09T16:45:44.575000+08:00",
+  "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+  "passed": true,
+  "saved": true,
+  "reloaded": true,
+  "reload_result": "(True, Text(\"\"))",
+  "validation_after_reload": {
+    "captured_at": "2026-11-09T16:45:42.146691+08:00",
+    "target": "/Game/_MyTest/Mouth/TMp/NewControlRigRuntimeAsset",
+    "phase": "after_reload",
+    "passed": true,
+    "transfer_cases": 1175,
+    "source_verifiers_passed": 12,
+    "source_verifiers_total": 12
+  },
+  "source_disk_unchanged": true,
+  "target_editor_open": true,
+  "authored_inputs_before_reload": {
+    "CTRL_BROW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_L_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_BROW_R_BEND": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_R_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_UP_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_CORNER_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_OUT": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_MID": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_L_DOWN_IN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_LOWER_LID_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_UP_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_C": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_LIP_LOW_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHEEK_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_MOUTH": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_MASTER": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYEBALL_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_CHIN": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_HUANGZHANG": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_WUYU": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_SIKAO": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EXPR_GANGA": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_FV_01": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_B_FV_002": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_C_FV_003": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_EE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_FV": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_GNK": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_MBP": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_SH": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_W": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_OTHER": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_PHONEME_A_A_02": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "VIS_PHONEME_REFERENCE": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_QI_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_NU_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_YOU_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_EYE_EXPR_HAPPY_L": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE_SIDE_R": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "CTRL_NOSE_SIDE_L": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  }
+}

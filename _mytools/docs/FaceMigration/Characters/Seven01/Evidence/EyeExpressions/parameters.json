@@ -1,0 +1,227 @@
+{
+  "source_scene": "D:/Download/Seven_Skin_New.max",
+  "source_frame": 0,
+  "source_axis": "local Y",
+  "source_range": [
+    -1,
+    0
+  ],
+  "travel_cm": 8,
+  "control_offset_rotation": [
+    0,
+    0,
+    0,
+    1
+  ],
+  "rows": [
+    {
+      "source": "R_mouthUpCircleCtrl01",
+      "control": "CTRL_EYE_EXPR_QI_R",
+      "display_name": "右眼_气",
+      "side": "R",
+      "meaning": "气",
+      "origin": [
+        -34,
+        18,
+        164
+      ],
+      "color": [
+        0.2,
+        0.65,
+        1,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_qi_l_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 71
+        }
+      ]
+    },
+    {
+      "source": "R_mouthUpCircleCtrl008",
+      "control": "CTRL_EYE_EXPR_NU_R",
+      "display_name": "右眼_怒",
+      "side": "R",
+      "meaning": "怒",
+      "origin": [
+        -34,
+        18,
+        160
+      ],
+      "color": [
+        0.2,
+        0.65,
+        1,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_nu_l_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 73
+        }
+      ]
+    },
+    {
+      "source": "R_mouthUpCircleCtrl03",
+      "control": "CTRL_EYE_EXPR_YOU_R",
+      "display_name": "右眼_忧",
+      "side": "R",
+      "meaning": "忧",
+      "origin": [
+        -34,
+        18,
+        156
+      ],
+      "color": [
+        0.2,
+        0.65,
+        1,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_you_l_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 75
+        }
+      ]
+    },
+    {
+      "source": "R_mouthUpCircleCtrl00",
+      "control": "CTRL_EYE_EXPR_HAPPY_R",
+      "display_name": "右眼_笑",
+      "side": "R",
+      "meaning": "笑",
+      "origin": [
+        -34,
+        18,
+        152
+      ],
+      "color": [
+        0.2,
+        0.65,
+        1,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_happy_l_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 77
+        }
+      ]
+    },
+    {
+      "source": "L_mouthUpCircleCtrl00",
+      "control": "CTRL_EYE_EXPR_QI_L",
+      "display_name": "左眼_气",
+      "side": "L",
+      "meaning": "气",
+      "origin": [
+        -22,
+        18,
+        164
+      ],
+      "color": [
+        0.25,
+        1,
+        0.45,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_qi_r_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 72
+        }
+      ]
+    },
+    {
+      "source": "L_mouthUpCircleCtrl008",
+      "control": "CTRL_EYE_EXPR_NU_L",
+      "display_name": "左眼_怒",
+      "side": "L",
+      "meaning": "怒",
+      "origin": [
+        -22,
+        18,
+        160
+      ],
+      "color": [
+        0.25,
+        1,
+        0.45,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_nu_r_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 74
+        }
+      ]
+    },
+    {
+      "source": "L_mouthUpCircleCtrl02",
+      "control": "CTRL_EYE_EXPR_YOU_L",
+      "display_name": "左眼_忧",
+      "side": "L",
+      "meaning": "忧",
+      "origin": [
+        -22,
+        18,
+        156
+      ],
+      "color": [
+        0.25,
+        1,
+        0.45,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_you_r_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 76
+        }
+      ]
+    },
+    {
+      "source": "L_mouthUpCircleCtrl04",
+      "control": "CTRL_EYE_EXPR_HAPPY_L",
+      "display_name": "左眼_笑",
+      "side": "L",
+      "meaning": "笑",
+      "origin": [
+        -22,
+        18,
+        152
+      ],
+      "color": [
+        0.25,
+        1,
+        0.45,
+        1
+      ],
+      "morphs": [
+        {
+          "name": "1_happy_r_es",
+          "gain": 1.0,
+          "object": "Seven_Head",
+          "channel": 78
+        }
+      ]
+    }
+  ],
+  "panel_location": "player view left of character"
+}

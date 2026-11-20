@@ -242,10 +242,17 @@ node _mytools\Mode\dsh-3dsmax\tools\probe-presets.mjs 9231   # 指定的 inspect
 只想关掉 3ds Max 的 MCP 工具（保留技能）：从 `$DSH_HOME\profiles\{desktop,web}\cordis.patch.yml`
 里删掉 `mcp-3dsmax` 那一条，重启 DSH。
 
-整个模式都不用了：
+整个模式都不用了。只改 profile 不够 —— 下次启动会被装回来：`build\ensure-profile-plugins.ps1`
+按 `build\profile-plugins.json` 补齐，`start-desktop.bat` 还会自动跑本目录的 `install.ps1`，
+两者都把包写回 profile 的 `dependencies` 与 `dsh.profile.bundles`。三处一起改：
+
+1. 从 profile 的 `package.json` 移除（脚本见下；`node_modules` 里的 junction 留着无害，
+   真正决定加载的是 `dsh.profile.bundles` 那一行）。
+2. 从 `_mytools\build\profile-plugins.json` 删掉 `"@local/dsh-mode-3dsmax"` —— desktop 和
+   web 两段里的 `packages` 与 `bundles` 各一处（两个 profile 都不用才删 web 那段）。
+3. 删掉 `_mytools\build\start-desktop.bat` 里调用 `install.ps1` 的那两段。
 
 ```powershell
-# 从两个 profile 移除（不改 `_mytools` 里的文件）
 $h = $env:DSH_HOME
 foreach ($p in 'desktop','web') {
   $f = "$h\profiles\$p\package.json"
@@ -261,7 +268,9 @@ cmd /c rmdir "_mytools\Mode\dsh-3dsmax\upstream\3dsmax-mcp"   # 只删 junction�
 Remove-Item "<仓库父目录>\dsh-3dsmax-mcp" -Recurse -Force
 ```
 
-改完重启 DSH 即恢复原状。
+2026-11-19 已按上面第 2、3 步处理 desktop（`start-desktop.bat` 不再调用本目录的
+`install.ps1`）；web profile 仍装着。要把 desktop 装回来，手动跑一次 `install.ps1` 并
+恢复基线条目。
 
 ## 实测记录
 

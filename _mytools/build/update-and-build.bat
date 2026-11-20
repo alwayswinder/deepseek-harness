@@ -6,9 +6,11 @@ rem ============================================================
 rem One-shot "update upstream + build" for this working copy.
 rem
 rem   update-and-build.bat                fetch the upstream remote, merge
-rem                                       master, run preflight, then hand the
-rem                                       build off (build.bat --detached --restart)
-rem   update-and-build.bat --push         also push master to origin after merge
+rem                                       master, push origin, run preflight,
+rem                                       then hand the build off
+rem                                       (build.bat --detached --restart)
+rem   update-and-build.bat --no-push      skip the push (only when explicitly
+rem                                       asked to keep the commit local)
 rem   update-and-build.bat --check        environment check only; changes nothing
 rem   update-and-build.bat --no-pause     do not wait for a key at the end
 rem   update-and-build.bat --help
@@ -25,13 +27,13 @@ for %%I in ("%SCRIPT_PATH%") do set "SCRIPT_DIR=%%~dpI"
 for %%I in ("%SCRIPT_DIR%..\..") do set "DSH_REPO=%%~fI"
 
 set "MODE="
-set "PUSH="
+set "PUSH=1"
 set "NOPAUSE="
 set "USAGE_ERR="
 :parseArgs
 if "%~1"=="" goto :argsDone
 if /i "%~1"=="--check" set "MODE=check" & shift & goto :parseArgs
-if /i "%~1"=="--push" set "PUSH=1" & shift & goto :parseArgs
+if /i "%~1"=="--no-push" set "PUSH=" & shift & goto :parseArgs
 if /i "%~1"=="--no-pause" set "NOPAUSE=1" & shift & goto :parseArgs
 if /i "%~1"=="--help" set "MODE=help" & shift & goto :parseArgs
 if /i "%~1"=="-h" set "MODE=help" & shift & goto :parseArgs
@@ -83,18 +85,13 @@ for /f "delims=" %%R in ('git rev-parse HEAD') do set "HEAD_AFTER=%%R"
 
 if "%HEAD_BEFORE%"=="%HEAD_AFTER%" (
     echo [update] Already up to date; nothing new to merge.
+    call :pushOrigin
     goto :done
 )
 
 echo [update] HEAD: %HEAD_BEFORE% -^> %HEAD_AFTER%
 
-if defined PUSH (
-    echo [update] Pushing master to origin...
-    git push origin master
-    if errorlevel 1 (
-        echo [update] Push failed but the local merge is done; continuing to build.
-    )
-)
+call :pushOrigin
 
 rem ---- preflight ----------------------------------------------------------------
 echo [update] Running the preflight check...
@@ -139,10 +136,19 @@ exit /b 0
 if not defined NOPAUSE pause
 exit /b 0
 
+rem Push master after a merge, and also when the merge found nothing new, so a
+rem locally accumulated commit never stays unpushed.
+:pushOrigin
+if not defined PUSH exit /b 0
+echo [update] Pushing master to origin...
+git push origin master
+if errorlevel 1 echo [update] Push failed; the local commit stays and the next run retries it.
+exit /b 0
+
 :usage
-echo Usage: update-and-build.bat [--check ^| --push ^| --no-pause ^| --help]
+echo Usage: update-and-build.bat [--check ^| --no-push ^| --no-pause ^| --help]
 echo   --check    environment check only, changes nothing
-echo   --push     also push master to origin after the merge
+echo   --no-push  skip pushing master to origin (only when asked to)
 echo   --no-pause do not wait for a key at the end
 if not defined USAGE_ERR exit /b 0
 exit /b 4

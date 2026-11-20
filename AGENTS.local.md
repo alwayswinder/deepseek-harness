@@ -50,7 +50,9 @@
 
 ## 提交与推送
 
-- **未经同意不提交、不推送**：只有明确说「提交」「推送」才做；改完先汇报改动与验证结果，等确认。
+- **未经同意不提交**：只有明确说「提交」才做；改完先汇报改动与验证结果，等确认。
+- **提交即推送，禁止只提交不推送**：拿到提交授权后，`git commit` 完立刻 `git push origin master`，本地不留未推送的提交；merge 产生的提交同样如此。推送失败（网络、权限、钩子）当场报告，不让它静默攒着；用户明确说「先只提交、别推」时才例外。
+- **推送前先 `git fetch origin`**：远程有新提交就先合并再推；改写历史只用 `--force-with-lease`，拒绝裸 `--force`。
 - 提交信息用中文书写，保留 Conventional Commits 的类型与范围前缀，例如 `fix(_mytools/deepseek-usage): 去掉对话条里重复的 token 数`。
 - 已推送的英文提交不追溯修改。
 
@@ -60,10 +62,10 @@
 
 1. **`--check` 预检**：git、上游 remote、node、pnpm 可用；工作树没有未提交的改动（未跟踪文件不算）、没有进行中的 merge。有问题先停下汇报。
 2. **更新**：`git fetch <上游>` → `git merge --no-edit <上游>/master`；有冲突就 `git merge --abort` 停下，**逐条处理并汇报**，不硬解、不带着冲突去构建（脚本 exit 2）。
-3. **不自动 push**：只有另外说「推送」或显式带 `--push` 才推 `origin master`。
+3. **合并后立即推送**：merge 完成就 `git push origin master`，不再等「推送」指令；本地本来就有未推送提交时，即使上游「已是最新」也补推一次。推送失败当场报告，构建照常继续。
 4. **preflight**：`node _mytools/build/preflight.mjs --mode desktop`；有 error 时返回 2，停下修好再跑（update-and-build.bat 此时 exit 3）；只有 warning 时正常退出 0、继续。
 5. **写契约**：`write-resume-plan.ps1` 把仓库、revision、日志路径与预期产物清单写进 `$DSH_HOME\build\resume-plan.json`，供构建结束后的 turn 核验。
 6. **构建**：`build.bat --detached --restart --log <日志>`。完整构建会停掉本副本的 Electron，而本会话跑在它的进程树里——**被停瞬间这一轮 turn 必然中断，这是机制不是失败**；detached 构建脱离进程树活到结束，成功后自动把 app 拉回来，会话存在 `$DSH_HOME\sessions`。
 7. **收尾**：app 回来后读 `resume-plan.json` 与 `$DSH_HOME\build\last-build.json`（外加日志）核对产物；detached 进程被 Ctrl+C / `0xC000013A` 打断也要从日志定位并修好，不允许静默烂尾。
 
-「更新」（fetch + merge，含 merge commit）在说「更新上游」时即视为已授权；「推送」仍须单独明说。
+「更新」（fetch + merge + push，含 merge commit）在说「更新上游」时即视为已授权。

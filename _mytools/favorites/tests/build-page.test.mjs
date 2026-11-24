@@ -62,6 +62,21 @@ test('every bookmark is a card, grouped in the order the library holds', () => {
   }
 })
 
+test('the common group leads the page whatever order the library holds', () => {
+  const html = buildPage({
+    version: 1,
+    bookmarks: [
+      { id: 'a', url: 'https://a.example/', title: 'a', group: 'unreal' },
+      { id: 'b', url: 'https://b.example/', title: 'b', group: '常用' },
+      { id: 'c', url: 'https://c.example/', title: 'c', group: 'unreal' },
+    ],
+  })
+  const groups = [...html.matchAll(/<section class="group" data-group="([^"]*)"/gu)].map(match => match[1])
+  assert.deepEqual(groups, ['常用', 'unreal'], '常用 comes first even though unreal holds the first entry')
+  const chips = [...html.matchAll(/class="chip[^"]*" data-group="([^"]*)"/gu)].map(match => match[1])
+  assert.deepEqual(chips, ['', '常用', 'unreal'], 'the filter row follows the sections')
+})
+
 test('a title, an address, and a note are escaped, never markup', () => {
   const directory = mkdtempSync(join(tmpdir(), 'favorites-page-'))
   try {

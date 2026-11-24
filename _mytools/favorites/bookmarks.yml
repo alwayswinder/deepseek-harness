@@ -25,3 +25,33 @@ bookmarks:
     group: 常用
     addedAt: 2026-11-24T02:19:10.150Z
     updatedAt: 2026-11-24T02:19:22.363Z
+  - id: 9ff71272353c
+    url: https://www.bilibili.com/
+    title: b站
+    group: 常用
+    addedAt: 2026-11-24T03:02:33.006Z
+  - id: d7b3438d97f3
+    url: https://github.com/
+    title: git
+    group: 常用
+    addedAt: 2026-11-24T03:02:33.006Z
+  - id: 1307fdbcd439
+    url: https://platform.deepseek.com/usage
+    title: 用量统计
+    group: 常用
+    addedAt: 2026-11-24T03:02:33.006Z
+  - id: 6720382b717d
+    url: https://dev.epicgames.com/community/assistant/unreal-engine/conversations/01m4pywv24npzdv8hzxyw7gff4
+    title: Epic
+    group: 常用
+    addedAt: 2026-11-24T03:02:33.006Z
+  - id: 6c92950f25cc
+    url: https://gemini.google.com/app/bfc7db8629e94204?utm_source=deepmind.google&utm_medium=referral&utm_campaign=gdm&utm_content=
+    title: gemini
+    group: 常用
+    addedAt: 2026-11-24T03:02:33.006Z
+  - id: 55a961a87048
+    url: https://opencode.ai/console/org_01M4YNWXJZJK70Y681KEB7FY5N?range=30d
+    title: OpenCode
+    group: 常用
+    addedAt: 2026-11-24T03:02:33.006Z

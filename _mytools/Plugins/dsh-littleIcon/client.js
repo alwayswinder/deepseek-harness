@@ -12,10 +12,10 @@
  * It also carries the two directions that have nothing to do with settings. The
  * page reports its own input, so the pet can tell "nobody is there" from "no task
  * is running". And it performs the pet's menu commands: the pet window belongs to
- * another process, so a choice made there reaches the page through the Host, and
- * "chat" and the Sites entries open their address where Chat's own "Open chat
- * links in" preference points — DSH's Browser tab, or the system browser — while
- * "git" opens this plugin's own Git page beside the conversation.
+ * another process, so a choice made there reaches the page through the Host: "chat"
+ * opens where Chat's own "Open chat links in" preference points — DSH's Browser
+ * tab, or the system browser — "git" opens this plugin's own Git page beside the
+ * conversation, and "favorites" opens the site library.
  *
  * The Git page is a tab type this plugin registers itself: the right Sidebar's
  * registry is the extension point for exactly that, so the page needs neither the
@@ -98,6 +98,9 @@ window.__ModuleLoader__.load({
 
     /** That page type's implementation identity, in the two stages the registry defines. */
     const FAVORITES_TYPE_ID = '@local/dsh-little-icon/favorites'
+
+    /** Groups that lead the site list whatever order the library holds them in. */
+    const LEADING_FAVORITE_GROUPS = ['常用']
 
     /** The Host route the panel reads the library from. */
     const FAVORITES_DATA_PATH = '/api/little-icon/favorites/data'
@@ -210,7 +213,6 @@ window.__ModuleLoader__.load({
       autoHideSeconds: 0,
       alertNotice: true,
       shotDir: '',
-      sites: [],
       musicLinks: [],
       musicDir: '',
     }
@@ -276,14 +278,6 @@ window.__ModuleLoader__.load({
       shotDirHint: '右键菜单「截图」存下的 PNG 放在这个文件夹里；留空就放在 DSH 自己的 little-icon/shots 下。',
       shotDirPlaceholder: '留空 = 默认位置',
       shotDirBrowse: '浏览…',
-      sites: '常用网站',
-      sitesHint: '右键桌宠菜单的「网站」按这里的顺序列出，点一条就在右侧的 Browser 标签里打开；备注是菜单上显示的名字，留空就用网址的域名。',
-      sitesLogin: '登录状态由右侧的浏览器按工作区保存，桌面端重启、重新 build 都不用重登。',
-      siteNotePlaceholder: '备注（菜单上显示的名字）',
-      siteAddressPlaceholder: '网址，例如 chat.deepseek.com',
-      siteAdd: '添加一个网站',
-      siteRemove: '删除',
-      siteBadAddress: '这个地址打不开（只支持 http/https，且不能带用户名密码），菜单里不会出现它。',
       music: '听歌',
       musicHint: '右键桌宠菜单的「听歌」用它：播放、暂停、换歌都在桌宠进程里，DSH 收起来也照样放。这里只保存 B站链接；音频文件下载到下面的目录，不放进仓库。换目录后已经下好的文件不会跟着搬，去新目录要重新补全。',
       musicDir: '音乐目录',
@@ -292,7 +286,6 @@ window.__ModuleLoader__.load({
       musicVolume: '音量',
       musicVolumeHint: '桌宠播放的音量；只存在这台机器上，不写进设置文件，也不跟别的机器同步。',
       groupPet: '桌宠',
-      groupSites: '常用网站',
       groupMusic: '听歌',
       groupLook: '外观',
       groupBehavior: '行为',
@@ -531,14 +524,6 @@ window.__ModuleLoader__.load({
       shotDirHint: 'Where the right-click menu\'s screenshots are written; leave it empty for the plugin\'s own little-icon/shots directory.',
       shotDirPlaceholder: 'Empty = the default location',
       shotDirBrowse: 'Browse…',
-      sites: 'Sites',
-      sitesHint: 'The right-click menu lists these under "Sites", in this order; choosing one opens it in the Browser tab beside the conversation. The note is the name the menu shows — leave it empty to use the address\'s host.',
-      sitesLogin: 'Sign-ins are kept by that Browser tab per workspace, so a restart or a rebuild does not ask for them again.',
-      siteNotePlaceholder: 'Note (the name in the menu)',
-      siteAddressPlaceholder: 'Address, for example chat.deepseek.com',
-      siteAdd: 'Add a site',
-      siteRemove: 'Remove',
-      siteBadAddress: 'This address cannot open (HTTP/HTTPS only, and no user name or password), so the menu will not list it.',
       music: 'Music',
       musicHint: 'The right-click menu plays it under "Music": play, pause, and next all happen in the pet process, so it keeps playing while DSH is tucked away. Only the Bilibili links are kept here; the audio is downloaded into the folder below and never into the repository. Moving that folder does not move what is already downloaded — fill the new one in again.',
       musicDir: 'Music folder',
@@ -547,7 +532,6 @@ window.__ModuleLoader__.load({
       musicVolume: 'Volume',
       musicVolumeHint: 'What the pet plays at; it stays on this machine and never travels in the settings file.',
       groupPet: 'The pet',
-      groupSites: 'Sites',
       groupMusic: 'Music',
       groupLook: 'Appearance',
       groupBehavior: 'Behaviour',
@@ -772,14 +756,6 @@ window.__ModuleLoader__.load({
         'color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:6px;padding:4px 10px;font:inherit;',
         'cursor:pointer;}',
         '.dli-button:disabled{cursor:default;opacity:.5;}',
-        // One site per line: a note and an address side by side, the remove button
-        // at the end, and — when the address cannot open — the reason under both
-        // boxes rather than a row that silently never reaches the menu.
-        '.dli-sites{display:flex;flex-direction:column;gap:8px;}',
-        '.dli-site{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:8px;align-items:center;}',
-        '.dli-site-problem{grid-column:1/-1;color:var(--dsw-alias-state-error-primary);font-size:11px;line-height:16px;}',
-        '.dli-sites-foot{display:flex;align-items:center;gap:8px;}',
-        '.dli-sites-foot .dli-hint{flex:1 1 auto;min-width:0;}',
         // Music: one line for what the pet is playing and its transport buttons, one
         // for the link being added, then one row per link — its title, the state of
         // this machine's copy, and the button that removes both.
@@ -1085,29 +1061,6 @@ window.__ModuleLoader__.load({
           : h('div', { className: 'dli-head' }, label, value),
         props.inline === true ? null : props.control,
         props.text === undefined ? null : h('div', { className: 'dli-hint' }, props.text))
-    }
-
-    /**
-     * The address a site row will offer, or undefined when it will not be offered.
-     * The Host owns this rule — it leaves a row it cannot open out of the menu and
-     * checks the address again when the pet sends one back — and this is the same
-     * rule read a second time so the card can say so on the row instead of an
-     * entry quietly missing from the menu.
-     * @param value - the address as typed.
-     * @returns the absolute address the Browser tab would open, or undefined.
-     */
-    function siteAddress(value) {
-      const text = typeof value === 'string' ? value.trim() : ''
-      if (text === '') return undefined
-      const candidate = /^[a-z][a-z0-9+.-]*:/iu.test(text) ? text : `https://${text}`
-      try {
-        const url = new URL(candidate)
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
-        if (url.username !== '' || url.password !== '') return undefined
-        return url.href
-      } catch {
-        return undefined
-      }
     }
 
     /**
@@ -1772,7 +1725,10 @@ window.__ModuleLoader__.load({
           }
           byName.get(name).push(entry)
         }
-        return { order, byName }
+        // "常用" leads the list the way it leads the generated page: it is the set a
+        // person reaches for, not a group that follows whichever entry names it first.
+        const leading = LEADING_FAVORITE_GROUPS.filter(name => byName.has(name))
+        return { order: [...leading, ...order.filter(name => !leading.includes(name))], byName }
       }, [bookmarks])
 
       const needle = query.trim().toLowerCase()
@@ -2087,58 +2043,6 @@ window.__ModuleLoader__.load({
           onClick: () => { void pickDirectoryIntoFolder() },
         }, t('shotDirBrowse')))
 
-      /**
-       * The site rows the card edits, as the draft currently holds them; the Host
-       * keeps the last accepted list and is the authority on what the menu offers.
-       */
-      const rows = Array.isArray(draft.sites) ? draft.sites : []
-
-      /** Local echo for one row, so typing is not one profile write per keystroke. */
-      const echoSite = (index, patch) => setDraft((current) => ({
-        ...current,
-        sites: (Array.isArray(current.sites) ? current.sites : [])
-          .map((row, position) => (position === index ? { ...row, ...patch } : row)),
-      }))
-
-      /** One row plus a patch, as the value the whole list is written back as. */
-      const withSite = (index, patch) => rows
-        .map((row, position) => (position === index ? { ...row, ...patch } : row))
-
-      /**
-       * The address box of one row: local echo while typing, one list write when
-       * it is left. A row of text boxes is otherwise one profile write per
-       * keystroke, which is a whole YAML line rewritten for one character.
-       */
-      const siteBox = (index, row, field, placeholder) => h('input', {
-        className: 'dli-text', type: 'text', disabled: !editable,
-        value: typeof row[field] === 'string' ? row[field] : '', placeholder,
-        onChange: (event) => echoSite(index, { [field]: event.target.value }),
-        onBlur: (event) => write({ sites: withSite(index, { [field]: event.target.value.trim() }) }, true),
-        onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
-      })
-
-      const siteRow = (row, index) => {
-        const typed = typeof row.url === 'string' ? row.url.trim() : ''
-        const problem = typed !== '' && siteAddress(typed) === undefined
-        return h('div', { className: 'dli-site', key: `site-${String(index)}` },
-          siteBox(index, row, 'name', t('siteNotePlaceholder')),
-          siteBox(index, row, 'url', t('siteAddressPlaceholder')),
-          h('button', {
-            className: 'dli-button', type: 'button', disabled: !editable,
-            onClick: () => write({ sites: rows.filter((_row, position) => position !== index) }, true),
-          }, t('siteRemove')),
-          problem ? h('div', { className: 'dli-site-problem' }, t('siteBadAddress')) : null)
-      }
-
-      const sitesControl = h('div', { className: 'dli-sites' },
-        ...rows.map(siteRow),
-        h('div', { className: 'dli-sites-foot' },
-          h('button', {
-            className: 'dli-button', type: 'button', disabled: !editable,
-            onClick: () => write({ sites: [...rows, { name: '', url: '' }] }, true),
-          }, t('siteAdd')),
-          h('span', { className: 'dli-hint' }, t('sitesLogin'))))
-
       /** Local echo for one form field, for a box that writes on leaving rather than per keystroke. */
       const echo = (patch) => setDraft((current) => ({ ...current, ...patch }))
 
@@ -2152,8 +2056,6 @@ window.__ModuleLoader__.load({
           label: t('enable'), text: t('enableHint'), inline: true, disabled: !editable,
           control: h('input', toggle('enabled')),
         }),
-        Section({ title: t('groupSites'), hint: t('sitesHint') }),
-        sitesControl,
         Section({ title: t('groupMusic'), hint: t('musicHint') }),
         musicSection,
         Section({ title: t('groupLook') }),
@@ -3752,8 +3654,8 @@ window.__ModuleLoader__.load({
         }, 'little-icon: activity reporting')
 
         // Where a menu entry opens is the person's choice rather than this plugin's:
-        // Chat and Sites must land where a chat link lands, so they follow ui-chat's
-        // "Open chat links in" preference instead of keeping a second copy of it.
+        // Chat must land where a chat link lands, so it follows ui-chat's "Open chat
+        // links in" preference instead of keeping a second copy of it.
         // That row belongs to ui-chat and `configForms.get` answers for any id, so a
         // deployment without ui-chat reads no value and keeps the in-app Browser tab.
         // Read at the click rather than mirrored: nothing renders from it.
@@ -3791,24 +3693,11 @@ window.__ModuleLoader__.load({
          * another process, so the page is what acts on a choice made there. The
          * volume is not one of them: it is this machine's own preference, so the
          * Host writes it without a page listening.
-         * @param payload - the frame's `{ command, url }`; only the site entry
-         *   carries an address, and the Host has already checked it.
+         * @param payload - the frame's `{ command }`.
          */
         const runMenuCommand = {
           chat: () => {
             openAddress(CHAT_URL)
-          },
-          site: ({ url }) => {
-            // One configured entry, by the address the Host put in the frame. The
-            // address travelled pet -> file -> Host -> page, so it is checked once
-            // more here, at the last point before a tab is handed it; a frame
-            // carrying nothing openable opens nothing rather than a blank tab.
-            const target = siteAddress(url)
-            if (target === undefined) {
-              console.warn('little-icon: a site entry named no openable address: %s', String(url))
-              return
-            }
-            openAddress(target)
           },
           git: () => {
             // Nothing shipped is needed here: the page type is this plugin's own,

@@ -2249,12 +2249,14 @@ export function apply(ctx, config) {
   }
 
   /**
-   * The generated page to open, rebuilding it first when the library is newer.
-   * @returns the page's path, or '' when this machine has no library to show.
+   * Keep the generated site page in step with the library: it is rebuilt when the
+   * library moved ahead of it, which is what catches a `git pull` up. Nothing in
+   * the pet opens that file any more, so this runs for the file rather than for an
+   * answer.
    */
-  const favoritesPagePath = () => {
+  const refreshFavoritesPage = () => {
     const paths = favoritesPaths()
-    if (paths === undefined) return ''
+    if (paths === undefined) return
     try {
       if (!favoritesRebuilding && Date.now() >= favoritesRetryAt) {
         const built = existsSync(paths.page) ? statSync(paths.page).mtimeMs : 0
@@ -2262,12 +2264,10 @@ export function apply(ctx, config) {
       }
     } catch (error) {
       // The library went away between being resolved and being read, which a branch
-      // switch is enough to do. This tick has nothing to open; the next one resolves
-      // the same path again and picks the library back up.
+      // switch is enough to do. The next tick resolves the same path again and picks
+      // the library back up.
       ctx.logger.warn('little-icon: could not read the website library: %s', String(error))
-      return ''
     }
-    return existsSync(paths.page) ? paths.page : ''
   }
 
   /**
@@ -2432,6 +2432,10 @@ export function apply(ctx, config) {
     // The player belongs to the pet, and its report is the one place this half
     // learns that audio is running.
     const state = withMusic(sampled, readMusicPlayer()?.playing === true)
+    // The generated site page is refreshed here rather than by whoever opens it:
+    // nothing in the pet opens that file any more, and it is still the wide copy of
+    // the library that any browser can show.
+    refreshFavoritesPage()
     writer.write({
       state,
       // Why the pet says "working", for the settings card and for anyone
@@ -2456,10 +2460,6 @@ export function apply(ctx, config) {
       // submenu from this list whenever it opens, so an edit here reaches a
       // running pet without restarting either half.
       sites: current.sites,
-      // The generated navigation page, or absent until this machine has one. The
-      // pet offers the menu entry only when a file is really there, so a build that
-      // has not run yet leaves a hint rather than an entry that opens nothing.
-      favoritesPage: favoritesPagePath(),
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),

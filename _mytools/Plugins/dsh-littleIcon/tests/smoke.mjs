@@ -696,8 +696,8 @@ assert.equal(labels.FishTank, '像素鱼缸', 'the mini game entry that opens th
 assert.equal(labels.Shot, '截图', 'the menu entry that captures a region of the screen')
 assert.equal(labels.Sites, '网站', 'the menu entry the site list and the library page hang under')
 assert.equal(labels.SitesManage, '网站设置', 'the entry that opens the settings card for them')
-assert.equal(labels.Nav, '导航编辑', 'the entry that opens the editable library in DSH')
-assert.equal(labels.NavBrowser, '网站导航', 'the entry that opens the generated page in the system browser')
+assert.equal(labels.Nav, '网站导航', 'the entry that opens the site library in DSH')
+assert.equal(labels.NavBrowser, undefined, 'the generated page no longer has a menu entry of its own')
 assert.equal(labels.Music, '听歌', 'the menu entry the music hangs under')
 assert.equal(labels.MusicSettings, '听歌设置', 'the entry that opens the settings card for the music')
 assert.equal(labels.MusicPlay, '开始', 'the music entry that starts playing')
@@ -708,7 +708,7 @@ for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
   'QuickAccess', 'QuickAccessHint', 'QuickAccessCurrent', 'QuickAccessOpen',
   'QuickAccessPick', 'QuickAccessPickShort', 'QuickAccessPickTitle', 'QuickAccessClear',
   'QuickAccessNoCwd', 'QuickAccessFailed',
-  'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Nav', 'NavBrowser', 'NavMissing', 'NavFailed',
+  'Settings', 'Sites', 'SitesEmpty', 'SitesManage', 'Nav',
   'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
   'ShotSavedNoClipboard', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
@@ -740,10 +740,10 @@ assert.match(petSource, /function Update-SiteMenu/, 'the sites submenu needs its
 // with the library page and the settings entry beside them: the list is one level
 // down, not two, and a list of any length must not push those fixed entries out.
 assert.match(petSource, /Add-SiteMenuItem \$items \$site/, 'the configured sites must be rows of the sites submenu itself')
-assert.match(petSource, /New-SiteListNavigationItem \$items/, 'the readable page must be a sibling of the site rows')
-assert.match(petSource, /New-EditorNavigationItem \$items/, 'and the editor under it')
+assert.match(petSource, /New-NavigationItem \$items/, 'the one site library page must be a sibling of the site rows')
 assert.match(petSource, /Add-PetMenuItem \$items \$SCRIPT:Labels\.SitesManage 'gear'/, 'and so must the settings entry')
-assert.match(petSource, /function Update-NavigationEntry/, 'the library entry is refreshed after its rebuild')
+assert.doesNotMatch(petSource, /Open-NavigationPage/,
+  'the generated page is no longer offered beside the library page')
 assert.match(petSource, /\$SCRIPT:Sites = Get-SiteList \$State/, 'the published sites must reach the submenu')
 assert.match(petSource, /case "globe":/, 'the sites entry needs its icon, like every other entry')
 assert.match(petSource, /case "sparkles":/, 'the special-features entry needs an icon of its own')
@@ -1007,46 +1007,21 @@ if (process.platform === 'win32') {
   // address it carries, and the two fixed entries an empty list still needs.
   const siteMenu = /site-menu: (.*)/.exec(selfTest.stdout)
   assert.ok(siteMenu !== null, 'the self test must report the sites entry')
-  const [emptyList, twoSites, clickedEntry, navClick, nav, navBrowser, navFail, published] =
+  const [emptyList, twoSites, clickedEntry, navClick, published] =
     siteMenu[1].trim().split(' >> ')
-  // An empty list says so, and the two fixed entries sit beside it: the readable
-  // page (unclickable, not absent, until the host has built one) above the editor,
-  // and the settings card that fills the list. A vanishing entry is what a person
-  // reports as a missing feature.
+  // An empty list says so, and the two fixed entries sit beside it: the one
+  // navigation page, and the settings card that fills the list. A vanishing entry is
+  // what a person reports as a missing feature.
   assert.equal(emptyList,
-    `ToolStripMenuItem=${labels.SitesEmpty}[False]|ToolStripSeparator=[True]|ToolStripMenuItem=${labels.NavMissing}[False]|ToolStripMenuItem=${labels.Nav}[True]|ToolStripMenuItem=${labels.SitesManage}[True]`,
-    'the readable page comes first, the editor under it, and the settings card last')
+    `ToolStripMenuItem=${labels.SitesEmpty}[False]|ToolStripSeparator=[True]|ToolStripMenuItem=${labels.Nav}[True]|ToolStripMenuItem=${labels.SitesManage}[True]`,
+    'the navigation page comes first and the settings card last')
   assert.equal(twoSites,
-    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.NavMissing}@`, `${labels.Nav}@`, `${labels.SitesManage}@`].join('|'),
+    ['Chat@https://chat.deepseek.com/', 'Docs@https://docs.example.com/', '@', `${labels.Nav}@`, `${labels.SitesManage}@`].join('|'),
     'each configured site is one entry carrying its own address, then the fixed entries')
-  // Two entries for one library: the editable one asks the page to open the library
-  // in DSH's own Browser tab, which is the only place a save can land, while the
-  // file one opens the generated page in the system browser.
+  // One entry for the library: it asks the page to open it in DSH's own Sidebar,
+  // which is the only place a save can land.
   assert.equal(navClick, 'nav-click=favorites',
-    'the editable entry must ask the page to open the library in DSH')
-  // The file entry opens a page instead of an address, so what matters is that a
-  // page on disk turns it on, that the browser registered for the web is preferred
-  // over the file association, and that a machine where neither works says so
-  // instead of doing nothing: that silence is what a broken `.html` association
-  // produced the first time this was clicked.
-  const [navLabel, navEnabled, navOpened] = nav.split('|')
-  assert.equal(navLabel, `nav=${labels.NavBrowser}`, 'a page on disk turns the file entry into the real one')
-  assert.equal(navEnabled, 'True', 'and makes it clickable')
-  assert.match(navOpened, /nav-probe\.html$/u, 'clicking it opens the page the host published')
-  assert.match(navBrowser, /^nav-browser=.*powershell\.exe\|file:\/\/\/.*nav-probe\.html$/u,
-    'a registered browser is preferred, and it is handed a file address rather than a path')
-  assert.equal(navFail, `nav-fail=${labels.NavBrowser}|${labels.NavFailed}`,
-    'a page that no browser would open is reported above the pet, never silently dropped')
-  // What the registered command line is read for: the executable, whatever switches
-  // the browser wants around `%1`, and nothing at all when there is no executable.
-  const browserExe = /browser-exe: (.*)/.exec(selfTest.stdout)
-  assert.ok(browserExe !== null, 'the self test must report what a browser command line resolves to')
-  assert.deepEqual(browserExe[1].trim().split('|'), [
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
-    'C:\\tools\\plain.exe',
-    '',
-  ], 'a browser is whatever executable its registered command line starts with')
+    'the navigation entry must ask the page to open the library in DSH')
   // Firing one entry is what proves the handler carries *that* entry's address: a
   // handler reading the wrong scope still shows the right text and tooltip, and
   // still writes a command — just with no address in it.
@@ -2591,7 +2566,7 @@ assert.equal(gitBody.options.key, gitType.id, 'the body registers under the type
 assert.equal(gitBody.options.locale, 'little-icon')
 assert.equal(favoritesType.id, '@local/dsh-little-icon/favorites')
 assert.equal(favoritesType.kind, 'little-icon-favorites')
-assert.equal(favoritesType.title(), '导航编辑', 'the editor chip reads the current language')
+assert.equal(favoritesType.title(), '网站导航', 'the site page chip reads the current language')
 assert.equal(favoritesBody.options.key, favoritesType.id, 'and its body registers under its own id')
 
 // The body never reads during render: it asks the Host for one directory and gets

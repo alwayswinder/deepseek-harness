@@ -1,6 +1,6 @@
 # 个人网站库，唯一的事实来源。浏览器导出的书签文件只在 import.mjs 里读过一次。
 # 字段：id url title group notes(Markdown) tags icon pinned addedAt updatedAt
-# 展示页：桌宠右键菜单 -> 网站 -> 网站导航；格式说明见 README.md。
+# 展示页：dist/index.html，浏览器直接打开；格式说明见 README.md。
 version: 1
 bookmarks:
   - id: cfc60e2afe18
@@ -19,3 +19,9 @@ bookmarks:
       - AI
       - 游戏开发
     addedAt: 2026-11-13T08:56:36.744Z
+  - id: e467d590e106
+    url: https://mail.google.com/mail/u/0/?hl=zh-CN#inbox
+    title: 谷歌邮箱
+    group: 常用
+    addedAt: 2026-11-24T02:19:10.150Z
+    updatedAt: 2026-11-24T02:19:22.363Z

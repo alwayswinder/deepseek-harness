@@ -4,3 +4,9 @@ Note/favorites_*.html
 
 # 网站导航页是生成物，每台机器自己从 bookmarks.yml 生成。
 favorites/dist/
+
+# Python 的字节码缓存是跑一次就有的产物，跟着仓库走只会在每台机器上重新生成
+# 一份不同的、还带着本机 Python 版本的副本。tools/ 下的脚本与 vendor/ 里的源码
+# 照常进仓库，缓存不进。
+__pycache__/
+*.pyc

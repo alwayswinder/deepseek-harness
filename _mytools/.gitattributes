@@ -22,6 +22,11 @@ Plugins/dsh-remotion-master/skills/** -whitespace
 MouseShare/bin/*.exe binary
 Plugins/dsh-littleIcon/bin/*.exe binary
 
+# The vendored segno wheel is kept byte for byte so it still matches its own
+# RECORD: PyPI's METADATA and entry_points.txt carry a trailing space and a blank
+# line at EOF, which `git diff --check` would otherwise demand be edited.
+tools/bili-dl/vendor/** -whitespace
+
 # The website library is read and diffed on every machine, one block per bookmark
 # and a note worth reading in a diff. It keeps LF everywhere: a CRLF round trip
 # through one machine would rewrite the whole file and bury the real change.

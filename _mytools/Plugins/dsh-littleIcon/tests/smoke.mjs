@@ -923,6 +923,7 @@ if (process.platform === 'win32') {
   assert.match(selfTest.stdout, /\/ 网站 \/ 小游戏 \//,
     'the self test must report the sites entry, now a row of its own')
   assert.match(selfTest.stdout, /特殊功能/, 'the self test must report the Special submenu too')
+  assert.match(selfTest.stdout, /视频截取/, 'the self test must report the video clip entry too')
   assert.match(selfTest.stdout, /临时空间/, 'the self test must report the temp-space entry too')
   // Bringing DSH back is not one command: SW_RESTORE also returns a maximized or
   // fullscreen window to the size it had before, so a window this pet hid is shown
@@ -1397,7 +1398,7 @@ rmSync(openDir, { recursive: true, force: true })
     frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
-    alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''),
+    alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''), videoClipDir: fixed(''),
   }
   try {
     apply(hostCtx, config)
@@ -1973,7 +1974,7 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3000), boredEverySeconds: fixed(60),
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
-    alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''),
+    alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''), videoClipDir: fixed(''),
   }
   try {
     apply(hostCtx, config)
@@ -3499,7 +3500,7 @@ console.log('little-icon smoke: browser half ok')
       enabled: fixed(false), size: fixed(160), translucent: fixed(true), idleOpacity: fixed(0.5),
       frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3_000), boredEverySeconds: fixed(60),
       boredMs: fixed(60_000), sleepAfterSeconds: fixed(600), tuckWhenBehind: fixed(false),
-      shotDir: fixed(''), clickAction: fixed('toggle'),
+      shotDir: fixed(''), videoClipDir: fixed(''), clickAction: fixed('toggle'),
       musicLinks: fixed(musicLinks), musicDir: fixed(''),
     }
     // A field this test does not name is read as unset rather than missing: the sample
@@ -3727,6 +3728,7 @@ if (process.argv.includes('--pet')) {
     // where the lifecycle test does not exercise them. The listening choices —
     // volume, playlist, shuffle, and how the music steps aside — are not fields.
     shotDir: ref(''),
+    videoClipDir: ref(''),
     musicLinks: ref([]),
     musicDir: ref(''),
   }

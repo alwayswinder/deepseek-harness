@@ -213,6 +213,7 @@ window.__ModuleLoader__.load({
       autoHideSeconds: 0,
       alertNotice: true,
       shotDir: '',
+      videoClipDir: 'D:/AI/AI-Anim/Video',
       musicLinks: [],
       musicDir: '',
     }
@@ -278,6 +279,9 @@ window.__ModuleLoader__.load({
       shotDirHint: '右键菜单「截图」存下的 PNG 放在这个文件夹里；留空就放在 DSH 自己的 little-icon/shots 下。',
       shotDirPlaceholder: '留空 = 默认位置',
       shotDirBrowse: '浏览…',
+      videoClipDir: '视频截取目录',
+      videoClipDirHint: '右键菜单「特殊功能 → 视频截取」下载的片段放在这个文件夹里；那个窗口也记得自己上次用的目录，这里留空就继续用它记住的那个。',
+      videoClipDirPlaceholder: '例：D:\\AI\\AI-Anim\\Video',
       music: '听歌',
       musicHint: '右键桌宠菜单的「听歌」用它：播放、暂停、换歌都在桌宠进程里，DSH 收起来也照样放。这里只保存 B站链接；音频文件下载到下面的目录，不放进仓库。换目录后已经下好的文件不会跟着搬，去新目录要重新补全。',
       musicDir: '音乐目录',
@@ -289,7 +293,7 @@ window.__ModuleLoader__.load({
       groupMusic: '听歌',
       groupLook: '外观',
       groupBehavior: '行为',
-      groupShot: '截图',
+      groupShot: '截图与视频',
       musicPlaylist: '歌单',
       musicPlaylistHint: '桌宠播放哪个歌单；一条链接就是一个歌单，「全部」按库里所有歌的顺序放。只在这台机器上生效，不跟别的机器同步。',
       musicPlaylistAll: '全部（{count} 个歌单）',
@@ -524,6 +528,9 @@ window.__ModuleLoader__.load({
       shotDirHint: 'Where the right-click menu\'s screenshots are written; leave it empty for the plugin\'s own little-icon/shots directory.',
       shotDirPlaceholder: 'Empty = the default location',
       shotDirBrowse: 'Browse…',
+      videoClipDir: 'Video clip folder',
+      videoClipDirHint: 'Where Special → Video clip saves its clips; that window also remembers its own last folder, so leaving this empty keeps using that one.',
+      videoClipDirPlaceholder: 'e.g. D:\\AI\\AI-Anim\\Video',
       music: 'Music',
       musicHint: 'The right-click menu plays it under "Music": play, pause, and next all happen in the pet process, so it keeps playing while DSH is tucked away. Only the Bilibili links are kept here; the audio is downloaded into the folder below and never into the repository. Moving that folder does not move what is already downloaded — fill the new one in again.',
       musicDir: 'Music folder',
@@ -535,7 +542,7 @@ window.__ModuleLoader__.load({
       groupMusic: 'Music',
       groupLook: 'Appearance',
       groupBehavior: 'Behaviour',
-      groupShot: 'Screenshots',
+      groupShot: 'Screenshots and video',
       musicPlaylist: 'Playlist',
       musicPlaylistHint: 'Which playlist the pet plays. One link is one playlist; All plays every song in the library. Only this machine; it does not travel with the settings file.',
       musicPlaylistAll: 'All ({count} playlists)',
@@ -2046,6 +2053,24 @@ window.__ModuleLoader__.load({
       /** Local echo for one form field, for a box that writes on leaving rather than per keystroke. */
       const echo = (patch) => setDraft((current) => ({ ...current, ...patch }))
 
+      /** The clip folder, the same control the capture folder uses, over its own field. */
+      const videoClipDirControl = h('div', { className: 'dli-path' },
+        h('input', {
+          className: 'dli-text', type: 'text', disabled: !editable,
+          value: draft.videoClipDir ?? '', placeholder: t('videoClipDirPlaceholder'),
+          onChange: (event) => setDraft((current) => ({ ...current, videoClipDir: event.target.value })),
+          onBlur: (event) => write({ videoClipDir: event.target.value.trim() }, true),
+          onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+        }),
+        h('button', {
+          className: 'dli-button', type: 'button', disabled: !editable,
+          onClick: () => {
+            void props.pickDirectory().then((picked) => {
+              if (typeof picked === 'string' && picked !== '') write({ videoClipDir: picked }, true)
+            })
+          },
+        }, t('shotDirBrowse')))
+
       const musicSection = h(MusicSection, {
         t, editable, draft, write, slider, pickDirectory: props.pickDirectory, echo,
       })
@@ -2116,6 +2141,10 @@ window.__ModuleLoader__.load({
         h(Row, {
           label: t('shotDir'), text: t('shotDirHint'), disabled: !editable,
           control: shotDirControl,
+        }),
+        h(Row, {
+          label: t('videoClipDir'), text: t('videoClipDirHint'), disabled: !editable,
+          control: videoClipDirControl,
         }),
         h('details', { className: 'dli-details' },
           h('summary', null, t('advanced')),

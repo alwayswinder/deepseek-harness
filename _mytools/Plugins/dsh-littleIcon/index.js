@@ -355,6 +355,12 @@ export const Config = z.object({
    */
   shotDir: z.string().default('').volatile(),
   /**
+   * Folder the video clip window saves its clips to. The default is the folder the
+   * clips are wanted in; blank leaves that window on whatever folder it remembered
+   * from its own last download.
+   */
+  videoClipDir: z.string().default('D:/AI/AI-Anim/Video').volatile(),
+  /**
    * Bilibili links the music library is built from, in the order the pet plays
    * them. This list is the only part of the feature that travels between machines
    * — the settings card writes it, and the repository's `pet-settings.yml` carries
@@ -2086,6 +2092,7 @@ export function apply(ctx, config) {
     clickAction: config.clickAction.get(),
     alertNotice: config.alertNotice.get(),
     shotDir: config.shotDir.get(),
+    videoClipDir: config.videoClipDir.get(),
   })
 
   /**
@@ -2397,6 +2404,9 @@ export function apply(ctx, config) {
       // Where a capture goes. Absent while the setting is blank, which is what
       // leaves the pet on its own directory beside the state file.
       shotDir: resolveShotDir(current.shotDir),
+      // Where the video clip window starts. Absent while the setting is blank,
+      // which leaves that window on the folder it remembered itself.
+      videoClipDir: resolveShotDir(current.videoClipDir),
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),

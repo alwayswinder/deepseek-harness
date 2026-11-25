@@ -322,6 +322,14 @@ namespace DshPet
                         graphics.DrawEllipse(pen, R(bounds, 7f, 9f, 6f, 6f));
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 6.5f, 6f), P(bounds, 7.5f, 3f), P(bounds, 12.5f, 3f), P(bounds, 13.5f, 6f) });
                         break;
+                    case "video":
+                        using (GraphicsPath screen = RoundedPath(Rectangle.Round(R(bounds, 1.2f, 4.4f, 17.6f, 11.4f)), 3))
+                        {
+                            graphics.DrawPath(pen, screen);
+                        }
+                        graphics.DrawLines(pen, new PointF[] { P(bounds, 8.4f, 7.6f), P(bounds, 13.6f, 10.1f), P(bounds, 8.4f, 12.6f), P(bounds, 8.4f, 7.6f) });
+                        graphics.DrawLine(pen, P(bounds, 6f, 17.4f), P(bounds, 14f, 17.4f));
+                        break;
                     case "games":
                         using (GraphicsPath pad = RoundedPath(Rectangle.Round(R(bounds, 1.2f, 6.2f, 17.6f, 9.4f)), 5))
                         {
@@ -499,6 +507,10 @@ $SCRIPT:QuitFile = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFi
 # arrives in the state file and moves this one (see Apply-State).
 $SCRIPT:DefaultShotDir = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'shots'
 $SCRIPT:ShotDir = $SCRIPT:DefaultShotDir
+# Where the video clip window starts its folder, as the settings card names it in
+# the state file (see Apply-State). Blank leaves that window on the folder it
+# remembered from its own last download.
+$SCRIPT:VideoClipDir = ''
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
 # Sampled before the click, never by it: whether DSH is the window in front is what
@@ -552,6 +564,9 @@ function Get-Labels {
         QuitDsh               = 'Quit DSH'
         QuitDshConfirm        = 'Quit DSH? A running task will be interrupted.'
         Features              = 'Special'
+        VideoClip             = 'Video clip'
+        VideoClipFailed       = 'The video clip window could not be opened.'
+        VideoClipMissing      = 'video-clip.ps1 is missing beside pet.ps1, so nothing was opened.'
         TempSpace             = 'Temp space'
         Music                 = 'Music'
         MusicPlay             = 'Play'
@@ -1274,6 +1289,33 @@ function New-SitesItem($Items) {
         } catch { Write-Log $_.Exception.Message }
     })
     return $item
+}
+
+function Start-VideoClip {
+    # The clip window is a second script rather than a part of this one: it owns a
+    # window of its own, a child process, and a log, none of which the pet's own
+    # tick should be waiting on. It is started detached, with no console of its
+    # own: -WindowStyle Hidden would keep the window the script draws hidden too,
+    # because the startup show state is inherited by the first window the child
+    # makes. The folder it starts with is the one the settings card configured,
+    # when there is one.
+    $scriptFile = Join-Path $SCRIPT:ScriptDir 'video-clip.ps1'
+    if (-not (Test-Path -LiteralPath $scriptFile -PathType Leaf)) {
+        throw $SCRIPT:Labels.VideoClipMissing
+    }
+    $shell = (Get-Process -Id $PID).Path
+    if ([string]::IsNullOrWhiteSpace($shell)) { $shell = 'powershell.exe' }
+    $arguments = @('-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $scriptFile + '"'))
+    if (-not [string]::IsNullOrWhiteSpace($SCRIPT:VideoClipDir)) {
+        $arguments += '-DefaultDir'
+        $arguments += ('"' + $SCRIPT:VideoClipDir + '"')
+    }
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = $shell
+    $info.Arguments = ($arguments -join ' ')
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    [void][System.Diagnostics.Process]::Start($info)
 }
 
 function Add-MenuLine($Menu, [string]$Text) {
@@ -3355,7 +3397,7 @@ if ($SelfTest) {
     $states = @(Get-ChildItem -LiteralPath $SCRIPT:AssetDir -Directory | Sort-Object Name | ForEach-Object {
         "$($_.Name)=$(Get-FrameCount $_.Name)"
     })
-    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.AlertNotice) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.QuickAccess) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.FishTank) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicSettings) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
+    Write-Output "labels: $($SCRIPT:Labels.Chat) / $($SCRIPT:Labels.AlertNotice) / $($SCRIPT:Labels.Git) / $($SCRIPT:Labels.QuickAccess) / $($SCRIPT:Labels.Sites) / $($SCRIPT:Labels.Games) / $($SCRIPT:Labels.Aquarium) / $($SCRIPT:Labels.FishTank) / $($SCRIPT:Labels.Shot) / $($SCRIPT:Labels.Settings) / $($SCRIPT:Labels.System) / $($SCRIPT:Labels.UpdateDsh) / $($SCRIPT:Labels.RestartDsh) / $($SCRIPT:Labels.QuitDsh) / $($SCRIPT:Labels.Features) / $($SCRIPT:Labels.VideoClip) / $($SCRIPT:Labels.TempSpace) / $($SCRIPT:Labels.Music) / $($SCRIPT:Labels.MusicSettings) / $($SCRIPT:Labels.MusicPlay) / $($SCRIPT:Labels.MusicPause) / $($SCRIPT:Labels.MusicNext) / $($SCRIPT:Labels.MusicPrev) / $($SCRIPT:Labels.MusicSync)"
     Write-Output "assets: $($states -join ', ')"
     Write-Output "state-file: $SCRIPT:StateFile"
     Write-Output "build-result: $SCRIPT:BuildResultFile"
@@ -3904,6 +3946,9 @@ function Apply-State($State) {
     # Where captures go: the settings may name a directory, and a blank one is the
     # default beside the state file.
     $SCRIPT:ShotDir = Select-ShotDir $State
+    # Where the clip window starts: the folder the settings card names, or blank to
+    # keep whatever that window remembered from its own last download.
+    if ($null -ne $State.videoClipDir) { $SCRIPT:VideoClipDir = [string]$State.videoClipDir }
     # The host asks for a tuck once the user has left DSH untouched long enough;
     # the request says nothing about the current window state, so it only ever
     # hides, and hiding an already hidden window is a no-op.
@@ -4563,6 +4608,16 @@ function New-PetMenu {
     # has to be on screen first, because a panel selected in a hidden window is
     # one nobody sees. It is the plugin's own tab type the way the Git page is,
     # so nothing shipped has to be present for the entry to work.
+    # Video clip is this process's own window, like the capture: it downloads and
+    # cuts the file by itself, so nothing of DSH has to be raised first. It opens
+    # a second script that draws the window (see Start-VideoClip).
+    $videoClipItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.VideoClip 'video'
+    $videoClipItem.add_Click({
+        try { Start-VideoClip } catch {
+            Write-Log "opening the video clip window failed: $($_.Exception.Message)"
+            try { Show-PetNotice $SCRIPT:Labels.VideoClipFailed $_.Exception.Message } catch { }
+        }
+    })
     $tempSpaceItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.TempSpace 'folder'
     $tempSpaceItem.add_Click({
         try {

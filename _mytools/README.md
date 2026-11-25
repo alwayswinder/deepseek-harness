@@ -175,6 +175,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned   # → deep
 | `build\make-app-icon.mjs` | 从 `apps\desktop\resources\icon-windows.svg` 光栅化 9 个尺寸的 `.ico` 到 `$DSH_HOME\build\dsh.ico`。 |
 | `build\prepare-desktop.ts` | 桌面端开发工程的准备逻辑，由 `build\build.bat`（desktop/repair）调用。 |
 | `docs\` | 个人文档，按主题一个目录（[docs/feishu-read](docs/feishu-read/README.md)：用本机 `lark-cli` 读飞书 wiki/文档/表格的完整命令手册与踩坑表；[docs/unreal-niagara-create](docs/unreal-niagara-create/README.md)：UE 5.9 下用 MCP 做三目标闪电链的创建指南、MCP 调用参考、排错与验证数据）。验证产物本身仍放 `D:\AI\work`，这里只留能当文档读的部分。 |
+| `tools\bili-dl\` | B 站下载的小工具，和桌宠「特殊功能 → 视频截取」那个窗口是同一件事的另一条路：`bili_login.py` 扫码登录，把 cookie 写成 yt-dlp 认的 Netscape 文件（默认 `~\.bili\cookies.txt`；`vendor\` 自带 segno，不用系统装包），`bili_dl.py` 按链接下载并交给 ffmpeg 合并。要 `pip install yt-dlp`，ffmpeg 从 `PATH` 或 `imageio_ffmpeg` 找，都没有就退成单流。`__pycache__` 与 `*.pyc` 由 `.gitignore` 排除。 |
 | `.gitattributes` | 固定 `*.bat` 以 CRLF 检出（cmd 按 CRLF 解析）；另给逐字收录的第三方文件关掉空白检查（aquarium 的 `three.module.js`、`dsh-remotion-master\skills\`），免得为了过 `git diff --check` 去改上游原文。 |
 | `build\dsh-web.log` | `build\start-dsh.bat` 本次启动的日志；服务还在跑时该文件被占用，会改用 `dsh-web-<随机>.log`。 |
 | `game\` | 个人游戏 demo，**破例留在仓库里**（与下一行相反，理由：源码要随仓库同步到两台机器）。每个游戏一个子目录，目前只有 [game/dusk-patrol](game/dusk-patrol/README.md)——像素风战机飞行，纯 HTML/CSS/JS（WebGL2 + Canvas 2D + Web Audio，无构建依赖）；`src\` 分模块，由 `tools\build.mjs` 拼成单文件 `index.html`，`tools\` 下是 Playwright 验证脚本（共用 `harness.mjs` 推导路径，不写盘符）。`shots\` 只提交 README 引用的 6 张，其余由 `.gitignore` 排除。 |

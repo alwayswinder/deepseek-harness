@@ -23,6 +23,9 @@ export const defaultOut = join(import.meta.dirname, 'dist', 'index.html')
 /** Page title, also the browser tab's label for the local file. */
 const PAGE_TITLE = '网站导航'
 
+/** Groups that lead the page whatever order the library holds them in. */
+const LEADING_GROUPS = ['常用']
+
 /** MIME types for the favicon files a browser export carries. */
 const ICON_TYPES = {
   png: 'image/png',
@@ -182,6 +185,13 @@ export function buildPage(library, options = {}) {
     if (!groups.has(name)) groups.set(name, [])
     groups.get(name).push(entry)
   }
+  // "常用" is the set a person reaches for, so it leads the page instead of
+  // following whichever entry happens to name it first; the other groups keep the
+  // order the library holds them in.
+  const groupOrder = [
+    ...LEADING_GROUPS.filter(name => groups.has(name)),
+    ...[...groups.keys()].filter(name => !LEADING_GROUPS.includes(name)),
+  ]
   const section = (name, entries) => [
     `<section class="group" data-group="${escapeHtml(name)}">`,
     `<h2><button type="button" class="fold" aria-expanded="true">`,
@@ -192,7 +202,7 @@ export function buildPage(library, options = {}) {
     '</section>',
   ].join('')
   const chips = ['<button type="button" class="chip on" data-group="">全部</button>']
-    .concat([...groups.keys()].map(name => `<button type="button" class="chip" data-group="${escapeHtml(name)}">${escapeHtml(name)}</button>`))
+    .concat(groupOrder.map(name => `<button type="button" class="chip" data-group="${escapeHtml(name)}">${escapeHtml(name)}</button>`))
     .join('')
   // Local time, because the stamp answers "is this page the one I just built?"
   // for a person looking at their own clock.
@@ -238,7 +248,7 @@ ${editable ? '<button type="button" id="add" class="primary">＋ 添加网站</b
 </header>
 <main>
 ${pinned.length > 0 ? section('置顶', pinned) : ''}
-${[...groups.entries()].map(([name, entries]) => section(name, entries)).join('\n')}
+${groupOrder.map(name => section(name, groups.get(name))).join('\n')}
 <p id="empty" class="empty" hidden>没有匹配的网站。</p>
 </main>
 <footer>${escapeHtml(libraryFile)} → ${escapeHtml(stamp)}</footer>

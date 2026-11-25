@@ -189,7 +189,7 @@ const MUSIC_COMMANDS = new Set(['play', 'pause', 'toggle', 'next', 'prev'])
  * here (music sync, the volume) or belongs to a menu entry that no longer exists,
  * so it must not reach a listener that would only warn about it.
  */
-const PAGE_COMMANDS = new Set(['chat', 'site', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space', 'listening-mode', 'favorites'])
+const PAGE_COMMANDS = new Set(['chat', 'git', 'settings', 'aquarium', 'fish-tank', 'temp-space', 'listening-mode', 'favorites'])
 
 /** Volume a machine that has not chosen one plays at. */
 const MUSIC_VOLUME_DEFAULT = 70
@@ -355,15 +355,11 @@ export const Config = z.object({
    */
   shotDir: z.string().default('').volatile(),
   /**
-   * Sites the pet's menu offers, in this order. `name` is what the entry reads
-   * and `url` what the page opens; a row whose address the in-app Browser tab
-   * could not open is left out of the menu rather than offered as an entry that
-   * does nothing.
+   * Folder the video clip window saves its clips to. The default is the folder the
+   * clips are wanted in; blank leaves that window on whatever folder it remembered
+   * from its own last download.
    */
-  sites: z.array(z.object({
-    name: z.string().default(''),
-    url: z.string().default(''),
-  })).default([]).volatile(),
+  videoClipDir: z.string().default('D:/AI/AI-Anim/Video').volatile(),
   /**
    * Bilibili links the music library is built from, in the order the pet plays
    * them. This list is the only part of the feature that travels between machines
@@ -393,50 +389,6 @@ function resolveShotDir(raw) {
   if (value === '~') return homedir()
   if (value.startsWith('~/') || value.startsWith('~\\')) return join(homedir(), value.slice(2))
   return isAbsolute(value) ? resolve(value) : resolve(homedir(), value)
-}
-
-/**
- * One address a menu entry may open in the in-app Browser tab. A person typing a
- * site writes `example.com`, so a missing scheme is completed the way a browser's
- * address bar completes one; a scheme that is already there is kept, which is
- * what leaves `file:` and `javascript:` refused here rather than opened later.
- * This is the only place that decides: the menu list is built from it, and the
- * command the pet sends back is checked against it too, because that command
- * arrives through a file.
- * @param value - the configured address.
- * @returns the absolute HTTP(S) address, or undefined when nothing may open.
- */
-function openableUrl(value) {
-  const text = typeof value === 'string' ? value.trim() : ''
-  if (text === '') return undefined
-  const candidate = /^[a-z][a-z0-9+.-]*:/iu.test(text) ? text : `https://${text}`
-  let url
-  try {
-    url = new URL(candidate)
-  } catch {
-    return undefined
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
-  if (url.username !== '' || url.password !== '') return undefined
-  return url.href
-}
-
-/**
- * The sites the pet's menu offers: the configured rows the Browser tab can open,
- * in the configured order. The note names the entry, and a row that left it blank
- * is named by its host so the menu never shows an empty line.
- * @param rows - configured rows.
- * @returns sites the pet is told about, in that order.
- */
-function resolveSites(rows) {
-  const sites = []
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const url = openableUrl(row?.url)
-    if (url === undefined) continue
-    const note = typeof row?.name === 'string' ? row.name.trim() : ''
-    sites.push({ name: note === '' ? new URL(url).hostname : note, url })
-  }
-  return sites
 }
 
 /**
@@ -734,16 +686,13 @@ function shouldTuck(dshWindow, config, now) {
 /**
  * Read the menu command the pet last wrote.
  * @param path - absolute command file path.
- * @returns that command, its timestamp, and — for the entry that opens a
- *   configured site — the address it named, which is carried only when the
- *   in-app Browser tab may open it. Undefined when there is nothing readable: no
- *   choice yet, or a half-written file.
+ * @returns that command and its timestamp. Undefined when there is nothing
+ *   readable: no choice yet, or a half-written file.
  */
 function readCommand(path) {
   try {
     const reported = JSON.parse(readFileSync(path, 'utf8'))
     if (typeof reported.at !== 'number' || typeof reported.command !== 'string') return undefined
-    const url = openableUrl(reported.url)
     // The volume entries carry a number, and the listening mode's picture carries the
     // path the person picked; anything else the pet writes stays out. A path is
     // bounded here, because this file is a file and the host trusts its own shape
@@ -755,7 +704,6 @@ function readCommand(path) {
     return {
       command: reported.command,
       at: reported.at,
-      ...url === undefined ? {} : { url },
       ...value === undefined ? {} : { value },
     }
   } catch {
@@ -2144,7 +2092,7 @@ export function apply(ctx, config) {
     clickAction: config.clickAction.get(),
     alertNotice: config.alertNotice.get(),
     shotDir: config.shotDir.get(),
-    sites: resolveSites(config.sites.get()),
+    videoClipDir: config.videoClipDir.get(),
   })
 
   /**
@@ -2249,12 +2197,14 @@ export function apply(ctx, config) {
   }
 
   /**
-   * The generated page to open, rebuilding it first when the library is newer.
-   * @returns the page's path, or '' when this machine has no library to show.
+   * Keep the generated site page in step with the library: it is rebuilt when the
+   * library moved ahead of it, which is what catches a `git pull` up. Nothing in
+   * the pet opens that file any more, so this runs for the file rather than for an
+   * answer.
    */
-  const favoritesPagePath = () => {
+  const refreshFavoritesPage = () => {
     const paths = favoritesPaths()
-    if (paths === undefined) return ''
+    if (paths === undefined) return
     try {
       if (!favoritesRebuilding && Date.now() >= favoritesRetryAt) {
         const built = existsSync(paths.page) ? statSync(paths.page).mtimeMs : 0
@@ -2262,12 +2212,10 @@ export function apply(ctx, config) {
       }
     } catch (error) {
       // The library went away between being resolved and being read, which a branch
-      // switch is enough to do. This tick has nothing to open; the next one resolves
-      // the same path again and picks the library back up.
+      // switch is enough to do. The next tick resolves the same path again and picks
+      // the library back up.
       ctx.logger.warn('little-icon: could not read the website library: %s', String(error))
-      return ''
     }
-    return existsSync(paths.page) ? paths.page : ''
   }
 
   /**
@@ -2432,6 +2380,10 @@ export function apply(ctx, config) {
     // The player belongs to the pet, and its report is the one place this half
     // learns that audio is running.
     const state = withMusic(sampled, readMusicPlayer()?.playing === true)
+    // The generated site page is refreshed here rather than by whoever opens it:
+    // nothing in the pet opens that file any more, and it is still the wide copy of
+    // the library that any browser can show.
+    refreshFavoritesPage()
     writer.write({
       state,
       // Why the pet says "working", for the settings card and for anyone
@@ -2452,14 +2404,9 @@ export function apply(ctx, config) {
       // Where a capture goes. Absent while the setting is blank, which is what
       // leaves the pet on its own directory beside the state file.
       shotDir: resolveShotDir(current.shotDir),
-      // The menu's site entries, in the configured order. The pet rebuilds that
-      // submenu from this list whenever it opens, so an edit here reaches a
-      // running pet without restarting either half.
-      sites: current.sites,
-      // The generated navigation page, or absent until this machine has one. The
-      // pet offers the menu entry only when a file is really there, so a build that
-      // has not run yet leaves a hint rather than an entry that opens nothing.
-      favoritesPage: favoritesPagePath(),
+      // Where the video clip window starts. Absent while the setting is blank,
+      // which leaves that window on the folder it remembered itself.
+      videoClipDir: resolveShotDir(current.videoClipDir),
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),
@@ -2475,10 +2422,9 @@ export function apply(ctx, config) {
    * Send one menu command to every listening page. Nothing is queued: a command
    * chosen while no page listens is dropped, because the page is what performs it.
    * @param command - the menu entry's id, as the pet reported it.
-   * @param url - the address that entry named, for the one id that carries one.
    */
-  const publishCommand = (command, payload = {}) => {
-    const frame = `data: ${JSON.stringify({ command, ...payload })}\n\n`
+  const publishCommand = (command) => {
+    const frame = `data: ${JSON.stringify({ command })}\n\n`
     for (const stream of commandStreams) {
       if (stream.writableEnded || stream.destroyed) {
         commandStreams.delete(stream)
@@ -2530,7 +2476,7 @@ export function apply(ctx, config) {
     // one a newer pet learned and this half does not, is not a click anyone can
     // complete.
     if (!PAGE_COMMANDS.has(pressed.command)) return
-    publishCommand(pressed.command, pressed.url === undefined ? {} : { url: pressed.url })
+    publishCommand(pressed.command)
   }
 
   /**
@@ -3390,7 +3336,6 @@ export const internals = {
   MUSIC_STATE,
   resolveDshHome,
   resolveShotDir,
-  resolveSites,
   resolveFavorites,
   favoritesAt,
   saveFavorites,

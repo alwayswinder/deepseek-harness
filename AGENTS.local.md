@@ -29,6 +29,7 @@
 - 个人 skill 放 `_mytools/skills/`，同一对启动脚本用 `build\ensure-skills.ps1` 把每个目录以 junction 挂进 `$DSH_HOME\skills\`；加载器读的就是仓库这一份，改完重启 DSH 即生效。悬空链接（换机器、挪仓库后）由它删掉重建。
 - 第三方插件的跨机基线：`$DSH_HOME\profiles\<name>\package.json` 是唯一的安装记录，不随仓库同步。`_mytools/build/profile-plugins.json` 声明每个 profile 该有哪些插件与 `dsh.profile.bundles` 行，`build\ensure-profile-plugins.ps1 -Profile <web|desktop>` 在每次启动时幂等补齐：`link:`／`file:` 按仓库根换算绝对路径（两者指向同一目录时不改写，免得和 `dsh plugin add` 记下的前缀来回翻），npm 包只补缺失、不升降级既有版本；全齐时只读一次文件、不联网。`-PlanOnly` 只报告不写。新机器第一次启动时 profile 还没建，脚本跳过，第二次启动起生效。
 - `$DSH_HOME` 下的凭据、会话、账本与 profile 安装记录（含本机绝对路径）按机器独立，不随仓库同步。
+- **Node 版本跟上游走**：`engines.node` 现在是 `^24.22.3 || >=26.13.1`（2026-11 从 `>=24.9.0` 抬上来），每台机器都要装进这个区间。低于下限时 `pnpm install` 只打 `[WARN] Unsupported engine`、不拦构建，很容易一路带病跑下去，看到就该升。升级用 nodejs.org 的 win-x64 MSI（`msiexec /i <msi> /qn /norestart`，先用 `SHASUMS256.txt` 校 SHA256）；全局包装在 `%APPDATA%\npm`，`pnpm` 不受影响。
 
 ## 改动边界
 

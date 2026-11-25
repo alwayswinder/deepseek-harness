@@ -111,3 +111,21 @@ dotnet publish native\entry\CuaWindows.csproj -c Release -r win-x64 --self-conta
 publish 前先 `Get-Process dsh-cua-windows | Stop-Process -Force`，否则旧 helper 锁着 `dsh-cua-windows.dll`，MSB3026 重试十次后失败。
 
 另有一处**不是上游问题**、但同样决定 helper 能否工作：从工作区构建出来的 exe 会继承仓库根的 Low 完整性标签（DSH 的 Windows 沙箱打的），进程也就以 Low 运行，UIPI 让它读不了任何正常窗口。`_mytools\build\fix-cua-integrity.ps1` 给 `native\bin` 设显式 High 标签，`start-desktop.bat` 与 `start-dsh.bat` 每次启动都跑一遍（幂等）。换机器或重新 clone 后第一次构建 helper 之前，这个脚本要先跑过。
+
+## 合并上游时的固定冲突
+
+`apps/desktop/README.i18n.yaml`、`packages/client/ui-sidebar-browser/README.i18n.yaml` 这两个摘要文件是本副本最容易假冲突的地方：本地补丁改了段落的正文，那一段的 `en`/`zh` 哈希行就与上游不同；一旦上游也改同一段落、也去动这两行，`git merge` 就报 content conflict，而正文里没有任何句子在打架。撞不撞取决于上游有没有动同一段——2026-11-25 合并 `2e39e70496`→`4b399c39a6` 时只有 `apps/desktop` 撞上；`ui-sidebar-browser` 上游没动该段，自动合并后保留的就是本地哈希。
+
+处理方式固定三步（别手工挑哈希：那两行是正文的摘要，只有按合并后的正文重算才作数）：
+
+```powershell
+git checkout --theirs -- apps/desktop/README.i18n.yaml
+git add apps/desktop/README.i18n.yaml
+pnpm exec tsx scripts/verify-translation-pairing.ts --write apps/desktop/README.i18n.yaml
+```
+
+`--write` 会按**合并后**的中英正文重算该段摘要。实例：2026-11-25 合并 `2e39e70496`→`4b399c39a6` 就卡在这里，重算后 `installation-ownership` 段落记为 `e1b178730bb046f7` / `1d5fe6c686ef82d8`。
+
+判断真冲突还是假冲突：`git diff $base HEAD -- <file>` 只看到哈希行变动，就是假冲突；看到正文行变动才需要人工判断本地那句话怎么落位。
+
+顺序不能颠倒：本地补丁改动过的正文若被上游在同一段落重写，合并后要先确认补丁句子还在（例如 `git grep -n setFullscreen -- apps/desktop/README.md apps/desktop/README.zh.md`），再跑 `--write`；顺序反过来会把丢句子的文本盖章成「已确认」。

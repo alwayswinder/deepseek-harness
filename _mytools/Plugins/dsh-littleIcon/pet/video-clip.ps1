@@ -106,6 +106,7 @@ $SCRIPT:DefaultLabels = @{
     VideoClipCookieRetry    = 'The browser login state could not be read, so this is retried without it (Bilibili then serves the formats that need no sign-in).'
     VideoClipCookieTip      = 'Edge and Chrome lock their cookie database while they run; close the browser, or leave Login state on "Not used", to keep the signed-in formats.'
     VideoClipExitCode       = 'yt-dlp exit code: {0}'
+    VideoClipRepairing      = 'Fixing the cut timestamps (re-encoding {0:0.#} s)...'
     VideoClipRunning        = 'A download is already running.'
     VideoClipOpenFailed     = 'That folder could not be opened.'
     VideoClipLogEmpty       = ''
@@ -287,6 +288,9 @@ function Get-YtDlpArguments($Job) {
         '--trim-filenames', '100',
         '--merge-output-format', 'mp4',
         '--format-sort', 'vcodec:h264',
+        # A second run over the same range would otherwise see the file from the
+        # first one and skip the transfer, leaving a result that cannot change.
+        '--force-overwrites',
         '-P', $Job.Dir,
         '-o', $Job.Template,
         '--print-to-file', 'after_move:%(filepath)s', $Job.ResultFile,
@@ -299,7 +303,7 @@ function Get-YtDlpArguments($Job) {
         [void]$arguments.Add('--download-sections')
         [void]$arguments.Add(("*{0}-{1}" -f (Format-ClockLong $Job.Start), (Format-ClockLong $Job.End)))
     }
-    if ($Job.Precise) { [void]$arguments.Add('--force-keyframes-at-cuts') }
+    if ($Job.Precise -and $Job.Start -ge 0 -and $Job.End -gt $Job.Start) { [void]$arguments.Add('--force-keyframes-at-cuts') }
     if (-not [string]::IsNullOrWhiteSpace($Job.FfmpegDir)) {
         [void]$arguments.Add('--ffmpeg-location')
         [void]$arguments.Add($Job.FfmpegDir)
@@ -730,6 +734,10 @@ $chkPrecise.Text = T 'VideoClipPrecise'
 $chkPrecise.Location = New-Object System.Drawing.Point(18, 300)
 $chkPrecise.Size = New-Object System.Drawing.Size(320, 24)
 $chkPrecise.FlatStyle = [System.Windows.Forms.FlatStyle]::System
+# A copied section starts at the keyframe before the requested second and keeps
+# that earlier stretch at negative timestamps, which players and editors show as
+# a longer, broken clip. Cutting exactly is the only correct default.
+$chkPrecise.Checked = $true
 
 $btnDownload = New-Button (T 'VideoClipDownload') 18 334 120 34 $true
 $btnCancel = New-Button (T 'VideoClipCancel') 146 334 90 34 $false
@@ -802,6 +810,46 @@ function Read-SharedText([string]$Path) {
     } finally {
         $stream.Dispose()
     }
+}
+
+# A section cut made with stream copy can begin at the keyframe before the asked
+# start and keep the frames in between at negative packet timestamps: players
+# then show a clip that is longer than asked for or starts on an undecodable
+# frame. When the first packet is negative the file is re-encoded from its own
+# zero point for exactly the requested length, which needs no second download.
+function Repair-ClipTimeline([string]$Path, $Job) {
+    if ($null -eq $Job -or $null -eq $Job.Start -or $Job.Start -lt 0) { return $Path }
+    $seconds = [double]$Job.End - [double]$Job.Start
+    if ($seconds -le 0) { return $Path }
+    $ffprobe = Join-Path $Job.FfmpegDir 'ffprobe.exe'
+    $ffmpeg = Join-Path $Job.FfmpegDir 'ffmpeg.exe'
+    if (-not (Test-Path -LiteralPath $ffprobe -PathType Leaf)) { return $Path }
+    if (-not (Test-Path -LiteralPath $ffmpeg -PathType Leaf)) { return $Path }
+    $packets = & $ffprobe -v error -select_streams v:0 -show_entries packet=pts_time -of csv=p=0 $Path 2>$null
+    $first = [double]::MaxValue
+    foreach ($line in @($packets)) {
+        $value = 0.0
+        if ([double]::TryParse(([string]$line).Trim(), [ref]$value)) {
+            if ($value -lt $first) { $first = $value }
+        }
+    }
+    if ($first -eq [double]::MaxValue -or $first -ge -0.05) { return $Path }
+    Set-Status ((T 'VideoClipRepairing') -f $seconds)
+    Add-Log ((T 'VideoClipRepairing') -f $seconds)
+    $form.Refresh()
+    $temp = Join-Path ([System.IO.Path]::GetDirectoryName($Path)) ([System.IO.Path]::GetFileNameWithoutExtension($Path) + '.fixed.mp4')
+    & $ffmpeg -v error -y -i $Path -ss 0 -t $seconds -c:v libx264 -preset veryfast -crf 18 -c:a aac -b:a 192k -movflags +faststart $temp 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $temp -PathType Leaf)) {
+        if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+        return $Path
+    }
+    try {
+        Move-Item -LiteralPath $temp -Destination $Path -Force
+    } catch {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+        return $Path
+    }
+    return $Path
 }
 
 # One run of yt-dlp: its own temporary directory for the two output files, then
@@ -907,6 +955,9 @@ $timer.add_Tick({
                     Where-Object { $_.Extension -in @('.mp4', '.mkv', '.flv', '.webm', '.m4a') -and $_.LastWriteTime -ge $SCRIPT:StartedAt.AddSeconds(-2) } |
                     Sort-Object LastWriteTime -Descending | Select-Object -First 1
                 if ($null -ne $newest) { $final = $newest.FullName }
+            }
+            if ($final -ne '' -and (Test-Path -LiteralPath $final) -and $null -ne $SCRIPT:Job -and -not $SCRIPT:Job.Precise) {
+                $final = Repair-ClipTimeline $final $SCRIPT:Job
             }
             $SCRIPT:FinalPath = $final
             if ($final -ne '' -and (Test-Path -LiteralPath $final)) {

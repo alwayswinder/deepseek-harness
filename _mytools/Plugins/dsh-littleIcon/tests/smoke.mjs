@@ -710,8 +710,9 @@ for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
   'QuickAccessPick', 'QuickAccessPickShort', 'QuickAccessPickTitle', 'QuickAccessClear',
   'QuickAccessNoCwd', 'QuickAccessFailed',
   'Settings', 'Sites',
-  'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint', 'ShotSaved',
-  'ShotSavedNoClipboard', 'ShotFailed', 'System',
+  'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint',
+  'ShotPreviewTitle', 'ShotTarget', 'ShotSave', 'ShotCopy', 'ShotCancel', 'ShotPreviewHint',
+  'ShotSaved', 'ShotSavedNoClipboard', 'ShotCopied', 'ShotCopyFailed', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
   'Music', 'MusicPlay', 'MusicPause', 'MusicNext', 'MusicPrev', 'MusicNowPlaying', 'MusicPaused',
@@ -724,6 +725,12 @@ for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
 // Every music label in the pet's fallback must exist in labels.json too, or a
 // missing file would silently mix English into a Chinese menu.
 for (const key of Object.keys(labels).filter(name => name.startsWith('Music'))) {
+  assert.match(petSource, new RegExp(`^\\s+${key}\\s+=`, 'm'),
+    `pet/pet.ps1 has no English fallback for ${key}`)
+}
+// The capture's own labels are read the same way: a missing file must not mix
+// English buttons into a Chinese preview.
+for (const key of Object.keys(labels).filter(name => name.startsWith('Shot'))) {
   assert.match(petSource, new RegExp(`^\\s+${key}\\s+=`, 'm'),
     `pet/pet.ps1 has no English fallback for ${key}`)
 }
@@ -1079,6 +1086,11 @@ if (process.platform === 'win32') {
   // A drag that runs up and to the left selects the same rectangle as one that
   // runs down and to the right, which is what the bitmap is cut with.
   assert.match(selfTest.stdout, /shot-rect: 10,20 20x20/, 'the drag rectangle is rebuilt from its corners')
+  // The preview stands between the shutter and the file: a small capture is drawn at
+  // its own size, and a large one is shrunk to the screen it came from, so the labels
+  // and buttons under it stay on that screen.
+  assert.match(selfTest.stdout, /shot-preview: big=960x720 small=320x200/,
+    'the preview fits a large capture to the screen and leaves a small one alone')
   // The settings may name the folder captures go to; a blank setting and no
   // setting at all are the same thing, which is the plugin's own directory.
   const shotDirs = /shot-dirs: (.*)/.exec(selfTest.stdout)
@@ -1164,6 +1176,31 @@ if (process.platform === 'win32') {
   assert.equal(favoritesAt(join(root, 'assets')), undefined, 'a directory without a library is not the library')
   assert.deepEqual(resolveFavorites(join(root, 'assets')), favorites,
     'a plugin inside the checkout resolves beside itself, whatever the profile says')
+
+  // The preview between the shutter and the file: laid out off screen over a
+  // synthetic capture, so its rows and its three buttons are checked without a
+  // desktop to drag on. A layout sized from constants rather than the font is what
+  // a DPI change would break, and that is exactly what this draws.
+  const previewDir = mkdtempSync(join(tmpdir(), 'little-icon-preview-'))
+  const previewFile = join(previewDir, 'preview.png')
+  const previewProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(previewDir, 'state.json'),
+    '-PositionFile', join(previewDir, 'position.json'),
+    '-ShotPreviewProbe', previewFile,
+  ], { encoding: 'utf8' })
+  assert.equal(previewProbe.status, 0, `pet.ps1 -ShotPreviewProbe failed: ${previewProbe.stderr}`)
+  const previewSize = /shot-preview-probe: (\d+)x(\d+)/.exec(previewProbe.stdout)
+  assert.ok(previewSize !== null, 'the preview probe must report the window it laid out')
+  assert.ok(Number(previewSize[1]) > 320 && Number(previewSize[2]) > 200,
+    'the window must be bigger than the capture it shows')
+  assert.match(previewProbe.stdout, /shot-preview-buttons: 保存\|仅复制\|取消/,
+    'the preview must offer save, copy only, and cancel, in that order')
+  const previewBytes = readFileSync(previewFile)
+  rmSync(previewDir, { recursive: true, force: true })
+  assert.deepEqual([...previewBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'the drawn preview is a PNG')
 
   // The capture itself, taken for real: the sheet is not drawn and nobody drags, so
   // what is left under test is the screen read, the encoder, and the directory. A

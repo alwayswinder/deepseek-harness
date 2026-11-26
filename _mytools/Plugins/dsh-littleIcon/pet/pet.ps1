@@ -90,6 +90,12 @@
     card's, draw it to this path, and exit. Row geometry is what decides whether a
     submenu chevron lands on the card's edge or on top of a label, and that cannot
     be read off the script.
+
+.PARAMETER ShotPreviewProbe
+    Build the capture preview over a synthetic bitmap, lay it out off screen, draw
+    it to this path, print the three buttons it holds, and exit. The preview stands
+    between a capture and the file, so its layout and its labels are what a person
+    reads before anything is written; nothing here needs a screen.
 #>
 [CmdletBinding()]
 param(
@@ -101,7 +107,8 @@ param(
     [switch]$ShotProbe,
     [switch]$AudioProbe,
     [string]$MusicProbe = '',
-    [string]$MenuProbe = ''
+    [string]$MenuProbe = '',
+    [string]$ShotPreviewProbe = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -546,8 +553,16 @@ function Get-Labels {
         FishTank              = 'Pixel fish tank'
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
+        ShotPreviewTitle      = 'Screenshot preview'
+        ShotTarget            = 'Saves to: {0}'
+        ShotSave              = 'Save'
+        ShotCopy              = 'Copy only'
+        ShotCancel            = 'Cancel'
+        ShotPreviewHint       = 'Enter saves, Esc cancels'
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
         ShotSavedNoClipboard  = 'Screenshot saved as a file, but it could not be copied to the clipboard'
+        ShotCopied            = 'Screenshot copied to the clipboard'
+        ShotCopyFailed        = 'The screenshot could not be copied to the clipboard.'
         ShotFailed            = 'The screenshot could not be saved.'
         System                = 'System'
         UpdateDsh             = 'Update DSH'
@@ -1167,12 +1182,18 @@ function Get-ShotRectangle($Start, $End) {
     return [System.Drawing.Rectangle]::new($left, $top, ($right - $left), ($bottom - $top))
 }
 
+function Get-ShotFileName {
+    # Milliseconds in the name: two captures inside the same second are ordinary.
+    # Built without touching the disk, because the preview names the file before
+    # the person has agreed to write one.
+    return (Join-Path $SCRIPT:ShotDir ('shot-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss-fff') + '.png'))
+}
+
 function New-ShotPath {
     if (-not (Test-Path -LiteralPath $SCRIPT:ShotDir)) {
         [void][System.IO.Directory]::CreateDirectory($SCRIPT:ShotDir)
     }
-    # Milliseconds in the name: two captures inside the same second are ordinary.
-    return (Join-Path $SCRIPT:ShotDir ('shot-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss-fff') + '.png'))
+    return (Get-ShotFileName)
 }
 
 function New-ScreenShotBitmap([System.Drawing.Rectangle]$Rectangle) {
@@ -1197,6 +1218,20 @@ function Save-ShotBitmap($Bitmap, [string]$Path) {
     # PNG rather than JPEG: a capture is read back, not photographed, and the
     # encoder is built in, so the pet needs nothing installed beside it.
     $Bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+}
+
+function Get-ShotPreviewLayout([int]$Width, [int]$Height, [System.Drawing.Rectangle]$Area) {
+    # A capture is never blown up: a 320x200 selection drawn 960 wide would only be
+    # blurrier. A large one is shrunk to fit 960x720 and the screen it came from, with
+    # room left for the labels and the buttons under it. Pure, so the self test can read it.
+    $maxWidth = [Math]::Min(960, [Math]::Max(240, [int]($Area.Width * 0.7)))
+    $maxHeight = [Math]::Min(720, [Math]::Max(160, [int]($Area.Height * 0.7)))
+    $scale = [Math]::Min(1.0, [Math]::Min($maxWidth / [double]$Width, $maxHeight / [double]$Height))
+    return [pscustomobject]@{
+        ImageWidth  = [Math]::Max(1, [int][Math]::Round($Width * $scale))
+        ImageHeight = [Math]::Max(1, [int][Math]::Round($Height * $scale))
+        Scale       = $scale
+    }
 }
 
 # ---- menu commands ----------------------------------------------------------
@@ -3656,6 +3691,13 @@ if ($SelfTest) {
     Write-Output "shot-dirs: $($shotDirs -join ' / ')"
     $drag = Get-ShotRectangle ([System.Drawing.Point]::new(30, 40)) ([System.Drawing.Point]::new(10, 20))
     Write-Output "shot-rect: $($drag.X),$($drag.Y) $($drag.Width)x$($drag.Height)"
+    # The preview decides how much of the capture is shown before the file exists: a
+    # small one is drawn at its own size, a large one shrinks to the screen it came
+    # from, and the labels below it stay inside that screen either way.
+    $previewBig = Get-ShotPreviewLayout 4000 3000 ([System.Drawing.Rectangle]::new(0, 0, 1920, 1080))
+    $previewSmall = Get-ShotPreviewLayout 320 200 ([System.Drawing.Rectangle]::new(0, 0, 1920, 1080))
+    Write-Output ("shot-preview: big={0}x{1} small={2}x{3}" -f $previewBig.ImageWidth, $previewBig.ImageHeight,
+        $previewSmall.ImageWidth, $previewSmall.ImageHeight)
     # The nine tiles are filled from the eight folders the person assigned and a
     # directory the page names, so the mapping is what a quiet bug would get wrong:
     # the middle slot is the Session's folder whatever the list says, a ring entry
@@ -4137,6 +4179,12 @@ $SCRIPT:ShotOverlay = $null
 $SCRIPT:ShotDragging = $false
 $SCRIPT:ShotStart = [System.Drawing.Point]::Empty
 $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+# The preview between the shutter and the file: the bitmap lives here while that
+# window is open, because choosing is what writes it.
+$SCRIPT:ShotPreview = $null
+$SCRIPT:ShotPreviewChoice = ''
+$SCRIPT:ShotPreviewBitmap = $null
+$SCRIPT:ShotPreviewPath = ''
 
 # A capture that only lands in a file says nothing to the person who made it, so
 # the pet says one line where they are already looking - above itself, for a few
@@ -4310,10 +4358,196 @@ function Show-AlertNotice {
     Show-PetNotice $SCRIPT:Labels.PetName $SCRIPT:Labels.AlertNotice
 }
 
+function Close-ShotPreview {
+    # Closing performs the choice: the window's FormClosed handler reads it, writes
+    # the file or the clipboard, and disposes the bitmap. Replacing a preview that
+    # is still open closes it the same way.
+    $form = $SCRIPT:ShotPreview
+    $SCRIPT:ShotPreview = $null
+    if ($null -ne $form) {
+        try { $form.Close() } catch { }
+    }
+}
+
+function New-ShotPreviewForm($Bitmap, [System.Drawing.Rectangle]$Shot) {
+    # Builds the window a capture is confirmed in - the picture, its size, the file
+    # it would become, and the three buttons - and returns it rather than showing it,
+    # so the probe can lay the same window out off screen.
+    $area = [System.Windows.Forms.Screen]::FromRectangle($Shot).WorkingArea
+    $layout = Get-ShotPreviewLayout $Bitmap.Width $Bitmap.Height $area
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = $SCRIPT:Labels.ShotPreviewTitle
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    # Physical pixels, like the sheet: the layout above is computed from the capture
+    # and the screen, so an automatic font scale would move the buttons off it.
+    $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+    # Everything around the picture is sized from the font rather than from a
+    # constant: this process is per-monitor DPI aware, so 9pt is 20px tall at 125%
+    # and a row pinned to 18px would have its text clipped away entirely.
+    $scale = [Math]::Max(1.0, $form.Font.Height / 16.0)
+    $padding = [int](12 * $scale)
+    $gap = [int](4 * $scale)
+    $lineHeight = $form.Font.Height + 6
+    $buttonWidth = [int](92 * $scale)
+    $buttonHeight = $form.Font.Height + 12
+    # As wide as the picture or the button row needs, and no wider: a small capture
+    # should not open a window with a band of empty space beside it.
+    $clientWidth = [Math]::Max($layout.ImageWidth + ($padding * 2),
+        ($buttonWidth * 3) + ($gap * 2) + ($padding * 2))
+
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.ShowInTaskbar = $false
+    $form.TopMost = $true
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 251)
+
+    $picture = New-Object System.Windows.Forms.PictureBox
+    $picture.Location = New-Object System.Drawing.Point($padding, $padding)
+    $picture.Size = New-Object System.Drawing.Size($layout.ImageWidth, $layout.ImageHeight)
+    $picture.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
+    $picture.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $picture.BackColor = [System.Drawing.Color]::FromArgb(226, 230, 236)
+    $picture.Image = $Bitmap
+
+    $sizeLabel = New-Object System.Windows.Forms.Label
+    $sizeLabel.AutoSize = $true
+    $sizeLabel.Text = ('{0} x {1}' -f $Bitmap.Width, $Bitmap.Height)
+    $sizeLabel.Location = New-Object System.Drawing.Point($padding, ($padding + $layout.ImageHeight + ($gap * 2)))
+
+    $targetLabel = New-Object System.Windows.Forms.Label
+    $targetLabel.AutoSize = $false
+    $targetLabel.AutoEllipsis = $true
+    $targetLabel.Text = ($SCRIPT:Labels.ShotTarget -f $SCRIPT:ShotPreviewPath)
+    $targetLabel.Size = New-Object System.Drawing.Size(($clientWidth - ($padding * 2)), $lineHeight)
+    $targetLabel.Location = New-Object System.Drawing.Point($padding, ($sizeLabel.Bottom + $gap))
+
+    $hintLabel = New-Object System.Windows.Forms.Label
+    $hintLabel.AutoSize = $true
+    $hintLabel.ForeColor = [System.Drawing.Color]::FromArgb(110, 118, 130)
+    $hintLabel.Text = $SCRIPT:Labels.ShotPreviewHint
+    $hintLabel.Location = New-Object System.Drawing.Point($padding, ($targetLabel.Bottom + $gap))
+
+    $buttonY = $hintLabel.Bottom + ($gap * 3)
+    $cancelButton = New-Object System.Windows.Forms.Button
+    $cancelButton.Text = $SCRIPT:Labels.ShotCancel
+    $cancelButton.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
+    $cancelButton.Location = New-Object System.Drawing.Point(($clientWidth - $padding - $buttonWidth), $buttonY)
+
+    $copyButton = New-Object System.Windows.Forms.Button
+    $copyButton.Text = $SCRIPT:Labels.ShotCopy
+    $copyButton.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
+    $copyButton.Location = New-Object System.Drawing.Point(($cancelButton.Left - $gap - $buttonWidth), $buttonY)
+
+    $saveButton = New-Object System.Windows.Forms.Button
+    $saveButton.Text = $SCRIPT:Labels.ShotSave
+    $saveButton.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
+    $saveButton.Location = New-Object System.Drawing.Point(($copyButton.Left - $gap - $buttonWidth), $buttonY)
+
+    [void]$form.Controls.Add($picture)
+    [void]$form.Controls.Add($sizeLabel)
+    [void]$form.Controls.Add($targetLabel)
+    [void]$form.Controls.Add($hintLabel)
+    [void]$form.Controls.Add($saveButton)
+    [void]$form.Controls.Add($copyButton)
+    [void]$form.Controls.Add($cancelButton)
+    $form.ClientSize = New-Object System.Drawing.Size($clientWidth, ($buttonY + $buttonHeight + $padding))
+    $form.AcceptButton = $saveButton
+    $form.CancelButton = $cancelButton
+
+    # Over the selection that produced it, and inside the working area when that
+    # selection is too small or too close to an edge to hold the window.
+    $left = $Shot.Left + [int](($Shot.Width - $form.Width) / 2)
+    $top = $Shot.Top + [int](($Shot.Height - $form.Height) / 2)
+    $left = [Math]::Min([Math]::Max($left, $area.Left + 8), [Math]::Max($area.Left + 8, $area.Right - $form.Width - 8))
+    $top = [Math]::Min([Math]::Max($top, $area.Top + 8), [Math]::Max($area.Top + 8, $area.Bottom - $form.Height - 8))
+    $form.Location = New-Object System.Drawing.Point($left, $top)
+
+    return [pscustomobject]@{
+        Form         = $form
+        Picture      = $picture
+        SizeLabel    = $sizeLabel
+        TargetLabel  = $targetLabel
+        HintLabel    = $hintLabel
+        SaveButton   = $saveButton
+        CopyButton   = $copyButton
+        CancelButton = $cancelButton
+    }
+}
+
+function Show-ShotPreview($Bitmap, [System.Drawing.Rectangle]$Shot) {
+    # The shutter no longer writes on release: the preview owns the bitmap and
+    # writes the file only after Save, so a capture the person backs out of leaves
+    # no file. WinForms again, for the same physical-pixel reason as the sheet.
+    if ($null -ne $SCRIPT:ShotPreview) {
+        try { $SCRIPT:ShotPreview.Close() } catch { }
+        $SCRIPT:ShotPreview = $null
+    }
+    # Named before the window is built, because the window says where the file
+    # would go. The folder is not created here: a cancelled capture leaves nothing.
+    $SCRIPT:ShotPreviewPath = Get-ShotFileName
+    $built = New-ShotPreviewForm $Bitmap $Shot
+    $form = $built.Form
+    $saveButton = $built.SaveButton
+    $copyButton = $built.CopyButton
+    $cancelButton = $built.CancelButton
+
+    $SCRIPT:ShotPreviewBitmap = $Bitmap
+    $SCRIPT:ShotPreviewChoice = ''
+    $SCRIPT:ShotPreview = $form
+
+    $saveButton.add_Click({ $SCRIPT:ShotPreviewChoice = 'save'; Close-ShotPreview })
+    $copyButton.add_Click({ $SCRIPT:ShotPreviewChoice = 'copy'; Close-ShotPreview })
+    $cancelButton.add_Click({ $SCRIPT:ShotPreviewChoice = ''; Close-ShotPreview })
+
+    $form.add_FormClosed({
+        param($sender, $eventArgs)
+        $choice = $SCRIPT:ShotPreviewChoice
+        $SCRIPT:ShotPreviewChoice = ''
+        $SCRIPT:ShotPreview = $null
+        $bitmap = $SCRIPT:ShotPreviewBitmap
+        $SCRIPT:ShotPreviewBitmap = $null
+        $path = $SCRIPT:ShotPreviewPath
+        $SCRIPT:ShotPreviewPath = ''
+        if ($null -eq $bitmap) { return }
+        try {
+            if ($choice -eq 'save') {
+                # The folder may still be missing: naming the file must not create
+                # it, because a cancelled capture has to leave the folder as it was.
+                if (-not (Test-Path -LiteralPath $SCRIPT:ShotDir)) {
+                    [void][System.IO.Directory]::CreateDirectory($SCRIPT:ShotDir)
+                }
+                if ([string]::IsNullOrWhiteSpace($path) -or (Test-Path -LiteralPath $path)) { $path = New-ShotPath }
+                Save-ShotBitmap $bitmap $path
+                $copied = Copy-ShotImage $bitmap
+                if ($copied) { Show-PetNotice $SCRIPT:Labels.ShotSaved $path }
+                else { Show-PetNotice $SCRIPT:Labels.ShotSavedNoClipboard $path }
+            } elseif ($choice -eq 'copy') {
+                if (Copy-ShotImage $bitmap) { Show-PetNotice $SCRIPT:Labels.ShotCopied '' }
+                else { Show-ShotFailure $SCRIPT:Labels.ShotCopyFailed }
+            }
+        } catch {
+            Write-Log "saving the capture failed: $($_.Exception.Message)"
+            try { Show-ShotFailure $_.Exception.Message } catch { }
+        } finally {
+            $bitmap.Dispose()
+        }
+    })
+
+    $form.Show()
+    $form.Activate()
+    # The person just finished a drag here, so the window can take the foreground:
+    # Enter saves, Escape cancels, and both only reach a window that has the focus.
+    [void][DshPet.Win32]::SetForegroundWindow($form.Handle)
+    $saveButton.Focus()
+}
+
 function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
     # This process's own sheet has to be off the screen before the shutter, or the
     # dimming would be in the file. The hole already showed the desktop, so what
-    # the person saw inside the selection is what lands in the PNG.
+    # the person saw inside the selection is what the preview holds.
     $shot = [System.Drawing.Rectangle]::new(($Form.Left + $Selection.X), ($Form.Top + $Selection.Y),
         $Selection.Width, $Selection.Height)
     $Form.Hide()
@@ -4322,16 +4556,14 @@ function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
     # a sleeping dispatcher needs no repaint, so this is the wait that costs.
     Start-Sleep -Milliseconds 90
     $bitmap = New-ScreenShotBitmap $shot
-    try {
-        $path = New-ShotPath
-        Save-ShotBitmap $bitmap $path
-        $copied = Copy-ShotImage $bitmap
-    } finally {
-        $bitmap.Dispose()
-    }
     Close-ShotOverlay
-    if ($copied) { Show-PetNotice $SCRIPT:Labels.ShotSaved $path }
-    else { Show-PetNotice $SCRIPT:Labels.ShotSavedNoClipboard $path }
+    # Nothing is written here any more: the preview owns the bitmap and writes the
+    # file only after Save, so a capture the person backs out of leaves no file.
+    try { Show-ShotPreview $bitmap $shot }
+    catch {
+        $bitmap.Dispose()
+        throw
+    }
 }
 
 function Start-RegionShot {
@@ -4903,6 +5135,39 @@ if ($MenuProbe -ne '') {
 }
 
 
+
+if ($ShotPreviewProbe -ne '') {
+    # The preview window over a synthetic capture: no screen, no shutter, and no
+    # file. What it proves is the part a person reads before anything is written -
+    # the picture, its size, the path, and the three buttons - drawn off screen.
+    $probeShot = [System.Drawing.Rectangle]::new(0, 0, 320, 200)
+    $probeCapture = New-Object System.Drawing.Bitmap($probeShot.Width, $probeShot.Height)
+    $probeGraphics = [System.Drawing.Graphics]::FromImage($probeCapture)
+    try {
+        $probeGraphics.Clear([System.Drawing.Color]::FromArgb(28, 32, 40))
+        $probeGraphics.FillRectangle([System.Drawing.Brushes]::SteelBlue, 24, 24, 150, 90)
+        $probeGraphics.FillRectangle([System.Drawing.Brushes]::Orange, 190, 110, 90, 60)
+    } finally {
+        $probeGraphics.Dispose()
+    }
+    $SCRIPT:ShotPreviewPath = Get-ShotFileName
+    $probeBuilt = New-ShotPreviewForm $probeCapture $probeShot
+    $probeBuilt.Form.Location = New-Object System.Drawing.Point(-4000, -4000)
+    $probeBuilt.Form.Show()
+    [System.Windows.Forms.Application]::DoEvents()
+    $probeImage = New-Object System.Drawing.Bitmap($probeBuilt.Form.Width, $probeBuilt.Form.Height)
+    $probeBuilt.Form.DrawToBitmap($probeImage,
+        (New-Object System.Drawing.Rectangle(0, 0, $probeBuilt.Form.Width, $probeBuilt.Form.Height)))
+    $probeImage.Save($ShotPreviewProbe, [System.Drawing.Imaging.ImageFormat]::Png)
+    $probeImage.Dispose()
+    Write-Output "shot-preview-probe: $($probeBuilt.Form.Width)x$($probeBuilt.Form.Height)"
+    Write-Output ("shot-preview-buttons: " + $probeBuilt.SaveButton.Text + '|' + $probeBuilt.CopyButton.Text + '|' +
+        $probeBuilt.CancelButton.Text)
+    $probeBuilt.Picture.Image = $null
+    $probeBuilt.Form.Close()
+    $probeCapture.Dispose()
+    exit 0
+}
 
 # Apply the state first (it fixes the window size), then place the window and
 # clamp it onto a screen.

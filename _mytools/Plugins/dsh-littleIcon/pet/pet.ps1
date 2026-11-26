@@ -17,7 +17,10 @@
     screen first and is written to command.json beside the state file for the host
     to relay, and the rest act on this process at once - a screenshot among them:
     the pet owns the desktop the region is dragged over, so the selection is made
-    here and the PNG lands in shots/ beside the state file. Quick access is one of
+    here and the PNG lands in shots/ beside the state file. Screen recording is the
+    same kind of work one step further: the same sheet chooses an area, ffmpeg grabs
+    it and writes an MP4 into recordings/, and a small always-on-top bar outside the
+    area is what stops it (see Start-ScreenRecord). Quick access is one of
     those: a panel of nine folder tiles, the Session's directory from the state
     file in the middle and Explorer's own recent folders around it, where a click
     raises the window that already shows the folder instead of opening a second
@@ -97,6 +100,44 @@
     print the three buttons it holds, and exit. The preview stands between a capture
     and the file, so its layout and its labels are what a person reads before
     anything is written; nothing here needs a screen.
+
+.PARAMETER RecordProbe
+    Record a fixed 320x200 corner of the screen for two seconds through ffmpeg,
+    stop it the way the menu does, print the file and its size, and exit. No sheet,
+    no bar, and no notice are involved: this is gdigrab, x264, the stop request, and
+    the recordings directory on their own. A machine without ffmpeg prints
+    `record-probe: skipped no-ffmpeg` and succeeds, because the recorder is an
+    optional download the video clip window owns.
+
+.PARAMETER RecordBarProbe
+    Lay the recording bar out, paint it off screen with a running clock, write the
+    picture to this path, build the borderless window behind that layout without
+    showing it, print both sizes and the stop button's box, and exit. A bar whose
+    rows were measured too narrow clips its stop label, and that cannot be read off
+    the script; nothing here needs a screen or a recording.
+
+.PARAMETER RecordPreviewProbe
+    Paint the recording preview off screen over a drawn stand-in poster, write the
+    picture to this path, build the borderless window behind that layout without
+    showing it, print the layout size, the window's size, and the three buttons, and
+    exit. The preview is what stands between a finished recording and its file, so
+    its layout and labels are worth checking without a recording to finish.
+
+.PARAMETER RecordPlayProbe
+    Open the real preview window on the media file at this path, hold it on screen
+    long enough for the first frame, write the window to this path plus `.png`, and
+    print what the player and the transport did: the video's natural size, the
+    poster position, the picture's average luminance, and the playhead drift across a
+    pause. A preview that opens black and a pause that does not hold cannot be read
+    off the script, and this is what shows both.
+
+.PARAMETER RecordSheetProbe
+    Drive the recording selection sheet the way a person does - press, drag, release,
+    then Escape - and write a picture of the sheet at each step into this directory.
+    It reports whether the dragged selection was on screen while it was being
+    dragged, the frame the release left, whether the start window appeared, and
+    whether Escape closed the sheet. Showing a live topmost window is the only way
+    to measure any of that.
 #>
 [CmdletBinding()]
 param(
@@ -109,7 +150,12 @@ param(
     [switch]$AudioProbe,
     [string]$MusicProbe = '',
     [string]$MenuProbe = '',
-    [string]$ShotPreviewProbe = ''
+    [string]$ShotPreviewProbe = '',
+    [string]$RecordProbe = '',
+    [string]$RecordBarProbe = '',
+    [string]$RecordPreviewProbe = '',
+    [string]$RecordPlayProbe = '',
+    [string]$RecordSheetProbe = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -338,6 +384,23 @@ namespace DshPet
                         graphics.DrawLines(pen, new PointF[] { P(bounds, 8.4f, 7.6f), P(bounds, 13.6f, 10.1f), P(bounds, 8.4f, 12.6f), P(bounds, 8.4f, 7.6f) });
                         graphics.DrawLine(pen, P(bounds, 6f, 17.4f), P(bounds, 14f, 17.4f));
                         break;
+                    case "record":
+                        graphics.DrawEllipse(pen, R(bounds, 3f, 3f, 14f, 14f));
+                        using (SolidBrush dot = new SolidBrush(Ink))
+                        {
+                            graphics.FillEllipse(dot, R(bounds, 7f, 7f, 6f, 6f));
+                        }
+                        break;
+                    case "stop":
+                        using (GraphicsPath square = RoundedPath(Rectangle.Round(R(bounds, 4f, 4f, 12f, 12f)), 2))
+                        {
+                            graphics.DrawPath(pen, square);
+                        }
+                        using (SolidBrush block = new SolidBrush(Ink))
+                        {
+                            graphics.FillRectangle(block, Rectangle.Round(R(bounds, 7.4f, 7.4f, 5.2f, 5.2f)));
+                        }
+                        break;
                     case "games":
                         using (GraphicsPath pad = RoundedPath(Rectangle.Round(R(bounds, 1.2f, 6.2f, 17.6f, 9.4f)), 5))
                         {
@@ -497,6 +560,36 @@ namespace DshPet
             }
         }
     }
+
+    // The recording bar is on screen while somebody is working in another window,
+    // so neither showing it nor clicking it may take the focus away: WS_EX_NOACTIVATE
+    // keeps it out of the foreground, and the drop shadow follows its rounded region
+    // like the preview's.
+    public sealed class RecordBarForm : Form
+    {
+        public RecordBarForm()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+        }
+
+        protected override bool ShowWithoutActivation
+        {
+            get { return true; }
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.ClassStyle |= 0x20000;
+                parameters.ExStyle |= 0x08000000;
+                return parameters;
+            }
+        }
+    }
 }
 '@
 }
@@ -542,6 +635,65 @@ $SCRIPT:ShotDir = $SCRIPT:DefaultShotDir
 # the state file (see Apply-State). Blank leaves that window on the folder it
 # remembered from its own last download.
 $SCRIPT:VideoClipDir = ''
+# Where a recording lands. Recordings are large and deliberately stay beside the
+# state file rather than in the capture folder: the settings card has one field
+# for the captures and one for the recordings, and each falls back to its own
+# directory under this machine's harness home. The name is fixed when the
+# recording starts, so the notice that follows names the file that exists.
+$SCRIPT:DefaultRecordDir = Join-Path ([System.IO.Path]::GetDirectoryName($SCRIPT:StateFile)) 'recordings'
+$SCRIPT:RecordDir = $SCRIPT:DefaultRecordDir
+# The recording in flight: ffmpeg's process, the file it writes, the area it
+# grabs, and when it started. All four are cleared by Stop-ScreenRecord, and the
+# bar is a window of this process that shows the last two.
+$SCRIPT:RecordProcess = $null
+$SCRIPT:RecordArea = [System.Drawing.Rectangle]::Empty
+$SCRIPT:RecordStartedAt = [DateTime]::MinValue
+$SCRIPT:RecordFrameRate = 30
+$SCRIPT:RecordPreset = 'ultrafast'
+$SCRIPT:RecordCrf = 20
+$SCRIPT:RecordBar = $null
+$SCRIPT:RecordBarTimer = $null
+$SCRIPT:RecordBarFont = $null
+$SCRIPT:RecordBarMetrics = $null
+$SCRIPT:RecordBarHover = $false
+$SCRIPT:RecordMenuItems = @()
+# The adjustable frame a recording starts from: the sheet draws it, the grips and
+# the start window edit it, and only "Start recording" hands the area to ffmpeg.
+# The frame is in the sheet's own coordinates; the area given to ffmpeg is that
+# frame moved onto the desktop.
+$SCRIPT:RecordMinSize = 32
+$SCRIPT:RecordStage = ''
+$SCRIPT:RecordFrame = [System.Drawing.Rectangle]::Empty
+$SCRIPT:RecordHandle = -1
+$SCRIPT:RecordDragOrigin = [System.Drawing.Point]::Empty
+$SCRIPT:RecordFrameOrigin = [System.Drawing.Rectangle]::Empty
+$SCRIPT:RecordFrameBar = $null
+$SCRIPT:RecordFrameBarFont = $null
+$SCRIPT:RecordFrameBarMetrics = $null
+$SCRIPT:RecordFrameBarHover = $false
+# The recording is written where it will stay, so the preview can play it from
+# there without moving a file a player holds open; cancelling deletes it. The
+# preview is a WPF player (MediaElement plus a seek bar), so its controls live in
+# this process's own dispatcher rather than in a hand-drawn surface.
+$SCRIPT:RecordFile = ''
+$SCRIPT:RecordOutline = $null
+$SCRIPT:RecordDuration = 0
+$SCRIPT:RecordPreview = $null
+$SCRIPT:RecordPreviewChoice = ''
+$SCRIPT:RecordPreviewPath = ''
+$SCRIPT:RecordPreviewSeconds = 0
+$SCRIPT:RecordPreviewMedia = $null
+$SCRIPT:RecordPreviewSlider = $null
+$SCRIPT:RecordPreviewPlayText = $null
+$SCRIPT:RecordPreviewTimeText = $null
+$SCRIPT:RecordPreviewInfoText = $null
+$SCRIPT:RecordPreviewTimer = $null
+$SCRIPT:RecordPreviewSeeking = $false
+# What the transport button did last, kept here because MediaElement's own IsPlaying
+# lags behind a press: it is false while the file is still opening.
+$SCRIPT:RecordPreviewPlaying = $false
+$SCRIPT:RecordCancelMenuItems = @()
+$SCRIPT:ShotMode = 'shot'
 $SCRIPT:WindowVisible = $null
 $SCRIPT:WindowForeground = $null
 # Sampled before the click, never by it: whether DSH is the window in front is what
@@ -609,6 +761,34 @@ function Get-Labels {
         VideoClip             = 'Video clip'
         VideoClipFailed       = 'The video clip window could not be opened.'
         VideoClipMissing      = 'video-clip.ps1 is missing beside pet.ps1, so nothing was opened.'
+        Record                = 'Screen recording'
+        RecordStart           = 'Start recording'
+        RecordStop            = 'End recording'
+        RecordCancel          = 'Cancel recording'
+        RecordHint            = 'Drag a region, then drag its frame to adjust it; Esc cancels.'
+        RecordFrameHint       = 'Adjust the frame, then start'
+        RecordBarPrefix       = 'REC'
+        RecordBarStop         = 'End recording'
+        RecordStarted         = 'Recording the screen'
+        RecordStartedHint     = 'Area {0} x {1}. End it from the floating bar or this menu.'
+        RecordMenuStopHint    = 'The bar has nowhere to go over a full-screen recording; end it from the right-click menu.'
+        RecordCancelled       = 'Recording cancelled'
+        RecordPreviewTitle    = 'Recording preview'
+        RecordPreviewInfo     = '{0} x {1} - {2}'
+        RecordPreviewTarget   = 'Saves to: {0}'
+        RecordPreviewHint     = 'Drag the bar to seek, Esc closes'
+        RecordPlay            = 'Play'
+        RecordPause           = 'Pause'
+        RecordSave            = 'Save'
+        RecordCopy            = 'Copy to clipboard'
+        RecordPreviewCancel   = 'Cancel'
+        RecordPreviewFailed   = 'This recording cannot be played.'
+        RecordSaved           = 'Recording saved'
+        RecordCopied          = 'Recording copied to the clipboard'
+        RecordCopyFailed      = 'Recording saved, but it could not be copied to the clipboard'
+        RecordFailed          = 'The recording could not be started.'
+        RecordEmpty           = 'The recording wrote no file.'
+        RecordMissingFfmpeg   = 'ffmpeg is missing, so nothing was recorded. Open Special > Video clip once; that window downloads it.'
         TempSpace             = 'Temp space'
         Music                 = 'Music'
         MusicPlay             = 'Play'
@@ -1221,6 +1401,352 @@ function New-ShotPath {
         [void][System.IO.Directory]::CreateDirectory($SCRIPT:ShotDir)
     }
     return (Get-ShotFileName)
+}
+
+# ---- screen recording (process and files) ------------------------------------
+# A recording is the same desktop the capture reads, run as a child process:
+# ffmpeg's gdigrab grabs the area and libx264 writes an H.264 file. The pet owns
+# the process because it is the half that can draw a stop bar over the desktop,
+# and because a recording has to keep running while DSH is tucked away. Nothing
+# here opens a window: the sheet, the bar, and the notice are built further down,
+# next to the menu that opens them.
+function Get-DshHomePath {
+    # The same rule the video clip window uses, so both halves find one download.
+    $raw = $env:DSH_HOME
+    $value = if ($null -eq $raw) { '' } else { $raw.Trim() }
+    if ($value -eq '') { return (Join-Path $HOME '.dsh') }
+    if ($value -eq '~') { return $HOME }
+    if ($value.StartsWith('~/') -or $value.StartsWith('~\')) { return (Join-Path $HOME $value.Substring(2)) }
+    return [System.IO.Path]::GetFullPath($value)
+}
+
+function Find-FfmpegDir {
+    # The video clip window downloads ffmpeg into the harness home; a machine that
+    # already has one on PATH, or names one in DSH_FFMPEG, needs no download.
+    $candidates = New-Object System.Collections.ArrayList
+    if (-not [string]::IsNullOrWhiteSpace($env:DSH_FFMPEG)) { [void]$candidates.Add($env:DSH_FFMPEG) }
+    $root = Get-DshHomePath
+    [void]$candidates.Add((Join-Path $root 'tools\ffmpeg\bin'))
+    [void]$candidates.Add((Join-Path $root 'tools\ffmpeg'))
+    foreach ($dir in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+        if (Test-Path -LiteralPath (Join-Path $dir 'ffmpeg.exe') -PathType Leaf) { return $dir }
+    }
+    $command = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+    if ($null -ne $command) { return [System.IO.Path]::GetDirectoryName($command.Source) }
+    return ''
+}
+
+function Quote-ProcessArgument([string]$Value) {
+    # Windows PowerShell has no argument list on ProcessStartInfo: the command line
+    # is one string, so every argument is quoted by hand.
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
+function Get-RecordArea([System.Drawing.Rectangle]$Rectangle, [System.Drawing.Rectangle]$Bounds) {
+    # A recording cannot reach past the desktop, and x264 with yuv420p wants even
+    # dimensions: one row and column less is invisible, a refused encode is not.
+    $left = [Math]::Max($Rectangle.Left, $Bounds.Left)
+    $top = [Math]::Max($Rectangle.Top, $Bounds.Top)
+    $right = [Math]::Min($Rectangle.Right, $Bounds.Right)
+    $bottom = [Math]::Min($Rectangle.Bottom, $Bounds.Bottom)
+    $width = [Math]::Max(0, $right - $left)
+    $height = [Math]::Max(0, $bottom - $top)
+    $width -= ($width % 2)
+    $height -= ($height % 2)
+    return [System.Drawing.Rectangle]::new($left, $top, $width, $height)
+}
+
+function Get-RecordRectangle($Start, $End, [System.Drawing.Rectangle]$Bounds) {
+    return (Get-RecordArea (Get-ShotRectangle $Start $End) $Bounds)
+}
+
+function Get-RecordFileName([string]$Directory) {
+    # Named when the recording starts, because the notice that follows it names the
+    # file the person is about to open. No folder is created here: a cancelled
+    # selection leaves the disk as it was.
+    return (Join-Path $Directory ('record-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '.mp4'))
+}
+
+function Format-RecordClock([long]$Milliseconds) {
+    $total = [long][Math]::Floor($Milliseconds / 1000)
+    $hours = [long][Math]::Floor($total / 3600)
+    $minutes = [long][Math]::Floor(($total % 3600) / 60)
+    $seconds = $total % 60
+    if ($hours -gt 0) { return ('{0}:{1:00}:{2:00}' -f $hours, $minutes, $seconds) }
+    return ('{0:00}:{1:00}' -f $minutes, $seconds)
+}
+
+function Format-RecordSize([long]$Bytes) {
+    # A one-second take is kilobytes and an hour is megabytes; one number in the
+    # wrong unit reads as a broken file.
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+    if ($Bytes -ge 1MB) { return ([string]::Format($invariant, '{0:N1} MB', ($Bytes / 1MB))) }
+    return ([string]::Format($invariant, '{0:N0} KB', [Math]::Max(1, [Math]::Round($Bytes / 1KB))))
+}
+
+function Get-RecordArguments([System.Drawing.Rectangle]$Area, [string]$Path) {
+    # Kept a function of its own so the self test can print exactly what ffmpeg is
+    # started with. gdigrab's offsets are screen coordinates rather than offsets
+    # from the virtual screen's corner, so the area's own left and top are handed
+    # over unchanged; the capture sheet works in the same coordinates.
+    return @(
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-f', 'gdigrab',
+        '-framerate', [string]$SCRIPT:RecordFrameRate,
+        '-draw_mouse', '1',
+        '-offset_x', [string]$Area.Left,
+        '-offset_y', [string]$Area.Top,
+        '-video_size', ('{0}x{1}' -f $Area.Width, $Area.Height),
+        '-i', 'desktop',
+        '-c:v', 'libx264',
+        '-preset', $SCRIPT:RecordPreset,
+        '-crf', [string]$SCRIPT:RecordCrf,
+        '-pix_fmt', 'yuv420p',
+        '-movflags', '+faststart',
+        $Path
+    )
+}
+
+function Get-RecordFrameHandles([System.Drawing.Rectangle]$Frame) {
+    # The eight grips a window has: four corners and four edge midpoints, each a
+    # square box centred on the point so a click near it counts.
+    $box = 12
+    $half = [int]($box / 2)
+    $centreX = $Frame.Left + [int]($Frame.Width / 2)
+    $centreY = $Frame.Top + [int]($Frame.Height / 2)
+    $points = @(
+        [System.Drawing.Point]::new($Frame.Left, $Frame.Top),
+        [System.Drawing.Point]::new($centreX, $Frame.Top),
+        [System.Drawing.Point]::new($Frame.Right, $Frame.Top),
+        [System.Drawing.Point]::new($Frame.Right, $centreY),
+        [System.Drawing.Point]::new($Frame.Right, $Frame.Bottom),
+        [System.Drawing.Point]::new($centreX, $Frame.Bottom),
+        [System.Drawing.Point]::new($Frame.Left, $Frame.Bottom),
+        [System.Drawing.Point]::new($Frame.Left, $centreY)
+    )
+    $handles = @()
+    foreach ($point in $points) {
+        $handles += [System.Drawing.Rectangle]::new(($point.X - $half), ($point.Y - $half), $box, $box)
+    }
+    return $handles
+}
+
+function Get-RecordFrameHandle([System.Drawing.Rectangle]$Frame, [System.Drawing.Point]$Point) {
+    if ($Frame.Width -le 0 -or $Frame.Height -le 0) { return -1 }
+    $handles = Get-RecordFrameHandles $Frame
+    for ($index = 0; $index -lt $handles.Count; $index++) {
+        if ($handles[$index].Contains($Point)) { return $index }
+    }
+    return -1
+}
+
+function Get-RecordFrameHandleBoxes([System.Drawing.Rectangle]$Frame) {
+    # Where the grips are painted: just outside the frame, because the frame's own
+    # edge is the hole cut out of the sheet and nothing drawn there is visible. A
+    # little larger than the box that catches the press, so a grip can be seen and
+    # aimed at through the sheet's translucency.
+    $size = 10
+    $offset = 5
+    $half = [int]($size / 2)
+    $handles = Get-RecordFrameHandles $Frame
+    $boxes = @()
+    for ($index = 0; $index -lt $handles.Count; $index++) {
+        $centre = [System.Drawing.Point]::new(($handles[$index].Left + 6), ($handles[$index].Top + 6))
+        $dx = 0
+        $dy = 0
+        switch ($index) {
+            0 { $dx = -$offset; $dy = -$offset }
+            1 { $dy = -$offset }
+            2 { $dx = $offset; $dy = -$offset }
+            3 { $dx = $offset }
+            4 { $dx = $offset; $dy = $offset }
+            5 { $dy = $offset }
+            6 { $dx = -$offset; $dy = $offset }
+            7 { $dx = -$offset }
+        }
+        $boxes += [System.Drawing.Rectangle]::new(($centre.X + $dx - $half), ($centre.Y + $dy - $half), $size, $size)
+    }
+    return $boxes
+}
+
+function Resize-RecordFrame([System.Drawing.Rectangle]$Frame, [int]$Handle, [System.Drawing.Point]$Delta,
+    [System.Drawing.Rectangle]$Bounds) {
+    # A grip moves one edge, or two at a corner, while the opposite edge stays
+    # put. The result is clipped to the desktop and never smaller than the
+    # smallest recording, so a frame can always be grabbed again.
+    $left = $Frame.Left; $top = $Frame.Top; $right = $Frame.Right; $bottom = $Frame.Bottom
+    switch ($Handle) {
+        0 { $left += $Delta.X; $top += $Delta.Y }
+        1 { $top += $Delta.Y }
+        2 { $right += $Delta.X; $top += $Delta.Y }
+        3 { $right += $Delta.X }
+        4 { $right += $Delta.X; $bottom += $Delta.Y }
+        5 { $bottom += $Delta.Y }
+        6 { $left += $Delta.X; $bottom += $Delta.Y }
+        7 { $left += $Delta.X }
+    }
+    $left = [Math]::Max($Bounds.Left, [Math]::Min($left, ($right - $SCRIPT:RecordMinSize)))
+    $top = [Math]::Max($Bounds.Top, [Math]::Min($top, ($bottom - $SCRIPT:RecordMinSize)))
+    $right = [Math]::Min($Bounds.Right, [Math]::Max($right, ($left + $SCRIPT:RecordMinSize)))
+    $bottom = [Math]::Min($Bounds.Bottom, [Math]::Max($bottom, ($top + $SCRIPT:RecordMinSize)))
+    return [System.Drawing.Rectangle]::new($left, $top, ($right - $left), ($bottom - $top))
+}
+
+function Move-RecordFrame([System.Drawing.Rectangle]$Frame, [System.Drawing.Point]$Delta,
+    [System.Drawing.Rectangle]$Bounds) {
+    $x = [Math]::Min([Math]::Max(($Frame.Left + $Delta.X), $Bounds.Left), ($Bounds.Right - $Frame.Width))
+    $y = [Math]::Min([Math]::Max(($Frame.Top + $Delta.Y), $Bounds.Top), ($Bounds.Bottom - $Frame.Height))
+    return [System.Drawing.Rectangle]::new($x, $y, $Frame.Width, $Frame.Height)
+}
+
+function Get-RecordFrameCursor([int]$Handle) {
+    switch ($Handle) {
+        0 { return [System.Windows.Forms.Cursors]::SizeNWSE }
+        1 { return [System.Windows.Forms.Cursors]::SizeNS }
+        2 { return [System.Windows.Forms.Cursors]::SizeNESW }
+        3 { return [System.Windows.Forms.Cursors]::SizeWE }
+        4 { return [System.Windows.Forms.Cursors]::SizeNWSE }
+        5 { return [System.Windows.Forms.Cursors]::SizeNS }
+        6 { return [System.Windows.Forms.Cursors]::SizeNESW }
+        7 { return [System.Windows.Forms.Cursors]::SizeWE }
+        default { return [System.Windows.Forms.Cursors]::Default }
+    }
+}
+
+function Get-RecordFrameBarBounds([System.Drawing.Rectangle]$Frame, [System.Drawing.Size]$Size,
+    [System.Drawing.Rectangle]$Screen) {
+    # Under the frame, or above it when the frame reaches the bottom of the screen.
+    # It may overlap the frame: nothing is being recorded yet, so the button cannot
+    # end up in a recording.
+    $x = $Frame.Left + [int](($Frame.Width - $Size.Width) / 2)
+    $y = $Frame.Bottom + 12
+    if (($y + $Size.Height) -gt ($Screen.Bottom - 8)) { $y = $Frame.Top - $Size.Height - 12 }
+    $x = [Math]::Min([Math]::Max($x, ($Screen.Left + 8)), [Math]::Max(($Screen.Left + 8), ($Screen.Right - $Size.Width - 8)))
+    $y = [Math]::Min([Math]::Max($y, ($Screen.Top + 8)), [Math]::Max(($Screen.Top + 8), ($Screen.Bottom - $Size.Height - 8)))
+    return [System.Drawing.Rectangle]::new($x, $y, $Size.Width, $Size.Height)
+}
+
+function Get-RecordBarBounds([System.Drawing.Rectangle]$Area, [System.Drawing.Size]$Size,
+    [System.Drawing.Rectangle]$Desktop) {
+    # The bar must not appear in the recording it controls: every candidate sits
+    # outside the area, and the two desktop corners are the fallback for an area
+    # that all but fills the screen. No candidate left means no bar - the menu
+    # still stops the recording.
+    $gap = 12
+    $centreX = $Area.Left + [int](($Area.Width - $Size.Width) / 2)
+    $centreY = $Area.Top + [int](($Area.Height - $Size.Height) / 2)
+    $candidates = @(
+        [System.Drawing.Point]::new($centreX, ($Area.Top - $Size.Height - $gap)),
+        [System.Drawing.Point]::new($centreX, ($Area.Bottom + $gap)),
+        [System.Drawing.Point]::new(($Area.Right + $gap), $centreY),
+        [System.Drawing.Point]::new(($Area.Left - $Size.Width - $gap), $centreY),
+        [System.Drawing.Point]::new(($Desktop.Right - $Size.Width - 16), ($Desktop.Top + 16)),
+        [System.Drawing.Point]::new(($Desktop.Right - $Size.Width - 16), ($Desktop.Bottom - $Size.Height - 16))
+    )
+    foreach ($candidate in $candidates) {
+        $x = [Math]::Min([Math]::Max($candidate.X, ($Desktop.Left + 8)),
+            [Math]::Max(($Desktop.Left + 8), ($Desktop.Right - $Size.Width - 8)))
+        $y = [Math]::Min([Math]::Max($candidate.Y, ($Desktop.Top + 8)),
+            [Math]::Max(($Desktop.Top + 8), ($Desktop.Bottom - $Size.Height - 8)))
+        $bounds = [System.Drawing.Rectangle]::new($x, $y, $Size.Width, $Size.Height)
+        if (-not $bounds.IntersectsWith($Area)) { return $bounds }
+    }
+    return [System.Drawing.Rectangle]::Empty
+}
+
+function Get-RecordPreviewLayout([int]$Width, [int]$Height, [System.Drawing.Rectangle]$Area) {
+    # The poster is shown whole and never blown up: a small recording drawn large
+    # would only be blurrier, and the frame is there to recognise the take, not to
+    # read it.
+    $maxWidth = [Math]::Min(960, [Math]::Max(320, [int]($Area.Width * 0.55)))
+    $maxHeight = [Math]::Min(720, [Math]::Max(200, [int]($Area.Height * 0.55)))
+    $scale = [Math]::Min(1.0, [Math]::Min(($maxWidth / [double]$Width), ($maxHeight / [double]$Height)))
+    return [pscustomobject]@{
+        ImageWidth  = [Math]::Max(1, [int][Math]::Round($Width * $scale))
+        ImageHeight = [Math]::Max(1, [int][Math]::Round($Height * $scale))
+        Scale       = $scale
+    }
+}
+
+
+function Start-RecordProcess([System.Drawing.Rectangle]$Area, [string]$Path) {
+    # No window and no console: the recording is a background child of the pet,
+    # and its standard input is how it is asked to finish cleanly. Killing it
+    # leaves an MP4 with no moov atom, which nothing can play.
+    $ffmpegDir = Find-FfmpegDir
+    if ([string]::IsNullOrWhiteSpace($ffmpegDir)) { throw $SCRIPT:Labels.RecordMissingFfmpeg }
+    $arguments = @(Get-RecordArguments $Area $Path | ForEach-Object { Quote-ProcessArgument $_ })
+    $info = New-Object System.Diagnostics.ProcessStartInfo
+    $info.FileName = Join-Path $ffmpegDir 'ffmpeg.exe'
+    $info.Arguments = ($arguments -join ' ')
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardInput = $true
+    return [System.Diagnostics.Process]::Start($info)
+}
+
+function Stop-RecordProcess($Process) {
+    # Returns ffmpeg's own exit code, or -1 when it had to be killed. A caller that
+    # ignores both still gets a file: 'q' is what ffmpeg reads to finish.
+    $code = -1
+    try {
+        if (-not $Process.HasExited) {
+            try {
+                $Process.StandardInput.WriteLine('q')
+                $Process.StandardInput.Flush()
+            } catch {
+                Write-Log "asking ffmpeg to stop failed: $($_.Exception.Message)"
+            }
+            if (-not $Process.WaitForExit(20000)) {
+                Write-Log 'ffmpeg did not stop on request; killing it'
+                try { $Process.Kill() } catch { }
+                [void]$Process.WaitForExit(5000)
+            }
+        }
+        if ($Process.HasExited) { $code = $Process.ExitCode }
+    } catch {
+        Write-Log "stopping the recording failed: $($_.Exception.Message)"
+    }
+    return $code
+}
+
+function Test-RecordFile([string]$Path) {
+    # A stopped recording that wrote nothing is a failure the person has to hear
+    # about: the bar is gone, and an empty MP4 is not something to open.
+    try {
+        return (Test-Path -LiteralPath $Path -PathType Leaf) -and ((Get-Item -LiteralPath $Path).Length -gt 0)
+    } catch {
+        return $false
+    }
+}
+
+function Select-RecordDir($State) {
+    # The host leaves the field out while the setting is blank, and an empty setting
+    # is this machine's own recordings directory rather than a directory named by
+    # nothing - the same rule captures follow.
+    if ($null -ne $State -and $null -ne $State.recordDir -and -not [string]::IsNullOrWhiteSpace([string]$State.recordDir)) {
+        return [string]$State.recordDir
+    }
+    return $SCRIPT:DefaultRecordDir
+}
+
+function Update-RecordMenu {
+    # The row is one row either way: idle it starts a selection, during a recording
+    # it ends one. Cancelling is a second row that only exists while a recording
+    # runs, so the menu never offers to drop something that is not being recorded.
+    $recording = $null -ne $SCRIPT:RecordProcess
+    $text = if ($recording) { $SCRIPT:Labels.RecordStop } else { $SCRIPT:Labels.Record }
+    $icon = if ($recording) { 'stop' } else { 'record' }
+    foreach ($item in @($SCRIPT:RecordMenuItems)) {
+        if ($null -eq $item) { continue }
+        $item.Text = $text
+        $item.Tag = $icon
+    }
+    foreach ($item in @($SCRIPT:RecordCancelMenuItems)) {
+        if ($null -eq $item) { continue }
+        $item.Available = $recording
+    }
 }
 
 function New-ScreenShotBitmap([System.Drawing.Rectangle]$Rectangle) {
@@ -3754,6 +4280,61 @@ if ($SelfTest) {
     # cannot be read off the window after the fact, so it is printed here too: only
     # a window that is both on screen and in front is tucked away.
     Write-Output "click-intent: front=$(Get-ClickIntent $true $true) behind=$(Get-ClickIntent $true $false) hidden=$(Get-ClickIntent $false $false) minimized=$(Get-ClickIntent $false $true)"
+    # Recording a region is three decisions that cannot be read off a running pet:
+    # the area has to be even and inside the desktop, the clock is what the bar
+    # says, and the argument list is what ffmpeg is started with. A clip window
+    # started with the wrong offset records the wrong part of the screen, and an
+    # odd width is refused by x264 rather than noticed later.
+    $recordScreen = [System.Drawing.Rectangle]::new(0, 0, 1920, 1080)
+    $recordOdd = Get-RecordRectangle ([System.Drawing.Point]::new(10, 10)) ([System.Drawing.Point]::new(301, 201)) $recordScreen
+    $recordOutside = Get-RecordRectangle ([System.Drawing.Point]::new(-50, -40)) ([System.Drawing.Point]::new(100, 60)) $recordScreen
+    Write-Output ("record-rect: odd=$($recordOdd.X),$($recordOdd.Y),$($recordOdd.Width)x$($recordOdd.Height)" `
+        + " clamp=$($recordOutside.X),$($recordOutside.Y),$($recordOutside.Width)x$($recordOutside.Height)")
+    Write-Output ("record-clock: zero=$(Format-RecordClock 0) minute=$(Format-RecordClock 65000)" `
+        + " hour=$(Format-RecordClock 3723000)")
+    $recordName = Split-Path -Leaf (Get-RecordFileName 'C:\probe')
+    Write-Output ("record-name: $recordName")
+    $recordArea = [System.Drawing.Rectangle]::new(100, 50, 640, 360)
+    Write-Output ("record-args: " + ((Get-RecordArguments $recordArea 'C:\probe\a.mp4') -join ' '))
+    # The bar is placed outside the area it controls: above it when there is room,
+    # and nowhere at all when the recording covers the whole desktop.
+    $recordBar = Get-RecordBarBounds $recordArea ([System.Drawing.Size]::new(180, 40)) $recordScreen
+    $recordCovered = Get-RecordBarBounds ([System.Drawing.Rectangle]::new(0, 0, 1920, 1080)) ([System.Drawing.Size]::new(180, 40)) $recordScreen
+    Write-Output ("record-bar: normal=$($recordBar.X),$($recordBar.Y) covered=$($recordCovered.Width)x$($recordCovered.Height)")
+    # What the submenu row reads before and during a recording. A placeholder
+    # process stands in for ffmpeg: the row only asks whether one exists.
+    $recordProbeItem = New-Object System.Windows.Forms.ToolStripMenuItem
+    $SCRIPT:RecordMenuItems = @($recordProbeItem)
+    Update-RecordMenu
+    $recordIdleText = $recordProbeItem.Text
+    $SCRIPT:RecordProcess = New-Object System.Diagnostics.Process
+    Update-RecordMenu
+    $recordLiveText = $recordProbeItem.Text
+    $recordLiveIcon = $recordProbeItem.Tag
+    $SCRIPT:RecordProcess = $null
+    Update-RecordMenu
+    $SCRIPT:RecordMenuItems = @()
+    Write-Output ("record-menu: idle=$recordIdleText live=$recordLiveText icon=$recordLiveIcon back=$($recordProbeItem.Text)")
+    # The folder a recording goes to: the settings card may name one, and a blank
+    # setting is the recordings directory beside the state file.
+    Write-Output ("record-dir: blank=$(Select-RecordDir $null) named=$(Select-RecordDir ([pscustomobject]@{ recordDir = 'D:\AI\Tmp\record' }))")
+    # The frame is a window border before anything is recorded: eight grips, each
+    # moving its own edges, a middle that drags, a frame clipped to the desktop and
+    # never below the smallest size a grip can still find.
+    $probeFrame = [System.Drawing.Rectangle]::new(100, 100, 200, 150)
+    $probeScreen = [System.Drawing.Rectangle]::new(0, 0, 1920, 1080)
+    $probeNorthWest = Resize-RecordFrame $probeFrame 0 ([System.Drawing.Point]::new(-20, -10)) $probeScreen
+    $probeSouthEast = Resize-RecordFrame $probeFrame 4 ([System.Drawing.Point]::new(30, 20)) $probeScreen
+    $probeMoved = Move-RecordFrame $probeFrame ([System.Drawing.Point]::new(5, 7)) $probeScreen
+    $probeTiny = Resize-RecordFrame $probeFrame 3 ([System.Drawing.Point]::new(-500, 0)) $probeScreen
+    $probeGrip = Get-RecordFrameHandle $probeFrame ([System.Drawing.Point]::new(300, 175))
+    Write-Output ("record-frame: nw=$($probeNorthWest.X),$($probeNorthWest.Y),$($probeNorthWest.Width)x$($probeNorthWest.Height)" `
+        + " se=$($probeSouthEast.X),$($probeSouthEast.Y),$($probeSouthEast.Width)x$($probeSouthEast.Height)" `
+        + " move=$($probeMoved.X),$($probeMoved.Y) tiny=$($probeTiny.Width)x$($probeTiny.Height) grip=$probeGrip")
+    Write-Output ("record-size: small=$(Format-RecordSize 2048) large=$(Format-RecordSize 5242880)")
+    $probePreviewLayout = Get-RecordPreviewLayout 320 200 $probeScreen
+    Write-Output ("record-preview: fit=$($probePreviewLayout.ImageWidth)x$($probePreviewLayout.ImageHeight)" `
+        + " scale=$($probePreviewLayout.Scale)")
     # A reminder for somebody who is not looking at the pet is only news when an
     # agent starts waiting: the first state a pet applies is not a transition, and
     # a state file rewritten while the question still stands must not ring again.
@@ -4120,6 +4701,46 @@ if ($SelfTest) {
     exit 0
 }
 
+if (-not [string]::IsNullOrWhiteSpace($RecordProbe)) {
+    # The recorder on its own: gdigrab, x264, the stop request, and a file. No
+    # sheet, no bar, and no notice are involved, so a machine whose ffmpeg cannot
+    # grab the screen fails here instead of at the first menu click. A machine
+    # without ffmpeg is not a failure: the recorder is an optional download.
+    if ([string]::IsNullOrWhiteSpace((Find-FfmpegDir))) {
+        Write-Output 'record-probe: skipped no-ffmpeg'
+        exit 0
+    }
+    $recordProbePath = [System.IO.Path]::GetFullPath($RecordProbe)
+    $recordProbeDir = [System.IO.Path]::GetDirectoryName($recordProbePath)
+    if (-not (Test-Path -LiteralPath $recordProbeDir)) { [void][System.IO.Directory]::CreateDirectory($recordProbeDir) }
+    $recordProbeArea = Get-RecordRectangle ([System.Drawing.Point]::new(0, 0)) ([System.Drawing.Point]::new(319, 199)) `
+        ([System.Windows.Forms.SystemInformation]::VirtualScreen)
+    $recordProbeProcess = $null
+    try {
+        $recordProbeProcess = Start-RecordProcess $recordProbeArea $recordProbePath
+        Start-Sleep -Seconds 2
+        if ($recordProbeProcess.HasExited) {
+            Write-Output "record-probe: failed exit=$($recordProbeProcess.ExitCode)"
+            $recordProbeProcess.Dispose()
+            exit 1
+        }
+        $recordProbeCode = Stop-RecordProcess $recordProbeProcess
+        $recordProbeProcess.Dispose()
+    } catch {
+        if ($null -ne $recordProbeProcess) { try { $recordProbeProcess.Dispose() } catch { } }
+        Write-Output "record-probe: failed $($_.Exception.Message)"
+        exit 1
+    }
+    if (-not (Test-RecordFile $recordProbePath)) {
+        Write-Output "record-probe: failed empty exit=$recordProbeCode"
+        exit 1
+    }
+    Write-Output "record-probe: $recordProbePath"
+    Write-Output "record-probe-bytes: $((Get-Item -LiteralPath $recordProbePath).Length)"
+    Write-Output "record-probe-exit: $recordProbeCode"
+    exit 0
+}
+
 if ($ShotProbe) {
     # The capture itself, taken for real: no sheet is drawn and nobody drags, so
     # what is left to fail is the screen read, the encoder, and the directory. The
@@ -4218,6 +4839,12 @@ if (-not ('DshPet.Win32' -as [type])) {
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetWindowLong(System.IntPtr hWnd, int index);
 [System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int SetWindowLong(System.IntPtr hWnd, int index, int value);
 [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern int GetClassName(System.IntPtr hWnd, System.Text.StringBuilder name, int max);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")] public static extern System.IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int SetWindowRgn(System.IntPtr hWnd, System.IntPtr region, bool redraw);
+[System.Runtime.InteropServices.DllImport("gdi32.dll")] public static extern bool DeleteObject(System.IntPtr handle);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern System.IntPtr SetActiveWindow(System.IntPtr hWnd);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern void mouse_event(uint flags, int dx, int dy, uint data, System.UIntPtr extra);
 public delegate bool EnumProc(System.IntPtr hWnd, System.IntPtr extra);
 '@
 }
@@ -4327,6 +4954,9 @@ function Apply-State($State) {
     # Where captures go: the settings may name a directory, and a blank one is the
     # default beside the state file.
     $SCRIPT:ShotDir = Select-ShotDir $State
+    # Where recordings go: the same rule, over the folder the settings card names.
+    # A blank setting arrives as no field at all, so the pet keeps its own folder.
+    $SCRIPT:RecordDir = Select-RecordDir $State
     # Where the clip window starts: the folder the settings card names, or blank to
     # keep whatever that window remembered from its own last download.
     if ($null -ne $State.videoClipDir) { $SCRIPT:VideoClipDir = [string]$State.videoClipDir }
@@ -4518,6 +5148,10 @@ $SCRIPT:ShotOverlay = $null
 $SCRIPT:ShotDragging = $false
 $SCRIPT:ShotStart = [System.Drawing.Point]::Empty
 $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+# The hole the sheet's region was last cut with: Empty means the whole window. Re-
+# applying the region it already has costs a full-window recompute on every mouse
+# move, which is exactly what a drag cannot afford.
+$SCRIPT:ShotHole = [System.Drawing.Rectangle]::Empty
 # The preview between the shutter and the file: the bitmap lives here while that
 # window is open, because choosing is what writes it.
 $SCRIPT:ShotPreview = $null
@@ -4554,11 +5188,20 @@ $SCRIPT:ToastTimer.Add_Tick({
 function Set-ShotHole($Form, [System.Drawing.Rectangle]$Selection) {
     # The window's region is the sheet minus the selection: what is left of the
     # window is drawn, and the hole is not part of it at all, so the desktop shows
-    # through unmodified.
+    # through unmodified. A recording's frame is dragged from the inside, and a
+    # hole would take those presses away from this window, so the recording sheet
+    # stays whole and dims its entire surface instead of cutting the frame out.
+    $hole = if ($SCRIPT:ShotMode -ne 'record' -and $Selection.Width -gt 0 -and $Selection.Height -gt 0) {
+        $Selection
+    } else {
+        [System.Drawing.Rectangle]::Empty
+    }
+    if ($hole -eq $SCRIPT:ShotHole) { return }
     $region = [System.Drawing.Region]::new([System.Drawing.Rectangle]::new(0, 0, $Form.ClientSize.Width, $Form.ClientSize.Height))
-    if ($Selection.Width -gt 0 -and $Selection.Height -gt 0) { $region.Exclude($Selection) }
+    if ($hole.Width -gt 0 -and $hole.Height -gt 0) { $region.Exclude($hole) }
     $previous = $Form.Region
     $Form.Region = $region
+    $SCRIPT:ShotHole = $hole
     if ($null -ne $previous) { $previous.Dispose() }
 }
 
@@ -4566,6 +5209,12 @@ function Close-ShotOverlay {
     $form = $SCRIPT:ShotOverlay
     $SCRIPT:ShotOverlay = $null
     $SCRIPT:ShotDragging = $false
+    $SCRIPT:RecordStage = ''
+    $SCRIPT:RecordHandle = -1
+    $SCRIPT:RecordFrame = [System.Drawing.Rectangle]::Empty
+    $SCRIPT:ShotHole = [System.Drawing.Rectangle]::Empty
+    # The start window belongs to the sheet, so it goes with it.
+    try { Close-RecordFrameBar } catch { }
     if ($null -eq $form) { return }
     try {
         $region = $form.Region
@@ -5031,7 +5680,8 @@ function Show-ShotPreview($Bitmap, [System.Drawing.Rectangle]$Shot) {
 function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
     # This process's own sheet has to be off the screen before the shutter, or the
     # dimming would be in the file. The hole already showed the desktop, so what
-    # the person saw inside the selection is what the preview holds.
+    # the person saw inside the selection is what the preview holds. A recording
+    # never reaches this: its frame waits for the start button (see Start-RecordFromSheet).
     $shot = [System.Drawing.Rectangle]::new(($Form.Left + $Selection.X), ($Form.Top + $Selection.Y),
         $Selection.Width, $Selection.Height)
     $Form.Hide()
@@ -5050,18 +5700,27 @@ function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
     }
 }
 
-function Start-RegionShot {
+function Start-RegionShot([string]$Mode = 'shot') {
     if ($null -ne $SCRIPT:ShotOverlay) { return }
+    # One sheet serves both: the capture reads the region it is dragged over, while
+    # a recording keeps the region as a frame that can be moved and resized before
+    # anything is recorded. The hint is what tells the person which one it is.
+    $SCRIPT:ShotMode = $Mode
     $form = New-Object System.Windows.Forms.Form
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
     # The virtual screen, so a second monitor is captured like the first.
     $form.Bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
     $form.BackColor = [System.Drawing.Color]::Black
-    $form.Opacity = 0.35
+    # A recording's frame is dragged from inside, so that surface has to stay
+    # readable: it is dimmed less than a capture's sheet, whose hole shows the
+    # desktop unchanged. Everything this window draws is dimmed by the same value,
+    # which is why the frame itself is drawn in two tones (see the paint handler)
+    # rather than bought with a darker veil.
+    $form.Opacity = if ($Mode -eq 'record') { 0.38 } else { 0.35 }
     $form.TopMost = $true
     $form.ShowInTaskbar = $false
-    # Escape has to reach this form: it is the way out for a capture opened by
+    # Escape has to reach this form: it is the way out for a sheet opened by
     # mistake, next to a right-click.
     $form.KeyPreview = $true
     $form.Cursor = [System.Windows.Forms.Cursors]::Cross
@@ -5070,6 +5729,9 @@ function Start-RegionShot {
     $SCRIPT:ShotDragging = $false
     $SCRIPT:ShotStart = [System.Drawing.Point]::Empty
     $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+    $SCRIPT:ShotHole = [System.Drawing.Rectangle]::Empty
+    $SCRIPT:RecordStage = ''
+    $SCRIPT:RecordFrame = [System.Drawing.Rectangle]::Empty
     Set-ShotHole $form $SCRIPT:ShotSelection
 
     $form.add_Paint({
@@ -5080,25 +5742,71 @@ function Start-RegionShot {
             $font = $null
             $brush = $null
             $pen = $null
+            $edgePen = $null
+            $plateBrush = $null
+            $handleBrush = $null
+            $handlePen = $null
             try {
                 $font = New-Object System.Drawing.Font('Microsoft YaHei UI', 11, [System.Drawing.FontStyle]::Regular, [System.Drawing.GraphicsUnit]::Point)
                 $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(242, 244, 247))
                 $primary = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-                $hint = $graphics.MeasureString($SCRIPT:Labels.ShotHint, $font)
-                $graphics.DrawString($SCRIPT:Labels.ShotHint, $font, $brush,
+                $hintText = if ($SCRIPT:ShotMode -eq 'record') { $SCRIPT:Labels.RecordHint } else { $SCRIPT:Labels.ShotHint }
+                $hint = $graphics.MeasureString($hintText, $font)
+                $graphics.DrawString($hintText, $font, $brush,
                     (($primary.Left - $sender.Left) + (($primary.Width - $hint.Width) / 2)),
                     (($primary.Top - $sender.Top) + 42))
-                $selection = $SCRIPT:ShotSelection
+                $recording = $SCRIPT:ShotMode -eq 'record'
+                # A recording's frame only exists once the drag ends, so the drag
+                # itself is what is drawn until then: a selection that appears only
+                # when the button is released is not a selection anyone can aim.
+                $selection = if ($recording) {
+                    if ($SCRIPT:ShotDragging -and $SCRIPT:ShotSelection.Width -gt 0 -and $SCRIPT:ShotSelection.Height -gt 0) {
+                        $SCRIPT:ShotSelection
+                    } else {
+                        $SCRIPT:RecordFrame
+                    }
+                } else {
+                    $SCRIPT:ShotSelection
+                }
                 if ($selection.Width -gt 0 -and $selection.Height -gt 0) {
-                    # The hole is the selection, so the frame is drawn just outside
-                    # it: a stroke centred on that edge would be clipped in half.
-                    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 122, 180, 255), 2)
+                    # The sheet is translucent, so everything painted here is mixed
+                    # with whatever is behind it: a single thin blue line vanished
+                    # into a mid-tone page. A near-black stroke under a bright one
+                    # reads on a white page and on a dark desktop alike, and the
+                    # frame is drawn just outside the selection so the hole (a
+                    # capture's) never clips half of it.
+                    $edgePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(235, 8, 13, 22), 6)
+                    $graphics.DrawRectangle($edgePen, ($selection.X - 3), ($selection.Y - 3),
+                        ($selection.Width + 5), ($selection.Height + 5))
+                    $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 132, 186, 255), 3)
                     $graphics.DrawRectangle($pen, ($selection.X - 2), ($selection.Y - 2),
                         ($selection.Width + 3), ($selection.Height + 3))
-                    $graphics.DrawString(('{0} x {1}' -f $selection.Width, $selection.Height), $font, $brush,
-                        $selection.X, [Math]::Max(4, ($selection.Y - 26)))
+                    # The size reads on its own plate: the same dimming that fades a
+                    # stroke would fade bare glyphs into the desktop.
+                    $labelText = '{0} x {1}' -f $selection.Width, $selection.Height
+                    $labelSize = $graphics.MeasureString($labelText, $font)
+                    $labelX = [Math]::Max(4, $selection.X)
+                    $labelY = [Math]::Max(4, ($selection.Y - 10 - $labelSize.Height))
+                    $plateBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(225, 12, 17, 25))
+                    $graphics.FillRectangle($plateBrush, $labelX, $labelY,
+                        ($labelSize.Width + 10), ($labelSize.Height + 2))
+                    $graphics.DrawString($labelText, $font, $brush, ($labelX + 5), ($labelY + 1))
+                    if ($recording -and $SCRIPT:RecordStage -eq 'adjust') {
+                        # Grips are painted outside the hole: anything inside it is
+                        # cut away by the window's region and would not be visible.
+                        $handleBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(255, 255, 255, 255))
+                        $handlePen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(220, 12, 17, 25), 1)
+                        foreach ($handle in (Get-RecordFrameHandleBoxes $selection)) {
+                            $graphics.FillRectangle($handleBrush, $handle)
+                            $graphics.DrawRectangle($handlePen, $handle)
+                        }
+                    }
                 }
             } finally {
+                if ($null -ne $handlePen) { $handlePen.Dispose() }
+                if ($null -ne $handleBrush) { $handleBrush.Dispose() }
+                if ($null -ne $plateBrush) { $plateBrush.Dispose() }
+                if ($null -ne $edgePen) { $edgePen.Dispose() }
                 if ($null -ne $pen) { $pen.Dispose() }
                 if ($null -ne $brush) { $brush.Dispose() }
                 if ($null -ne $font) { $font.Dispose() }
@@ -5110,6 +5818,7 @@ function Start-RegionShot {
     $form.add_MouseDown({
         param($sender, $eventArgs)
         try {
+            if ($SCRIPT:ShotMode -eq 'record') { Invoke-RecordSheetDown $sender $eventArgs; return }
             if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) {
                 Close-ShotOverlay
                 return
@@ -5128,8 +5837,9 @@ function Start-RegionShot {
     })
     $form.add_MouseMove({
         param($sender, $eventArgs)
-        if (-not $SCRIPT:ShotDragging) { return }
         try {
+            if ($SCRIPT:ShotMode -eq 'record') { Invoke-RecordSheetMove $sender $eventArgs; return }
+            if (-not $SCRIPT:ShotDragging) { return }
             $SCRIPT:ShotSelection = Get-ShotRectangle $SCRIPT:ShotStart $eventArgs.Location
             Set-ShotHole $sender $SCRIPT:ShotSelection
             $sender.Invalidate()
@@ -5140,6 +5850,7 @@ function Start-RegionShot {
     $form.add_MouseUp({
         param($sender, $eventArgs)
         try {
+            if ($SCRIPT:ShotMode -eq 'record') { Invoke-RecordSheetUp $sender $eventArgs; return }
             if (-not $SCRIPT:ShotDragging) { return }
             $SCRIPT:ShotDragging = $false
             $sender.Capture = $false
@@ -5153,10 +5864,26 @@ function Start-RegionShot {
             }
             Complete-RegionShot $sender $selection
         } catch {
-            Write-Log "saving the capture failed: $($_.Exception.Message)"
+            # The sheet serves both actions, so the notice has to name the one the
+            # person actually chose: a failed recording is not a failed capture.
+            $mode = $SCRIPT:ShotMode
+            if ($mode -eq 'record') {
+                Write-Log "starting the recording failed: $($_.Exception.Message)"
+            } else {
+                Write-Log "saving the capture failed: $($_.Exception.Message)"
+            }
             Close-ShotOverlay
-            try { Show-ShotFailure $_.Exception.Message } catch { }
+            if ($mode -eq 'record') { try { Show-RecordFailure $_.Exception.Message } catch { } }
+            else { try { Show-ShotFailure $_.Exception.Message } catch { } }
         }
+    })
+    $form.add_Shown({
+        param($sender, $eventArgs)
+        # The menu that chose this sheet hands the focus back when it closes, and
+        # that happens after Show(): asking again once the window is up is what
+        # leaves Escape pointing at the sheet instead of nowhere.
+        try { $sender.Activate() } catch { }
+        try { [void][DshPet.Win32]::SetForegroundWindow($sender.Handle) } catch { }
     })
     $form.add_KeyDown({
         param($sender, $eventArgs)
@@ -5175,12 +5902,1171 @@ function Start-RegionShot {
     [void][DshPet.Win32]::SetForegroundWindow($form.Handle)
 }
 
+# ---- recording frame on the sheet -------------------------------------------
+# A recording does not start on release: the selection becomes a frame with eight
+# grips and a draggable middle, the way a window is resized, and a small window
+# under it holds the start button. Both belong to the sheet, so closing the sheet
+# closes them, and nothing is recorded until the button is pressed.
+function Invoke-RecordSheetDown($Form, $EventArgs) {
+    if ($EventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) {
+        Close-ShotOverlay
+        return
+    }
+    $point = $EventArgs.Location
+    if ($SCRIPT:RecordStage -eq 'adjust') {
+        $handle = Get-RecordFrameHandle $SCRIPT:RecordFrame $point
+        if ($handle -ge 0) {
+            $SCRIPT:RecordStage = 'resize'
+            $SCRIPT:RecordHandle = $handle
+            $SCRIPT:RecordDragOrigin = $point
+            $SCRIPT:RecordFrameOrigin = $SCRIPT:RecordFrame
+            $Form.Capture = $true
+            return
+        }
+        if ($SCRIPT:RecordFrame.Contains($point)) {
+            $SCRIPT:RecordStage = 'move'
+            $SCRIPT:RecordDragOrigin = $point
+            $SCRIPT:RecordFrameOrigin = $SCRIPT:RecordFrame
+            $Form.Capture = $true
+            return
+        }
+        # A press outside the frame drops it and starts a new selection.
+        $SCRIPT:RecordFrame = [System.Drawing.Rectangle]::Empty
+        $SCRIPT:RecordStage = ''
+        Close-RecordFrameBar
+        Set-ShotHole $Form $SCRIPT:RecordFrame
+    }
+    $SCRIPT:ShotStart = $point
+    $SCRIPT:ShotDragging = $true
+    $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+    $Form.Capture = $true
+    $Form.Invalidate()
+    $Form.Update()
+}
+
+function Invoke-RecordSheetMove($Form, $EventArgs) {
+    $point = $EventArgs.Location
+    $bounds = [System.Drawing.Rectangle]::new(0, 0, $Form.ClientSize.Width, $Form.ClientSize.Height)
+    if ($SCRIPT:RecordStage -eq 'resize') {
+        $delta = [System.Drawing.Point]::new(($point.X - $SCRIPT:RecordDragOrigin.X), ($point.Y - $SCRIPT:RecordDragOrigin.Y))
+        $SCRIPT:RecordFrame = Resize-RecordFrame $SCRIPT:RecordFrameOrigin $SCRIPT:RecordHandle $delta $bounds
+        Set-ShotHole $Form $SCRIPT:RecordFrame
+        Update-RecordFrameBar
+        $Form.Invalidate()
+        $Form.Update()
+        return
+    }
+    if ($SCRIPT:RecordStage -eq 'move') {
+        $delta = [System.Drawing.Point]::new(($point.X - $SCRIPT:RecordDragOrigin.X), ($point.Y - $SCRIPT:RecordDragOrigin.Y))
+        $SCRIPT:RecordFrame = Move-RecordFrame $SCRIPT:RecordFrameOrigin $delta $bounds
+        Set-ShotHole $Form $SCRIPT:RecordFrame
+        Update-RecordFrameBar
+        $Form.Invalidate()
+        $Form.Update()
+        return
+    }
+    if ($SCRIPT:ShotDragging) {
+        $SCRIPT:ShotSelection = Get-ShotRectangle $SCRIPT:ShotStart $point
+        Set-ShotHole $Form $SCRIPT:ShotSelection
+        $Form.Invalidate()
+        # Paint now rather than after the pointer stops: the frame the person is
+        # dragging has to be on screen while they are dragging it.
+        $Form.Update()
+        return
+    }
+    if ($SCRIPT:RecordStage -eq 'adjust') {
+        $handle = Get-RecordFrameHandle $SCRIPT:RecordFrame $point
+        if ($handle -ge 0) {
+            $Form.Cursor = Get-RecordFrameCursor $handle
+        } elseif ($SCRIPT:RecordFrame.Contains($point)) {
+            $Form.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+        } else {
+            $Form.Cursor = [System.Windows.Forms.Cursors]::Cross
+        }
+    }
+}
+
+function Invoke-RecordSheetUp($Form, $EventArgs) {
+    if ($SCRIPT:RecordStage -eq 'resize' -or $SCRIPT:RecordStage -eq 'move') {
+        $SCRIPT:RecordStage = 'adjust'
+        $SCRIPT:RecordHandle = -1
+        $Form.Capture = $false
+        return
+    }
+    if (-not $SCRIPT:ShotDragging) { return }
+    $SCRIPT:ShotDragging = $false
+    $Form.Capture = $false
+    if ($EventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+    $selection = Get-ShotRectangle $SCRIPT:ShotStart $EventArgs.Location
+    if ($selection.Width -lt $SCRIPT:RecordMinSize -or $selection.Height -lt $SCRIPT:RecordMinSize) {
+        # Too small to aim at: the frame is dropped and a new drag can start.
+        $SCRIPT:ShotSelection = [System.Drawing.Rectangle]::Empty
+        Set-ShotHole $Form $SCRIPT:ShotSelection
+        $Form.Invalidate()
+        return
+    }
+    $SCRIPT:RecordFrame = $selection
+    $SCRIPT:RecordStage = 'adjust'
+    Set-ShotHole $Form $SCRIPT:RecordFrame
+    Show-RecordFrameBar $Form
+    $Form.Invalidate()
+}
+
+function Close-RecordFrameBar {
+    $bar = $SCRIPT:RecordFrameBar
+    $font = $SCRIPT:RecordFrameBarFont
+    $SCRIPT:RecordFrameBar = $null
+    $SCRIPT:RecordFrameBarFont = $null
+    $SCRIPT:RecordFrameBarMetrics = $null
+    $SCRIPT:RecordFrameBarHover = $false
+    if ($null -ne $bar) {
+        try { $bar.Hide() } catch { }
+        try { $bar.Close() } catch { }
+        try { $bar.Dispose() } catch { }
+    }
+    if ($null -ne $font) { try { $font.Dispose() } catch { } }
+}
+
+function Get-RecordFrameBarLayout([System.Drawing.Font]$Font) {
+    $scale = [Math]::Max(1.0, $Font.Height / 16.0)
+    $pad = [int][Math]::Round(14 * $scale)
+    $dot = [int][Math]::Round(9 * $scale)
+    $gap = [int][Math]::Round(8 * $scale)
+    $sizeGap = [int][Math]::Round(14 * $scale)
+    $height = [int][Math]::Round(40 * $scale)
+    $startWidth = [System.Windows.Forms.TextRenderer]::MeasureText($SCRIPT:Labels.RecordStart, $Font).Width
+    $sizeWidth = [System.Windows.Forms.TextRenderer]::MeasureText('0000 x 0000', $Font).Width
+    $width = $pad + $dot + $gap + $startWidth + $sizeGap + $sizeWidth + $pad
+    return [pscustomobject]@{
+        Scale = $scale
+        Pad = $pad
+        Dot = $dot
+        Gap = $gap
+        SizeGap = $sizeGap
+        Height = $height
+        Width = $width
+        StartWidth = $startWidth
+        SizeWidth = $sizeWidth
+    }
+}
+
+function Draw-RecordFrameBar([System.Drawing.Graphics]$Graphics, $Metrics, [System.Drawing.Font]$Font,
+    [string]$SizeText, [bool]$Hover) {
+    # The sheet's start button: a red dot, the label, and the frame's size, so the
+    # numbers are readable while the frame is dragged.
+    $background = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(38, 43, 52))
+    $dotBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(244, 96, 92))
+    try {
+        $Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $Graphics.FillRectangle($background, 0, 0, $Metrics.Width, $Metrics.Height)
+        $Graphics.FillEllipse($dotBrush, $Metrics.Pad,
+            [int](($Metrics.Height - $Metrics.Dot) / 2), $Metrics.Dot, $Metrics.Dot)
+        $textLeft = $Metrics.Pad + $Metrics.Dot + $Metrics.Gap
+        $flags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+            [System.Windows.Forms.TextFormatFlags]::Left -bor
+            [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor
+            [System.Windows.Forms.TextFormatFlags]::SingleLine
+        $startRect = [System.Drawing.Rectangle]::new($textLeft, 0, ($Metrics.StartWidth + 8), $Metrics.Height)
+        $startColor = if ($Hover) {
+            [System.Drawing.Color]::FromArgb(255, 255, 255)
+        } else {
+            [System.Drawing.Color]::FromArgb(240, 244, 250)
+        }
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.RecordStart, $Font, $startRect, $startColor, $flags)
+        $sizeLeft = $textLeft + $Metrics.StartWidth + $Metrics.SizeGap
+        $sizeRect = [System.Drawing.Rectangle]::new($sizeLeft, 0, ($Metrics.Width - $sizeLeft - $Metrics.Pad), $Metrics.Height)
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SizeText, $Font, $sizeRect,
+            [System.Drawing.Color]::FromArgb(168, 178, 194), $flags)
+    } finally {
+        $dotBrush.Dispose()
+        $background.Dispose()
+    }
+}
+
+function Show-RecordFrameBar([System.Windows.Forms.Form]$Sheet) {
+    Close-RecordFrameBar
+    if ($null -eq $Sheet -or $SCRIPT:RecordFrame.Width -le 0) { return }
+    $font = Get-QuickAccessFont 9 $true
+    try {
+        $metrics = Get-RecordFrameBarLayout $font
+        $size = [System.Drawing.Size]::new($metrics.Width, $metrics.Height)
+        $frameOnScreen = [System.Drawing.Rectangle]::new(
+            ($Sheet.Left + $SCRIPT:RecordFrame.Left), ($Sheet.Top + $SCRIPT:RecordFrame.Top),
+            $SCRIPT:RecordFrame.Width, $SCRIPT:RecordFrame.Height)
+        $bounds = Get-RecordFrameBarBounds $frameOnScreen $size ([System.Windows.Forms.SystemInformation]::VirtualScreen)
+        $form = New-Object DshPet.RecordBarForm
+        $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+        $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+        $form.ShowInTaskbar = $false
+        $form.TopMost = $true
+        $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+        $form.BackColor = [System.Drawing.Color]::FromArgb(38, 43, 52)
+        $form.ClientSize = $size
+        Set-QuickAccessRegion $form ([int][Math]::Round(12 * $metrics.Scale))
+        $form.Cursor = [System.Windows.Forms.Cursors]::Hand
+        $SCRIPT:RecordFrameBarMetrics = $metrics
+        $SCRIPT:RecordFrameBarFont = $font
+        $form.add_Paint({
+            param($sender, $eventArgs)
+            try {
+                $metrics = $SCRIPT:RecordFrameBarMetrics
+                $font = $SCRIPT:RecordFrameBarFont
+                if ($null -eq $metrics -or $null -eq $font) { return }
+                $frame = $SCRIPT:RecordFrame
+                $sizeText = '{0} x {1}' -f $frame.Width, $frame.Height
+                Draw-RecordFrameBar $eventArgs.Graphics $metrics $font $sizeText $SCRIPT:RecordFrameBarHover
+            } catch {
+                Write-Log "drawing the recording start bar failed: $($_.Exception.Message)"
+            }
+        })
+        $form.add_MouseEnter({
+            $SCRIPT:RecordFrameBarHover = $true
+            try { $sender.Invalidate() } catch { }
+        })
+        $form.add_MouseLeave({
+            $SCRIPT:RecordFrameBarHover = $false
+            try { $sender.Invalidate() } catch { }
+        })
+        $form.add_MouseDown({
+            param($sender, $eventArgs)
+            if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+            try { Start-RecordFromSheet } catch {
+                Write-Log "starting the recording failed: $($_.Exception.Message)"
+                try { Show-RecordFailure $_.Exception.Message } catch { }
+            }
+        })
+        # The start window is a window of its own rather than a child of the sheet,
+        # so a key that lands on it never reaches the sheet's handler. Escape is the
+        # way out of the whole selection, wherever the focus happens to be.
+        $form.KeyPreview = $true
+        $form.add_KeyDown({
+            param($sender, $eventArgs)
+            if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+                $eventArgs.Handled = $true
+                Close-ShotOverlay
+            }
+        })
+        $SCRIPT:RecordFrameBar = $form
+        $form.Location = $bounds.Location
+        $form.Show()
+        # The sheet is topmost as well, and a later topmost window does not
+        # automatically sit above it: without this the start button ends up under
+        # the sheet and a click lands on the desktop instead of starting.
+        try { $form.BringToFront() } catch { }
+        # Showing this window is what took the focus off the sheet, and Escape is
+        # only heard by the window that has it. Handing it back does not move the
+        # start window down the Z order, so the button stays clickable.
+        try { [void][DshPet.Win32]::SetActiveWindow($Sheet.Handle) } catch { }
+    } catch {
+        if ($null -ne $font) { try { $font.Dispose() } catch { } }
+        $SCRIPT:RecordFrameBar = $null
+        $SCRIPT:RecordFrameBarFont = $null
+        $SCRIPT:RecordFrameBarMetrics = $null
+        throw
+    }
+}
+
+function Update-RecordFrameBar {
+    $bar = $SCRIPT:RecordFrameBar
+    $sheet = $SCRIPT:ShotOverlay
+    if ($null -eq $bar -or $null -eq $sheet) { return }
+    if ($SCRIPT:RecordFrame.Width -le 0) { return }
+    $frameOnScreen = [System.Drawing.Rectangle]::new(
+        ($sheet.Left + $SCRIPT:RecordFrame.Left), ($sheet.Top + $SCRIPT:RecordFrame.Top),
+        $SCRIPT:RecordFrame.Width, $SCRIPT:RecordFrame.Height)
+    $bounds = Get-RecordFrameBarBounds $frameOnScreen ([System.Drawing.Size]::new($bar.Width, $bar.Height)) `
+        ([System.Windows.Forms.SystemInformation]::VirtualScreen)
+    $bar.Location = $bounds.Location
+    try { $bar.BringToFront() } catch { }
+    try { $bar.Invalidate() } catch { }
+}
+
+function Start-RecordFromSheet {
+    $frame = $SCRIPT:RecordFrame
+    if ($frame.Width -lt $SCRIPT:RecordMinSize -or $frame.Height -lt $SCRIPT:RecordMinSize) { return }
+    $sheet = $SCRIPT:ShotOverlay
+    $left = if ($null -ne $sheet) { $sheet.Left } else { 0 }
+    $top = if ($null -ne $sheet) { $sheet.Top } else { 0 }
+    $area = Get-RecordArea ([System.Drawing.Rectangle]::new(($left + $frame.Left), ($top + $frame.Top), $frame.Width, $frame.Height)) `
+        ([System.Windows.Forms.SystemInformation]::VirtualScreen)
+    # The sheet and its start window must be off the screen before the first frame,
+    # the way a capture hides its own sheet before reading the screen.
+    Close-RecordFrameBar
+    Close-ShotOverlay
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 120
+    try { Start-ScreenRecord $area } catch {
+        Write-Log "starting the recording failed: $($_.Exception.Message)"
+        try { Show-RecordFailure $_.Exception.Message } catch { }
+    }
+}
+
+# ---- recording (bar, process, notices) --------------------------------------
+# Once the sheet is gone, a recording has no window that says it is running. The
+# bar is that window: it is drawn whole like the preview, it lives outside the
+# recorded area, and a click anywhere on it stops the recording. When the area
+# fills the desktop there is nowhere to put it, so it is not shown at all and the
+# menu row is the way to stop - a bar inside the recording would be in the file.
+function Show-RecordFailure([string]$Detail) {
+    $text = $SCRIPT:Labels.RecordFailed
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) { $text = "$text`n`n$Detail" }
+    [void][System.Windows.MessageBox]::Show($SCRIPT:Window, $text,
+        $SCRIPT:Labels.PetName, [System.Windows.MessageBoxButton]::OK,
+        [System.Windows.MessageBoxImage]::Warning)
+}
+
+function Close-RecordBar {
+    $bar = $SCRIPT:RecordBar
+    $font = $SCRIPT:RecordBarFont
+    $SCRIPT:RecordBar = $null
+    $SCRIPT:RecordBarFont = $null
+    $SCRIPT:RecordBarMetrics = $null
+    $SCRIPT:RecordBarHover = $false
+    if ($null -ne $SCRIPT:RecordBarTimer) { $SCRIPT:RecordBarTimer.Stop() }
+    if ($null -ne $bar) {
+        try { $bar.Hide() } catch { }
+        try { $bar.Close() } catch { }
+        try { $bar.Dispose() } catch { }
+    }
+    if ($null -ne $font) { try { $font.Dispose() } catch { } }
+}
+
+function Get-RecordBarLayout([System.Drawing.Font]$Font) {
+    # Measured from the font: a layout pinned to 96dpi pixels clips the clock at
+    # another display scale. The clock column is sized for the longest form it can
+    # reach, so the bar does not jump when an hour passes.
+    $scale = [Math]::Max(1.0, $Font.Height / 16.0)
+    $pad = [int][Math]::Round(14 * $scale)
+    $dot = [int][Math]::Round(9 * $scale)
+    $gap = [int][Math]::Round(8 * $scale)
+    $stopGap = [int][Math]::Round(16 * $scale)
+    $buttonGap = [int][Math]::Round(10 * $scale)
+    # Both labels are measured rather than assumed: they are the words the person
+    # reads to end or drop the recording, and a fixed width clipped them.
+    $stopWidth = [System.Windows.Forms.TextRenderer]::MeasureText($SCRIPT:Labels.RecordBarStop, $Font).Width +
+        [int][Math]::Round(26 * $scale)
+    $cancelWidth = [System.Windows.Forms.TextRenderer]::MeasureText($SCRIPT:Labels.RecordCancel, $Font).Width +
+        [int][Math]::Round(26 * $scale)
+    $height = [int][Math]::Round(40 * $scale)
+    $stopHeight = [int][Math]::Round(24 * $scale)
+    $clockWidth = 0
+    foreach ($sample in @(
+        ($SCRIPT:Labels.RecordBarPrefix + ' ' + (Format-RecordClock 0)),
+        ($SCRIPT:Labels.RecordBarPrefix + ' ' + (Format-RecordClock 3723000))
+    )) {
+        $measured = [System.Windows.Forms.TextRenderer]::MeasureText($sample, $Font).Width
+        if ($measured -gt $clockWidth) { $clockWidth = $measured }
+    }
+    $width = $pad + $dot + $gap + $clockWidth + $stopGap + $stopWidth + $buttonGap + $cancelWidth + $pad
+    $cancelLeft = $width - $pad - $cancelWidth
+    return [pscustomobject]@{
+        Scale       = $scale
+        Pad         = $pad
+        Dot         = $dot
+        Gap         = $gap
+        StopGap     = $stopGap
+        ButtonGap   = $buttonGap
+        StopWidth   = $stopWidth
+        CancelWidth = $cancelWidth
+        StopHeight  = $stopHeight
+        Height      = $height
+        Width       = $width
+        StopLeft    = ($cancelLeft - $buttonGap - $stopWidth)
+        CancelLeft  = $cancelLeft
+    }
+}
+
+function Get-RecordBarClock {
+    if ($SCRIPT:RecordStartedAt -eq [DateTime]::MinValue) { return (Format-RecordClock 0) }
+    return (Format-RecordClock ([DateTime]::Now - $SCRIPT:RecordStartedAt).TotalMilliseconds)
+}
+
+function Draw-RecordBar([System.Drawing.Graphics]$Graphics, $Metrics, [System.Drawing.Font]$Font,
+    [string]$Clock, [bool]$Hover) {
+    # The bar's whole surface as one function: the window paints with it, and the
+    # off-screen probe draws the same picture, so a layout the font no longer fits
+    # is caught without a desktop to record.
+    $Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $background = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(38, 43, 52))
+    $dotBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(244, 96, 92))
+    $buttonBrush = $null
+    $cancelPen = $null
+    try {
+        $Graphics.FillRectangle($background, 0, 0, $Metrics.Width, $Metrics.Height)
+        $Graphics.FillEllipse($dotBrush, $Metrics.Pad,
+            [int](($Metrics.Height - $Metrics.Dot) / 2), $Metrics.Dot, $Metrics.Dot)
+        $clockLeft = $Metrics.Pad + $Metrics.Dot + $Metrics.Gap
+        $clockRect = [System.Drawing.Rectangle]::new($clockLeft, 0,
+            ($Metrics.StopLeft - $Metrics.StopGap - $clockLeft), $Metrics.Height)
+        $flags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+            [System.Windows.Forms.TextFormatFlags]::Left -bor
+            [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor
+            [System.Windows.Forms.TextFormatFlags]::SingleLine
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $Clock, $Font, $clockRect,
+            [System.Drawing.Color]::FromArgb(240, 244, 250), $flags)
+        $buttonRect = [System.Drawing.Rectangle]::new($Metrics.StopLeft,
+            [int](($Metrics.Height - $Metrics.StopHeight) / 2), $Metrics.StopWidth, $Metrics.StopHeight)
+        $buttonColor = if ($Hover) {
+            [System.Drawing.Color]::FromArgb(78, 88, 104)
+        } else {
+            [System.Drawing.Color]::FromArgb(58, 66, 80)
+        }
+        $buttonBrush = New-Object System.Drawing.SolidBrush($buttonColor)
+        $Graphics.FillRectangle($buttonBrush, $buttonRect)
+        $buttonFlags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+            [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor
+            [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor
+            [System.Windows.Forms.TextFormatFlags]::SingleLine
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.RecordBarStop,
+            $Font, $buttonRect, [System.Drawing.Color]::FromArgb(240, 244, 250), $buttonFlags)
+        # Cancelling drops the take instead of keeping it; it is a plain outline so
+        # the two buttons do not read as two equally likely answers.
+        $cancelRect = [System.Drawing.Rectangle]::new($Metrics.CancelLeft,
+            [int](($Metrics.Height - $Metrics.StopHeight) / 2), $Metrics.CancelWidth, $Metrics.StopHeight)
+        $cancelPen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(92, 101, 118), 1)
+        $Graphics.DrawRectangle($cancelPen, $cancelRect)
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $SCRIPT:Labels.RecordCancel,
+            $Font, $cancelRect, [System.Drawing.Color]::FromArgb(196, 204, 216), $buttonFlags)
+    } finally {
+        if ($null -ne $cancelPen) { $cancelPen.Dispose() }
+        if ($null -ne $buttonBrush) { $buttonBrush.Dispose() }
+        $dotBrush.Dispose()
+        $background.Dispose()
+    }
+}
+
+function New-RecordBar($Metrics, [System.Drawing.Font]$Font) {
+    $form = New-Object DshPet.RecordBarForm
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $form.ShowInTaskbar = $false
+    $form.TopMost = $true
+    $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $form.BackColor = [System.Drawing.Color]::FromArgb(38, 43, 52)
+    $form.ClientSize = New-Object System.Drawing.Size($Metrics.Width, $Metrics.Height)
+    Set-QuickAccessRegion $form ([int][Math]::Round(12 * $Metrics.Scale))
+    $form.Cursor = [System.Windows.Forms.Cursors]::Hand
+
+    $form.add_Paint({
+        param($sender, $eventArgs)
+        try {
+            if ($null -eq $SCRIPT:RecordBarMetrics -or $null -eq $SCRIPT:RecordBarFont) { return }
+            $clock = $SCRIPT:Labels.RecordBarPrefix + ' ' + (Get-RecordBarClock)
+            Draw-RecordBar $eventArgs.Graphics $SCRIPT:RecordBarMetrics $SCRIPT:RecordBarFont $clock $SCRIPT:RecordBarHover
+        } catch {
+            Write-Log "drawing the recording bar failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseEnter({
+        $SCRIPT:RecordBarHover = $true
+        try { $sender.Invalidate() } catch { }
+    })
+    $form.add_MouseLeave({
+        $SCRIPT:RecordBarHover = $false
+        try { $sender.Invalidate() } catch { }
+    })
+    $form.add_MouseDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+        try {
+            $metrics = $SCRIPT:RecordBarMetrics
+            if ($null -ne $metrics) {
+                $cancelRect = [System.Drawing.Rectangle]::new($metrics.CancelLeft,
+                    [int](($metrics.Height - $metrics.StopHeight) / 2), $metrics.CancelWidth, $metrics.StopHeight)
+                if ($cancelRect.Contains($eventArgs.Location)) {
+                    Cancel-ScreenRecord
+                    return
+                }
+            }
+            Stop-ScreenRecord
+        } catch {
+            Write-Log "ending the recording failed: $($_.Exception.Message)"
+        }
+    })
+    return $form
+}
+
+function Start-RecordBarTimer {
+    if ($null -eq $SCRIPT:RecordBarTimer) {
+        $SCRIPT:RecordBarTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $SCRIPT:RecordBarTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+        $SCRIPT:RecordBarTimer.Add_Tick({
+            try {
+                if ($null -eq $SCRIPT:RecordBar) { $SCRIPT:RecordBarTimer.Stop(); return }
+                $SCRIPT:RecordBar.Invalidate()
+            } catch { }
+        })
+    }
+    $SCRIPT:RecordBarTimer.Start()
+}
+
+function Show-RecordBar([System.Drawing.Rectangle]$Area) {
+    # Returns whether a bar could be placed: false means the area covers the
+    # desktop, and the notice tells the person to use the menu instead.
+    Close-RecordBar
+    $font = Get-QuickAccessFont 9 $true
+    try {
+        $metrics = Get-RecordBarLayout $font
+        $size = [System.Drawing.Size]::new($metrics.Width, $metrics.Height)
+        $bounds = Get-RecordBarBounds $Area $size ([System.Windows.Forms.SystemInformation]::VirtualScreen)
+        if ($bounds.Width -le 0) {
+            $font.Dispose()
+            return $false
+        }
+        $form = New-RecordBar $metrics $font
+        $SCRIPT:RecordBar = $form
+        $SCRIPT:RecordBarFont = $font
+        $SCRIPT:RecordBarMetrics = $metrics
+        $SCRIPT:RecordBarHover = $false
+        $form.Location = $bounds.Location
+        $form.Show()
+        Start-RecordBarTimer
+        return $true
+    } catch {
+        $font.Dispose()
+        $SCRIPT:RecordBar = $null
+        $SCRIPT:RecordBarFont = $null
+        $SCRIPT:RecordBarMetrics = $null
+        throw
+    }
+}
+
+function Close-RecordOutline {
+    $form = $SCRIPT:RecordOutline
+    $SCRIPT:RecordOutline = $null
+    if ($null -eq $form) { return }
+    try { $form.Hide() } catch { }
+    try { $form.Close() } catch { }
+    try { $form.Dispose() } catch { }
+}
+
+function Show-RecordOutline([System.Drawing.Rectangle]$Area) {
+    # The frame stays visible while recording so the person can see what is being
+    # captured. It is drawn entirely outside the area - gdigrab reads the area
+    # rectangle itself, not one pixel of this border - so it never appears in the
+    # file. The window's region keeps only that border, so a click passes through
+    # the middle to whatever is underneath.
+    Close-RecordOutline
+    if ($Area.Width -lt 2 -or $Area.Height -lt 2) { return }
+    $border = 3
+    $width = $Area.Width + ($border * 2)
+    $height = $Area.Height + ($border * 2)
+    $form = New-Object DshPet.RecordBarForm
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
+    $form.ShowInTaskbar = $false
+    $form.TopMost = $true
+    $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
+    $form.BackColor = [System.Drawing.Color]::FromArgb(244, 96, 92)
+    $form.ClientSize = New-Object System.Drawing.Size($width, $height)
+    $region = [System.Drawing.Region]::new([System.Drawing.Rectangle]::new(0, 0, $width, $height))
+    $inner = [System.Drawing.Region]::new([System.Drawing.Rectangle]::new($border, $border, $Area.Width, $Area.Height))
+    $region.Exclude($inner)
+    $inner.Dispose()
+    $form.Region = $region
+    $form.Location = New-Object System.Drawing.Point(($Area.Left - $border), ($Area.Top - $border))
+    $form.Show()
+    $SCRIPT:RecordOutline = $form
+}
+
+function Copy-RecordFile([string]$Path) {
+    # A video cannot ride the clipboard as pixels, so the file itself is offered:
+    # Explorer and chat windows then paste a file, which is what a recording is.
+    $files = New-Object System.Collections.Specialized.StringCollection
+    [void]$files.Add($Path)
+    $lastError = ''
+    for ($attempt = 0; $attempt -lt 5; $attempt++) {
+        try {
+            [System.Windows.Forms.Clipboard]::SetFileDropList($files)
+            return $true
+        } catch {
+            $lastError = $_.Exception.Message
+            Start-Sleep -Milliseconds 80
+        }
+    }
+    Write-Log "copying the recording to the clipboard failed: $lastError"
+    return $false
+}
+
+function New-RecordPath([string]$Directory) {
+    # The name is fixed when the recording starts, because the preview plays the
+    # file where it will stay. Two recordings inside one second get a suffix so the
+    # second cannot overwrite the first.
+    $path = Get-RecordFileName $Directory
+    if (-not (Test-Path -LiteralPath $path)) { return $path }
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($path)
+    $extension = [System.IO.Path]::GetExtension($path)
+    for ($index = 2; $index -lt 1000; $index++) {
+        $candidate = Join-Path $Directory ('{0}-{1}{2}' -f $base, $index, $extension)
+        if (-not (Test-Path -LiteralPath $candidate)) { return $candidate }
+    }
+    return $path
+}
+
+function New-RecordPreviewButton([string]$Text, [bool]$Primary, $OnClick) {
+    # A button drawn as a label on a rounded plate: the card has no stock chrome,
+    # and a default WPF button would bring its own hover and border with it.
+    $border = New-Object System.Windows.Controls.Border
+    $border.CornerRadius = [System.Windows.CornerRadius]::new(7)
+    $border.Padding = [System.Windows.Thickness]::new(14, 6, 14, 6)
+    $border.Margin = [System.Windows.Thickness]::new(8, 0, 0, 0)
+    $border.Cursor = [System.Windows.Input.Cursors]::Hand
+    if ($Primary) {
+        $border.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(53, 59, 70))
+        $ink = [System.Windows.Media.Color]::FromRgb(250, 251, 253)
+    } else {
+        $border.BorderBrush = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(205, 211, 220))
+        $border.BorderThickness = [System.Windows.Thickness]::new(1)
+        $ink = [System.Windows.Media.Color]::FromRgb(53, 59, 70)
+    }
+    $label = New-Object System.Windows.Controls.TextBlock
+    $label.Text = $Text
+    $label.FontSize = 12
+    $label.Foreground = New-Object System.Windows.Media.SolidColorBrush($ink)
+    $border.Child = $label
+    $border.add_MouseLeftButtonUp($OnClick)
+    return $border
+}
+
+function Set-RecordPreviewCorners($Window) {
+    # The preview window is opaque so its player can compose a picture; the card's
+    # rounded corners are then the window's region, cut at the size the window
+    # actually has.
+    if ($null -eq $Window) { return }
+    try {
+        $helper = New-Object System.Windows.Interop.WindowInteropHelper($Window)
+        $handle = $helper.Handle
+        if ($handle -eq [System.IntPtr]::Zero) { return }
+        $source = [System.Windows.Interop.HwndSource]::FromHwnd($handle)
+        if ($null -eq $source -or $null -eq $source.CompositionTarget) { return }
+        $transform = $source.CompositionTarget.TransformToDevice
+        $width = [int][Math]::Round($Window.ActualWidth * $transform.M11)
+        $height = [int][Math]::Round($Window.ActualHeight * $transform.M22)
+        if ($width -le 0 -or $height -le 0) { return }
+        $diameter = [int][Math]::Max(2, [Math]::Round(28 * [Math]::Max($transform.M11, $transform.M22)))
+        $region = [DshPet.Win32]::CreateRoundRectRgn(0, 0, ($width + 1), ($height + 1), $diameter, $diameter)
+        if ($region -eq [System.IntPtr]::Zero) { return }
+        if ([DshPet.Win32]::SetWindowRgn($handle, $region, $true) -eq 0) {
+            # A refused region is not adopted, and then the handle is still ours.
+            [void][DshPet.Win32]::DeleteObject($region)
+        }
+    } catch { }
+}
+
+function New-RecordPreviewWindow([string]$Path, [int]$Seconds, [System.Drawing.Rectangle]$Area) {
+    $screen = [System.Windows.Forms.Screen]::FromRectangle($Area).WorkingArea
+    $layout = Get-RecordPreviewLayout ([Math]::Max(1, $Area.Width)) ([Math]::Max(1, $Area.Height)) $screen
+    $imageWidth = $layout.ImageWidth
+    $imageHeight = $layout.ImageHeight
+    $size = Format-RecordSize 0
+    try { $size = Format-RecordSize (Get-Item -LiteralPath $Path).Length } catch { }
+
+    $window = New-Object System.Windows.Window
+    $window.WindowStyle = [System.Windows.WindowStyle]::None
+    # A layered window (AllowsTransparency) has no surface a video can be composed
+    # into: MediaElement draws its first frame into black and never recovers, which
+    # is what a preview that cannot show the take looks like. The card is opaque,
+    # so its own corners are what gets rounded, by cutting the window's region.
+    $window.AllowsTransparency = $false
+    $window.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(252, 252, 253))
+    $window.ShowInTaskbar = $false
+    $window.Topmost = $true
+    $window.ResizeMode = [System.Windows.ResizeMode]::NoResize
+    $window.SizeToContent = [System.Windows.SizeToContent]::WidthAndHeight
+    $window.WindowStartupLocation = [System.Windows.WindowStartupLocation]::CenterScreen
+    $window.Focusable = $true
+
+    $panel = New-Object System.Windows.Controls.StackPanel
+    $panel.Margin = [System.Windows.Thickness]::new(22, 16, 22, 20)
+    $panel.Width = $imageWidth + 44
+
+    # Title row: the title on the left, the hint and the close cross on the right.
+    $header = New-Object System.Windows.Controls.Grid
+    $titleColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $titleColumn.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+    [void]$header.ColumnDefinitions.Add($titleColumn)
+    $rightColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $rightColumn.Width = [System.Windows.GridLength]::Auto
+    [void]$header.ColumnDefinitions.Add($rightColumn)
+    $title = New-Object System.Windows.Controls.TextBlock
+    $title.Text = $SCRIPT:Labels.RecordPreviewTitle
+    $title.FontSize = 17
+    $title.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+    $title.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(38, 43, 52))
+    [System.Windows.Controls.Grid]::SetColumn($title, 0)
+    [void]$header.Children.Add($title)
+    $headerRight = New-Object System.Windows.Controls.StackPanel
+    $headerRight.Orientation = [System.Windows.Controls.Orientation]::Horizontal
+    $headerRight.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+    $hint = New-Object System.Windows.Controls.TextBlock
+    $hint.Text = $SCRIPT:Labels.RecordPreviewHint
+    $hint.FontSize = 11
+    $hint.Margin = [System.Windows.Thickness]::new(0, 0, 14, 0)
+    $hint.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(150, 158, 170))
+    [void]$headerRight.Children.Add($hint)
+    $close = New-Object System.Windows.Controls.TextBlock
+    $close.Text = 'X'
+    $close.FontSize = 14
+    $close.Cursor = [System.Windows.Input.Cursors]::Hand
+    $close.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(110, 120, 134))
+    # On the press rather than the release: the header around it starts a window
+    # drag, and a drag that begins on the cross would otherwise swallow the click.
+    $close.add_MouseLeftButtonDown({
+        param($sender, $eventArgs)
+        $eventArgs.Handled = $true
+        try { Invoke-RecordPreviewChoice '' } catch { }
+    })
+    [void]$headerRight.Children.Add($close)
+    [System.Windows.Controls.Grid]::SetColumn($headerRight, 1)
+    [void]$header.Children.Add($headerRight)
+    $header.Margin = [System.Windows.Thickness]::new(0, 0, 0, 12)
+    # A window with no title bar has to be movable by what stands in for one: the
+    # header drags it, and so does the picture. Both are surfaces without a job of
+    # their own, so a press there means "move this" and nothing else.
+    $header.add_MouseLeftButtonDown({
+        param($sender, $eventArgs)
+        try { [System.Windows.Window]::GetWindow($sender).DragMove() } catch { }
+    })
+    [void]$panel.Children.Add($header)
+
+    # The player: a MediaElement on a dark plate, sized from the recorded area.
+    $media = New-Object System.Windows.Controls.MediaElement
+    $media.Height = $imageHeight
+    $media.Width = $imageWidth
+    $media.Stretch = [System.Windows.Media.Stretch]::Uniform
+    $media.LoadedBehavior = [System.Windows.Controls.MediaState]::Manual
+    $media.UnloadedBehavior = [System.Windows.Controls.MediaState]::Manual
+    $media.ScrubbingEnabled = $true
+    $media.Source = [System.Uri]::new(('file:///' + ($Path -replace '\\', '/')))
+    $SCRIPT:RecordPreviewMedia = $media
+    $media.add_MediaOpened({
+        try {
+            $element = $SCRIPT:RecordPreviewMedia
+            $slider = $SCRIPT:RecordPreviewSlider
+            if ($null -eq $element) { return }
+            $natural = $element.NaturalDuration
+            if ($null -ne $slider -and $natural.HasTimeSpan) { $slider.Maximum = [Math]::Max(0.1, $natural.TimeSpan.TotalSeconds) }
+            # The first frame is the poster: play just long enough for the player to
+            # compose a picture, then hold it there. A preview that opens on black
+            # says nothing about the take it is asking to keep.
+            $element.Play()
+            $element.Pause()
+            $element.Position = [TimeSpan]::Zero
+            $SCRIPT:RecordPreviewPlaying = $false
+            if ($null -ne $SCRIPT:RecordPreviewPlayText) { $SCRIPT:RecordPreviewPlayText.Text = $SCRIPT:Labels.RecordPlay }
+        } catch {
+            Write-Log "starting the recording preview failed: $($_.Exception.Message)"
+        }
+    })
+    $media.add_MediaEnded({
+        try {
+            $element = $SCRIPT:RecordPreviewMedia
+            if ($null -ne $element) {
+                $element.Pause()
+                $element.Position = [TimeSpan]::Zero
+            }
+            $SCRIPT:RecordPreviewPlaying = $false
+            if ($null -ne $SCRIPT:RecordPreviewSlider) { $SCRIPT:RecordPreviewSlider.Value = 0 }
+            if ($null -ne $SCRIPT:RecordPreviewPlayText) { $SCRIPT:RecordPreviewPlayText.Text = $SCRIPT:Labels.RecordPlay }
+        } catch { }
+    })
+    $media.add_MediaFailed({
+        try {
+            if ($null -ne $SCRIPT:RecordPreviewInfoText) {
+                $SCRIPT:RecordPreviewInfoText.Text = $SCRIPT:Labels.RecordPreviewFailed
+            }
+        } catch { }
+    })
+    $mediaPlate = New-Object System.Windows.Controls.Border
+    $mediaPlate.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(20, 24, 30))
+    $mediaPlate.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Center
+    $mediaPlate.Child = $media
+    # The picture is the largest surface on the card and has no click of its own, so
+    # grabbing it moves the window too.
+    $mediaPlate.add_MouseLeftButtonDown({
+        param($sender, $eventArgs)
+        try { [System.Windows.Window]::GetWindow($sender).DragMove() } catch { }
+    })
+    [void]$panel.Children.Add($mediaPlate)
+
+    # Transport: play/pause, a seek bar, and where the playhead is.
+    $transport = New-Object System.Windows.Controls.Grid
+    $transport.Margin = [System.Windows.Thickness]::new(0, 8, 0, 2)
+    $playColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $playColumn.Width = [System.Windows.GridLength]::Auto
+    [void]$transport.ColumnDefinitions.Add($playColumn)
+    $sliderColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $sliderColumn.Width = [System.Windows.GridLength]::new(1, [System.Windows.GridUnitType]::Star)
+    [void]$transport.ColumnDefinitions.Add($sliderColumn)
+    $timeColumn = New-Object System.Windows.Controls.ColumnDefinition
+    $timeColumn.Width = [System.Windows.GridLength]::Auto
+    [void]$transport.ColumnDefinitions.Add($timeColumn)
+    $playPlate = New-Object System.Windows.Controls.Border
+    $playPlate.CornerRadius = [System.Windows.CornerRadius]::new(7)
+    $playPlate.Padding = [System.Windows.Thickness]::new(12, 5, 12, 5)
+    $playPlate.Cursor = [System.Windows.Input.Cursors]::Hand
+    $playPlate.BorderBrush = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(205, 211, 220))
+    $playPlate.BorderThickness = [System.Windows.Thickness]::new(1)
+    $playText = New-Object System.Windows.Controls.TextBlock
+    $playText.Text = $SCRIPT:Labels.RecordPlay
+    $playText.FontSize = 12
+    $playText.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(53, 59, 70))
+    $playPlate.Child = $playText
+    $playPlate.add_MouseLeftButtonUp({
+        try {
+            $element = $SCRIPT:RecordPreviewMedia
+            if ($null -eq $element) { return }
+            # The button's own state, not MediaElement.IsPlaying: a paused player
+            # reports false while it is still opening, so a second press used to
+            # restart instead of stopping.
+            if ($SCRIPT:RecordPreviewPlaying) {
+                $element.Pause()
+                $SCRIPT:RecordPreviewPlaying = $false
+                if ($null -ne $SCRIPT:RecordPreviewPlayText) { $SCRIPT:RecordPreviewPlayText.Text = $SCRIPT:Labels.RecordPlay }
+            } else {
+                $element.Play()
+                $SCRIPT:RecordPreviewPlaying = $true
+                if ($null -ne $SCRIPT:RecordPreviewPlayText) { $SCRIPT:RecordPreviewPlayText.Text = $SCRIPT:Labels.RecordPause }
+            }
+        } catch { }
+    })
+    $SCRIPT:RecordPreviewPlayText = $playText
+    [System.Windows.Controls.Grid]::SetColumn($playPlate, 0)
+    [void]$transport.Children.Add($playPlate)
+    $slider = New-Object System.Windows.Controls.Slider
+    $slider.Minimum = 0
+    $slider.Maximum = 1
+    $slider.Value = 0
+    $slider.Margin = [System.Windows.Thickness]::new(10, 0, 10, 0)
+    $slider.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+    $slider.add_PreviewMouseLeftButtonDown({ $SCRIPT:RecordPreviewSeeking = $true })
+    $slider.add_PreviewMouseLeftButtonUp({
+        try {
+            $SCRIPT:RecordPreviewSeeking = $false
+            $element = $SCRIPT:RecordPreviewMedia
+            if ($null -ne $element) { $element.Position = [TimeSpan]::FromSeconds($SCRIPT:RecordPreviewSlider.Value) }
+        } catch { }
+    })
+    $SCRIPT:RecordPreviewSlider = $slider
+    [System.Windows.Controls.Grid]::SetColumn($slider, 1)
+    [void]$transport.Children.Add($slider)
+    $timeText = New-Object System.Windows.Controls.TextBlock
+    $timeText.Text = ('{0} / {1}' -f (Format-RecordClock 0), (Format-RecordClock ($Seconds * 1000)))
+    $timeText.FontSize = 11
+    $timeText.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+    $timeText.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(110, 118, 130))
+    $SCRIPT:RecordPreviewTimeText = $timeText
+    [System.Windows.Controls.Grid]::SetColumn($timeText, 2)
+    [void]$transport.Children.Add($timeText)
+    [void]$panel.Children.Add($transport)
+
+    $info = New-Object System.Windows.Controls.TextBlock
+    $info.Text = $SCRIPT:Labels.RecordPreviewInfo -f $Area.Width, $Area.Height, $size
+    $info.FontSize = 11
+    $info.Margin = [System.Windows.Thickness]::new(0, 10, 0, 2)
+    $info.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(110, 118, 130))
+    $SCRIPT:RecordPreviewInfoText = $info
+    [void]$panel.Children.Add($info)
+
+    $pathText = New-Object System.Windows.Controls.TextBlock
+    $pathText.Text = $SCRIPT:Labels.RecordPreviewTarget -f $Path
+    $pathText.FontSize = 11
+    $pathText.TextTrimming = [System.Windows.TextTrimming]::CharacterEllipsis
+    $pathText.Foreground = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(150, 158, 170))
+    [void]$panel.Children.Add($pathText)
+
+    $buttons = New-Object System.Windows.Controls.StackPanel
+    $buttons.Orientation = [System.Windows.Controls.Orientation]::Horizontal
+    $buttons.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Right
+    $buttons.Margin = [System.Windows.Thickness]::new(0, 14, 0, 0)
+    [void]$buttons.Children.Add((New-RecordPreviewButton $SCRIPT:Labels.RecordPreviewCancel $false { try { Invoke-RecordPreviewChoice '' } catch { } }))
+    [void]$buttons.Children.Add((New-RecordPreviewButton $SCRIPT:Labels.RecordCopy $false { try { Invoke-RecordPreviewChoice 'copy' } catch { } }))
+    [void]$buttons.Children.Add((New-RecordPreviewButton $SCRIPT:Labels.RecordSave $true { try { Invoke-RecordPreviewChoice 'save' } catch { } }))
+    [void]$panel.Children.Add($buttons)
+
+    $card = New-Object System.Windows.Controls.Border
+    $card.Background = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(252, 252, 253))
+    $card.CornerRadius = [System.Windows.CornerRadius]::new(14)
+    $card.Child = $panel
+    # No drop shadow: an opaque window has nowhere to cast one, and the shadow would
+    # paint the corners the window region is already cutting away.
+    $card.BorderBrush = New-Object System.Windows.Media.SolidColorBrush([System.Windows.Media.Color]::FromRgb(226, 230, 236))
+    $card.BorderThickness = [System.Windows.Thickness]::new(1)
+    $window.Content = $card
+
+    # SizeToContent settles after the window is up, so the corners are re-cut when
+    # that happens rather than assumed from the layout.
+    $window.add_SizeChanged({
+        param($sender, $eventArgs)
+        try { Set-RecordPreviewCorners $sender } catch { }
+    })
+
+    $window.add_KeyDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.Key -eq [System.Windows.Input.Key]::Escape) {
+            $eventArgs.Handled = $true
+            try { Close-RecordPreview } catch { }
+        }
+    })
+
+    # LoadedBehavior=Manual means nothing opens the file: MediaOpened never fires on
+    # its own, so the plate stays at the background colour and the transport has
+    # nothing to move. Playing once is what opens it; MediaOpened then holds the
+    # first frame.
+    $window.add_ContentRendered({
+        param($sender, $eventArgs)
+        try {
+            if ($null -ne $SCRIPT:RecordPreviewMedia) { $SCRIPT:RecordPreviewMedia.Play() }
+        } catch { }
+    })
+
+    $SCRIPT:RecordPreviewTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $SCRIPT:RecordPreviewTimer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $SCRIPT:RecordPreviewTimer.Add_Tick({
+        try {
+            $element = $SCRIPT:RecordPreviewMedia
+            $slider = $SCRIPT:RecordPreviewSlider
+            if ($null -eq $element -or $null -eq $slider) { $SCRIPT:RecordPreviewTimer.Stop(); return }
+            if ($SCRIPT:RecordPreviewSeeking) { return }
+            $natural = $element.NaturalDuration
+            if ($natural.HasTimeSpan -and $natural.TimeSpan.TotalSeconds -gt 0) {
+                $slider.Value = [Math]::Min($slider.Maximum, $element.Position.TotalSeconds)
+                if ($null -ne $SCRIPT:RecordPreviewTimeText) {
+                    $SCRIPT:RecordPreviewTimeText.Text = ('{0} / {1}' -f
+                        (Format-RecordClock $element.Position.TotalMilliseconds),
+                        (Format-RecordClock $natural.TimeSpan.TotalMilliseconds))
+                }
+            }
+        } catch { }
+    })
+    $SCRIPT:RecordPreviewTimer.Start()
+    return $window
+}
+
+function Close-RecordPreviewMedia {
+    if ($null -ne $SCRIPT:RecordPreviewTimer) { $SCRIPT:RecordPreviewTimer.Stop() }
+    $element = $SCRIPT:RecordPreviewMedia
+    if ($null -eq $element) { return }
+    try { $element.Stop() } catch { }
+    try { $element.Close() } catch { }
+    try { $element.Source = $null } catch { }
+}
+
+function Invoke-RecordPreviewChoice([string]$Choice) {
+    $SCRIPT:RecordPreviewChoice = $Choice
+    try { Close-RecordPreviewMedia } catch { }
+    $window = $SCRIPT:RecordPreview
+    if ($null -ne $window) { try { $window.Close() } catch { } }
+}
+
+function Close-RecordPreview {
+    $window = $SCRIPT:RecordPreview
+    if ($null -eq $window) { return }
+    try { Close-RecordPreviewMedia } catch { }
+    $SCRIPT:RecordPreviewChoice = ''
+    try { $window.Close() } catch { }
+}
+
+function Finish-RecordPreview {
+    $choice = $SCRIPT:RecordPreviewChoice
+    $path = $SCRIPT:RecordPreviewPath
+    $SCRIPT:RecordPreview = $null
+    $SCRIPT:RecordPreviewChoice = ''
+    $SCRIPT:RecordPreviewPath = ''
+    $SCRIPT:RecordPreviewMedia = $null
+    $SCRIPT:RecordPreviewSlider = $null
+    $SCRIPT:RecordPreviewPlayText = $null
+    $SCRIPT:RecordPreviewTimeText = $null
+    $SCRIPT:RecordPreviewInfoText = $null
+    $SCRIPT:RecordPreviewSeeking = $false
+    $SCRIPT:RecordPreviewPlaying = $false
+    if ($null -ne $SCRIPT:RecordPreviewTimer) { $SCRIPT:RecordPreviewTimer.Stop() }
+    if ($choice -eq 'save' -or $choice -eq 'copy') {
+        if (-not (Test-RecordFile $path)) {
+            try { Show-RecordFailure $SCRIPT:Labels.RecordEmpty } catch { }
+            return
+        }
+        if ($choice -eq 'copy') {
+            if (Copy-RecordFile $path) { Show-PetNotice $SCRIPT:Labels.RecordCopied $path }
+            else { Show-PetNotice $SCRIPT:Labels.RecordCopyFailed $path }
+        } else {
+            Show-PetNotice $SCRIPT:Labels.RecordSaved $path
+        }
+        return
+    }
+    # Cancelled: the take is dropped. The player may hold the file open for a
+    # moment after Close(), so the removal is retried rather than abandoned.
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        if (-not (Test-Path -LiteralPath $path)) { return }
+        try {
+            Remove-Item -LiteralPath $path -Force
+            return
+        } catch {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    Write-Log "the cancelled recording could not be removed: $path"
+}
+
+function Show-RecordPreview([string]$Path, [int]$Seconds, [System.Drawing.Rectangle]$Area) {
+    if ($null -ne $SCRIPT:RecordPreview) { Close-RecordPreview }
+    $SCRIPT:RecordPreviewPath = $Path
+    $SCRIPT:RecordPreviewSeconds = $Seconds
+    $SCRIPT:RecordPreviewChoice = ''
+    $SCRIPT:RecordPreviewSeeking = $false
+    $window = New-RecordPreviewWindow $Path $Seconds $Area
+    $SCRIPT:RecordPreview = $window
+    $window.add_Closed({
+        try { Finish-RecordPreview } catch {
+            Write-Log "finishing the recording preview failed: $($_.Exception.Message)"
+            try { Show-RecordFailure $_.Exception.Message } catch { }
+        }
+    })
+    $window.Show()
+    $window.Activate()
+    try { Set-RecordPreviewCorners $window } catch { }
+}
+
+function Start-ScreenRecord([System.Drawing.Rectangle]$Area) {
+    # One recording at a time: the menu row that starts one is the row that ends
+    # it, so a second press while ffmpeg runs ends the recording.
+    if ($null -ne $SCRIPT:RecordProcess) { Stop-ScreenRecord; return }
+    if ($Area.Width -lt 2 -or $Area.Height -lt 2) { return }
+    # The file is written where it will stay: the preview plays it from there, so
+    # nothing has to be moved while a player holds it open. Cancelling deletes it.
+    $directory = $SCRIPT:RecordDir
+    if (-not (Test-Path -LiteralPath $directory)) {
+        [void][System.IO.Directory]::CreateDirectory($directory)
+    }
+    $path = New-RecordPath $directory
+    $process = $null
+    try {
+        $process = Start-RecordProcess $Area $path
+        # ffmpeg exits at once when it cannot grab the area, so a bar is only put
+        # up for a process that is still alive: a dead one is reported instead.
+        for ($attempt = 0; $attempt -lt 10; $attempt++) {
+            Start-Sleep -Milliseconds 60
+            [System.Windows.Forms.Application]::DoEvents()
+            if ($process.HasExited) { break }
+        }
+        if ($process.HasExited) {
+            $code = $process.ExitCode
+            $process.Dispose()
+            $process = $null
+            throw ('ffmpeg exit {0}' -f $code)
+        }
+        $SCRIPT:RecordProcess = $process
+        $SCRIPT:RecordFile = $path
+        $SCRIPT:RecordArea = $Area
+        $SCRIPT:RecordStartedAt = [DateTime]::Now
+        $barShown = $false
+        try { $barShown = Show-RecordBar $Area }
+        catch { Write-Log "showing the recording bar failed: $($_.Exception.Message)" }
+        try { Show-RecordOutline $Area }
+        catch { Write-Log "showing the recording frame failed: $($_.Exception.Message)" }
+        Update-RecordMenu
+        $hint = $SCRIPT:Labels.RecordStartedHint -f $Area.Width, $Area.Height
+        if (-not $barShown) { $hint = "$hint`n$($SCRIPT:Labels.RecordMenuStopHint)" }
+        Write-Log "screen recording started: area=$($Area.Width)x$($Area.Height) file=$path"
+        Show-PetNotice $SCRIPT:Labels.RecordStarted $hint
+    } catch {
+        $SCRIPT:RecordFile = ''
+        $SCRIPT:RecordArea = [System.Drawing.Rectangle]::Empty
+        Close-RecordOutline
+        if (Test-Path -LiteralPath $path) { try { Remove-Item -LiteralPath $path -Force } catch { } }
+        if ($null -ne $process) {
+            try { if (-not $process.HasExited) { $process.Kill() } } catch { }
+            try { $process.Dispose() } catch { }
+        }
+        throw
+    }
+}
+
+function Stop-ScreenRecord([bool]$Announce = $true) {
+    # ffmpeg is asked to finish rather than killed: 'q' is what lets it write the
+    # index an MP4 needs. The file is the proof, so an empty one is reported.
+    $process = $SCRIPT:RecordProcess
+    if ($null -eq $process) { return }
+    $SCRIPT:RecordProcess = $null
+    $file = $SCRIPT:RecordFile
+    $area = $SCRIPT:RecordArea
+    $seconds = if ($SCRIPT:RecordStartedAt -ne [DateTime]::MinValue) {
+        [int]([DateTime]::Now - $SCRIPT:RecordStartedAt).TotalSeconds
+    } else { 0 }
+    $SCRIPT:RecordFile = ''
+    $SCRIPT:RecordArea = [System.Drawing.Rectangle]::Empty
+    $SCRIPT:RecordStartedAt = [DateTime]::MinValue
+    Close-RecordBar
+    Close-RecordOutline
+    Update-RecordMenu
+    $code = Stop-RecordProcess $process
+    try { $process.Dispose() } catch { }
+    $saved = Test-RecordFile $file
+    Write-Log "screen recording stopped: exit=$code saved=$saved file=$file"
+    if (-not $saved) {
+        if (Test-Path -LiteralPath $file) { try { Remove-Item -LiteralPath $file -Force } catch { } }
+        if ($Announce) { try { Show-RecordFailure $SCRIPT:Labels.RecordEmpty } catch { } }
+        return
+    }
+    if (-not $Announce) {
+        # The pet is exiting: the file is kept rather than offered, because nobody
+        # is there to choose between saving and copying.
+        Write-Log "screen recording kept on exit: $file"
+        return
+    }
+    try {
+        Show-RecordPreview $file $seconds $area
+    } catch {
+        Write-Log "showing the recording preview failed: $($_.Exception.Message)"
+        if (Test-Path -LiteralPath $file) { try { Remove-Item -LiteralPath $file -Force } catch { } }
+        try { Show-RecordFailure $_.Exception.Message } catch { }
+    }
+}
+
+function Cancel-ScreenRecord([bool]$Announce = $true) {
+    # Cancelling drops the take: ffmpeg is killed rather than asked to finish,
+    # because nothing of the file is going to be kept.
+    $process = $SCRIPT:RecordProcess
+    if ($null -eq $process) { return }
+    $SCRIPT:RecordProcess = $null
+    $file = $SCRIPT:RecordFile
+    $SCRIPT:RecordFile = ''
+    $SCRIPT:RecordArea = [System.Drawing.Rectangle]::Empty
+    $SCRIPT:RecordStartedAt = [DateTime]::MinValue
+    Close-RecordBar
+    Close-RecordOutline
+    Update-RecordMenu
+    try { if (-not $process.HasExited) { $process.Kill() } } catch { }
+    try { [void]$process.WaitForExit(5000) } catch { }
+    try { $process.Dispose() } catch { }
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        if (-not (Test-Path -LiteralPath $file)) { break }
+        try { Remove-Item -LiteralPath $file -Force; break } catch { Start-Sleep -Milliseconds 100 }
+    }
+    Write-Log "screen recording cancelled: file=$file"
+    if ($Announce) { Show-PetNotice $SCRIPT:Labels.RecordCancelled '' }
+}
+
+function Invoke-RecordClick {
+    # The menu row and the bar reach the same two states: idle starts a selection,
+    # recording stops the one in flight.
+    if ($null -ne $SCRIPT:RecordProcess) { Stop-ScreenRecord; return }
+    Start-RegionShot 'record'
+}
+
 # ---- menu -------------------------------------------------------------------
 function Exit-Pet {
     if ($SCRIPT:Exiting) { return }
     $SCRIPT:Exiting = $true
     Save-Position
     Save-MusicPlayerState
+    # A recording belongs to this process: ending the pet must finish the file
+    # rather than leave ffmpeg writing to a file nobody will ever close. A preview
+    # still open is dropped with the temporary file, because nobody is there to
+    # choose what happens to it.
+    try { Stop-ScreenRecord $false } catch { Write-Log "stopping the recording on exit failed: $($_.Exception.Message)" }
+    try { Close-RecordPreview } catch { Write-Log "closing the recording preview on exit failed: $($_.Exception.Message)" }
+    try { Close-RecordFrameBar } catch { }
     # The request answers itself: whatever is left of it belongs to no pet, and a
     # marker nobody removes would end the next one the moment it starts.
     try { if (Test-Path -LiteralPath $SCRIPT:QuitFile) { Remove-Item -LiteralPath $SCRIPT:QuitFile -Force } } catch { }
@@ -5334,6 +7220,31 @@ function New-PetMenu {
             try { Show-PetNotice $SCRIPT:Labels.VideoClipFailed $_.Exception.Message } catch { }
         }
     })
+    # Screen recording is this process's own capability too, and the one row that
+    # changes meaning: idle it opens the selection sheet, and while ffmpeg runs it
+    # stops the recording (see Update-RecordMenu).
+    $recordItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.Record 'record'
+    $SCRIPT:RecordMenuItems = @($recordItem)
+    $recordItem.add_Click({
+        try { Invoke-RecordClick } catch {
+            Write-Log "screen recording failed: $($_.Exception.Message)"
+            try { Show-RecordFailure $_.Exception.Message } catch { }
+        }
+    })
+    # Dropping the take is its own row, visible only while one runs: ending keeps
+    # the file, cancelling throws it away.
+    $recordCancelItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.RecordCancel 'stop'
+    $SCRIPT:RecordCancelMenuItems = @($recordCancelItem)
+    $recordCancelItem.Available = $false
+    $recordCancelItem.add_Click({
+        try { Cancel-ScreenRecord } catch {
+            Write-Log "cancelling the recording failed: $($_.Exception.Message)"
+        }
+    })
+    $featuresItem.add_DropDownOpening({
+        try { Update-RecordMenu } catch { Write-Log $_.Exception.Message }
+    })
+    Update-RecordMenu
     $tempSpaceItem = Add-PetMenuItem $featuresItem.DropDownItems $SCRIPT:Labels.TempSpace 'folder'
     $tempSpaceItem.add_Click({
         try {
@@ -5533,6 +7444,14 @@ $timer.Add_Tick({
         # settles; this is where the settled value becomes a command.
         Update-MusicVolumeCommit
 
+        # A recording that ended on its own - ffmpeg failed, the disk filled - must
+        # not leave a bar counting a process that is gone.
+        if ($null -ne $SCRIPT:RecordProcess) {
+            $recordEnded = $false
+            try { $recordEnded = $SCRIPT:RecordProcess.HasExited } catch { $recordEnded = $true }
+            if ($recordEnded) { Stop-ScreenRecord }
+        }
+
         if ($SCRIPT:FrameCount -gt 1 -and $SCRIPT:Expression -ne '') {
             $now = [Environment]::TickCount
             if (($now - $SCRIPT:LastFrameAt) -ge $SCRIPT:FrameMs) {
@@ -5589,6 +7508,19 @@ if ($MenuProbe -ne '') {
             Write-Output "menu-sub-row: $($item.Text)|$($item.Width)|$($item.Height)|$($item.HasDropDownItems)|$wanted"
         }
         $probeChild.DropDown.Close()
+    }
+    # Every submenu, not just the first: the capabilities this process owns itself
+    # hang under Special, and the recording row is the one whose label changes with
+    # its state. A probe that only looked at the first submenu would miss them.
+    foreach ($item in $probeMenu.Items) {
+        if ($item -isnot [System.Windows.Forms.ToolStripMenuItem] -or -not $item.HasDropDownItems) { continue }
+        foreach ($child in $item.DropDownItems) {
+            if ($child -isnot [System.Windows.Forms.ToolStripMenuItem]) { continue }
+            # A row that is only there while a recording runs is not part of the
+            # idle menu, and the probe reports the menu a person actually sees.
+            if (-not $child.Available) { continue }
+            Write-Output "menu-child-row: $($item.Text)|$($child.Text)|$($child.Tag)|$($child.Enabled)"
+        }
     }
     $probeBitmap = New-Object System.Drawing.Bitmap($probeMenu.Width, $probeMenu.Height)
     $probeMenu.DrawToBitmap($probeBitmap,
@@ -5660,6 +7592,310 @@ if ($ShotPreviewProbe -ne '') {
     Write-Output ("shot-preview-buttons: " + $SCRIPT:Labels.ShotSave + '|' + $SCRIPT:Labels.ShotCopy + '|' +
         $SCRIPT:Labels.ShotCancel)
     $probeCapture.Dispose()
+    exit 0
+}
+
+if ($RecordBarProbe -ne '') {
+    # The recording bar off screen: laid out from the font, painted through the
+    # routine the window paints with, and built once as the real borderless form.
+    # A bar measured too narrow clips its stop label, which is what a display
+    # scale other than 100% would do to a layout pinned to 96dpi pixels.
+    $probeBarFont = Get-QuickAccessFont 9 $true
+    try {
+        $probeBarMetrics = Get-RecordBarLayout $probeBarFont
+        $probeBarClock = $SCRIPT:Labels.RecordBarPrefix + ' ' + (Format-RecordClock 65000)
+        $probeBarImage = New-Object System.Drawing.Bitmap($probeBarMetrics.Width, $probeBarMetrics.Height,
+            [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+        try {
+            $probeBarGraphics = [System.Drawing.Graphics]::FromImage($probeBarImage)
+            try {
+                Draw-RecordBar $probeBarGraphics $probeBarMetrics $probeBarFont $probeBarClock $false
+            } finally {
+                $probeBarGraphics.Dispose()
+            }
+            $probeBarImage.Save($RecordBarProbe, [System.Drawing.Imaging.ImageFormat]::Png)
+        } finally {
+            $probeBarImage.Dispose()
+        }
+        Write-Output "record-bar-probe: $($probeBarMetrics.Width)x$($probeBarMetrics.Height)"
+        Write-Output ("record-bar-stop: " + $probeBarMetrics.StopLeft + ',' +
+            [int](($probeBarMetrics.Height - $probeBarMetrics.StopHeight) / 2) + ',' +
+            $probeBarMetrics.StopWidth + 'x' + $probeBarMetrics.StopHeight)
+        Write-Output ("record-bar-cancel: " + $probeBarMetrics.CancelLeft + ',' +
+            [int](($probeBarMetrics.Height - $probeBarMetrics.StopHeight) / 2) + ',' +
+            $probeBarMetrics.CancelWidth + 'x' + $probeBarMetrics.StopHeight)
+        $probeBar = New-RecordBar $probeBarMetrics $probeBarFont
+        try {
+            Write-Output "record-bar-window: $($probeBar.ClientSize.Width)x$($probeBar.ClientSize.Height)"
+        } finally {
+            $probeBar.Dispose()
+        }
+    } finally {
+        $probeBarFont.Dispose()
+    }
+    exit 0
+}
+
+if ($RecordPreviewProbe -ne '') {
+    # The recording preview off screen: the real WPF player layout, measured and
+    # arranged without showing it, rendered to a PNG. What it proves is what a
+    # person reads after a take: the player, the seek bar, the length, the size,
+    # the folder, and the three ways out of it.
+    $probeArea = [System.Drawing.Rectangle]::new(0, 0, 320, 200)
+    $probePath = 'D:\AI\Tmp\record\record-20260101-120000.mp4'
+    $probeWindow = New-RecordPreviewWindow $probePath 65 $probeArea
+    $probeRoot = $probeWindow.Content
+    $probeRoot.Measure([System.Windows.Size]::new([double]::PositiveInfinity, [double]::PositiveInfinity))
+    $probeSize = $probeRoot.DesiredSize
+    $probeRoot.Arrange([System.Windows.Rect]::new(0, 0, $probeSize.Width, $probeSize.Height))
+    $probeRoot.UpdateLayout()
+    $probeWidth = [int][Math]::Ceiling($probeSize.Width)
+    $probeHeight = [int][Math]::Ceiling($probeSize.Height)
+    $probeBitmap = New-Object System.Windows.Media.Imaging.RenderTargetBitmap($probeWidth, $probeHeight, 96, 96,
+        [System.Windows.Media.PixelFormats]::Pbgra32)
+    $probeBitmap.Render($probeRoot)
+    $probeEncoder = New-Object System.Windows.Media.Imaging.PngBitmapEncoder
+    $probeEncoder.Frames.Add([System.Windows.Media.Imaging.BitmapFrame]::Create($probeBitmap))
+    $probeStream = [System.IO.File]::Create($RecordPreviewProbe)
+    try { $probeEncoder.Save($probeStream) } finally { $probeStream.Dispose() }
+    Write-Output "record-preview-probe: $($probeWidth)x$($probeHeight)"
+    Write-Output "record-preview-window: $([int]$probeSize.Width)x$([int]$probeSize.Height)"
+    Write-Output ("record-preview-buttons: " + $SCRIPT:Labels.RecordSave + '|' + $SCRIPT:Labels.RecordCopy + '|' +
+        $SCRIPT:Labels.RecordPreviewCancel)
+    try { Close-RecordPreviewMedia } catch { }
+    exit 0
+}
+
+if ($RecordPlayProbe -ne '') {
+    # The preview on a real file with the real player shown on screen: open it, let
+    # the first frame arrive, write the window to $RecordPlayProbe.png, and report
+    # what the transport did. A preview that opens black, or whose pause does not
+    # hold, is exactly what this measures - the off-screen probe cannot see either.
+    $playProbeVideo = [System.IO.Path]::GetFullPath($RecordPlayProbe)
+    if (-not (Test-Path -LiteralPath $playProbeVideo)) { Write-Output 'record-play-probe: failed no-file'; exit 1 }
+    $playProbeArea = [System.Drawing.Rectangle]::new(0, 0, 480, 270)
+    $playProbeWindow = New-RecordPreviewWindow $playProbeVideo 1 $playProbeArea
+    $playProbeWindow.Topmost = $false
+    $playProbeWindow.WindowStartupLocation = [System.Windows.WindowStartupLocation]::Manual
+    $playProbeWindow.Left = 80
+    $playProbeWindow.Top = 80
+    $SCRIPT:RecordPreview = $playProbeWindow
+    $playProbeWindow.Show()
+    $playProbeWindow.Activate()
+    $playProbeDeadline = [DateTime]::UtcNow.AddSeconds(12)
+    while (-not $SCRIPT:RecordPreviewMedia.NaturalDuration.HasTimeSpan -and [DateTime]::UtcNow -lt $playProbeDeadline) {
+        $playFrame = New-Object System.Windows.Threading.DispatcherFrame
+        $playTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $playTimer.Interval = [TimeSpan]::FromMilliseconds(150)
+        $playTimer.Add_Tick({ $playFrame.Continue = $false; $playTimer.Stop() })
+        $playTimer.Start()
+        [System.Windows.Threading.Dispatcher]::PushFrame($playFrame)
+    }
+    # Let the poster settle before the shutter.
+    $playFrame = New-Object System.Windows.Threading.DispatcherFrame
+    $playTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $playTimer.Interval = [TimeSpan]::FromMilliseconds(900)
+    $playTimer.Add_Tick({ $playFrame.Continue = $false; $playTimer.Stop() })
+    $playTimer.Start()
+    [System.Windows.Threading.Dispatcher]::PushFrame($playFrame)
+
+    $playProbeMedia = $SCRIPT:RecordPreviewMedia
+    $playProbeDuration = 0
+    try { if ($playProbeMedia.NaturalDuration.HasTimeSpan) { $playProbeDuration = $playProbeMedia.NaturalDuration.TimeSpan.TotalSeconds } } catch { }
+    $playProbePosition = [Math]::Round($playProbeMedia.Position.TotalSeconds, 2)
+    $playProbeMediaWidth = $playProbeMedia.NaturalVideoWidth
+    $playProbeMediaHeight = $playProbeMedia.NaturalVideoHeight
+    $playProbePlaying = $SCRIPT:RecordPreviewPlaying
+    $playProbeButton = ''
+    try { $playProbeButton = $SCRIPT:RecordPreviewPlayText.Text } catch { }
+
+    # Shutter: the window as the person sees it, media plate included. A probe that
+    # is not the foreground process cannot rely on Activate() alone, and a capture
+    # of whatever window happens to be in front would score as a preview.
+    $playProbeWindow.Activate()
+    try { [void][DshPet.Win32]::SetForegroundWindow([System.Windows.Interop.WindowInteropHelper]::new($playProbeWindow).Handle) } catch { }
+    $playFrame = New-Object System.Windows.Threading.DispatcherFrame
+    $playTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $playTimer.Interval = [TimeSpan]::FromMilliseconds(450)
+    $playTimer.Add_Tick({ $playFrame.Continue = $false; $playTimer.Stop() })
+    $playTimer.Start()
+    [System.Windows.Threading.Dispatcher]::PushFrame($playFrame)
+    $playProbeBitmap = $null
+    try {
+        $playProbeBounds = $playProbeWindow.PointToScreen([System.Windows.Point]::new(0, 0))
+        $playProbeRect = [System.Drawing.Rectangle]::new(
+            [int]$playProbeBounds.X, [int]$playProbeBounds.Y,
+            [int]$playProbeWindow.ActualWidth, [int]$playProbeWindow.ActualHeight)
+        # A margin of desktop around it: the window's own corners are what says
+        # whether the rounded region took.
+        $playProbeRect.Inflate(20, 20)
+        $playProbeBitmap = New-Object System.Drawing.Bitmap($playProbeRect.Width, $playProbeRect.Height)
+        $playProbeGraphics = [System.Drawing.Graphics]::FromImage($playProbeBitmap)
+        try { $playProbeGraphics.CopyFromScreen($playProbeRect.Location, [System.Drawing.Point]::Empty, $playProbeRect.Size) }
+        finally { $playProbeGraphics.Dispose() }
+        $playProbeBitmap.Save(($RecordPlayProbe + '.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+        $playProbeSum = 0.0
+        $playProbeSamples = 0
+        for ($playY = 0; $playY -lt $playProbeBitmap.Height; $playY += 8) {
+            for ($playX = 0; $playX -lt $playProbeBitmap.Width; $playX += 8) {
+                $playPixel = $playProbeBitmap.GetPixel($playX, $playY)
+                $playProbeSum += (0.2126 * $playPixel.R + 0.7152 * $playPixel.G + 0.0722 * $playPixel.B)
+                $playProbeSamples++
+            }
+        }
+        $playProbeLuma = if ($playProbeSamples -gt 0) { [Math]::Round(($playProbeSum / $playProbeSamples), 1) } else { 0 }
+    } finally {
+        if ($null -ne $playProbeBitmap) { $playProbeBitmap.Dispose() }
+    }
+
+    # Pause must hold: press it the way the transport does, then check that the
+    # playhead did not move while time passed.
+    $SCRIPT:RecordPreviewPlaying = $true
+    $playProbeMedia.Play()
+    $playFrame = New-Object System.Windows.Threading.DispatcherFrame
+    $playTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $playTimer.Interval = [TimeSpan]::FromMilliseconds(700)
+    $playTimer.Add_Tick({ $playFrame.Continue = $false; $playTimer.Stop() })
+    $playTimer.Start()
+    [System.Windows.Threading.Dispatcher]::PushFrame($playFrame)
+    $playProbeBeforePause = $playProbeMedia.Position.TotalSeconds
+    $playProbeMedia.Pause()
+    $SCRIPT:RecordPreviewPlaying = $false
+    $playFrame = New-Object System.Windows.Threading.DispatcherFrame
+    $playTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $playTimer.Interval = [TimeSpan]::FromMilliseconds(900)
+    $playTimer.Add_Tick({ $playFrame.Continue = $false; $playTimer.Stop() })
+    $playTimer.Start()
+    [System.Windows.Threading.Dispatcher]::PushFrame($playFrame)
+    $playProbeAfterPause = $playProbeMedia.Position.TotalSeconds
+
+    # The card moves by its header. Mouse input is posted for real because DragMove
+    # only runs inside a real press, and the release has to arrive from the same
+    # pump the drag is pumping, so the move and the release come from a timer.
+    $playProbeWindow.Activate()
+    try { [void][DshPet.Win32]::SetForegroundWindow([System.Windows.Interop.WindowInteropHelper]::new($playProbeWindow).Handle) } catch { }
+    $playDragFrom = $playProbeWindow.PointToScreen([System.Windows.Point]::new(70, 34))
+    $playDragOrigin = [System.Windows.Point]::new($playProbeWindow.Left, $playProbeWindow.Top)
+    $script:playDragStartX = [int]$playDragFrom.X
+    $script:playDragStartY = [int]$playDragFrom.Y
+    $script:playDragTicks = 0
+    $script:playDragTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $script:playDragTimer.Interval = [TimeSpan]::FromMilliseconds(200)
+    $script:playDragTimer.Add_Tick({
+        $script:playDragTicks++
+        if ($script:playDragTicks -eq 1) {
+            [void][DshPet.Win32]::SetCursorPos(($script:playDragStartX + 130), ($script:playDragStartY + 90))
+        } else {
+            [DshPet.Win32]::mouse_event(0x0004, 0, 0, 0, [System.UIntPtr]::Zero)
+            $script:playDragTimer.Stop()
+        }
+    })
+    [void][DshPet.Win32]::SetCursorPos($script:playDragStartX, $script:playDragStartY)
+    Start-Sleep -Milliseconds 120
+    $script:playDragTimer.Start()
+    [DshPet.Win32]::mouse_event(0x0002, 0, 0, 0, [System.UIntPtr]::Zero)
+    $playDragWait = New-Object System.Windows.Threading.DispatcherFrame
+    $playDragWaitTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $playDragWaitTimer.Interval = [TimeSpan]::FromMilliseconds(2000)
+    $playDragWaitTimer.Add_Tick({ $script:playDragWaitTimer.Stop(); $script:playDragWait.Continue = $false })
+    $script:playDragWait = $playDragWait
+    $script:playDragWaitTimer = $playDragWaitTimer
+    $playDragWaitTimer.Start()
+    [System.Windows.Threading.Dispatcher]::PushFrame($playDragWait)
+    $playDragMoved = [System.Windows.Point]::new($playProbeWindow.Left, $playProbeWindow.Top)
+    $playDragDistance = [int]([Math]::Abs($playDragMoved.X - $playDragOrigin.X) + [Math]::Abs($playDragMoved.Y - $playDragOrigin.Y))
+    try { $playProbeWindow.Left = $playDragOrigin.X; $playProbeWindow.Top = $playDragOrigin.Y } catch { }
+
+    Write-Output ("record-play-probe: natural=$($playProbeMediaWidth)x$($playProbeMediaHeight) duration=$([Math]::Round($playProbeDuration, 2))")
+    Write-Output ("record-play-poster: position=$playProbePosition playing=$playProbePlaying button=$playProbeButton luma=$playProbeLuma")
+    Write-Output ("record-play-pause: before=$([Math]::Round($playProbeBeforePause, 2)) after=$([Math]::Round($playProbeAfterPause, 2)) drift=$([Math]::Round(($playProbeAfterPause - $playProbeBeforePause), 2))")
+    Write-Output ("record-play-drag: from=$([int]$playDragOrigin.X),$([int]$playDragOrigin.Y) to=$([int]$playDragMoved.X),$([int]$playDragMoved.Y) distance=$playDragDistance")
+    Write-Output ("record-play-picture: " + $RecordPlayProbe + '.png')
+    try { Close-RecordPreviewMedia } catch { }
+    try { $playProbeWindow.Close() } catch { }
+    exit 0
+}
+
+if ($RecordSheetProbe -ne '') {
+    # The selection sheet driven the way a person drives it: a press, a drag that
+    # must be visible while it happens, a release that leaves a frame, and Escape
+    # from the frame's own start window. Every one of those is a fact about a live
+    # window that cannot be read off the script, so this shows it and reports what
+    # the window looked like at each step.
+    $sheetProbeDir = [System.IO.Path]::GetFullPath($RecordSheetProbe)
+    if (-not (Test-Path -LiteralPath $sheetProbeDir)) { [void][System.IO.Directory]::CreateDirectory($sheetProbeDir) }
+
+    function Invoke-SheetProbeFrames([int]$Milliseconds) {
+        $deadline = [DateTime]::UtcNow.AddMilliseconds($Milliseconds)
+        while ([DateTime]::UtcNow -lt $deadline) {
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 30
+        }
+    }
+
+    function Save-SheetProbeShot([string]$Path, [System.Drawing.Rectangle]$Area) {
+        $bitmap = New-Object System.Drawing.Bitmap($Area.Width, $Area.Height)
+        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+        try { $graphics.CopyFromScreen($Area.Location, [System.Drawing.Point]::Empty, $Area.Size) }
+        finally { $graphics.Dispose() }
+        $bitmap.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+        # The frame is the sheet's blue stroke dimmed by the sheet's own opacity, so
+        # it is counted by hue rather than by the exact colour it was drawn with.
+        $blues = 0
+        for ($probeY = 0; $probeY -lt $bitmap.Height; $probeY += 2) {
+            for ($probeX = 0; $probeX -lt $bitmap.Width; $probeX += 2) {
+                $pixel = $bitmap.GetPixel($probeX, $probeY)
+                if (($pixel.B -gt ($pixel.R + 25)) -and ($pixel.B -gt ($pixel.G + 10)) -and $pixel.B -gt 90) { $blues++ }
+            }
+        }
+        $bitmap.Dispose()
+        return $blues
+    }
+
+    Start-RegionShot 'record'
+    Invoke-SheetProbeFrames 600
+    $sheetForm = $SCRIPT:ShotOverlay
+    $focusBefore = if ($null -eq [System.Windows.Forms.Form]::ActiveForm) { 'none' }
+        else { $SCRIPT:ShotOverlay -eq [System.Windows.Forms.Form]::ActiveForm }
+
+    $downArgs = [pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left; Location = [System.Drawing.Point]::new(300, 260) }
+    $moveArgs = [pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left; Location = [System.Drawing.Point]::new(760, 560) }
+    $otherArgs = [pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left; Location = [System.Drawing.Point]::new(840, 610) }
+    $upArgs = [pscustomobject]@{ Button = [System.Windows.Forms.MouseButtons]::Left; Location = [System.Drawing.Point]::new(840, 610) }
+
+    Invoke-RecordSheetDown $sheetForm $downArgs
+    Invoke-RecordSheetMove $sheetForm $moveArgs
+    Invoke-SheetProbeFrames 120
+    $dragArea = [System.Drawing.Rectangle]::new(260, 220, 640, 460)
+    $dragBlues = Save-SheetProbeShot (Join-Path $sheetProbeDir 'dragging.png') $dragArea
+    $dragSelection = $SCRIPT:ShotSelection
+
+    Invoke-RecordSheetMove $sheetForm $otherArgs
+    Invoke-SheetProbeFrames 120
+    $laterBlues = Save-SheetProbeShot (Join-Path $sheetProbeDir 'dragging-further.png') $dragArea
+
+    Invoke-RecordSheetUp $sheetForm $upArgs
+    Invoke-SheetProbeFrames 300
+    $adjustedFrame = $SCRIPT:RecordFrame
+    $barShown = $null -ne $SCRIPT:RecordFrameBar
+    $frameBlues = Save-SheetProbeShot (Join-Path $sheetProbeDir 'frame.png') $dragArea
+    $focusAfterBar = if ($null -eq [System.Windows.Forms.Form]::ActiveForm) { 'none' }
+        else { $SCRIPT:ShotOverlay -eq [System.Windows.Forms.Form]::ActiveForm }
+    $focusAfterBarName = if ($null -eq [System.Windows.Forms.Form]::ActiveForm) { 'none' }
+        else { [System.Windows.Forms.Form]::ActiveForm.GetType().Name }
+
+    # Escape is heard by whichever window has the focus, and the start window is a
+    # window of its own: the probe presses the key rather than closing behind it.
+    [System.Windows.Forms.SendKeys]::SendWait('{ESC}')
+    Invoke-SheetProbeFrames 400
+    $closedByEscape = $null -eq $SCRIPT:ShotOverlay
+
+    Write-Output ("record-sheet-focus: before=$focusBefore after-bar=$focusAfterBar form=$focusAfterBarName")
+    Write-Output ("record-sheet-drag: selection=$($dragSelection.Width)x$($dragSelection.Height) blues=$dragBlues further=$laterBlues")
+    Write-Output ("record-sheet-frame: area=$($adjustedFrame.Width)x$($adjustedFrame.Height) at=$($adjustedFrame.X),$($adjustedFrame.Y) bar=$barShown blues=$frameBlues")
+    Write-Output ("record-sheet-escape: closed=$closedByEscape")
+    Write-Output ("record-sheet-pictures: " + $sheetProbeDir)
+    if (-not $closedByEscape) { try { Close-ShotOverlay } catch { } }
     exit 0
 }
 

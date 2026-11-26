@@ -713,6 +713,9 @@ for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
   'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint',
   'ShotPreviewTitle', 'ShotSize', 'ShotFrameSize', 'ShotTarget', 'ShotSave', 'ShotCopy', 'ShotCancel', 'ShotPreviewHint', 'ShotPreviewKeys',
   'ShotSaved', 'ShotSavedNoClipboard', 'ShotCopied', 'ShotCopyFailed', 'ShotFailed', 'System',
+  'Record', 'RecordStop', 'RecordHint', 'RecordBarPrefix', 'RecordBarStop', 'RecordStarted',
+  'RecordStartedHint', 'RecordMenuStopHint', 'RecordSaved', 'RecordFailed', 'RecordEmpty',
+  'RecordMissingFfmpeg',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
   'Music', 'MusicPlay', 'MusicPause', 'MusicNext', 'MusicPrev', 'MusicNowPlaying', 'MusicPaused',
@@ -734,6 +737,58 @@ for (const key of Object.keys(labels).filter(name => name.startsWith('Shot'))) {
   assert.match(petSource, new RegExp(`^\\s+${key}\\s+=`, 'm'),
     `pet/pet.ps1 has no English fallback for ${key}`)
 }
+// The recording labels own the same rule: the bar and the start notice are the
+// only things a person sees while a recording runs.
+for (const key of Object.keys(labels).filter(name => name.startsWith('Record'))) {
+  assert.match(petSource, new RegExp(`^\\s+${key}\\s+=`, 'm'),
+    `pet/pet.ps1 has no English fallback for ${key}`)
+}
+// The recording row hangs under Special next to the video clip window, because
+// both are this process's own screens, and above the temp space page, which is
+// DSH's. The row is the one that changes meaning while ffmpeg runs.
+assert.match(petSource, /Add-PetMenuItem \$featuresItem\.DropDownItems \$SCRIPT:Labels\.Record 'record'/,
+  'the special-features submenu needs the screen recording row')
+assert.match(petSource, /case "record":/, 'the recording row needs an icon, like every other entry')
+assert.match(petSource, /case "stop":/, 'and a different one while a recording runs')
+assert.match(petSource, /Start-ScreenRecord/, 'the row must start a recording')
+assert.match(petSource, /Stop-ScreenRecord/, 'and stop the one in flight')
+assert.match(petSource, /\$RecordProbe/, 'the recorder needs the probe a keyless test runs')
+assert.doesNotMatch(petSource, /recordings\/shot/, 'a recording is not a capture')
+// The three things a take has to show while somebody aims at it, each one measured
+// once and then easy to lose: the frame follows the pointer during the drag, Escape
+// reaches the sheet from the start window too, and the preview's player can compose
+// a picture at all.
+assert.match(petSource,
+  /if \(\$SCRIPT:ShotDragging -and \$SCRIPT:ShotSelection\.Width -gt 0 -and \$SCRIPT:ShotSelection\.Height -gt 0\) \{\s*\n\s*\$SCRIPT:ShotSelection/,
+  'a recording sheet must draw the selection being dragged, not wait for the release')
+assert.match(petSource, /\$form\.KeyPreview = \$true[\s\S]{0,400}Close-ShotOverlay/,
+  'the start window must forward Escape to the sheet it belongs to')
+assert.match(petSource, /SetActiveWindow\(\$Sheet\.Handle\)/,
+  'the start window must hand the focus back so Escape still points at the sheet')
+assert.match(petSource, /AllowsTransparency = \$false[\s\S]{0,200}Background = New-Object System.Windows.Media.SolidColorBrush/,
+  'the preview window is opaque: a layered window cannot compose video')
+assert.match(petSource, /add_ContentRendered\(\{[\s\S]{0,300}RecordPreviewMedia\.Play\(\)/,
+  'the preview must play once to open the file, or MediaOpened never arrives')
+assert.match(petSource, /if \(\$SCRIPT:RecordPreviewPlaying\) \{/,
+  'the transport button must keep its own state, not read MediaElement.IsPlaying')
+assert.match(petSource, /\[System\.Windows\.Window\]::GetWindow\(\$sender\)\.DragMove\(\)/,
+  'the preview card must move by its header and its picture: it has no title bar')
+assert.match(petSource, /FromArgb\(235, 8, 13, 22\), 6\)/,
+  'the frame needs a dark edge under its bright stroke to stay visible through the sheet')
+// A recording folder is a setting the way the capture folder is, with the folder
+// recordings are wanted in as its default; blank still means the plugin's own.
+const indexSource = readFileSync(join(root, 'index.js'), 'utf8')
+assert.match(indexSource, /recordDir: z\.string\(\)\.default\('D:\/AI\/Tmp\/record'\)/,
+  'the recording folder setting must default to the folder recordings are wanted in')
+assert.match(indexSource, /recordDir: resolveShotDir\(current\.recordDir\)/,
+  'the host must publish the recording folder it resolved')
+assert.match(petSource, /Select-RecordDir/, 'the pet must fall back to its own recordings directory')
+// The card's own default has to agree with the Host schema, or a fresh install
+// would show one folder and save into another until the field is touched.
+const clientDefaults = readFileSync(join(root, 'client.js'), 'utf8')
+assert.match(clientDefaults, /recordDir: 'D:\/AI\/Tmp\/record'/,
+  'the card must default to the folder the host records into')
+assert.match(clientDefaults, /t\('recordDir'\)/, 'the card must offer the recording folder row')
 // The mini-games submenu is drawn by the pet process, so the two halves only meet
 // on the command id: the pet must send the one the page carries out.
 assert.match(petSource, /Send-MenuCommand 'aquarium'/, 'the pet menu must send the aquarium command')
@@ -943,6 +998,43 @@ if (process.platform === 'win32') {
   // another application hide DSH, which is the opposite of what it asked for.
   assert.match(selfTest.stdout, /click-intent: front=hide behind=show hidden=show minimized=show/,
     'a click must hide only an in-front window and raise every other one')
+  // A recorded area is clipped to the desktop and cut down to even dimensions -
+  // x264 with yuv420p refuses an odd width, and a selection cannot reach past the
+  // screens - and the clock is what the bar says while the recording runs.
+  assert.match(selfTest.stdout, /record-rect: odd=10,10,290x190 clamp=0,0,100x60/,
+    'a recorded area must be even and inside the desktop')
+  assert.match(selfTest.stdout, /record-clock: zero=00:00 minute=01:05 hour=1:02:03/,
+    'the recording clock must grow from zero through one hour')
+  const recordName = /record-name: (.*)/.exec(selfTest.stdout)
+  assert.ok(recordName !== null, 'the self test must report the name a recording gets')
+  assert.match(recordName[1], /^record-\d{8}-\d{6}\.mp4$/,
+    'a recording is named after the moment it starts')
+  // The argument list is where a wrong offset records the wrong part of the
+  // screen: gdigrab's offsets are screen coordinates, so they are the area's own.
+  assert.match(selfTest.stdout,
+    /record-args: -hide_banner -loglevel error -y -f gdigrab -framerate 30 -draw_mouse 1 -offset_x 100 -offset_y 50 -video_size 640x360 -i desktop -c:v libx264 -preset ultrafast -crf 20 -pix_fmt yuv420p -movflags \+faststart C:\\probe\\a\.mp4/,
+    'ffmpeg must be handed the area, the frame rate, the encoder, and the file')
+  // The bar belongs outside the area it controls, and a recording that fills the
+  // desktop has nowhere to put it: a bar inside the recording would be in the file.
+  assert.match(selfTest.stdout, /record-bar: normal=330,8 covered=0x0/,
+    'the bar must sit outside the recorded area, or not exist for a full-screen one')
+  assert.match(selfTest.stdout, /record-menu: idle=屏幕录制 live=结束录制 icon=stop back=屏幕录制/,
+    'the Special row must become the end row while a recording runs')
+  // The folder a recording goes to is a setting: blank falls back to the plugin's
+  // own directory beside the state file, while a named one is used as given.
+  assert.match(selfTest.stdout, /record-dir: blank=.*\\recordings named=D:\\AI\\Tmp\\record/,
+    'a blank recording folder must fall back to the plugin\'s own directory')
+  // A recording starts from an adjustable frame, not on release: the frame has
+  // eight grips (a corner moves two edges, an edge one), the middle drags, and
+  // the frame neither leaves the desktop nor shrinks below what a grip can find.
+  assert.match(selfTest.stdout, /record-frame: nw=80,90,220x160 se=100,100,230x170 move=105,107 tiny=32x150 grip=3/,
+    'the recording frame must resize by its grips, drag, and stay on the desktop')
+  // The preview says how big the take is in the unit that fits it, and its layout
+  // is measured from the font rather than from constants.
+  assert.match(selfTest.stdout, /record-size: small=2 KB large=5\.0 MB/,
+    'a recording size must be reported in the unit that fits it')
+  assert.match(selfTest.stdout, /record-preview: fit=320x200 scale=1/,
+    'the preview must be laid out around the poster without enlarging it')
   // The reminder is for somebody who is not looking at the pet, so it must fire on
   // the step into "waiting for you" and only then: not on the first state applied,
   // not again while the same question stands, and not when the switch is off.
@@ -1216,6 +1308,74 @@ if (process.platform === 'win32') {
   rmSync(previewDir, { recursive: true, force: true })
   assert.deepEqual([...previewBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'the drawn preview is a PNG')
 
+  // The recording bar, laid out and painted off screen through the same routine
+  // the window uses: a bar measured from constants rather than the font clips its
+  // stop label at another display scale, and the stop button has to sit inside it.
+  const barProbeDir = mkdtempSync(join(tmpdir(), 'little-icon-bar-probe-'))
+  const barPng = join(barProbeDir, 'bar.png')
+  const barProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(barProbeDir, 'state.json'),
+    '-PositionFile', join(barProbeDir, 'position.json'),
+    '-RecordBarProbe', barPng,
+  ], { encoding: 'utf8' })
+  assert.equal(barProbe.status, 0, `pet.ps1 -RecordBarProbe failed: ${barProbe.stderr}`)
+  const barSize = /record-bar-probe: (\d+)x(\d+)/.exec(barProbe.stdout)
+  assert.ok(barSize !== null, 'the bar probe must report the layout it painted')
+  const [barWidth, barHeight] = [Number(barSize[1]), Number(barSize[2])]
+  assert.ok(barWidth > 160 && barHeight > 30, 'the bar must be wide enough for its clock and its stop label')
+  const barWindow = /record-bar-window: (\d+)x(\d+)/.exec(barProbe.stdout)
+  assert.equal(`${barWindow?.[1]}x${barWindow?.[2]}`, `${barWidth}x${barHeight}`,
+    'the window behind the bar must be the size the drawing was laid out at')
+  const barStop = /record-bar-stop: (\d+),(\d+),(\d+)x(\d+)/.exec(barProbe.stdout)
+  assert.ok(barStop !== null, 'the bar probe must report where the stop button landed')
+  assert.ok(Number(barStop[1]) + Number(barStop[3]) <= barWidth, 'the stop button must fit inside the bar')
+  assert.ok(Number(barStop[2]) + Number(barStop[4]) <= barHeight, 'and so must its height')
+  // Cancelling is a second button of its own: it has to land after the stop one
+  // and still inside the bar, or a press there ends the take instead of dropping it.
+  const barCancel = /record-bar-cancel: (\d+),(\d+),(\d+)x(\d+)/.exec(barProbe.stdout)
+  assert.ok(barCancel !== null, 'the bar probe must report where the cancel button landed')
+  assert.ok(Number(barCancel[1]) >= Number(barStop[1]) + Number(barStop[3]), 'the cancel button follows the stop button')
+  assert.ok(Number(barCancel[1]) + Number(barCancel[3]) <= barWidth, 'and the cancel button fits inside the bar')
+  assert.ok(Number(barCancel[2]) + Number(barCancel[4]) <= barHeight, 'with its height inside the bar too')
+  const barBytes = readFileSync(barPng)
+  rmSync(barProbeDir, { recursive: true, force: true })
+  assert.deepEqual([...barBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'the drawn bar is a PNG')
+  assert.equal(barBytes.readUInt32BE(16), barWidth, 'the painted bar is as wide as its layout')
+  assert.equal(barBytes.readUInt32BE(20), barHeight, 'and as tall')
+
+  // The recording preview, laid out and painted off screen over a drawn poster:
+  // what a person reads before deciding between saving and copying, and the three
+  // buttons that decide it. The preview stands between a finished take and its
+  // file, so a layout that clips a label loses the way out of the window.
+  const recordPreviewDir = mkdtempSync(join(tmpdir(), 'little-icon-record-preview-'))
+  const recordPreviewPng = join(recordPreviewDir, 'preview.png')
+  const recordPreviewProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(recordPreviewDir, 'state.json'),
+    '-PositionFile', join(recordPreviewDir, 'position.json'),
+    '-RecordPreviewProbe', recordPreviewPng,
+  ], { encoding: 'utf8' })
+  assert.equal(recordPreviewProbe.status, 0, `pet.ps1 -RecordPreviewProbe failed: ${recordPreviewProbe.stderr}`)
+  const recordPreviewSize = /record-preview-probe: (\d+)x(\d+)/.exec(recordPreviewProbe.stdout)
+  assert.ok(recordPreviewSize !== null, 'the preview probe must report the layout it painted')
+  const [recordPreviewWidth, recordPreviewHeight] = [Number(recordPreviewSize[1]), Number(recordPreviewSize[2])]
+  assert.ok(recordPreviewWidth > 320 && recordPreviewHeight > 200, 'the preview must be bigger than the video area')
+  const recordPreviewWindow = /record-preview-window: (\d+)x(\d+)/.exec(recordPreviewProbe.stdout)
+  assert.ok(Math.abs(Number(recordPreviewWindow?.[1]) - recordPreviewWidth) <= 1, 'the window must be the width the drawing was laid out at')
+  assert.ok(Math.abs(Number(recordPreviewWindow?.[2]) - recordPreviewHeight) <= 1, 'and its height')
+  assert.match(recordPreviewProbe.stdout, /record-preview-buttons: 保存\|复制到剪贴板\|取消/,
+    'the preview must offer save, copy, and cancel, in that order')
+  const recordPreviewBytes = readFileSync(recordPreviewPng)
+  rmSync(recordPreviewDir, { recursive: true, force: true })
+  assert.deepEqual([...recordPreviewBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], 'the drawn preview is a PNG')
+  assert.equal(recordPreviewBytes.readUInt32BE(16), recordPreviewWidth, 'the painted preview is as wide as its layout')
+  assert.equal(recordPreviewBytes.readUInt32BE(20), recordPreviewHeight, 'and as tall')
+
   // The capture itself, taken for real: the sheet is not drawn and nobody drags, so
   // what is left under test is the screen read, the encoder, and the directory. A
   // machine whose screen cannot be read fails here rather than at the first drag.
@@ -1241,6 +1401,39 @@ if (process.platform === 'win32') {
   const shotReported = /shot-probe-bytes: (\d+)/.exec(shotProbe.stdout)
   assert.ok(shotReported !== null, 'the capture probe must report the bytes it wrote')
   assert.equal(Number(shotReported[1]), shotBytes.length, 'the reported size is the file that landed')
+
+  // The recorder on its own: gdigrab, x264, the stop request, and what landed on
+  // disk. ffmpeg is an optional download the video clip window owns, so a machine
+  // without it skips rather than fails; a machine with it proves the whole path,
+  // including that ffmpeg stopped on request instead of being killed.
+  const recordProbeDir = mkdtempSync(join(tmpdir(), 'little-icon-record-probe-'))
+  const recordFile = join(recordProbeDir, 'probe.mp4')
+  const recordProbe = spawnSync(powershell, [
+    '-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass',
+    '-File', join(root, 'pet', 'pet.ps1'),
+    '-AssetDir', join(root, 'assets'),
+    '-StateFile', join(recordProbeDir, 'state.json'),
+    '-PositionFile', join(recordProbeDir, 'position.json'),
+    '-RecordProbe', recordFile,
+  ], { encoding: 'utf8' })
+  assert.equal(recordProbe.status, 0, `pet.ps1 -RecordProbe failed: ${recordProbe.stderr}`)
+  if (/record-probe: skipped no-ffmpeg/.test(recordProbe.stdout)) {
+    assert.ok(!existsSync(recordFile), 'a skipped recording probe writes nothing')
+  } else {
+    const recordPath = /record-probe: (.*)/.exec(recordProbe.stdout)
+    assert.ok(recordPath !== null, 'the recording probe must report the file it wrote')
+    const recordBytes = readFileSync(recordPath[1].trim())
+    rmSync(recordProbeDir, { recursive: true, force: true })
+    assert.equal(recordBytes.subarray(4, 8).toString('ascii'), 'ftyp',
+      'a recording must be an MP4 a player can open')
+    const recordReported = /record-probe-bytes: (\d+)/.exec(recordProbe.stdout)
+    assert.ok(recordReported !== null, 'the recording probe must report the bytes it wrote')
+    assert.equal(Number(recordReported[1]), recordBytes.length, 'the reported size is the file that landed')
+    const recordExit = /record-probe-exit: (-?\d+)/.exec(recordProbe.stdout)
+    assert.ok(recordExit !== null && Number(recordExit[1]) === 0,
+      'ffmpeg must stop on request, not be killed - a killed recorder leaves an unplayable file')
+  }
+  rmSync(recordProbeDir, { recursive: true, force: true })
 
   // The audio path on its own, with no window, no menu, and no library: what is
   // under test is the media player, the decoder, and one file. A file that is not
@@ -1324,6 +1517,16 @@ if (process.platform === 'win32') {
     assert.ok(Number(row[2]) >= Number(row[5]),
       `the submenu row for ${row[1]} must leave room for its own preferred width, or the label is clipped`)
   }
+  // The Special submenu is where this process's own screens hang: the video clip
+  // window, the recorder, and the temp space page. Their order is the order a
+  // person reads them in, and the recording row's icon is what changes with its
+  // state, so the idle one is checked here and the running one in the self test.
+  const childRows = [...menuProbe.stdout.matchAll(/menu-child-row: (.+)\|(.+)\|(.+)\|(True|False)/g)]
+  const specialRows = childRows.filter((row) => row[1] === labels.Features).map((row) => row[2])
+  assert.deepEqual(specialRows, [labels.VideoClip, labels.Record, labels.TempSpace],
+    'the Special submenu offers the clip window, the recorder, and the temp space, in that order')
+  const recordRow = childRows.find((row) => row[1] === labels.Features && row[2] === labels.Record)
+  assert.equal(recordRow?.[3], 'record', 'the idle recording row carries the record icon')
   assert.ok(existsSync(menuPng), 'the probe must leave the picture it drew')
   const menuBytes = readFileSync(menuPng)
   assert.deepEqual([...menuBytes.subarray(1, 4)].map((byte) => String.fromCharCode(byte)), ['P', 'N', 'G'],
@@ -1450,6 +1653,7 @@ rmSync(openDir, { recursive: true, force: true })
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
     alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''), videoClipDir: fixed(''),
+    recordDir: fixed('D:/AI/Tmp/record'),
   }
   try {
     apply(hostCtx, config)
@@ -2026,6 +2230,7 @@ if (spawnSync('git', ['--version'], { encoding: 'utf8' }).status === 0) {
     boredMs: fixed(5000), sleepAfterSeconds: fixed(600), sleepWhenHiddenSeconds: fixed(20),
     autoHide: fixed(true), autoHideSeconds: fixed(0), topmost: fixed(true), clickAction: fixed('toggle'),
     alertNotice: fixed(true), gitPullTimeoutMs: fixed(60_000), shotDir: fixed(''), videoClipDir: fixed(''),
+    recordDir: fixed('D:/AI/Tmp/record'),
   }
   try {
     apply(hostCtx, config)
@@ -2704,6 +2909,28 @@ assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['shotDir'], value:
 const writesAfterPicking = form.writes.length
 await browseButton.props.onClick()
 assert.equal(form.writes.length, writesAfterPicking, 'a cancelled picker changes nothing')
+
+// The recording folder is the same control over its own field: typing is a local
+// echo, leaving writes the trimmed folder, and the picker writes what it answered
+// with. It is the row beside the capture and clip folders, under the same group.
+const recordElements = flatten(render({ recordDir: 'D:\\rec' }))
+const recordField = recordElements.find(node => node.type === 'input' && node.props.type === 'text'
+  && node.props.placeholder === t('recordDirPlaceholder'))
+assert.ok(recordField !== undefined, 'the recording folder field is missing')
+assert.equal(recordField.props.value, 'D:\\rec', 'the card must show the stored recording folder')
+recordField.props.onBlur({ target: { value: '  D:\\AI\\Tmp\\record  ' } })
+assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['recordDir'], value: 'D:\\AI\\Tmp\\record' }],
+  'leaving the field writes the trimmed recording folder')
+const recordPathNode = recordElements.find(node => node.props?.className === 'dli-path'
+  && Array.isArray(node.children) && node.children.includes(recordField))
+const recordBrowse = recordPathNode?.children.find(child => child.type === 'button')
+assert.ok(recordBrowse !== undefined, 'the recording folder needs its own picker button')
+picks.push('G:\\recordings')
+await recordBrowse.props.onClick()
+assert.deepEqual(form.writes.at(-1).ops, [{ op: 'set', path: ['recordDir'], value: 'G:\\recordings' }],
+  'choosing a folder stores it for the recordings')
+assert.equal(recordElements.find(node => node.props?.label === t('recordDir'))?.props?.disabled, false,
+  'the recording folder row follows the same editability as the others')
 
 // The card's settings are grouped: nineteen rows in one column read as one setting each,
 // so every group is named by a heading with a hairline above it, in the order a person
@@ -3551,7 +3778,7 @@ console.log('little-icon smoke: browser half ok')
       enabled: fixed(false), size: fixed(160), translucent: fixed(true), idleOpacity: fixed(0.5),
       frameMs: fixed(600), pollMs: fixed(200), happyMs: fixed(3_000), boredEverySeconds: fixed(60),
       boredMs: fixed(60_000), sleepAfterSeconds: fixed(600), tuckWhenBehind: fixed(false),
-      shotDir: fixed(''), videoClipDir: fixed(''), clickAction: fixed('toggle'),
+      shotDir: fixed(''), videoClipDir: fixed(''), recordDir: fixed('D:/AI/Tmp/record'), clickAction: fixed('toggle'),
       musicLinks: fixed(musicLinks), musicDir: fixed(''),
     }
     // A field this test does not name is read as unset rather than missing: the sample
@@ -3780,6 +4007,7 @@ if (process.argv.includes('--pet')) {
     // volume, playlist, shuffle, and how the music steps aside — are not fields.
     shotDir: ref(''),
     videoClipDir: ref(''),
+    recordDir: ref('D:/AI/Tmp/record'),
     musicLinks: ref([]),
     musicDir: ref(''),
   }

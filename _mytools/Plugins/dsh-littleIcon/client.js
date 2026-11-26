@@ -214,6 +214,7 @@ window.__ModuleLoader__.load({
       alertNotice: true,
       shotDir: '',
       videoClipDir: 'D:/AI/AI-Anim/Video',
+      recordDir: 'D:/AI/Tmp/record',
       musicLinks: [],
       musicDir: '',
     }
@@ -282,6 +283,9 @@ window.__ModuleLoader__.load({
       videoClipDir: '视频截取目录',
       videoClipDirHint: '右键菜单「特殊功能 → 视频截取」下载的片段放在这个文件夹里；那个窗口也记得自己上次用的目录，这里留空就继续用它记住的那个。',
       videoClipDirPlaceholder: '例：D:\\AI\\AI-Anim\\Video',
+      recordDir: '录屏存放位置',
+      recordDirHint: '右键菜单「特殊功能 → 屏幕录制」存下的 MP4 放在这个文件夹里；留空就放在 DSH 自己的 little-icon/recordings 下。',
+      recordDirPlaceholder: '例：D:\\AI\\Tmp\\record',
       music: '听歌',
       musicHint: '右键桌宠菜单的「听歌」用它：播放、暂停、换歌都在桌宠进程里，DSH 收起来也照样放。这里只保存 B站链接；音频文件下载到下面的目录，不放进仓库。换目录后已经下好的文件不会跟着搬，去新目录要重新补全。',
       musicDir: '音乐目录',
@@ -531,6 +535,9 @@ window.__ModuleLoader__.load({
       videoClipDir: 'Video clip folder',
       videoClipDirHint: 'Where Special → Video clip saves its clips; that window also remembers its own last folder, so leaving this empty keeps using that one.',
       videoClipDirPlaceholder: 'e.g. D:\\AI\\AI-Anim\\Video',
+      recordDir: 'Recording folder',
+      recordDirHint: 'Where Special → Screen recording writes its MP4 files; leave it empty for the plugin\'s own little-icon/recordings directory.',
+      recordDirPlaceholder: 'e.g. D:\\AI\\Tmp\\record',
       music: 'Music',
       musicHint: 'The right-click menu plays it under "Music": play, pause, and next all happen in the pet process, so it keeps playing while DSH is tucked away. Only the Bilibili links are kept here; the audio is downloaded into the folder below and never into the repository. Moving that folder does not move what is already downloaded — fill the new one in again.',
       musicDir: 'Music folder',
@@ -2071,6 +2078,24 @@ window.__ModuleLoader__.load({
           },
         }, t('shotDirBrowse')))
 
+      /** The recording folder, the same control again over the field the pet reads. */
+      const recordDirControl = h('div', { className: 'dli-path' },
+        h('input', {
+          className: 'dli-text', type: 'text', disabled: !editable,
+          value: draft.recordDir ?? '', placeholder: t('recordDirPlaceholder'),
+          onChange: (event) => setDraft((current) => ({ ...current, recordDir: event.target.value })),
+          onBlur: (event) => write({ recordDir: event.target.value.trim() }, true),
+          onKeyDown: (event) => { if (event.key === 'Enter') event.target.blur() },
+        }),
+        h('button', {
+          className: 'dli-button', type: 'button', disabled: !editable,
+          onClick: () => {
+            void props.pickDirectory().then((picked) => {
+              if (typeof picked === 'string' && picked !== '') write({ recordDir: picked }, true)
+            })
+          },
+        }, t('shotDirBrowse')))
+
       const musicSection = h(MusicSection, {
         t, editable, draft, write, slider, pickDirectory: props.pickDirectory, echo,
       })
@@ -2145,6 +2170,10 @@ window.__ModuleLoader__.load({
         h(Row, {
           label: t('videoClipDir'), text: t('videoClipDirHint'), disabled: !editable,
           control: videoClipDirControl,
+        }),
+        h(Row, {
+          label: t('recordDir'), text: t('recordDirHint'), disabled: !editable,
+          control: recordDirControl,
         }),
         h('details', { className: 'dli-details' },
           h('summary', null, t('advanced')),

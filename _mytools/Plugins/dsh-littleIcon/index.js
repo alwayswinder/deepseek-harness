@@ -361,6 +361,12 @@ export const Config = z.object({
    */
   videoClipDir: z.string().default('D:/AI/AI-Anim/Video').volatile(),
   /**
+   * Folder screen recordings are written to. The default is the folder they are
+   * wanted in; blank keeps them in the plugin's own `recordings/` beside the state
+   * file, the way a blank `shotDir` keeps captures in `shots/`.
+   */
+  recordDir: z.string().default('D:/AI/Tmp/record').volatile(),
+  /**
    * Bilibili links the music library is built from, in the order the pet plays
    * them. This list is the only part of the feature that travels between machines
    * — the settings card writes it, and the repository's `pet-settings.yml` carries
@@ -2093,6 +2099,7 @@ export function apply(ctx, config) {
     alertNotice: config.alertNotice.get(),
     shotDir: config.shotDir.get(),
     videoClipDir: config.videoClipDir.get(),
+    recordDir: config.recordDir.get(),
   })
 
   /**
@@ -2407,6 +2414,10 @@ export function apply(ctx, config) {
       // Where the video clip window starts. Absent while the setting is blank,
       // which leaves that window on the folder it remembered itself.
       videoClipDir: resolveShotDir(current.videoClipDir),
+      // Where a recording goes. Absent while the setting is blank, which leaves the
+      // pet on its own directory beside the state file, the way a blank capture
+      // folder does.
+      recordDir: resolveShotDir(current.recordDir),
       // A command rather than a fact: the pet hides the window it owns, and the
       // visibility it then reports turns this back off.
       tuck: shouldTuck(dshWindow, current, now),

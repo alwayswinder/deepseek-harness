@@ -615,6 +615,26 @@ describe('ChangedFiles card', () => {
     return { props, openFile, view }
   }
 
+  it.each([en, zh])('stands alone for a turn that only committed, reporting the commits it left unpushed', (locale) => {
+    const t = makeTranslate(locale)
+    const onlyCommits = servedStore({ turn: 1, cwd: '/workspace', files: [], total: 0, added: 0, deleted: 0, unpushed: 3 })
+    const { view } = renderCard(new PresentedOpenController(), locale, { changes, presented: [] }, onlyCommits)
+    const card = view.container.querySelector('[data-changed-files]')
+    if (!(card instanceof HTMLElement)) throw new Error('changed-files card missing')
+    expect(within(card).getByText(t('changes.unpushed', { count: '3' }))).toBeTruthy()
+    expect(card.querySelector('ul')).toBeNull()
+    expect(within(card).queryByRole('button')).toBeNull()
+  })
+
+  it('keeps the unpushed notice below the file list', () => {
+    const pending = servedStore({ ...served, unpushed: 2 })
+    const { view } = renderCard(new PresentedOpenController(), en, { changes, presented: [] }, pending)
+    const card = view.container.querySelector('[data-changed-files]')
+    if (!(card instanceof HTMLElement)) throw new Error('changed-files card missing')
+    expect(within(card).getByText('Edited 11 files')).toBeTruthy()
+    expect(within(card).getByText('2 commits not pushed')).toBeTruthy()
+  })
+
   it.each([en, zh])('shows one edited filename without a list and opens its review', (locale) => {
     const single = servedStore({ turn: 1, cwd: '/workspace', files: [changedFile('src/example.scss', 3, 1)], total: 1, added: 3, deleted: 1 })
     const { props, view } = renderCard(new PresentedOpenController(), locale, { changes, presented: [] }, single)

@@ -100,6 +100,15 @@ describe('change summary route', () => {
     }
     expect(summary).toHaveBeenCalledTimes(3)
   })
+
+  it('serves the unpushed-commit count a commit-only turn recorded', async () => {
+    const { read, data, cwd } = await fixture()
+    data.unpushed = 2
+    const response = await read()
+    expect(response.status).toBe(200)
+    expect(await response.json())
+      .toEqual({ turn: 1, cwd, total: 3, added: 3, deleted: 0, files: data.files, unpushed: 2 })
+  })
 })
 
 describe('change comparison route', () => {
@@ -194,6 +203,9 @@ describe('changed files native open route', () => {
     expect(isChangedFile({ path: 'a', display: 'a', added: 1.5, deleted: 2 })).toBe(false)
     expect(isChangedFile([])).toBe(false)
     expect(isChangesSummary({ turn: 1, cwd: '/w', total: 0, added: 0, deleted: 0, files: [] })).toBe(true)
+    expect(isChangesSummary({ turn: 1, cwd: '/w', total: 0, added: 0, deleted: 0, files: [], unpushed: 2 })).toBe(true)
+    expect(isChangesSummary({ turn: 1, cwd: '/w', total: 0, added: 0, deleted: 0, files: [], unpushed: 0 })).toBe(false)
+    expect(isChangesSummary({ turn: 1, cwd: '/w', total: 0, added: 0, deleted: 0, files: [], unpushed: '2' })).toBe(false)
     expect(isChangesSummary({ turn: 1, cwd: '/w', total: 1, added: 1, deleted: 0, files: [{ path: 'a', display: 'a', added: 1, deleted: 0 }] })).toBe(true)
     expect(isChangesSummary({ turn: '1', cwd: '/w', total: 0, added: 0, deleted: 0, files: [] })).toBe(false)
     expect(isChangesSummary({ turn: 0, cwd: '/w', total: 0, added: 0, deleted: 0, files: [] })).toBe(false)

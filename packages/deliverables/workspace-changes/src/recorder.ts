@@ -6,7 +6,8 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { captureFile, sameCapture, type Capture } from './capture.ts'
 import { compareText } from './compare.ts'
 import {
-  blobText, diffTrees, gitlinkPaths, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob, type GitRunner, type GitWorkspace,
+  blobText, diffTrees, gitlinkPaths, headCommit, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob, unpushedCommits,
+  type GitRunner, type GitWorkspace,
 } from './git.ts'
 import { canonicalPath, compareDisplay, displayPathOf, durablePathOf, isInside, isTemporaryPath, temporaryRoots, toPosix } from './paths.ts'
 import type { WorkspaceChangedFile, WorkspaceChangesSummary, WorkspaceFileDiff } from './types.ts'
@@ -44,7 +45,11 @@ interface Repository {
 }
 
 /** The turn-start snapshot of a located repository. */
-interface Baseline extends Repository { tree: string }
+interface Baseline extends Repository {
+  tree: string
+  /** The commit HEAD pointed at when the turn opened; null before the repository's first commit. */
+  head: string | null
+}
 
 /** Where one readable side of a listed file's content lives. */
 type ContentSource =
@@ -157,8 +162,12 @@ export class TurnRecorder {
         state.paths = { cwd: await realpath(cwd), ...this.host }
         const repository = await this.locate(state.paths.cwd, signal)
         if (repository === null) return
-        const tree = await snapshotTree(repository.git, repository.workspace, signal)
-        state.baseline = { ...repository, tree }
+        // Both read the repository without writing its HEAD or index, so one turn-start read waits on neither.
+        const [tree, head] = await Promise.all([
+          snapshotTree(repository.git, repository.workspace, signal),
+          headCommit(repository.git, repository.workspace, signal),
+        ])
+        state.baseline = { ...repository, tree, head }
       } catch (error: unknown) {
         // A repository whose snapshot failed must not be summarized as if it had none.
         state.baseline = 'failed'
@@ -368,8 +377,10 @@ export class TurnRecorder {
       listed.set(absolute, await this.compared(paths, root, absolute, before, after))
     }
     const sorted = [...listed.values()].sort((a, b) => compareDisplay(a.file, b.file))
-    // An empty list after an earlier in-turn record supersedes that record.
-    if (sorted.length === 0 && state.recordedAfterSeq < 0) return
+    // Only a turn that listed nothing can hide its work in commits alone.
+    const unpushed = sorted.length === 0 ? await this.unpushed(baseline, signal) : undefined
+    // An empty list without an unpushed notice after an earlier in-turn record supersedes that record.
+    if (sorted.length === 0 && unpushed === undefined && state.recordedAfterSeq < 0) return
     const event = this.session.append('workspace/changes', { turn: state.turn })
     const kept = sorted.slice(0, this.env.maxFiles)
     this.records.set(event.seq, {
@@ -381,10 +392,33 @@ export class TurnRecorder {
         added: sorted.reduce((sum, entry) => sum + entry.file.added, 0),
         deleted: sorted.reduce((sum, entry) => sum + entry.file.deleted, 0),
         ...snapshot === undefined ? {} : { snapshot },
+        ...unpushed === undefined ? {} : { unpushed },
       },
       sources: kept.map(entry => entry.sources),
     })
     state.recordedAfterSeq = event.seq
+  }
+
+  /**
+   * The unpushed commits to report for a turn that listed no file. Committing
+   * leaves the files the snapshots compare unchanged, so a turn whose work tree
+   * matches its start and whose HEAD moved only committed: the commit is its
+   * whole record. A turn that already lists a file needs no second read.
+   * @param baseline - the turn-start snapshot, or null outside a repository.
+   * @param signal - cancellation.
+   * @returns the count, or undefined when HEAD stayed put, no upstream resolves, or nothing is pending.
+   */
+  private async unpushed(baseline: Baseline | null, signal: AbortSignal): Promise<number | undefined> {
+    if (baseline === null) return undefined
+    try {
+      if (await headCommit(baseline.git, baseline.workspace, signal) === baseline.head) return undefined
+      const count = await unpushedCommits(baseline.git, baseline.workspace, signal)
+      return count === null || count === 0 ? undefined : count
+    } catch (error: unknown) {
+      // The notice is supplementary: a failed read must not drop the turn's changed files.
+      this.env.warn(`workspace-changes: ${String(error)}`)
+      return undefined
+    }
   }
 
   /**

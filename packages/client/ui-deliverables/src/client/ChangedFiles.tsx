@@ -30,13 +30,15 @@ function Counts({ added, deleted, t }: { added: number; deleted: number } & Prop
 /**
  * Render one turn's changed files. The header opens the turn's review in the
  * right Sidebar on its first file. A single file uses only the header; it and
- * multi-file rows preview their comparison after a 500ms hover.
+ * multi-file rows preview their comparison after a 500ms hover. Commits the
+ * turn left unpushed show as a notice, which is the whole card for a turn that
+ * only committed: its files left the work tree unchanged.
  * @param props - the recorded summary, the review opener, and localized copy.
  * @returns the card.
  */
 export function ChangedFiles({ changes, openReview, t, sessionId, useChangesDiff, loadChangesDiff }: {
   /** The served summary with the sequence of the event that announced it; paths resolve against its `cwd`. */
-  changes: Pick<ChangesSummary, 'cwd' | 'files' | 'total' | 'added' | 'deleted'> & { seq: number }
+  changes: Pick<ChangesSummary, 'cwd' | 'files' | 'total' | 'added' | 'deleted' | 'unpushed'> & { seq: number }
   /** Open the turn's review on the file at an original summary index. */
   openReview: (index: number) => void
 } & PropsLocale<typeof NS> & PreviewProps) {
@@ -44,6 +46,7 @@ export function ChangedFiles({ changes, openReview, t, sessionId, useChangesDiff
   const pathDescriptionId = useId()
   const [expanded, setExpanded] = useState(false)
   const singleFile = changes.total === 1 ? changes.files[0] : undefined
+  const listed = changes.files.length > 0
   const foldable = changes.files.length > COLLAPSED_ROWS
   const rows = foldable && !expanded ? changes.files.slice(0, COLLAPSED_ROWS) : changes.files
   const header = <button type="button" className={css.header}
@@ -66,14 +69,14 @@ export function ChangedFiles({ changes, openReview, t, sessionId, useChangesDiff
     </span>
   </button>
   return <div ref={cardRef} className={css.card} data-changed-files data-single={singleFile !== undefined || undefined}>
-    {singleFile === undefined ? header : <>
+    {singleFile === undefined ? listed && header : <>
       <HoverCard variant="preview" widthAnchorRef={cardRef} openDelayMs={500} anchor={header}
         content={<ChangedFilePreview sessionId={sessionId} seq={changes.seq} index={0}
           display={resolveWorkspacePath(changes.cwd, singleFile.path)} useChangesDiff={useChangesDiff}
           loadChangesDiff={loadChangesDiff} t={t} />} />
       <span id={pathDescriptionId} hidden>{resolveWorkspacePath(changes.cwd, singleFile.path)}</span>
     </>}
-    {singleFile === undefined && <ul className={css.list}>
+    {singleFile === undefined && listed && <ul className={css.list}>
       {rows.map((file, index) => (
         <li key={file.display}>
           <HoverCard variant="preview" widthAnchorRef={cardRef} openDelayMs={500}
@@ -102,6 +105,9 @@ export function ChangedFiles({ changes, openReview, t, sessionId, useChangesDiff
       <span>{t(expanded ? 'changes.collapse' : 'changes.all', { count: String(changes.files.length) })}</span>
       {expanded ? <IconChevronUpOutlineRegular /> : <IconChevronDownOutlineRegular />}
     </button>}
+    {changes.unpushed !== undefined && <p className={css.unpushed} data-changes-unpushed>
+      {t('changes.unpushed', { count: GROUPED.format(changes.unpushed) })}
+    </p>}
   </div>
 }
 

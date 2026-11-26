@@ -134,8 +134,11 @@ function handleChangesSummary(ctx: Context, request: Request): Response {
   if (!id || seq === undefined) return new Response('Invalid change summary coordinates.', { status: 400 })
   const summary = ctx.workspaceChanges.summary(id as SessionId, seq)
   if (summary === undefined) return new Response('Change summary unavailable.', { status: 404 })
-  const { turn, cwd, files, total, added, deleted } = summary
-  return Response.json({ turn, cwd, files, total, added, deleted } satisfies ChangesSummary, { headers: { 'cache-control': 'no-store' } })
+  const { turn, cwd, files, total, added, deleted, unpushed } = summary
+  return Response.json({
+    turn, cwd, files, total, added, deleted,
+    ...unpushed === undefined ? {} : { unpushed },
+  } satisfies ChangesSummary, { headers: { 'cache-control': 'no-store' } })
 }
 
 /** A changed file's coordinates from a route query, or the 400 to answer with. */

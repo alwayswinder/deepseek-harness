@@ -21,6 +21,18 @@
 | `apps/desktop/README.md`、`apps/desktop/README.zh.md` | preload 暴露面那一段补一句 `dshDesktop.window.setFullscreen(boolean)` 的用途；改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write apps/desktop/README.md` 重新记录摘要 |
 | `packages/experimental/cua-windows/native/entry/ShellBroker.cs` | `Launch` 不再硬编码 `ShellWindows` 的 CLSID `{9BA05972-F6A8-11CF-A442-00A0C90A8F39}`（它的 LocalServer 是 `rundll32.exe shell32.dll,SHCreateLocalServerRunDll`，激活返回 `0x80070005`），改用 `Type.GetTypeFromProgID("Shell.Application")`（CLSID `{13709620-C279-11CE-A49E-444553540000}`）+ 反射 `InvokeMember("ShellExecute", ...)`；`dynamic` 对 `__ComObject` 会抛 RuntimeBinderException，必须走反射 |
 | `packages/experimental/cua-windows/native/entry/WindowCapture.cs` | 截图的尺寸基准从 WGC 的 `item.Size` 改成 DWM geometry：`item.Size` 比 `DWMWA_EXTENDED_FRAME_BOUNDS` 大 16x8（125% 缩放下的边框环），`frame.ContentSize` 才等于 DWM bounds。`:84` 改成与 `geometry.Pixels` 比较；编码前若 surface 比 geometry 大，用 `encoder.BitmapTransform.Bounds` 裁掉多出的边框环，`pixelWidth/pixelHeight` 回报裁剪后的尺寸 |
+| `packages/deliverables/workspace-changes/src/git.ts` | 新增 `headCommit()`（`git rev-parse --verify --quiet HEAD`）与 `unpushedCommits()`（`git rev-list --count @{upstream}..HEAD`）；无首次提交、无 upstream、分离 HEAD 三种情况都返回 `null`，只按退出码判断、不抛错 |
+| `packages/deliverables/workspace-changes/src/recorder.ts` | `Baseline` 记下轮首 HEAD；`start()` 里轮首快照与 `headCommit()` 并行（两者都不写 HEAD/index）；`record()` 在文件列表为空时读 HEAD 是否移动，移动则把未推送提交数写进摘要的 `unpushed`，并把「空列表 + 有未推送」也算作要发布的事件；读取失败只 warn，不影响本轮改动列表 |
+| `packages/deliverables/workspace-changes/src/types.ts` | `WorkspaceChangesSummary` 加可选 `unpushed?: number` |
+| `packages/client/ui-deliverables/src/changes.ts` | `ChangesSummary` 的 `Pick` 加 `unpushed`；`isChangesSummary` 接受可选正整数 |
+| `packages/client/ui-deliverables/src/present-open.ts` | 摘要路由的 `Response.json` 补发 `unpushed`（可选字段，未推送时才出现）；漏了它客户端永远收不到该计数 |
+| `packages/extensions/tool-cordis/src/api-catalog.ts` | 生成物（`pnpm run gen-cordis-api`）：`WorkspaceChangesSummary` 的声明补上 `unpushed?: number` |
+| `packages/client/ui-deliverables/src/client/ChangedFiles.tsx`、`ChangedFiles.module.css` | 有未推送数时在卡片底部加一行提示；文件列表为空时整张卡片就是这一行 |
+| `packages/client/ui-deliverables/src/client/Deliverables.tsx` | 卡片渲染条件从 `files.length > 0` 放宽为 `files.length > 0 \|\| unpushed !== undefined` |
+| `packages/client/ui-deliverables/src/client/locales.ts` | 加 `changes.unpushed` 键（8 种语言） |
+| `packages/deliverables/workspace-changes/README.md`、`README.zh.md`、`README.i18n.yaml`、`packages/client/ui-deliverables/README.md`、`README.zh.md`、`README.i18n.yaml` | 摘要段与正文段落补「未推送提交」的说明；改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write packages/deliverables/workspace-changes/README.md packages/client/ui-deliverables/README.md` 重新记录摘要 |
+| `docs/subsystems/deliverables.md`、`deliverables.zh.md` | `WorkspaceChangesSummary` 的 `ts type-equiv` 代码块补 `unpushed` |
+| `packages/deliverables/workspace-changes/tests/git.spec.ts`、`tests/plugin.spec.ts`、`packages/client/ui-deliverables/tests/deliverables.client.spec.tsx`、`tests/changes-open.host.spec.ts` | 新增断言：HEAD 与 upstream 的读取、只提交轮次的摘要、读取失败的降级、卡片的两种形态、摘要校验、摘要路由返回 `unpushed` |
 
 核心就是这一段（合并后若被上游改回 `randomUUID`，把它换回来）：
 

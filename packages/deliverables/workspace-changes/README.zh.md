@@ -47,6 +47,8 @@ kind: "package-reference"
 
 记录器跟随 Host 对 Session 目录的每次移动：Session 进入 worktree 之后开始的 turn 在该检出目录中拍快照，并以它为基准列出相对路径；已经开始的 turn 保留它开始时的目录。每个文件携带持久的 `path`——位于工作目录内时为相对路径，否则为绝对路径——以及用于排序和标签的 `display` 路径：相对路径，仓库内位于工作目录之上的文件为 `../` 路径，家目录下的文件为 `~` 路径，其余为绝对路径。文件按 `display` 的码元顺序排序，因此上级路径和绝对路径排在工作目录自身文件之前。`workspace/changes` 事件只携带轮号；`ctx.workspaceChanges.summary(sessionId, seq)` 返回该序号的事件宣告的摘要，Session 已释放或本 Host 进程从未记录时返回 undefined。`ctx.workspaceChanges.diff(sessionId, seq, index, signal)` 对比该下标所列的文件：从两棵快照树或两份副本得出带三行上下文的 hunk；git 报告为二进制或某一侧含 NUL 字节时返回 `binary`；某一侧超过 `maxFileBytes` 时返回 `oversized`。逐行对比运行超过 `diffTimeoutMs` 时退化为一个替换全部行的 hunk，并标记 `coarse`。因此 Host 重启后重新打开的对话，先前轮次既没有卡片也没有对比。
 
+只提交、不改文件的 turn 不列出任何文件，因为提交不改变快照所比对的内容。此时摘要改为携带 `unpushed`：HEAD 相对 `@{upstream}` 多出的提交数，Web 卡片据此显示，避免把尚未推送的提交当成分支没有待办。没有 upstream 的分支、分离的 HEAD，以及还没有首次提交的仓库都没有可比较的对象，因此不携带该计数；已经列出文件的 turn 也不读取该计数，所以长会话不会每轮重复这条提示。
+
 intent 监听器在策略准入后、提供方修改前捕获 `apply_patch` 的每个新增、更新、删除和移动目标；移动捕获两端。Review 将每个路径与首次基线比较并列出净变化，包括中止补丁已经完成的效果。
 
 -----

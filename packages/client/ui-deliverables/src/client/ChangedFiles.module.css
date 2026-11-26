@@ -45,6 +45,8 @@ button.header:disabled { cursor: progress; }
   .toggle:hover { background: var(--dsw-alias-interactive-bg-hover); }
 }
 .toggle svg { flex: none; width: 14px; height: 14px; }
+.unpushed { margin: 0; padding: 10px 14px; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 18px; }
+.unpushed:not(:first-child) { border-top: 0.5px solid var(--dsw-alias-border-l2); }
 @media (pointer: coarse) {
   .row, .toggle { min-height: 44px; }
 }

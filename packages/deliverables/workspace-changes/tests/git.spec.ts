@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import { GitRunner, blobText, diffTrees, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob } from '../src/git.ts'
+import { GitRunner, blobText, diffTrees, headCommit, ignoredPaths, locateGitWorkspace, snapshotTree, treeBlob, unpushedCommits } from '../src/git.ts'
 import { TurnRecorder } from '../src/recorder.ts'
 import SessionStore, { type SessionId } from '@deepseek-ai/dsh-session'
 import { git, scratchDir, startTurn, toolCall } from './support.ts'
@@ -143,6 +143,51 @@ describe('repository edge cases', () => {
     const blocked = join(cwd, 'store-file')
     await writeFile(blocked, 'not a directory')
     await expect(locateGitWorkspace(runnerGit, cwd, objectsIn(blocked), signal)).rejects.toThrow()
+  })
+})
+
+describe('commit standing', () => {
+  it('reads the HEAD commit and counts the commits its upstream branch lacks', async () => {
+    const root = await scratchDir('dsh-git-head-', cleanups)
+    const cwd = join(root, 'work')
+    await mkdir(cwd)
+    git(cwd, 'init', '-q', '-b', 'main')
+    const { git: runnerGit } = await runner()
+    const workspace = (await locateGitWorkspace(runnerGit, cwd, objectsIn(await scratchDir('dsh-git-store-', cleanups)), signal))!
+    // Before the first commit neither side resolves, and neither is an error.
+    expect(await headCommit(runnerGit, workspace, signal)).toBeNull()
+    expect(await unpushedCommits(runnerGit, workspace, signal)).toBeNull()
+    await writeFile(join(cwd, 'a.txt'), 'a\n')
+    git(cwd, 'add', '-A'); git(cwd, 'commit', '-q', '-m', 'one')
+    expect(await headCommit(runnerGit, workspace, signal)).toBe(git(cwd, 'rev-parse', 'HEAD').trim())
+    // A branch without an upstream has nothing to compare against.
+    expect(await unpushedCommits(runnerGit, workspace, signal)).toBeNull()
+    const remote = join(root, 'remote.git')
+    git(cwd, 'init', '-q', '--bare', remote)
+    git(cwd, 'remote', 'add', 'origin', remote)
+    git(cwd, 'push', '-q', '-u', 'origin', 'main')
+    expect(await unpushedCommits(runnerGit, workspace, signal)).toBe(0)
+    await writeFile(join(cwd, 'b.txt'), 'b\n')
+    git(cwd, 'add', '-A'); git(cwd, 'commit', '-q', '-m', 'two')
+    expect(await unpushedCommits(runnerGit, workspace, signal)).toBe(1)
+  })
+
+  it('reports no upstream once HEAD stops naming a branch', async () => {
+    const root = await scratchDir('dsh-git-detached-', cleanups)
+    const cwd = join(root, 'work')
+    await mkdir(cwd)
+    git(cwd, 'init', '-q', '-b', 'main')
+    await writeFile(join(cwd, 'a.txt'), 'a\n')
+    git(cwd, 'add', '-A'); git(cwd, 'commit', '-q', '-m', 'one')
+    const remote = join(root, 'remote.git')
+    git(cwd, 'init', '-q', '--bare', remote)
+    git(cwd, 'remote', 'add', 'origin', remote)
+    git(cwd, 'push', '-q', '-u', 'origin', 'main')
+    git(cwd, 'checkout', '-q', '--detach')
+    const { git: runnerGit } = await runner()
+    const workspace = (await locateGitWorkspace(runnerGit, cwd, objectsIn(await scratchDir('dsh-git-store-', cleanups)), signal))!
+    expect(await headCommit(runnerGit, workspace, signal)).toMatch(/^[0-9a-f]{40,64}$/)
+    expect(await unpushedCommits(runnerGit, workspace, signal)).toBeNull()
   })
 })
 

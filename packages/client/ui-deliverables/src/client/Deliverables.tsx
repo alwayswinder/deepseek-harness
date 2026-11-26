@@ -83,7 +83,8 @@ export function Deliverables({
   useEffect(() => {
     if (announced !== null && summary === undefined) void loadChangesSummary(sessionId, announced.seq)
   }, [announced, summary, sessionId, loadChangesSummary])
-  const changes = announced !== null && typeof summary === 'object' && summary.files.length > 0
+  // A turn that only committed lists no file; the unpushed notice stands alone.
+  const changes = announced !== null && typeof summary === 'object' && (summary.files.length > 0 || summary.unpushed !== undefined)
     ? { seq: announced.seq, ...summary }
     : null
   const collapsible = matched.presented.length > COLLAPSED_PRESENTED_COUNT

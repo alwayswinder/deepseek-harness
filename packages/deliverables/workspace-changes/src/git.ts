@@ -141,6 +141,33 @@ export async function locateGitWorkspace(
 }
 
 /**
+ * The commit HEAD points at. A repository before its first commit answers null.
+ * @param git - command runner.
+ * @param workspace - addressed repository.
+ * @param signal - cancellation.
+ * @returns the commit id, or null when HEAD names no commit.
+ */
+export async function headCommit(git: GitRunner, workspace: GitWorkspace, signal: AbortSignal): Promise<string | null> {
+  const result = await git.run(['rev-parse', '--verify', '--quiet', 'HEAD'], { cwd: workspace.root, env: workspace.env, signal })
+  return result.exitCode === 0 ? result.stdout.trim() : null
+}
+
+/**
+ * Commits HEAD holds that the checked-out branch's upstream branch does not.
+ * A branch without an upstream, a detached HEAD, and a repository before its
+ * first commit all count as "nothing to compare against" and answer null, so
+ * the notice that reads this stays silent instead of guessing.
+ * @param git - command runner.
+ * @param workspace - addressed repository.
+ * @param signal - cancellation.
+ * @returns the number of unpushed commits, or null when no upstream resolves.
+ */
+export async function unpushedCommits(git: GitRunner, workspace: GitWorkspace, signal: AbortSignal): Promise<number | null> {
+  const result = await git.run(['rev-list', '--count', '@{upstream}..HEAD'], { cwd: workspace.root, env: workspace.env, signal })
+  return result.exitCode === 0 ? Number(result.stdout.trim()) : null
+}
+
+/**
  * Write the complete work tree, including untracked and modified files but
  * not ignored ones, as a tree object through a private index seeded from the
  * repository's index. New blobs and the tree land in the private object store;

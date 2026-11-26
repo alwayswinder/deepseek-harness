@@ -711,7 +711,7 @@ for (const key of ['PetName', 'Chat', 'AlertNotice', 'Git',
   'QuickAccessNoCwd', 'QuickAccessFailed',
   'Settings', 'Sites',
   'Games', 'Aquarium', 'FishTank', 'Shot', 'ShotHint',
-  'ShotPreviewTitle', 'ShotTarget', 'ShotSave', 'ShotCopy', 'ShotCancel', 'ShotPreviewHint',
+  'ShotPreviewTitle', 'ShotSize', 'ShotFrameSize', 'ShotTarget', 'ShotSave', 'ShotCopy', 'ShotCancel', 'ShotPreviewHint', 'ShotPreviewKeys',
   'ShotSaved', 'ShotSavedNoClipboard', 'ShotCopied', 'ShotCopyFailed', 'ShotFailed', 'System',
   'UpdateDsh', 'UpdateDshConfirm', 'UpdateDshUnavailable', 'UpdateDshFailed', 'UpdateDshBuildFailed',
   'UpdateDshFailedStep', 'UpdateDshLog',
@@ -1091,6 +1091,16 @@ if (process.platform === 'win32') {
   // and buttons under it stay on that screen.
   assert.match(selfTest.stdout, /shot-preview: big=960x720 small=320x200/,
     'the preview fits a large capture to the screen and leaves a small one alone')
+  // The picture inside that frame: fitted at 1x, doubled at 2x, and a pan that stops
+  // at the capture's own edge instead of sliding it off the mat.
+  assert.match(selfTest.stdout, /shot-preview-zoom: fit=320x200 double=640x400 clamp=160,100/,
+    'the preview fits the capture, doubles it on zoom, and clamps a pan to the edge')
+  // What Save and Copy only write is the frame, not the whole capture: fitted it is
+  // everything, zoomed to 2x and panned it is that smaller rectangle of the original.
+  assert.match(selfTest.stdout, /shot-preview-crop: fit=0,0 320x200 pan=100,62 160x100/,
+    'the saved picture is the frame in the capture\'s own pixels')
+  assert.match(selfTest.stdout, /shot-preview-crop-pixels: 160x100/,
+    'cropping to that frame must produce a picture of exactly that size')
   // The settings may name the folder captures go to; a blank setting and no
   // setting at all are the same thing, which is the plugin's own directory.
   const shotDirs = /shot-dirs: (.*)/.exec(selfTest.stdout)
@@ -1196,6 +1206,10 @@ if (process.platform === 'win32') {
   assert.ok(previewSize !== null, 'the preview probe must report the window it laid out')
   assert.ok(Number(previewSize[1]) > 320 && Number(previewSize[2]) > 200,
     'the window must be bigger than the capture it shows')
+  const previewWindow = /shot-preview-window: (\d+)x(\d+)/.exec(previewProbe.stdout)
+  assert.ok(previewWindow !== null, 'the preview probe must build the window it drew')
+  assert.equal(`${previewWindow[1]}x${previewWindow[2]}`, `${previewSize[1]}x${previewSize[2]}`,
+    'the built window must be the size the drawing routine was laid out at')
   assert.match(previewProbe.stdout, /shot-preview-buttons: 保存\|仅复制\|取消/,
     'the preview must offer save, copy only, and cancel, in that order')
   const previewBytes = readFileSync(previewFile)

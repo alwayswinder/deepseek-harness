@@ -93,9 +93,10 @@
 
 .PARAMETER ShotPreviewProbe
     Build the capture preview over a synthetic bitmap, lay it out off screen, draw
-    it to this path, print the three buttons it holds, and exit. The preview stands
-    between a capture and the file, so its layout and its labels are what a person
-    reads before anything is written; nothing here needs a screen.
+    it to this path, build the window that layout belongs to without showing it,
+    print the three buttons it holds, and exit. The preview stands between a capture
+    and the file, so its layout and its labels are what a person reads before
+    anything is written; nothing here needs a screen.
 #>
 [CmdletBinding()]
 param(
@@ -473,6 +474,29 @@ namespace DshPet
             public override Color ImageMarginGradientEnd { get { return Canvas; } }
         }
     }
+
+    // A capture preview floats over the desktop with no stock chrome, so the system
+    // shadow is its only depth cue: CS_DROPSHADOW makes Windows draw one around the
+    // window's region, which follows the rounded corners the caller sets.
+    public sealed class ShotPreviewForm : Form
+    {
+        public ShotPreviewForm()
+        {
+            SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint, true);
+            DoubleBuffered = true;
+            ResizeRedraw = true;
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams parameters = base.CreateParams;
+                parameters.ClassStyle |= 0x20000;
+                return parameters;
+            }
+        }
+    }
 }
 '@
 }
@@ -554,11 +578,14 @@ function Get-Labels {
         Shot                  = 'Screenshot'
         ShotHint              = 'Drag to choose the area to capture, Esc cancels.'
         ShotPreviewTitle      = 'Screenshot preview'
+        ShotSize              = '{0} x {1}'
+        ShotFrameSize         = 'Frame {0} x {1}'
         ShotTarget            = 'Saves to: {0}'
         ShotSave              = 'Save'
         ShotCopy              = 'Copy only'
         ShotCancel            = 'Cancel'
-        ShotPreviewHint       = 'Enter saves, Esc cancels'
+        ShotPreviewHint       = 'Scroll to zoom, drag to pan'
+        ShotPreviewKeys       = 'Enter saves, Esc cancels'
         ShotSaved             = 'Screenshot copied to the clipboard, and saved as a file'
         ShotSavedNoClipboard  = 'Screenshot saved as a file, but it could not be copied to the clipboard'
         ShotCopied            = 'Screenshot copied to the clipboard'
@@ -1231,6 +1258,289 @@ function Get-ShotPreviewLayout([int]$Width, [int]$Height, [System.Drawing.Rectan
         ImageWidth  = [Math]::Max(1, [int][Math]::Round($Width * $scale))
         ImageHeight = [Math]::Max(1, [int][Math]::Round($Height * $scale))
         Scale       = $scale
+    }
+}
+
+function Get-ShotPreviewMetrics([int]$ImageWidth, [int]$ImageHeight, [System.Drawing.Font]$Font) {
+    # Every box the preview draws, measured from the font: this process is
+    # per-monitor DPI aware, so 9pt is 20px tall at 125% and a layout pinned to
+    # 96dpi pixels would drift or clip. Pure, so the probe can lay it out with no
+    # window and the self test can read it.
+    $scale = [Math]::Max(1.0, $Font.Height / 16.0)
+    $pad = [int][Math]::Round(24 * $scale)
+    $titleHeight = [int][Math]::Round(48 * $scale)
+    $frameInset = [int][Math]::Round(12 * $scale)
+    $buttonWidth = [int][Math]::Round(88 * $scale)
+    $buttonHeight = [int][Math]::Round(34 * $scale)
+    $buttonGap = [int][Math]::Round(8 * $scale)
+    $closeSize = [int][Math]::Round(30 * $scale)
+    $frameWidth = $ImageWidth + ($frameInset * 2)
+    $frameHeight = $ImageHeight + ($frameInset * 2)
+    $buttonRow = ($buttonWidth * 3) + ($buttonGap * 2)
+    # As wide as the picture or the button row needs, and no wider: a small capture
+    # should not carry a band of empty space beside it.
+    $width = [Math]::Max(($frameWidth + ($pad * 2)), ($buttonRow + ($pad * 2)))
+    $imageTop = $titleHeight + [int][Math]::Round(8 * $scale)
+    $sizeHeight = [int][Math]::Round(22 * $scale)
+    $sizeTop = $imageTop + $frameHeight + [int][Math]::Round(18 * $scale)
+    $pathHeight = [int][Math]::Round(20 * $scale)
+    $pathTop = $sizeTop + $sizeHeight + [int][Math]::Round(4 * $scale)
+    $buttonsTop = $pathTop + $pathHeight + [int][Math]::Round(22 * $scale)
+    $height = $buttonsTop + $buttonHeight + $pad
+    $frameLeft = [int][Math]::Round(($width - $frameWidth) / 2)
+    $closeLeft = $width - $pad - $closeSize
+    $closeTop = [int][Math]::Round(($titleHeight - $closeSize) / 2)
+    $hintRight = $closeLeft - [int][Math]::Round(20 * $scale)
+    $hintWidth = [int][Math]::Round(170 * $scale)
+    $cancelLeft = $width - $pad - $buttonWidth
+    $copyLeft = $cancelLeft - $buttonGap - $buttonWidth
+    $saveLeft = $copyLeft - $buttonGap - $buttonWidth
+    return [pscustomobject]@{
+        Scale        = $scale
+        Width        = $width
+        Height       = $height
+        Padding      = $pad
+        FrameInset   = $frameInset
+        TitleHeight  = $titleHeight
+        TitleRect    = [System.Drawing.Rectangle]::new($frameLeft, 0, ($closeLeft - $frameLeft - [int][Math]::Round(16 * $scale)), $titleHeight)
+        HintRect     = [System.Drawing.Rectangle]::new(($hintRight - $hintWidth), 0, $hintWidth, $titleHeight)
+        CloseRect    = [System.Drawing.Rectangle]::new($closeLeft, $closeTop, $closeSize, $closeSize)
+        FrameRect    = [System.Drawing.Rectangle]::new($frameLeft, $imageTop, $frameWidth, $frameHeight)
+        ImageRect    = [System.Drawing.Rectangle]::new(($frameLeft + $frameInset), ($imageTop + $frameInset), $ImageWidth, $ImageHeight)
+        SizeRect     = [System.Drawing.Rectangle]::new($frameLeft, $sizeTop, $frameWidth, $sizeHeight)
+        PathRect     = [System.Drawing.Rectangle]::new($frameLeft, $pathTop, $frameWidth, $pathHeight)
+        SaveRect     = [System.Drawing.Rectangle]::new($saveLeft, $buttonsTop, $buttonWidth, $buttonHeight)
+        CopyRect     = [System.Drawing.Rectangle]::new($copyLeft, $buttonsTop, $buttonWidth, $buttonHeight)
+        CancelRect   = [System.Drawing.Rectangle]::new($cancelLeft, $buttonsTop, $buttonWidth, $buttonHeight)
+        ButtonHeight = $buttonHeight
+    }
+}
+
+function Get-ShotPreviewDrawRect($Metrics, $Bitmap, [double]$Zoom, [System.Drawing.Point]$Offset) {
+    # The capture drawn at viewport scale times the zoom, shifted from the centre by
+    # the pan offset. Pure, so the self test can read what a given zoom produces and
+    # the same numbers drive both the paint and the pointer maths.
+    $base = $Metrics.ImageRect.Width / [double]$Bitmap.Width
+    $width = [Math]::Max(1, [int][Math]::Round($Bitmap.Width * $base * $Zoom))
+    $height = [Math]::Max(1, [int][Math]::Round($Bitmap.Height * $base * $Zoom))
+    $left = $Metrics.ImageRect.Left + [int][Math]::Round(($Metrics.ImageRect.Width - $width) / 2.0) + $Offset.X
+    $top = $Metrics.ImageRect.Top + [int][Math]::Round(($Metrics.ImageRect.Height - $height) / 2.0) + $Offset.Y
+    return [System.Drawing.Rectangle]::new($left, $top, $width, $height)
+}
+
+function Set-ShotPreviewOffset($Metrics, [double]$Zoom, [System.Drawing.Point]$Offset) {
+    # A panned picture stops at its own edge: a capture never slides off the frame
+    # and leaves a band of empty mat showing. At 1x the only valid offset is zero.
+    $maxX = [int][Math]::Max(0, [Math]::Round($Metrics.ImageRect.Width * ($Zoom - 1.0) / 2.0))
+    $maxY = [int][Math]::Max(0, [Math]::Round($Metrics.ImageRect.Height * ($Zoom - 1.0) / 2.0))
+    $x = [Math]::Min($maxX, [Math]::Max(-$maxX, $Offset.X))
+    $y = [Math]::Min($maxY, [Math]::Max(-$maxY, $Offset.Y))
+    return [System.Drawing.Point]::new($x, $y)
+}
+
+function Get-ShotPreviewSourceRect($Metrics, $Bitmap, [double]$Zoom, [System.Drawing.Point]$Offset) {
+    # What the frame shows, in the capture's own pixels: the saved picture is this
+    # rectangle at 1:1, so zooming in crops instead of softening. Pure, so the self
+    # test can read it and the save path cannot disagree with what was drawn.
+    $scale = ($Metrics.ImageRect.Width / [double]$Bitmap.Width) * $Zoom
+    if ($scale -le 0) { return [System.Drawing.Rectangle]::new(0, 0, $Bitmap.Width, $Bitmap.Height) }
+    $drawn = Get-ShotPreviewDrawRect $Metrics $Bitmap $Zoom $Offset
+    $x = [int][Math]::Round(($Metrics.ImageRect.Left - $drawn.Left) / $scale)
+    $y = [int][Math]::Round(($Metrics.ImageRect.Top - $drawn.Top) / $scale)
+    $width = [Math]::Min($Bitmap.Width, [int][Math]::Round($Metrics.ImageRect.Width / $scale))
+    $height = [Math]::Min($Bitmap.Height, [int][Math]::Round($Metrics.ImageRect.Height / $scale))
+    $x = [Math]::Min([Math]::Max(0, $x), ($Bitmap.Width - $width))
+    $y = [Math]::Min([Math]::Max(0, $y), ($Bitmap.Height - $height))
+    return [System.Drawing.Rectangle]::new($x, $y, $width, $height)
+}
+
+function Draw-ShotPreviewButton([System.Drawing.Graphics]$Graphics, [System.Drawing.Rectangle]$Bounds,
+    [string]$Text, [string]$Kind, [bool]$Hover, [bool]$Pressed, [System.Drawing.Font]$Font, [float]$Scale) {
+    # Three roles, one shape: a filled primary, a hairline secondary, and a borderless
+    # ghost for the action that leaves everything as it was. Hover and press only
+    # change the fill, so the button never moves under the pointer.
+    $radius = [int][Math]::Round(9 * $Scale)
+    $fill = $null
+    $stroke = $null
+    $ink = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    $muted = [System.Drawing.Color]::FromArgb(110, 118, 130)
+    $textColor = $ink
+    switch ($Kind) {
+        'primary' {
+            $fill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(53, 59, 70))
+            $textColor = [System.Drawing.Color]::White
+            if ($Hover) { $fill.Color = [System.Drawing.Color]::FromArgb(74, 82, 96) }
+            if ($Pressed) { $fill.Color = [System.Drawing.Color]::FromArgb(36, 41, 50) }
+        }
+        'secondary' {
+            $fill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+            $stroke = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(215, 220, 228), 1)
+            if ($Hover) { $fill.Color = [System.Drawing.Color]::FromArgb(242, 244, 247) }
+            if ($Pressed) { $fill.Color = [System.Drawing.Color]::FromArgb(232, 235, 240) }
+        }
+        default {
+            $textColor = $muted
+            if ($Hover -or $Pressed) {
+                $fill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(242, 244, 247))
+                if ($Pressed) { $fill.Color = [System.Drawing.Color]::FromArgb(232, 235, 240) }
+                $textColor = $ink
+            }
+        }
+    }
+    $path = Get-RoundedPath $Bounds $radius
+    $flags = [System.Windows.Forms.TextFormatFlags]::HorizontalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    try {
+        if ($null -ne $fill) { $Graphics.FillPath($fill, $path) }
+        if ($null -ne $stroke) { $Graphics.DrawPath($stroke, $path) }
+        [System.Windows.Forms.TextRenderer]::DrawText($Graphics, $Text, $Font, $Bounds, $textColor, $flags)
+    } finally {
+        if ($null -ne $fill) { $fill.Dispose() }
+        if ($null -ne $stroke) { $stroke.Dispose() }
+        $path.Dispose()
+    }
+}
+
+function Draw-ShotPreview([System.Drawing.Graphics]$Graphics, $Metrics, $Bitmap, [string]$Path, [int]$Hover, [int]$Pressed,
+    [double]$Zoom = 1.0, [System.Drawing.Point]$Offset = [System.Drawing.Point]::Empty) {
+    # The whole window in one routine, so the probe draws exactly what a person sees.
+    # Hover ids: 0 Save, 1 Copy only, 2 Cancel, 3 close.
+    $scale = $Metrics.Scale
+    $ink = [System.Drawing.Color]::FromArgb(53, 59, 70)
+    $muted = [System.Drawing.Color]::FromArgb(124, 132, 146)
+    $hintInk = [System.Drawing.Color]::FromArgb(134, 142, 155)
+    $canvas = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $graphics = $Graphics
+    $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $flagsLeft = [System.Windows.Forms.TextFormatFlags]::Left -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    $flagsRight = [System.Windows.Forms.TextFormatFlags]::Right -bor
+        [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+        [System.Windows.Forms.TextFormatFlags]::SingleLine -bor
+        [System.Windows.Forms.TextFormatFlags]::NoPrefix
+    $resources = New-Object System.Collections.Generic.List[object]
+    try {
+        $canvasBrush = New-Object System.Drawing.SolidBrush($canvas)
+        $resources.Add($canvasBrush)
+        $graphics.FillRectangle($canvasBrush, 0, 0, $Metrics.Width, $Metrics.Height)
+
+        $outline = Get-RoundedPath ([System.Drawing.Rectangle]::new(0, 0, ($Metrics.Width - 1), ($Metrics.Height - 1))) ([int][Math]::Round(16 * $scale))
+        $edge = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(217, 221, 228), 1)
+        $resources.Add($edge)
+        try { $graphics.DrawPath($edge, $outline) } finally { $outline.Dispose() }
+
+        $titleFont = Get-QuickAccessFont 11.5 $false
+        $resources.Add($titleFont)
+        [System.Windows.Forms.TextRenderer]::DrawText($graphics, $SCRIPT:Labels.ShotPreviewTitle, $titleFont,
+            $Metrics.TitleRect, $ink, $flagsLeft)
+        $hintFont = Get-QuickAccessFont 8 $false
+        $resources.Add($hintFont)
+        # Two short lines rather than one: the picture's own gestures and the keys
+        # that finish the window are different promises, and a single line would run
+        # into the title at the smallest width.
+        $hintHalf = [int][Math]::Round($Metrics.HintRect.Height / 2.0)
+        $hintUpper = [System.Drawing.Rectangle]::new($Metrics.HintRect.Left, $Metrics.HintRect.Top,
+            $Metrics.HintRect.Width, $hintHalf)
+        $hintLower = [System.Drawing.Rectangle]::new($Metrics.HintRect.Left, ($Metrics.HintRect.Top + $hintHalf),
+            $Metrics.HintRect.Width, ($Metrics.HintRect.Height - $hintHalf))
+        [System.Windows.Forms.TextRenderer]::DrawText($graphics, $SCRIPT:Labels.ShotPreviewHint, $hintFont,
+            $hintUpper, $hintInk, $flagsRight)
+        [System.Windows.Forms.TextRenderer]::DrawText($graphics, $SCRIPT:Labels.ShotPreviewKeys, $hintFont,
+            $hintLower, $hintInk, $flagsRight)
+
+        # Close: a hairline cross that turns red under the pointer, so the one control
+        # that discards the capture reads as the dismissive one.
+        $closeHover = ($Hover -eq 3)
+        if ($closeHover) {
+            $closeFill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(242, 244, 247))
+            $resources.Add($closeFill)
+            $closePath = Get-RoundedPath $Metrics.CloseRect ([int][Math]::Round(8 * $scale))
+            try { $graphics.FillPath($closeFill, $closePath) } finally { $closePath.Dispose() }
+        }
+        $crossColor = if ($closeHover) { [System.Drawing.Color]::FromArgb(196, 78, 78) } else { [System.Drawing.Color]::FromArgb(126, 134, 148) }
+        $crossPen = New-Object System.Drawing.Pen($crossColor, [Math]::Max(1.2, 1.35 * $scale))
+        $crossPen.StartCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $crossPen.EndCap = [System.Drawing.Drawing2D.LineCap]::Round
+        $resources.Add($crossPen)
+        $crossX = $Metrics.CloseRect.Left + ($Metrics.CloseRect.Width / 2.0)
+        $crossY = $Metrics.CloseRect.Top + ($Metrics.CloseRect.Height / 2.0)
+        $crossArm = 4.5 * $scale
+        $graphics.DrawLine($crossPen, [float]($crossX - $crossArm), [float]($crossY - $crossArm), [float]($crossX + $crossArm), [float]($crossY + $crossArm))
+        $graphics.DrawLine($crossPen, [float]($crossX - $crossArm), [float]($crossY + $crossArm), [float]($crossX + $crossArm), [float]($crossY - $crossArm))
+
+        # The capture sits on a rounded mat rather than straight on the canvas: the
+        # mat gives a screenshot of any brightness its own edge.
+        $framePath = Get-RoundedPath $Metrics.FrameRect ([int][Math]::Round(12 * $scale))
+        $frameFill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(238, 241, 245))
+        $frameEdge = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(216, 221, 229), 1)
+        $resources.Add($frameFill)
+        $resources.Add($frameEdge)
+        try {
+            $graphics.FillPath($frameFill, $framePath)
+            $graphics.DrawPath($frameEdge, $framePath)
+        } finally { $framePath.Dispose() }
+        $imagePath = Get-RoundedPath $Metrics.ImageRect ([int][Math]::Round(8 * $scale))
+        try {
+            $clip = $graphics.Save()
+            $graphics.SetClip($imagePath)
+            $graphics.DrawImage($Bitmap, (Get-ShotPreviewDrawRect $Metrics $Bitmap $Zoom $Offset))
+            $graphics.Restore($clip)
+        } finally { $imagePath.Dispose() }
+
+        # Pixel size as a quiet pill, the file it would become underneath, both on the
+        # picture's own left edge so the column reads as one block.
+        $bodyFont = Get-QuickAccessFont 9 $false
+        $resources.Add($bodyFont)
+        $crop = Get-ShotPreviewSourceRect $Metrics $Bitmap $Zoom $Offset
+        $sizeText = $SCRIPT:Labels.ShotSize -f $Bitmap.Width, $Bitmap.Height
+        if ($crop.Width -ne $Bitmap.Width -or $crop.Height -ne $Bitmap.Height) {
+            # The pill names what the buttons would write, not the whole capture: once
+            # the frame is cropped, the saved picture is that smaller rectangle.
+            $base = $Metrics.ImageRect.Width / [double]$Bitmap.Width
+            $sizeText = '{0}  {1}%' -f ($SCRIPT:Labels.ShotFrameSize -f $crop.Width, $crop.Height),
+                [int][Math]::Round($base * $Zoom * 100)
+        }
+        $sizeMeasured = [System.Windows.Forms.TextRenderer]::MeasureText($graphics, $sizeText, $bodyFont,
+            [System.Drawing.Size]::Empty,
+            ([System.Windows.Forms.TextFormatFlags]::SingleLine -bor [System.Windows.Forms.TextFormatFlags]::NoPadding -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix))
+        $pillPad = [int][Math]::Round(10 * $scale)
+        $pillRect = [System.Drawing.Rectangle]::new($Metrics.SizeRect.Left, $Metrics.SizeRect.Top,
+            ($sizeMeasured.Width + ($pillPad * 2)), $Metrics.SizeRect.Height)
+        $pillPath = Get-RoundedPath $pillRect ([int][Math]::Round(7 * $scale))
+        $pillFill = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(243, 245, 248))
+        $resources.Add($pillFill)
+        try { $graphics.FillPath($pillFill, $pillPath) } finally { $pillPath.Dispose() }
+        # Measured and drawn with the same flags: the pill is only as wide as the text,
+        # and a measurement that leaves out what the drawing adds would clip its tail.
+        $pillTextRect = [System.Drawing.Rectangle]::new(($pillRect.Left + $pillPad), $pillRect.Top,
+            ($pillRect.Width - $pillPad), $pillRect.Height)
+        [System.Windows.Forms.TextRenderer]::DrawText($graphics, $sizeText, $bodyFont, $pillTextRect,
+            [System.Drawing.Color]::FromArgb(96, 104, 118),
+            ([System.Windows.Forms.TextFormatFlags]::Left -bor [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor
+                [System.Windows.Forms.TextFormatFlags]::SingleLine -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix -bor
+                [System.Windows.Forms.TextFormatFlags]::NoPadding))
+
+        $pathText = $SCRIPT:Labels.ShotTarget -f $Path
+        [System.Windows.Forms.TextRenderer]::DrawText($graphics, $pathText, $bodyFont, $Metrics.PathRect,
+            $muted, $flagsLeft)
+
+        $buttonFont = Get-QuickAccessFont 9.5 $false
+        $resources.Add($buttonFont)
+        Draw-ShotPreviewButton $graphics $Metrics.SaveRect $SCRIPT:Labels.ShotSave 'primary' `
+            ($Hover -eq 0) ($Pressed -eq 0) $buttonFont $scale
+        Draw-ShotPreviewButton $graphics $Metrics.CopyRect $SCRIPT:Labels.ShotCopy 'secondary' `
+            ($Hover -eq 1) ($Pressed -eq 1) $buttonFont $scale
+        Draw-ShotPreviewButton $graphics $Metrics.CancelRect $SCRIPT:Labels.ShotCancel 'ghost' `
+            ($Hover -eq 2) ($Pressed -eq 2) $buttonFont $scale
+    } finally {
+        foreach ($item in $resources) { $item.Dispose() }
     }
 }
 
@@ -3698,6 +4008,35 @@ if ($SelfTest) {
     $previewSmall = Get-ShotPreviewLayout 320 200 ([System.Drawing.Rectangle]::new(0, 0, 1920, 1080))
     Write-Output ("shot-preview: big={0}x{1} small={2}x{3}" -f $previewBig.ImageWidth, $previewBig.ImageHeight,
         $previewSmall.ImageWidth, $previewSmall.ImageHeight)
+    # How that picture moves inside the frame: fitted at 1x, twice the size at 2x, and
+    # a pan that stops at the edge rather than sliding the capture off its mat.
+    $zoomFont = Get-QuickAccessFont 9 $false
+    try { $zoomMetrics = Get-ShotPreviewMetrics 320 200 $zoomFont } finally { $zoomFont.Dispose() }
+    $zoomBitmap = New-Object System.Drawing.Bitmap(320, 200)
+    try {
+        $fitted = Get-ShotPreviewDrawRect $zoomMetrics $zoomBitmap 1.0 ([System.Drawing.Point]::Empty)
+        $doubled = Get-ShotPreviewDrawRect $zoomMetrics $zoomBitmap 2.0 ([System.Drawing.Point]::Empty)
+        $clamped = Set-ShotPreviewOffset $zoomMetrics 2.0 ([System.Drawing.Point]::new(999, 999))
+        Write-Output ("shot-preview-zoom: fit={0}x{1} double={2}x{3} clamp={4},{5}" -f
+            $fitted.Width, $fitted.Height, $doubled.Width, $doubled.Height, $clamped.X, $clamped.Y)
+        # And what the buttons would write: the frame in the capture's own pixels,
+        # fitted it is the whole capture, panned and zoomed it is that smaller part.
+        $fitCrop = Get-ShotPreviewSourceRect $zoomMetrics $zoomBitmap 1.0 ([System.Drawing.Point]::Empty)
+        $panCrop = Get-ShotPreviewSourceRect $zoomMetrics $zoomBitmap 2.0 ([System.Drawing.Point]::new(-40, -24))
+        Write-Output ("shot-preview-crop: fit={0},{1} {2}x{3} pan={4},{5} {6}x{7}" -f
+            $fitCrop.X, $fitCrop.Y, $fitCrop.Width, $fitCrop.Height,
+            $panCrop.X, $panCrop.Y, $panCrop.Width, $panCrop.Height)
+        # And that the capture really comes out at that size: the save path clones the
+        # rectangle rather than scaling the whole picture, so this is what it writes.
+        $cropped = $zoomBitmap.Clone($panCrop, $zoomBitmap.PixelFormat)
+        try {
+            Write-Output "shot-preview-crop-pixels: $($cropped.Width)x$($cropped.Height)"
+        } finally {
+            $cropped.Dispose()
+        }
+    } finally {
+        $zoomBitmap.Dispose()
+    }
     # The nine tiles are filled from the eight folders the person assigned and a
     # directory the page names, so the mapping is what a quiet bug would get wrong:
     # the middle slot is the Session's folder whatever the list says, a ring entry
@@ -4185,6 +4524,18 @@ $SCRIPT:ShotPreview = $null
 $SCRIPT:ShotPreviewChoice = ''
 $SCRIPT:ShotPreviewBitmap = $null
 $SCRIPT:ShotPreviewPath = ''
+$SCRIPT:ShotPreviewMetrics = $null
+$SCRIPT:ShotPreviewHover = -1
+$SCRIPT:ShotPreviewPressed = -1
+$SCRIPT:ShotPreviewDragging = $false
+$SCRIPT:ShotPreviewDragStart = [System.Drawing.Point]::Empty
+$SCRIPT:ShotPreviewWindowStart = [System.Drawing.Point]::Empty
+$SCRIPT:ShotPreviewZoom = 1.0
+$SCRIPT:ShotPreviewMaxZoom = 1.0
+$SCRIPT:ShotPreviewOffset = [System.Drawing.Point]::Empty
+$SCRIPT:ShotPreviewPanning = $false
+$SCRIPT:ShotPreviewPanStart = [System.Drawing.Point]::Empty
+$SCRIPT:ShotPreviewPanOrigin = [System.Drawing.Point]::Empty
 
 # A capture that only lands in a file says nothing to the person who made it, so
 # the pet says one line where they are already looking - above itself, for a few
@@ -4369,93 +4720,60 @@ function Close-ShotPreview {
     }
 }
 
+function Get-ShotPreviewHit($Metrics, [System.Drawing.Point]$Point) {
+    if ($Metrics.SaveRect.Contains($Point)) { return 0 }
+    if ($Metrics.CopyRect.Contains($Point)) { return 1 }
+    if ($Metrics.CancelRect.Contains($Point)) { return 2 }
+    if ($Metrics.CloseRect.Contains($Point)) { return 3 }
+    return -1
+}
+
+function Get-ShotPreviewHitRect($Metrics, [int]$Hit) {
+    switch ($Hit) {
+        0 { return $Metrics.SaveRect }
+        1 { return $Metrics.CopyRect }
+        2 { return $Metrics.CancelRect }
+        3 { return $Metrics.CloseRect }
+        default { return [System.Drawing.Rectangle]::Empty }
+    }
+}
+
+function Invoke-ShotPreviewChoice([int]$Hit) {
+    # The window performs the choice it was closed with, so a click, Enter, and
+    # Escape all reach the same path.
+    switch ($Hit) {
+        0 { $SCRIPT:ShotPreviewChoice = 'save' }
+        1 { $SCRIPT:ShotPreviewChoice = 'copy' }
+        default { $SCRIPT:ShotPreviewChoice = '' }
+    }
+    Close-ShotPreview
+}
+
 function New-ShotPreviewForm($Bitmap, [System.Drawing.Rectangle]$Shot) {
     # Builds the window a capture is confirmed in - the picture, its size, the file
-    # it would become, and the three buttons - and returns it rather than showing it,
-    # so the probe can lay the same window out off screen.
+    # it would become, and the three buttons - and returns it plus the boxes it was
+    # laid out from, so the probe can draw the same window off screen.
     $area = [System.Windows.Forms.Screen]::FromRectangle($Shot).WorkingArea
     $layout = Get-ShotPreviewLayout $Bitmap.Width $Bitmap.Height $area
+    $font = Get-QuickAccessFont 9 $false
+    try { $metrics = Get-ShotPreviewMetrics $layout.ImageWidth $layout.ImageHeight $font }
+    finally { $font.Dispose() }
 
-    $form = New-Object System.Windows.Forms.Form
+    $form = New-Object DshPet.ShotPreviewForm
     $form.Text = $SCRIPT:Labels.ShotPreviewTitle
-    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
-    # Physical pixels, like the sheet: the layout above is computed from the capture
-    # and the screen, so an automatic font scale would move the buttons off it.
+    # No stock chrome: the window is drawn whole, and the region carries its rounded
+    # corners. FixedDialog would put a title bar over a hand-drawn surface.
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
+    # Physical pixels, like the sheet: the layout is computed from the capture and
+    # the screen, so an automatic font scale would move the buttons off it.
     $form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::None
-    $form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
-    # Everything around the picture is sized from the font rather than from a
-    # constant: this process is per-monitor DPI aware, so 9pt is 20px tall at 125%
-    # and a row pinned to 18px would have its text clipped away entirely.
-    $scale = [Math]::Max(1.0, $form.Font.Height / 16.0)
-    $padding = [int](12 * $scale)
-    $gap = [int](4 * $scale)
-    $lineHeight = $form.Font.Height + 6
-    $buttonWidth = [int](92 * $scale)
-    $buttonHeight = $form.Font.Height + 12
-    # As wide as the picture or the button row needs, and no wider: a small capture
-    # should not open a window with a band of empty space beside it.
-    $clientWidth = [Math]::Max($layout.ImageWidth + ($padding * 2),
-        ($buttonWidth * 3) + ($gap * 2) + ($padding * 2))
-
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
     $form.ShowInTaskbar = $false
     $form.TopMost = $true
     $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $form.BackColor = [System.Drawing.Color]::FromArgb(248, 249, 251)
-
-    $picture = New-Object System.Windows.Forms.PictureBox
-    $picture.Location = New-Object System.Drawing.Point($padding, $padding)
-    $picture.Size = New-Object System.Drawing.Size($layout.ImageWidth, $layout.ImageHeight)
-    $picture.SizeMode = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
-    $picture.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
-    $picture.BackColor = [System.Drawing.Color]::FromArgb(226, 230, 236)
-    $picture.Image = $Bitmap
-
-    $sizeLabel = New-Object System.Windows.Forms.Label
-    $sizeLabel.AutoSize = $true
-    $sizeLabel.Text = ('{0} x {1}' -f $Bitmap.Width, $Bitmap.Height)
-    $sizeLabel.Location = New-Object System.Drawing.Point($padding, ($padding + $layout.ImageHeight + ($gap * 2)))
-
-    $targetLabel = New-Object System.Windows.Forms.Label
-    $targetLabel.AutoSize = $false
-    $targetLabel.AutoEllipsis = $true
-    $targetLabel.Text = ($SCRIPT:Labels.ShotTarget -f $SCRIPT:ShotPreviewPath)
-    $targetLabel.Size = New-Object System.Drawing.Size(($clientWidth - ($padding * 2)), $lineHeight)
-    $targetLabel.Location = New-Object System.Drawing.Point($padding, ($sizeLabel.Bottom + $gap))
-
-    $hintLabel = New-Object System.Windows.Forms.Label
-    $hintLabel.AutoSize = $true
-    $hintLabel.ForeColor = [System.Drawing.Color]::FromArgb(110, 118, 130)
-    $hintLabel.Text = $SCRIPT:Labels.ShotPreviewHint
-    $hintLabel.Location = New-Object System.Drawing.Point($padding, ($targetLabel.Bottom + $gap))
-
-    $buttonY = $hintLabel.Bottom + ($gap * 3)
-    $cancelButton = New-Object System.Windows.Forms.Button
-    $cancelButton.Text = $SCRIPT:Labels.ShotCancel
-    $cancelButton.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
-    $cancelButton.Location = New-Object System.Drawing.Point(($clientWidth - $padding - $buttonWidth), $buttonY)
-
-    $copyButton = New-Object System.Windows.Forms.Button
-    $copyButton.Text = $SCRIPT:Labels.ShotCopy
-    $copyButton.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
-    $copyButton.Location = New-Object System.Drawing.Point(($cancelButton.Left - $gap - $buttonWidth), $buttonY)
-
-    $saveButton = New-Object System.Windows.Forms.Button
-    $saveButton.Text = $SCRIPT:Labels.ShotSave
-    $saveButton.Size = New-Object System.Drawing.Size($buttonWidth, $buttonHeight)
-    $saveButton.Location = New-Object System.Drawing.Point(($copyButton.Left - $gap - $buttonWidth), $buttonY)
-
-    [void]$form.Controls.Add($picture)
-    [void]$form.Controls.Add($sizeLabel)
-    [void]$form.Controls.Add($targetLabel)
-    [void]$form.Controls.Add($hintLabel)
-    [void]$form.Controls.Add($saveButton)
-    [void]$form.Controls.Add($copyButton)
-    [void]$form.Controls.Add($cancelButton)
-    $form.ClientSize = New-Object System.Drawing.Size($clientWidth, ($buttonY + $buttonHeight + $padding))
-    $form.AcceptButton = $saveButton
-    $form.CancelButton = $cancelButton
+    $form.BackColor = [System.Drawing.Color]::FromArgb(252, 252, 253)
+    $form.KeyPreview = $true
+    $form.ClientSize = New-Object System.Drawing.Size($metrics.Width, $metrics.Height)
+    Set-QuickAccessRegion $form ([int][Math]::Round(16 * $metrics.Scale))
 
     # Over the selection that produced it, and inside the working area when that
     # selection is too small or too close to an edge to hold the window.
@@ -4466,21 +4784,15 @@ function New-ShotPreviewForm($Bitmap, [System.Drawing.Rectangle]$Shot) {
     $form.Location = New-Object System.Drawing.Point($left, $top)
 
     return [pscustomobject]@{
-        Form         = $form
-        Picture      = $picture
-        SizeLabel    = $sizeLabel
-        TargetLabel  = $targetLabel
-        HintLabel    = $hintLabel
-        SaveButton   = $saveButton
-        CopyButton   = $copyButton
-        CancelButton = $cancelButton
+        Form    = $form
+        Metrics = $metrics
     }
 }
 
 function Show-ShotPreview($Bitmap, [System.Drawing.Rectangle]$Shot) {
     # The shutter no longer writes on release: the preview owns the bitmap and
     # writes the file only after Save, so a capture the person backs out of leaves
-    # no file. WinForms again, for the same physical-pixel reason as the sheet.
+    # no file.
     if ($null -ne $SCRIPT:ShotPreview) {
         try { $SCRIPT:ShotPreview.Close() } catch { }
         $SCRIPT:ShotPreview = $null
@@ -4488,30 +4800,201 @@ function Show-ShotPreview($Bitmap, [System.Drawing.Rectangle]$Shot) {
     # Named before the window is built, because the window says where the file
     # would go. The folder is not created here: a cancelled capture leaves nothing.
     $SCRIPT:ShotPreviewPath = Get-ShotFileName
-    $built = New-ShotPreviewForm $Bitmap $Shot
-    $form = $built.Form
-    $saveButton = $built.SaveButton
-    $copyButton = $built.CopyButton
-    $cancelButton = $built.CancelButton
-
     $SCRIPT:ShotPreviewBitmap = $Bitmap
     $SCRIPT:ShotPreviewChoice = ''
+    $built = New-ShotPreviewForm $Bitmap $Shot
+    $form = $built.Form
+    $SCRIPT:ShotPreviewMetrics = $built.Metrics
+    $SCRIPT:ShotPreviewHover = -1
+    $SCRIPT:ShotPreviewPressed = -1
+    $SCRIPT:ShotPreviewDragging = $false
+    # The picture is shown fitted; the wheel zooms it and a drag pans it, up to its
+    # own pixels at 1:1, and twice the fitted size for one the frame already shows whole.
+    $SCRIPT:ShotPreviewZoom = 1.0
+    $SCRIPT:ShotPreviewOffset = [System.Drawing.Point]::Empty
+    $SCRIPT:ShotPreviewPanning = $false
+    $SCRIPT:ShotPreviewPanStart = [System.Drawing.Point]::Empty
+    $SCRIPT:ShotPreviewPanOrigin = [System.Drawing.Point]::Empty
+    $baseScale = $built.Metrics.ImageRect.Width / [double]$Bitmap.Width
+    # Up to 1:1 pixels, so a large capture can be read at its own resolution; a small
+    # one stops at twice the fitted size, past which only interpolation remains.
+    $SCRIPT:ShotPreviewMaxZoom = [Math]::Max(2.0, 1.0 / $baseScale)
     $SCRIPT:ShotPreview = $form
 
-    $saveButton.add_Click({ $SCRIPT:ShotPreviewChoice = 'save'; Close-ShotPreview })
-    $copyButton.add_Click({ $SCRIPT:ShotPreviewChoice = 'copy'; Close-ShotPreview })
-    $cancelButton.add_Click({ $SCRIPT:ShotPreviewChoice = ''; Close-ShotPreview })
+    $form.add_Paint({
+        param($sender, $eventArgs)
+        try {
+            if ($null -eq $SCRIPT:ShotPreviewBitmap) { return }
+            Draw-ShotPreview $eventArgs.Graphics $SCRIPT:ShotPreviewMetrics $SCRIPT:ShotPreviewBitmap `
+                $SCRIPT:ShotPreviewPath $SCRIPT:ShotPreviewHover $SCRIPT:ShotPreviewPressed `
+                $SCRIPT:ShotPreviewZoom $SCRIPT:ShotPreviewOffset
+        } catch {
+            Write-Log "drawing the capture preview failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseMove({
+        param($sender, $eventArgs)
+        try {
+            if ($SCRIPT:ShotPreviewDragging) {
+                $position = [System.Windows.Forms.Cursor]::Position
+                $sender.Location = New-Object System.Drawing.Point(
+                    ($SCRIPT:ShotPreviewWindowStart.X + $position.X - $SCRIPT:ShotPreviewDragStart.X),
+                    ($SCRIPT:ShotPreviewWindowStart.Y + $position.Y - $SCRIPT:ShotPreviewDragStart.Y))
+                return
+            }
+            if ($SCRIPT:ShotPreviewPanning) {
+                $deltaX = $eventArgs.X - $SCRIPT:ShotPreviewPanStart.X
+                $deltaY = $eventArgs.Y - $SCRIPT:ShotPreviewPanStart.Y
+                $SCRIPT:ShotPreviewOffset = Set-ShotPreviewOffset $SCRIPT:ShotPreviewMetrics $SCRIPT:ShotPreviewZoom `
+                    ([System.Drawing.Point]::new(($SCRIPT:ShotPreviewPanOrigin.X + $deltaX), ($SCRIPT:ShotPreviewPanOrigin.Y + $deltaY)))
+                $sender.Invalidate($SCRIPT:ShotPreviewMetrics.ImageRect)
+                return
+            }
+            $hit = Get-ShotPreviewHit $SCRIPT:ShotPreviewMetrics $eventArgs.Location
+            if ($hit -ne $SCRIPT:ShotPreviewHover) {
+                $previous = $SCRIPT:ShotPreviewHover
+                $SCRIPT:ShotPreviewHover = $hit
+                if ($previous -ge 0) { $sender.Invalidate((Get-ShotPreviewHitRect $SCRIPT:ShotPreviewMetrics $previous)) }
+                if ($hit -ge 0) { $sender.Invalidate((Get-ShotPreviewHitRect $SCRIPT:ShotPreviewMetrics $hit)) }
+            }
+            if ($hit -ge 0) {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::Hand
+            } elseif ($SCRIPT:ShotPreviewMetrics.ImageRect.Contains($eventArgs.Location) -and
+                $SCRIPT:ShotPreviewZoom -gt 1.0001) {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+            } elseif ($eventArgs.Y -lt $SCRIPT:ShotPreviewMetrics.TitleHeight) {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+            } else {
+                $sender.Cursor = [System.Windows.Forms.Cursors]::Default
+            }
+        } catch {
+            Write-Log "tracking the pointer over the preview failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_MouseDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+        $hit = Get-ShotPreviewHit $SCRIPT:ShotPreviewMetrics $eventArgs.Location
+        if ($hit -ge 0) {
+            $SCRIPT:ShotPreviewPressed = $hit
+            $sender.Invalidate((Get-ShotPreviewHitRect $SCRIPT:ShotPreviewMetrics $hit))
+            return
+        }
+        if ($SCRIPT:ShotPreviewZoom -gt 1.0001 -and
+            $SCRIPT:ShotPreviewMetrics.ImageRect.Contains($eventArgs.Location)) {
+            $SCRIPT:ShotPreviewPanning = $true
+            $SCRIPT:ShotPreviewPanStart = $eventArgs.Location
+            $SCRIPT:ShotPreviewPanOrigin = $SCRIPT:ShotPreviewOffset
+            $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+            return
+        }
+        if ($eventArgs.Y -lt $SCRIPT:ShotPreviewMetrics.TitleHeight) {
+            $SCRIPT:ShotPreviewDragging = $true
+            $SCRIPT:ShotPreviewDragStart = [System.Windows.Forms.Cursor]::Position
+            $SCRIPT:ShotPreviewWindowStart = $sender.Location
+            $sender.Cursor = [System.Windows.Forms.Cursors]::SizeAll
+        }
+    })
+    $form.add_MouseUp({
+        param($sender, $eventArgs)
+        if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+        $SCRIPT:ShotPreviewDragging = $false
+        $SCRIPT:ShotPreviewPanning = $false
+        $pressed = $SCRIPT:ShotPreviewPressed
+        $SCRIPT:ShotPreviewPressed = -1
+        if ($pressed -lt 0) { return }
+        $sender.Invalidate((Get-ShotPreviewHitRect $SCRIPT:ShotPreviewMetrics $pressed))
+        $hit = Get-ShotPreviewHit $SCRIPT:ShotPreviewMetrics $eventArgs.Location
+        if ($hit -eq $pressed) { Invoke-ShotPreviewChoice $pressed }
+    })
+    $form.add_MouseWheel({
+        param($sender, $eventArgs)
+        try {
+            $metrics = $SCRIPT:ShotPreviewMetrics
+            if ($null -eq $metrics -or $null -eq $SCRIPT:ShotPreviewBitmap) { return }
+            if (-not $metrics.ImageRect.Contains($eventArgs.Location)) { return }
+            $oldZoom = $SCRIPT:ShotPreviewZoom
+            $factor = 1.15
+            if ($eventArgs.Delta -lt 0) { $factor = 1 / 1.15 }
+            $newZoom = [Math]::Min($SCRIPT:ShotPreviewMaxZoom, [Math]::Max(1.0, $oldZoom * $factor))
+            if ([Math]::Abs($newZoom - $oldZoom) -lt 0.0001) { return }
+            # The point under the pointer stays under it, so zooming into a corner is
+            # how a detail gets looked at without hunting for it again.
+            $centerX = $metrics.ImageRect.Width / 2.0
+            $centerY = $metrics.ImageRect.Height / 2.0
+            $pointerX = $eventArgs.X - $metrics.ImageRect.Left
+            $pointerY = $eventArgs.Y - $metrics.ImageRect.Top
+            $unitX = ($pointerX - $centerX - $SCRIPT:ShotPreviewOffset.X) / ($metrics.ImageRect.Width * $oldZoom)
+            $unitY = ($pointerY - $centerY - $SCRIPT:ShotPreviewOffset.Y) / ($metrics.ImageRect.Height * $oldZoom)
+            $offsetX = $pointerX - $centerX - $unitX * $metrics.ImageRect.Width * $newZoom
+            $offsetY = $pointerY - $centerY - $unitY * $metrics.ImageRect.Height * $newZoom
+            $SCRIPT:ShotPreviewZoom = $newZoom
+            $SCRIPT:ShotPreviewOffset = Set-ShotPreviewOffset $metrics $newZoom `
+                ([System.Drawing.Point]::new([int][Math]::Round($offsetX), [int][Math]::Round($offsetY)))
+            $sender.Invalidate($metrics.ImageRect)
+        } catch {
+            Write-Log "zooming the capture preview failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_DoubleClick({
+        param($sender, $eventArgs)
+        try {
+            $metrics = $SCRIPT:ShotPreviewMetrics
+            if ($null -eq $metrics) { return }
+            if (-not $metrics.ImageRect.Contains($eventArgs.Location)) { return }
+            # A double click is the whole picture and its largest zoom, nothing in
+            # between: the wheel is for the sizes between.
+            if ($SCRIPT:ShotPreviewZoom -gt 1.0001) { $SCRIPT:ShotPreviewZoom = 1.0 }
+            else { $SCRIPT:ShotPreviewZoom = $SCRIPT:ShotPreviewMaxZoom }
+            $SCRIPT:ShotPreviewOffset = [System.Drawing.Point]::Empty
+            $sender.Invalidate($metrics.ImageRect)
+        } catch {
+            Write-Log "toggling the capture preview zoom failed: $($_.Exception.Message)"
+        }
+    })
+    $form.add_KeyDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Return) {
+            $eventArgs.Handled = $true
+            Invoke-ShotPreviewChoice 0
+        } elseif ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Escape) {
+            $eventArgs.Handled = $true
+            Invoke-ShotPreviewChoice 2
+        }
+    })
 
     $form.add_FormClosed({
         param($sender, $eventArgs)
         $choice = $SCRIPT:ShotPreviewChoice
+        # Read before the reset: what was on screen decides which pixels the buttons write.
+        $zoom = $SCRIPT:ShotPreviewZoom
+        $offset = $SCRIPT:ShotPreviewOffset
+        $metrics = $SCRIPT:ShotPreviewMetrics
         $SCRIPT:ShotPreviewChoice = ''
         $SCRIPT:ShotPreview = $null
+        $SCRIPT:ShotPreviewMetrics = $null
+        $SCRIPT:ShotPreviewHover = -1
+        $SCRIPT:ShotPreviewPressed = -1
+        $SCRIPT:ShotPreviewDragging = $false
+        $SCRIPT:ShotPreviewPanning = $false
+        $SCRIPT:ShotPreviewZoom = 1.0
+        $SCRIPT:ShotPreviewMaxZoom = 1.0
+        $SCRIPT:ShotPreviewOffset = [System.Drawing.Point]::Empty
         $bitmap = $SCRIPT:ShotPreviewBitmap
         $SCRIPT:ShotPreviewBitmap = $null
         $path = $SCRIPT:ShotPreviewPath
         $SCRIPT:ShotPreviewPath = ''
         if ($null -eq $bitmap) { return }
+        # The frame, not the whole capture: the buttons write the rectangle the person
+        # zoomed and panned into view, at the capture's own resolution.
+        $frame = $bitmap
+        if ($null -ne $metrics) {
+            $source = Get-ShotPreviewSourceRect $metrics $bitmap $zoom $offset
+            if ($source.X -ne 0 -or $source.Y -ne 0 -or
+                $source.Width -ne $bitmap.Width -or $source.Height -ne $bitmap.Height) {
+                $frame = $bitmap.Clone($source, $bitmap.PixelFormat)
+            }
+        }
         try {
             if ($choice -eq 'save') {
                 # The folder may still be missing: naming the file must not create
@@ -4520,18 +5003,19 @@ function Show-ShotPreview($Bitmap, [System.Drawing.Rectangle]$Shot) {
                     [void][System.IO.Directory]::CreateDirectory($SCRIPT:ShotDir)
                 }
                 if ([string]::IsNullOrWhiteSpace($path) -or (Test-Path -LiteralPath $path)) { $path = New-ShotPath }
-                Save-ShotBitmap $bitmap $path
-                $copied = Copy-ShotImage $bitmap
+                Save-ShotBitmap $frame $path
+                $copied = Copy-ShotImage $frame
                 if ($copied) { Show-PetNotice $SCRIPT:Labels.ShotSaved $path }
                 else { Show-PetNotice $SCRIPT:Labels.ShotSavedNoClipboard $path }
             } elseif ($choice -eq 'copy') {
-                if (Copy-ShotImage $bitmap) { Show-PetNotice $SCRIPT:Labels.ShotCopied '' }
+                if (Copy-ShotImage $frame) { Show-PetNotice $SCRIPT:Labels.ShotCopied '' }
                 else { Show-ShotFailure $SCRIPT:Labels.ShotCopyFailed }
             }
         } catch {
             Write-Log "saving the capture failed: $($_.Exception.Message)"
             try { Show-ShotFailure $_.Exception.Message } catch { }
         } finally {
+            if (-not [object]::ReferenceEquals($frame, $bitmap)) { $frame.Dispose() }
             $bitmap.Dispose()
         }
     })
@@ -4541,7 +5025,7 @@ function Show-ShotPreview($Bitmap, [System.Drawing.Rectangle]$Shot) {
     # The person just finished a drag here, so the window can take the foreground:
     # Enter saves, Escape cancels, and both only reach a window that has the focus.
     [void][DshPet.Win32]::SetForegroundWindow($form.Handle)
-    $saveButton.Focus()
+    $form.Focus()
 }
 
 function Complete-RegionShot($Form, [System.Drawing.Rectangle]$Selection) {
@@ -5151,20 +5635,30 @@ if ($ShotPreviewProbe -ne '') {
         $probeGraphics.Dispose()
     }
     $SCRIPT:ShotPreviewPath = Get-ShotFileName
-    $probeBuilt = New-ShotPreviewForm $probeCapture $probeShot
-    $probeBuilt.Form.Location = New-Object System.Drawing.Point(-4000, -4000)
-    $probeBuilt.Form.Show()
-    [System.Windows.Forms.Application]::DoEvents()
-    $probeImage = New-Object System.Drawing.Bitmap($probeBuilt.Form.Width, $probeBuilt.Form.Height)
-    $probeBuilt.Form.DrawToBitmap($probeImage,
-        (New-Object System.Drawing.Rectangle(0, 0, $probeBuilt.Form.Width, $probeBuilt.Form.Height)))
-    $probeImage.Save($ShotPreviewProbe, [System.Drawing.Imaging.ImageFormat]::Png)
-    $probeImage.Dispose()
-    Write-Output "shot-preview-probe: $($probeBuilt.Form.Width)x$($probeBuilt.Form.Height)"
-    Write-Output ("shot-preview-buttons: " + $probeBuilt.SaveButton.Text + '|' + $probeBuilt.CopyButton.Text + '|' +
-        $probeBuilt.CancelButton.Text)
-    $probeBuilt.Picture.Image = $null
-    $probeBuilt.Form.Close()
+    $probeFont = Get-QuickAccessFont 9 $false
+    try { $probeMetrics = Get-ShotPreviewMetrics $probeShot.Width $probeShot.Height $probeFont }
+    finally { $probeFont.Dispose() }
+    $probeImage = New-Object System.Drawing.Bitmap($probeMetrics.Width, $probeMetrics.Height,
+        [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $probeGraphics = [System.Drawing.Graphics]::FromImage($probeImage)
+    try {
+        Draw-ShotPreview $probeGraphics $probeMetrics $probeCapture $SCRIPT:ShotPreviewPath -1 -1
+        $probeImage.Save($ShotPreviewProbe, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $probeGraphics.Dispose()
+        $probeImage.Dispose()
+    }
+    Write-Output "shot-preview-probe: $($probeMetrics.Width)x$($probeMetrics.Height)"
+    # The window itself, built but never shown: the drawing above proves the layout,
+    # and this proves the borderless form behind it exists at that size.
+    $probeForm = New-ShotPreviewForm $probeCapture $probeShot
+    try {
+        Write-Output "shot-preview-window: $($probeForm.Form.ClientSize.Width)x$($probeForm.Form.ClientSize.Height)"
+    } finally {
+        $probeForm.Form.Dispose()
+    }
+    Write-Output ("shot-preview-buttons: " + $SCRIPT:Labels.ShotSave + '|' + $SCRIPT:Labels.ShotCopy + '|' +
+        $SCRIPT:Labels.ShotCancel)
     $probeCapture.Dispose()
     exit 0
 }

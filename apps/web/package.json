@@ -22,10 +22,10 @@
     "src"
   ],
   "scripts": {
-    "build": "vite build",
+    "build": "node --import ./scripts/windows-build-temp.mjs ./node_modules/vite/bin/vite.js build",
     "dev": "vite",
-    "watch": "vite build --watch --no-emptyOutDir",
-    "build:preview": "pnpm --filter @deepseek-ai/dsh-experimental-webworker-runtime exec tsdown && pnpm --filter @deepseek-ai/dsh-experimental-webworker-packer exec tsdown && vite build && dsh-pack-vfs-image --out dist/preview/vfs-image.tar.gz",
+    "watch": "pnpm run build --watch --no-emptyOutDir",
+    "build:preview": "pnpm --filter @deepseek-ai/dsh-experimental-webworker-runtime exec tsdown && pnpm --filter @deepseek-ai/dsh-experimental-webworker-packer exec tsdown && pnpm run build && dsh-pack-vfs-image --out dist/preview/vfs-image.tar.gz",
     "serve:preview": "http-server dist -a 0.0.0.0 -p 4173 -c-1",
     "render:app-icons": "tsx scripts/render-app-icons.ts"
   },

@@ -15,6 +15,11 @@ rem                           (see "quick" below: it touches no client bundle)
 rem   build.bat repair       drop every node_modules, reinstall from scratch, then
 rem                          build both ends (the blunt fix after a large merge)
 rem
+rem A Web-only rebuild while DSH runs belongs in build-web-safe.bat next to this
+rem script: it saves apps\web\dist first and puts it back when the build fails, so
+rem a page the app is already serving never loses its document. This script keeps
+rem the same copy around its own full build, after the Desktop is stopped.
+rem
 rem Flags:
 rem   --no-pause             do not wait for a key at the end (agents, scripts)
 rem   --detached             run outside this process tree, showing output while
@@ -221,6 +226,22 @@ rem deletes (see migrate-desktop-user-data.bat). The Desktop instance is stopped
 rem by now, so nothing holds its cookie databases open.
 call "%SCRIPT_DIR%migrate-desktop-user-data.bat"
 
+rem `clean` deletes apps\web\dist before the rebuild writes it, so a build that
+rem fails part-way would leave a running page with no document to load. Keep the
+rem last good copy under the harness home and put it back when this run does not
+rem reach its success path.
+set "DIST_GUARD_ACTIVE="
+call :guardDist backup
+if errorlevel 2 (
+    echo [build] apps\web\dist holds no page to preserve.
+) else (
+    if errorlevel 1 (
+        echo [build] WARNING: could not save apps\web\dist; a failed build leaves no Web UI.
+    ) else (
+        set "DIST_GUARD_ACTIVE=1"
+    )
+)
+
 echo [build] Cleaning previous build outputs...
 rem A file the previous app instance left an open handle on - desktop.log, almost
 rem always - makes Node's recursive rm fail with EBUSY on Windows, and that ends a
@@ -352,6 +373,16 @@ exit /b 0
 
 rem End the run through finish.ps1, which records the outcome for the next reader.
 :finish
+rem A run that does not reach its success path must not leave the Web UI missing.
+if defined DIST_GUARD_ACTIVE (
+    if "%~2"=="0" (
+        call :guardDist clear
+    ) else (
+        call :guardDist restore
+        if errorlevel 1 echo [build] WARNING: could not restore apps\web\dist; see [dist-guard] above.
+    )
+    set "DIST_GUARD_ACTIVE="
+)
 call :finishImpl %1 %2
 exit /b %2
 
@@ -360,6 +391,12 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%finish.ps1"
 echo.
 if not defined NOPAUSE pause
 exit /b %~2
+
+rem Save, restore, or drop the apps\web\dist copy the full build protects; the
+rem guard owns every path decision, including where the copy lives.
+:guardDist
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%web-dist-guard.ps1" -Action %~1 -Repo "%DSH_REPO%"
+exit /b %errorlevel%
 
 rem Locate Node for the preflight and preset checks; Explorer launches may have a
 rem different PATH. Leaves NODE_CMD unset when no candidate exists.

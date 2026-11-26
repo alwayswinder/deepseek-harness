@@ -33,6 +33,9 @@
 | `packages/deliverables/workspace-changes/README.md`、`README.zh.md`、`README.i18n.yaml`、`packages/client/ui-deliverables/README.md`、`README.zh.md`、`README.i18n.yaml` | 摘要段与正文段落补「未推送提交」的说明；改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write packages/deliverables/workspace-changes/README.md packages/client/ui-deliverables/README.md` 重新记录摘要 |
 | `docs/subsystems/deliverables.md`、`deliverables.zh.md` | `WorkspaceChangesSummary` 的 `ts type-equiv` 代码块补 `unpushed` |
 | `packages/deliverables/workspace-changes/tests/git.spec.ts`、`tests/plugin.spec.ts`、`packages/client/ui-deliverables/tests/deliverables.client.spec.tsx`、`tests/changes-open.host.spec.ts` | 新增断言：HEAD 与 upstream 的读取、只提交轮次的摘要、读取失败的降级、卡片的两种形态、摘要校验、摘要路由返回 `unpushed` |
+| `apps/web/package.json` | `build` 脚本改为 `node --import ./scripts/windows-build-temp.mjs ./node_modules/vite/bin/vite.js build`，`watch`、`build:preview` 改走 `pnpm run build`：Windows 下 esbuild 的临时文件落在仓库 `.cache/tmp`，不再被 `%TEMP%` 的安全代理拒绝删除 |
+| `apps/web/scripts/windows-build-temp.mjs` | 新增文件：win32 上创建 `.cache/tmp` 并把 `TEMP`/`TMP` 指过去，只影响构建进程及其子进程；根因是这台机器拒绝 `%TEMP%` 下 esbuild 临时文件的删除（`remove ...: Access is denied`） |
+| `docs/development.md`、`development.zh.md`、`development.i18n.yaml` | 构建命令一节补一句「Windows 上 Web 构建把 esbuild 临时文件放在 `.cache/tmp`」；两侧改完用 `pnpm exec tsx scripts/verify-translation-pairing.ts --write docs/development.md` 重新记录摘要 |
 
 核心就是这一段（合并后若被上游改回 `randomUUID`，把它换回来）：
 
